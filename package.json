@@ -1,0 +1,27 @@
+{
+  "name": "markee",
+  "version": "1.0.0",
+  "description": "Decentralized fundraising platform with embeddable messages",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start",
+    "setup": "npm install && cd frontend && npm install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Public-Marquee/markee.git"
+  },
+  "keywords": [
+    "web3",
+    "blockchain",
+    "fundraising",
+    "ethereum"
+  ],
+  "author": "Public Marquee",
+  "license": "MIT"
+}
