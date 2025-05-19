@@ -98,7 +98,7 @@ contract MarqueeFactory is Ownable, ReentrancyGuard, Pausable {
         address(new DynamicPricingModule()) : 
         address(defaultPricingModule);
     
-    // Deploy marquee contract
+   // Deploy marquee contract
     Marquee newMarquee = new Marquee(
         _title,
         _description,
@@ -112,9 +112,11 @@ contract MarqueeFactory is Ownable, ReentrancyGuard, Pausable {
     
     address marqueeAddress = address(newMarquee);
     
-    // Handle custom pricing setup
+    // Initialize pricing AFTER deployment
     if (_useCustomPricing) {
         DynamicPricingModule customPricing = DynamicPricingModule(pricingModule);
+        customPricing.authorizeFactory(address(this));
+        customPricing.initializePrice(marqueeAddress, _initialPrice);
         customPricing.authorizeMarquee(marqueeAddress);
         customPricing.transferOwnership(msg.sender);
         
@@ -122,6 +124,7 @@ contract MarqueeFactory is Ownable, ReentrancyGuard, Pausable {
             customPricing.updatePricingConfig(marqueeAddress, _priceMultiplier, _decayRate);
         }
     } else {
+        defaultPricingModule.initializePrice(marqueeAddress, _initialPrice);
         defaultPricingModule.authorizeMarquee(marqueeAddress);
     }
     
