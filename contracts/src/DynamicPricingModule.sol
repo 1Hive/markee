@@ -24,6 +24,7 @@ contract DynamicPricingModule is IPricingModule, Ownable {
     
     mapping(address => PricingConfig) public pricingConfigs;
     mapping(address => bool) public authorizedMarquees;
+    mapping(address => bool) public authorizedFactories;
     
     event PriceInitialized(address indexed marquee, uint256 initialPrice);
     event PriceUpdated(address indexed marquee, uint256 oldPrice, uint256 newPrice);
@@ -33,18 +34,27 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         require(authorizedMarquees[msg.sender], "Not authorized");
         _;
     }
+
+    modifier onlyAuthorizedOrFactory() {
+        require(authorizedMarquees[msg.sender] || authorizedFactories[msg.sender], "Not authorized");
+        _;
+    }
     
     constructor() {}
     
     function authorizeMarquee(address _marquee) external onlyOwner {
         authorizedMarquees[_marquee] = true;
     }
-    
+
     function revokeMarquee(address _marquee) external onlyOwner {
         authorizedMarquees[_marquee] = false;
     }
-    
-    function initializePrice(address _marquee, uint256 _initialPrice) external onlyAuthorized {
+
+    function authorizeFactory(address _factory) external onlyOwner {
+    authorizedFactories[_factory] = true;
+    }
+
+    function initializePrice(address _marquee, uint256 _initialPrice) external onlyAuthorizedOrFactory {
         require(!pricingConfigs[_marquee].initialized, "Already initialized");
         require(_initialPrice > 0, "Price must be positive");
         
