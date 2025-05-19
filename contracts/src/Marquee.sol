@@ -77,9 +77,6 @@ contract Marquee is Ownable, ReentrancyGuard, Pausable {
         maxMessageLength = _maxMessageLength;
         globalMessageEnabled = _globalMessageEnabled;
         
-        // Initialize pricing (factory is authorized to do this)
-        pricingModule.initializePrice(address(this), _initialPrice);
-        
         // Record initial message
         messageHistory.push(MessageEvent({
             changer: _beneficiary,
