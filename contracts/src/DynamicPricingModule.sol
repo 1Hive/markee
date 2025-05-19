@@ -16,7 +16,7 @@ contract DynamicPricingModule is IPricingModule, Ownable {
     }
     
     // Default values
-    uint256 public constant DEFAULT_PRICE_MULTIPLIER = 1000; // 10x increase
+    uint256 public constant DEFAULT_PRICE_MULTIPLIER = 10000; // 10x increase
     uint256 public constant DEFAULT_DECAY_RATE = 900;        // 0.9x decrease per hour
     uint256 public constant BASIS_POINTS = 10000;             // 100% = 10000 basis points
     uint256 public constant HOUR_IN_SECONDS = 3600;
