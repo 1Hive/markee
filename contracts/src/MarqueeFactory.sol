@@ -70,83 +70,67 @@ contract MarqueeFactory is Ownable, ReentrancyGuard, Pausable {
     }
     
     function createMarquee(
-        string memory _title,
-        string memory _description,
-        string memory _initialMessage,
-        address _beneficiary,
-        uint256 _initialPrice,
-        uint256 _maxMessageLength,
-        bool _enableGlobalMessage,
-        bool _useCustomPricing,
-        uint256 _priceMultiplier,
-        uint256 _decayRate
-    ) external nonReentrant whenNotPaused returns (address) {
-        require(bytes(_title).length > 0, "Title required");
-        require(bytes(_initialMessage).length > 0, "Initial message required");
-        require(_beneficiary != address(0), "Invalid beneficiary");
-        require(_initialPrice > 0, "Initial price must be positive");
-        require(_maxMessageLength > 0 && _maxMessageLength <= 10000, "Invalid message length");
+    string memory _title,
+    string memory _description,
+    string memory _initialMessage,
+    address _beneficiary,
+    uint256 _initialPrice,
+    uint256 _maxMessageLength,
+    bool _enableGlobalMessage,
+    bool _useCustomPricing,
+    uint256 _priceMultiplier,
+    uint256 _decayRate
+) external nonReentrant whenNotPaused returns (address) {
+    require(bytes(_title).length > 0, "Title required");
+    require(bytes(_initialMessage).length > 0, "Initial message required");
+    require(_beneficiary != address(0), "Invalid beneficiary");
+    require(_initialPrice > 0, "Initial price must be positive");
+    require(_maxMessageLength > 0 && _maxMessageLength <= 10000, "Invalid message length");
+    
+    // Use provided max length or default
+    uint256 maxLength = _maxMessageLength > 0 ? _maxMessageLength : defaultMaxMessageLength;
+    
+    // Deploy pricing module
+    address pricingModule = _useCustomPricing ? 
+        address(new DynamicPricingModule()) : 
+        address(defaultPricingModule);
+    
+    // Deploy marquee contract
+    Marquee newMarquee = new Marquee(
+        _title,
+        _description,
+        _initialMessage,
+        _beneficiary,
+        pricingModule,
+        _initialPrice,
+        maxLength,
+        _enableGlobalMessage
+    );
+    
+    address marqueeAddress = address(newMarquee);
+    
+    // Handle custom pricing setup
+    if (_useCustomPricing) {
+        DynamicPricingModule customPricing = DynamicPricingModule(pricingModule);
+        customPricing.authorizeMarquee(marqueeAddress);
+        customPricing.transferOwnership(msg.sender);
         
-        // Use provided max length or default
-        uint256 maxLength = _maxMessageLength > 0 ? _maxMessageLength : defaultMaxMessageLength;
-        
-        // Deploy pricing module instance if custom pricing is requested
-        address pricingModule;
-        if (_useCustomPricing) {
-            DynamicPricingModule customPricing = new DynamicPricingModule();
-            pricingModule = address(customPricing);
-            customPricing.authorizeMarquee(address(0)); // Will be updated after marquee deployment
-        } else {
-            pricingModule = address(defaultPricingModule);
+        if (_priceMultiplier > 0 && _decayRate > 0) {
+            customPricing.updatePricingConfig(marqueeAddress, _priceMultiplier, _decayRate);
         }
-        
-        // Deploy marquee contract
-        Marquee newMarquee = new Marquee(
-            _title,
-            _description,
-            _initialMessage,
-            _beneficiary,
-            pricingModule,
-            _initialPrice,
-            maxLength,
-            _enableGlobalMessage
-        );
-        
-        address marqueeAddress = address(newMarquee);
-        
-        // Authorize marquee in pricing module
-        if (_useCustomPricing) {
-            DynamicPricingModule(pricingModule).authorizeMarquee(marqueeAddress);
-            DynamicPricingModule(pricingModule).transferOwnership(msg.sender);
-            if (_priceMultiplier > 0 && _decayRate > 0) {
-                DynamicPricingModule(pricingModule).updatePricingConfig(
-                    marqueeAddress,
-                    _priceMultiplier,
-                    _decayRate
-                );
-            }
-        } else {
-            defaultPricingModule.authorizeMarquee(marqueeAddress);
-        }
-        
-        // Transfer ownership to creator
-        newMarquee.transferOwnership(msg.sender);
-        
-        // Track marquee
-        allMarquees.push(marqueeAddress);
-        isValidMarquee[marqueeAddress] = true;
-        userMarquees[msg.sender].push(marqueeAddress);
-        
-        emit MarqueeCreated(
-            marqueeAddress,
-            msg.sender,
-            _beneficiary,
-            _title,
-            _initialPrice
-        );
-        
-        return marqueeAddress;
+    } else {
+        defaultPricingModule.authorizeMarquee(marqueeAddress);
     }
+    
+    // Transfer ownership and track marquee
+    newMarquee.transferOwnership(msg.sender);
+    allMarquees.push(marqueeAddress);
+    isValidMarquee[marqueeAddress] = true;
+    userMarquees[msg.sender].push(marqueeAddress);
+    
+    emit MarqueeCreated(marqueeAddress, msg.sender, _beneficiary, _title, _initialPrice);
+    return marqueeAddress;
+}
     
     // Global message functions
     function setGlobalMessage(string calldata _newMessage) external payable nonReentrant whenNotPaused {
