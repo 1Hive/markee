@@ -86,9 +86,7 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         // Calculate new price based on actual payment amount (not just current price)
         // This allows people to pay more to set a higher starting price for the next person
         uint256 newPrice = (_paymentAmount * config.priceMultiplier) / BASIS_POINTS;
-        
-        // Remove minimum price logic completely
-        // No more: if (newPrice < minPrice) { newPrice = minPrice; }
+    
         
         config.currentPrice = newPrice;
         config.lastUpdateTime = block.timestamp;
@@ -114,12 +112,7 @@ contract DynamicPricingModule is IPricingModule, Ownable {
             decayedPrice = (decayedPrice * config.decayRate) / BASIS_POINTS;
         }
         
-        // Ensure minimum price
-        uint256 minPrice = (config.basePrice * MIN_PRICE_RATIO) / BASIS_POINTS;
-        if (decayedPrice < minPrice) {
-            decayedPrice = minPrice;
-        }
-        
+        // No minimum price logic - let it decay naturally
         return decayedPrice;
     }
     
@@ -175,27 +168,6 @@ contract DynamicPricingModule is IPricingModule, Ownable {
             config.decayRate
         );
     }
-    
-    function getTimeUntilMinPrice(address _marquee) external view returns (uint256) {
-        PricingConfig storage config = pricingConfigs[_marquee];
-        require(config.initialized, "Pricing not initialized");
-        
-        uint256 currentPrice = _calculateCurrentPrice(config);
-        uint256 minPrice = (config.basePrice * MIN_PRICE_RATIO) / BASIS_POINTS;
-        
-        if (currentPrice <= minPrice) {
-            return 0;
-        }
-        
-        // Calculate hours needed: log(minPrice/currentPrice) / log(decayRate/BASIS_POINTS)
-        // Approximation using iteration
-        uint256 price = currentPrice;
-        uint256 hoursNeeded = 0;
-        
-        while (price > minPrice && hoursNeeded < 1000) { // Cap to prevent infinite loop
-            price = (price * config.decayRate) / BASIS_POINTS;
-            hoursNeeded++;
-        }
         
         if (hoursNeeded > 0 && block.timestamp >= config.lastUpdateTime) {
             uint256 hoursAlreadyElapsed = (block.timestamp - config.lastUpdateTime) / HOUR_IN_SECONDS;
