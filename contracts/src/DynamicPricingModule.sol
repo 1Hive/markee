@@ -187,22 +187,22 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         // Calculate hours needed: log(minPrice/currentPrice) / log(decayRate/BASIS_POINTS)
         // Approximation using iteration
         uint256 price = currentPrice;
-        uint256 hours = 0;
+        uint256 hoursNeeded = 0;
         
-        while (price > minPrice && hours < 1000) { // Cap to prevent infinite loop
+        while (price > minPrice && hoursNeeded < 1000) { // Cap to prevent infinite loop
             price = (price * config.decayRate) / BASIS_POINTS;
-            hours++;
+            hoursNeeded++;
         }
         
-        if (hours > 0 && block.timestamp >= config.lastUpdateTime) {
+        if (hoursNeeded > 0 && block.timestamp >= config.lastUpdateTime) {
             uint256 hoursAlreadyElapsed = (block.timestamp - config.lastUpdateTime) / HOUR_IN_SECONDS;
-            if (hours > hoursAlreadyElapsed) {
-                hours -= hoursAlreadyElapsed;
+            if (hoursNeeded > hoursAlreadyElapsed) {
+                hoursNeeded -= hoursAlreadyElapsed;
             } else {
-                hours = 0;
+                hoursNeeded = 0;
             }
         }
         
-        return hours * HOUR_IN_SECONDS;
+        return hoursNeeded * HOUR_IN_SECONDS;
     }
 }
