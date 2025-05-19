@@ -111,6 +111,11 @@ contract MarqueeTest is Test {
         uint256 price = marquee.getCurrentPrice();
         string memory longMessage = "This message is way too long and should definitely exceed the maximum message length limit that was set for this marquee contract during deployment and should cause a revert when we try to set it";
         
+        // Debug: check the actual max length
+        uint256 maxLength = marquee.maxMessageLength();
+        emit log_named_uint("Max message length", maxLength);
+        emit log_named_uint("Test message length", bytes(longMessage).length);
+        
         vm.deal(user1, 1 ether);
         vm.prank(user1);
         
