@@ -2,12 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-
-interface IPricingModule {
-    function getCurrentPrice(address marquee) external view returns (uint256);
-    function updatePrice(address marquee, uint256 newAmount) external;
-    function initializePrice(address marquee, uint256 initialPrice) external;
-}
+import "./IPricingModule.sol"; 
 
 contract DynamicPricingModule is IPricingModule, Ownable {
     
