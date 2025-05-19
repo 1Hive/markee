@@ -57,14 +57,14 @@ contract MarqueeTest is Test {
         // Give user1 some ETH
         vm.deal(user1, 1 ether);
         
-        // User1 changes the message
+        // User1 changes the message with exact payment
         vm.prank(user1);
         marquee.setMessage{value: price}("New message from user1");
         
         // Check the message was updated
         assertEq(marquee.message(), "New message from user1");
         
-        // Check price increased (10x)
+        // Check price increased by 10x the payment amount
         assertEq(marquee.getCurrentPrice(), price * 10);
         
         // Check analytics
@@ -72,6 +72,25 @@ contract MarqueeTest is Test {
         assertEq(totalRaised, price);
         assertEq(totalChanges, 1);
         assertEq(uniqueContributors, 1);
+    }
+    
+    function testOverpaymentStrategy() public {
+        uint256 requiredPrice = marquee.getCurrentPrice();
+        
+        // User pays 5x the required amount to make it harder for next person
+        uint256 overpayment = requiredPrice * 5;
+        
+        vm.deal(user1, 1 ether);
+        vm.prank(user1);
+        marquee.setMessage{value: overpayment}("Protected message");
+        
+        // Next price should be 10x the overpayment (not just the required price)
+        uint256 nextPrice = marquee.getCurrentPrice();
+        assertEq(nextPrice, overpayment * 10);
+        
+        // This makes it much more expensive for the next person!
+        // If required was 0.01 ETH and they paid 0.05 ETH,
+        // next person needs 0.5 ETH instead of just 0.1 ETH
     }
     
     function testPriceDecay() public {
