@@ -1,6 +1,6 @@
 # Markee - Web3 Fundraising App
 
-A platform that allows users to create embeddable messages on their website that anyone can pay to edit.
+Create an embeddable message on your website that anyone can pay to edit.
 
 ## 🚀 Features
 
