@@ -1,6 +1,6 @@
-# Markee - Decentralized Fundraising Platform
+# Markee - Web3 Fundraising App
 
-A web3 platform that allows users to create embeddable fundraising messages that can be edited by anyone willing to pay an increasing price.
+A platform that allows users to create embeddable messages on their website that anyone can pay to edit.
 
 ## 🚀 Features
 
