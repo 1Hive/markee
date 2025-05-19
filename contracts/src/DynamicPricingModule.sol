@@ -7,20 +7,19 @@ import "./IPricingModule.sol";
 contract DynamicPricingModule is IPricingModule, Ownable {
     
     struct PricingConfig {
-        uint256 basePrice;          // Initial/minimum price
+        uint256 basePrice;          // Initial price
         uint256 currentPrice;       // Current price to change message
         uint256 lastUpdateTime;     // When price was last updated
-        uint256 priceMultiplier;    // Price increases by this factor (in basis points, 1000 = 10x)
-        uint256 decayRate;          // Price decreases by this factor per hour (in basis points, 900 = 0.9x)
+        uint256 priceMultiplier;    // Price increases by this factor (in basis points)
+        uint256 decayRate;          // Price decreases by this factor per hour (in basis points)
         bool initialized;
     }
     
     // Default values
     uint256 public constant DEFAULT_PRICE_MULTIPLIER = 10000; // 10x increase
     uint256 public constant DEFAULT_DECAY_RATE = 900;        // 0.9x decrease per hour
-    uint256 public constant BASIS_POINTS = 10000;             // 100% = 10000 basis points
+    uint256 public constant BASIS_POINTS = 10000;            // 100% = 10000 basis points
     uint256 public constant HOUR_IN_SECONDS = 3600;
-    uint256 public constant MIN_PRICE_RATIO = 100;           // Minimum price is 1% of base price
     
     mapping(address => PricingConfig) public pricingConfigs;
     mapping(address => bool) public authorizedMarquees;
@@ -30,11 +29,6 @@ contract DynamicPricingModule is IPricingModule, Ownable {
     event PriceUpdated(address indexed marquee, uint256 oldPrice, uint256 newPrice);
     event ConfigUpdated(address indexed marquee, uint256 priceMultiplier, uint256 decayRate);
     
-    modifier onlyAuthorized() {
-        require(authorizedMarquees[msg.sender], "Not authorized");
-        _;
-    }
-
     modifier onlyAuthorizedOrFactory() {
         require(authorizedMarquees[msg.sender] || authorizedFactories[msg.sender], "Not authorized");
         _;
@@ -51,7 +45,7 @@ contract DynamicPricingModule is IPricingModule, Ownable {
     }
 
     function authorizeFactory(address _factory) external onlyOwner {
-    authorizedFactories[_factory] = true;
+        authorizedFactories[_factory] = true;
     }
 
     function initializePrice(address _marquee, uint256 _initialPrice) external onlyAuthorizedOrFactory {
@@ -83,10 +77,9 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         
         uint256 oldPrice = _calculateCurrentPrice(config);
         
-        // Calculate new price based on actual payment amount (not just current price)
-        // This allows people to pay more to set a higher starting price for the next person
+        // Calculate new price based on actual payment amount
+        // This allows overpayment strategy
         uint256 newPrice = (_paymentAmount * config.priceMultiplier) / BASIS_POINTS;
-    
         
         config.currentPrice = newPrice;
         config.lastUpdateTime = block.timestamp;
@@ -108,28 +101,25 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         // Calculate price decay: price * (decayRate/10000)^hoursElapsed
         uint256 decayedPrice = config.currentPrice;
         
-        for (uint256 i = 0; i < hoursElapsed && i < 100; i++) { // Cap at 100 hours to prevent overflow
+        for (uint256 i = 0; i < hoursElapsed && i < 100; i++) {
             decayedPrice = (decayedPrice * config.decayRate) / BASIS_POINTS;
         }
         
-        // No minimum price logic - let it decay naturally
         return decayedPrice;
     }
     
-    // Configuration functions
     function updatePricingConfig(
         address _marquee,
         uint256 _priceMultiplier,
         uint256 _decayRate
     ) external {
         require(authorizedMarquees[_marquee] || msg.sender == owner(), "Not authorized");
-        require(_priceMultiplier > 0 && _priceMultiplier <= 100000, "Invalid multiplier"); // Max 1000x
+        require(_priceMultiplier > 0 && _priceMultiplier <= 100000, "Invalid multiplier");
         require(_decayRate > 0 && _decayRate <= BASIS_POINTS, "Invalid decay rate");
         
         PricingConfig storage config = pricingConfigs[_marquee];
         require(config.initialized, "Pricing not initialized");
         
-        // Update current price before changing config
         config.currentPrice = _calculateCurrentPrice(config);
         config.lastUpdateTime = block.timestamp;
         
@@ -149,7 +139,6 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         config.basePrice = _newBasePrice;
     }
     
-    // View functions
     function getPricingConfig(address _marquee) external view returns (
         uint256 basePrice,
         uint256 currentPrice,
@@ -167,17 +156,5 @@ contract DynamicPricingModule is IPricingModule, Ownable {
             config.priceMultiplier,
             config.decayRate
         );
-    }
-        
-        if (hoursNeeded > 0 && block.timestamp >= config.lastUpdateTime) {
-            uint256 hoursAlreadyElapsed = (block.timestamp - config.lastUpdateTime) / HOUR_IN_SECONDS;
-            if (hoursNeeded > hoursAlreadyElapsed) {
-                hoursNeeded -= hoursAlreadyElapsed;
-            } else {
-                hoursNeeded = 0;
-            }
-        }
-        
-        return hoursNeeded * HOUR_IN_SECONDS;
     }
 }
