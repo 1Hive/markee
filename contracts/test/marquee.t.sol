@@ -109,7 +109,7 @@ contract MarqueeTest is Test {
     
     function testMessageTooLong() public {
         uint256 price = marquee.getCurrentPrice();
-        string memory longMessage = "This message is way too long and should definitely exceed the maximum message length limit that was set for this marquee contract during deployment and should cause a revert when we try to set it";
+        string memory longMessage = "The hiiiiiiiiilllllls are aliiiivee with the sound of muuuuuuussssicccc LAA LA LA LALAAAAAAAA....... this message is way too long and should definitely exceed the maximum message length limit that was set for this marquee contract during deployment and should cause a revert when we try to set it";
         
         // Debug: check the actual max length
         uint256 maxLength = marquee.maxMessageLength();
