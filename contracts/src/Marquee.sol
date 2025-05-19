@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "./DynamicPricingModule.sol";
 import "./IPricingModule.sol";
 
 interface IMarqueeFactory {
@@ -76,7 +77,8 @@ contract Marquee is Ownable, ReentrancyGuard, Pausable {
         maxMessageLength = _maxMessageLength;
         globalMessageEnabled = _globalMessageEnabled;
         
-        // Initialize pricing
+        // First authorize this contract, then initialize pricing
+        DynamicPricingModule(_pricingModule).authorizeMarquee(address(this));
         pricingModule.initializePrice(address(this), _initialPrice);
         
         // Record initial message
