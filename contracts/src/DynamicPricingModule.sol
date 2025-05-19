@@ -83,14 +83,12 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         
         uint256 oldPrice = _calculateCurrentPrice(config);
         
-        // Calculate new price: oldPrice * multiplier (not payment * multiplier)
-        uint256 newPrice = (oldPrice * config.priceMultiplier) / BASIS_POINTS;
+        // Calculate new price based on actual payment amount (not just current price)
+        // This allows people to pay more to set a higher starting price for the next person
+        uint256 newPrice = (_paymentAmount * config.priceMultiplier) / BASIS_POINTS;
         
-        // Ensure minimum price
-        uint256 minPrice = (config.basePrice * MIN_PRICE_RATIO) / BASIS_POINTS;
-        if (newPrice < minPrice) {
-            newPrice = minPrice;
-        }
+        // Remove minimum price logic completely
+        // No more: if (newPrice < minPrice) { newPrice = minPrice; }
         
         config.currentPrice = newPrice;
         config.lastUpdateTime = block.timestamp;
