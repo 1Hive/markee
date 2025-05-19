@@ -77,14 +77,14 @@ contract DynamicPricingModule is IPricingModule, Ownable {
         return _calculateCurrentPrice(config);
     }
     
-    function updatePrice(address _marquee, uint256 _paymentAmount) external onlyAuthorized {
+    function updatePrice(address _marquee, uint256 _paymentAmount) external onlyAuthorizedOrFactory {
         PricingConfig storage config = pricingConfigs[_marquee];
         require(config.initialized, "Pricing not initialized");
         
         uint256 oldPrice = _calculateCurrentPrice(config);
         
-        // Calculate new price: payment * multiplier
-        uint256 newPrice = (_paymentAmount * config.priceMultiplier) / BASIS_POINTS;
+        // Calculate new price: oldPrice * multiplier (not payment * multiplier)
+        uint256 newPrice = (oldPrice * config.priceMultiplier) / BASIS_POINTS;
         
         // Ensure minimum price
         uint256 minPrice = (config.basePrice * MIN_PRICE_RATIO) / BASIS_POINTS;
