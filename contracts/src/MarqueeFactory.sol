@@ -67,6 +67,9 @@ contract MarqueeFactory is Ownable, ReentrancyGuard, Pausable {
         
         // Deploy default pricing module
         defaultPricingModule = new DynamicPricingModule();
+        
+        // Authorize this factory to initialize pricing
+        defaultPricingModule.authorizeFactory(address(this));
     }
     
     function createMarquee(
