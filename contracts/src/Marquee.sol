@@ -128,7 +128,7 @@ contract Marquee is Ownable, ReentrancyGuard, Pausable {
             timestamp: block.timestamp
         }));
         
-        // Update pricing for next change
+        // Update pricing based on ACTUAL payment amount (allows overpayment strategy)
         pricingModule.updatePrice(address(this), msg.value);
         
         // Send funds to beneficiary
