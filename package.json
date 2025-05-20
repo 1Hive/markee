@@ -6,10 +6,9 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=frontend",
-    "build": "npm run build --workspace=frontend",
-    "start": "npm run start --workspace=frontend",
-    "lint": "npm run lint --workspace=frontend"
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start"
   },
   "dependencies": {},
   "devDependencies": {}
