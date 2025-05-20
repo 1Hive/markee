@@ -192,7 +192,7 @@ const MainAppPage: React.FC = () => {
   // Load data when wallet connects
   useEffect(() => {
     const loadData = async () => {
-      if (provider && chainId && SUPPORTED_CHAINS[chainId]) {
+      if (provider && chainId && SUPPORTED_CHAINS[chainId as unknown as keyof typeof SUPPORTED_CHAINS]) {
         setLoading(true);
         await Promise.all([loadGlobalMessage(), loadTopMarquees()]);
         setLoading(false);
