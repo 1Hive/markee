@@ -95,9 +95,13 @@ const MainAppPage: React.FC = () => {
     }
   };
 
+    const isChainSupported = (chainId: number): boolean => {
+      return Object.keys(SUPPORTED_CHAINS).includes(chainId.toString());
+    };
+    
   // Load global message
   const loadGlobalMessage = async () => {
-    if (!provider || !SUPPORTED_CHAINS[chainId]) return;
+    if (!provider || !isChainSupported(chainId)) return;
     
     try {
       // Mock data for demonstration
