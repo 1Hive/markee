@@ -119,7 +119,7 @@ const MainAppPage: React.FC = () => {
 
   // Load top marquees by funds raised
   const loadTopMarquees = async () => {
-    if (!provider || !SUPPORTED_CHAINS[chainId as unknown as keyof typeof SUPPORTED_CHAINS]) return;
+    if (!provider || !isChainSupported(chainId)) return;
     
     try {
       // Mock data for demonstration
@@ -192,7 +192,7 @@ const MainAppPage: React.FC = () => {
   // Load data when wallet connects
   useEffect(() => {
     const loadData = async () => {
-      if (provider && chainId && SUPPORTED_CHAINS[chainId as unknown as keyof typeof SUPPORTED_CHAINS]) {
+      if (provider && chainId && isChainSupported(chainId)) {
         setLoading(true);
         await Promise.all([loadGlobalMessage(), loadTopMarquees()]);
         setLoading(false);
@@ -291,6 +291,11 @@ const MainAppPage: React.FC = () => {
     );
   }
 
+  // Get the chain info safely
+  const chainInfo = chainId && isChainSupported(chainId) 
+    ? SUPPORTED_CHAINS[chainId as unknown as keyof typeof SUPPORTED_CHAINS] 
+    : null;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -314,7 +319,7 @@ const MainAppPage: React.FC = () => {
                 {formatAddress(account)}
               </Badge>
               <Badge variant="outline" className="px-4 py-2">
-                {SUPPORTED_CHAINS[chainId]?.name || 'Unsupported Network'}
+                {chainInfo?.name || 'Unsupported Network'}
               </Badge>
             </div>
           )}
@@ -365,7 +370,7 @@ const MainAppPage: React.FC = () => {
                   <DollarSign className="mx-auto h-6 w-6 text-amber-600 mb-1" />
                   <p className="text-sm text-gray-600">Next Price</p>
                   <p className="text-lg font-bold text-amber-700">
-                    {formatCurrency(globalMessage.price)} {SUPPORTED_CHAINS[chainId]?.currency}
+                    {formatCurrency(globalMessage.price)} {chainInfo?.currency}
                   </p>
                 </div>
                 <div className="text-center">
@@ -407,7 +412,7 @@ const MainAppPage: React.FC = () => {
                           Updating...
                         </>
                       ) : (
-                        `Pay ${formatCurrency(globalMessage.price)} ${SUPPORTED_CHAINS[chainId]?.currency}`
+                        `Pay ${formatCurrency(globalMessage.price)} ${chainInfo?.currency}`
                       )}
                     </Button>
                     <Button
@@ -527,7 +532,7 @@ const MainAppPage: React.FC = () => {
                             Updating...
                           </>
                         ) : (
-                          `Pay ${formatCurrency(marquee.currentPrice)} ${SUPPORTED_CHAINS[chainId]?.currency}`
+                          `Pay ${formatCurrency(marquee.currentPrice)} ${chainInfo?.currency}`
                         )}
                       </Button>
                       <Button
