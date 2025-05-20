@@ -119,7 +119,7 @@ const MainAppPage: React.FC = () => {
 
   // Load top marquees by funds raised
   const loadTopMarquees = async () => {
-    if (!provider || !SUPPORTED_CHAINS[chainId.toString()]) return;
+    if (!provider || !SUPPORTED_CHAINS[chainId as unknown as keyof typeof SUPPORTED_CHAINS]) return;
     
     try {
       // Mock data for demonstration
