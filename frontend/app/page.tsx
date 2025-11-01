@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { ConnectButton } from '@/components/wallet/ConnectButton'
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
