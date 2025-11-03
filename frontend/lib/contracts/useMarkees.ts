@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePublicClient, useAccount } from 'wagmi'
+import { usePublicClient, useAccount, useBlockNumber } from 'wagmi'
 import { base, optimism, arbitrum } from 'wagmi/chains'
 import { InvestorStrategyABI, MarkeeABI } from './abis'
 import { CONTRACTS } from './addresses'
@@ -9,34 +9,46 @@ import type { Markee } from '@/types'
 
 const CHAINS = [base, optimism, arbitrum]
 
-// Known deployment blocks (update these as contracts are deployed)
+// Known deployment blocks
 const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
-  [optimism.id]: 128400000n, // Approximate deployment block on Optimism
+  [optimism.id]: 128400000n,
   [base.id]: 0n,
   [arbitrum.id]: 0n,
 }
 
-// Maximum blocks to query at once (conservative for public RPCs)
 const MAX_BLOCK_RANGE = 10000n
 
 export function useMarkees() {
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
 
-  // Get public clients for all chains
+  // Get public clients
   const opClient = usePublicClient({ chainId: optimism.id })
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
+
+  // Watch for new blocks to trigger refresh
+  const { data: blockNumber } = useBlockNumber({ 
+    chainId: chain?.id,
+    watch: true,
+    cacheTime: 10_000 
+  })
 
   useEffect(() => {
     let isMounted = true
 
     async function fetchMarkees() {
+      // Don't fetch if clients aren't ready
+      if (!opClient && !baseClient && !arbClient) {
+        console.log('Waiting for clients to initialize...')
+        return
+      }
+
       try {
         setIsLoading(true)
+        setError(null)
         const allMarkees: Markee[] = []
 
         // Fetch from each chain
@@ -60,15 +72,12 @@ export function useMarkees() {
           }
 
           try {
-            // Get current block
             const currentBlock = await client.getBlockNumber()
             const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id] || 0n
             
             console.log(`Fetching Markees from ${chain.name}`)
-            console.log(`Current block: ${currentBlock}`)
-            console.log(`Deployment block: ${deploymentBlock}`)
+            console.log(`Current block: ${currentBlock}, Deployment: ${deploymentBlock}`)
 
-            // Query in chunks to avoid "block range too large" errors
             const allLogs = []
             let fromBlock = deploymentBlock
             
@@ -96,10 +105,12 @@ export function useMarkees() {
                   toBlock
                 })
 
-                allLogs.push(...logs)
-                console.log(`Found ${logs.length} Markees in this chunk`)
+                if (logs.length > 0) {
+                  allLogs.push(...logs)
+                  console.log(`Found ${logs.length} Markees in chunk ${fromBlock}-${toBlock}`)
+                }
               } catch (chunkError: any) {
-                console.error(`Error fetching chunk ${fromBlock}-${toBlock}:`, chunkError)
+                console.error(`Error fetching chunk ${fromBlock}-${toBlock}:`, chunkError.message)
               }
 
               fromBlock = toBlock + 1n
@@ -107,14 +118,13 @@ export function useMarkees() {
 
             console.log(`Total events found on ${chain.name}: ${allLogs.length}`)
 
-            // For each Markee, fetch current data
+            // Fetch current data for each Markee
             for (const log of allLogs) {
               if (!isMounted) return
 
               const { markeeAddress, owner } = log.args as any
               
               try {
-                // Read current message and totalFundsAdded from Markee contract
                 const [message, totalFundsAdded] = await Promise.all([
                   client.readContract({
                     address: markeeAddress,
@@ -137,13 +147,13 @@ export function useMarkees() {
                   pricingStrategy: strategyAddress
                 })
 
-                console.log(`Loaded Markee ${markeeAddress}: "${message}"`)
-              } catch (err) {
-                console.error(`Error fetching Markee ${markeeAddress} data:`, err)
+                console.log(`✓ Loaded: ${markeeAddress} - "${message}"`)
+              } catch (err: any) {
+                console.error(`Error fetching Markee ${markeeAddress}:`, err.message)
               }
             }
-          } catch (err) {
-            console.error(`Error fetching events from ${chain.name}:`, err)
+          } catch (err: any) {
+            console.error(`Error fetching from ${chain.name}:`, err.message)
           }
         }
 
@@ -156,11 +166,11 @@ export function useMarkees() {
           return 0
         })
 
-        console.log(`Total Markees loaded: ${allMarkees.length}`)
+        console.log(`✅ Total Markees loaded: ${allMarkees.length}`)
         setMarkees(allMarkees)
         setError(null)
-      } catch (err) {
-        console.error('Error fetching markees:', err)
+      } catch (err: any) {
+        console.error('❌ Error fetching markees:', err)
         if (isMounted) {
           setError(err as Error)
         }
@@ -176,23 +186,17 @@ export function useMarkees() {
     return () => {
       isMounted = false
     }
-  }, [opClient, baseClient, arbClient, refreshTrigger])
+  }, [opClient, baseClient, arbClient, blockNumber]) // Refetches when new blocks arrive
 
-  // Find the current user's Markee
+  // Find current user's Markee
   const userMarkee = address 
     ? markees.find((markee) => markee.owner.toLowerCase() === address.toLowerCase())
     : null
-
-  // Refetch function that triggers the effect
-  const refetch = () => {
-    setRefreshTrigger(prev => prev + 1)
-  }
 
   return { 
     markees, 
     userMarkee: userMarkee || null, 
     isLoading, 
-    error,
-    refetch
+    error
   }
 }
