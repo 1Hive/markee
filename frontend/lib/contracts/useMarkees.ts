@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePublicClient } from 'wagmi'
+import { usePublicClient, useAccount } from 'wagmi'
 import { base, optimism, arbitrum } from 'wagmi/chains'
 import { InvestorStrategyABI, MarkeeABI } from './abis'
 import { CONTRACTS } from './addresses'
@@ -13,6 +13,7 @@ export function useMarkees() {
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const { address } = useAccount()
 
   // Get public clients for all chains
   const opClient = usePublicClient({ chainId: optimism.id })
@@ -111,5 +112,10 @@ export function useMarkees() {
     fetchMarkees()
   }, [opClient, baseClient, arbClient])
 
-  return { markees, isLoading, error }
+  // Find the current user's Markee
+  const userMarkee = address 
+    ? markees.find((markee) => markee.owner.toLowerCase() === address.toLowerCase())
+    : null
+
+  return { markees, userMarkee: userMarkee || null, isLoading, error }
 }
