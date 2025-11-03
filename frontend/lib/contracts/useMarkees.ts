@@ -16,12 +16,12 @@ const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
 }
 
 const MAX_BLOCK_RANGE = 10000n
+const DELAY_BETWEEN_CHUNKS = 500 // 500ms delay to avoid rate limits
 
-console.log('🔵 useMarkees module loaded')
+// Helper to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export function useMarkees() {
-  console.log('🟢 useMarkees hook called')
-  
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -31,27 +31,17 @@ export function useMarkees() {
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
 
-  console.log('🟡 Clients:', { 
-    op: !!opClient, 
-    base: !!baseClient, 
-    arb: !!arbClient 
-  })
-
   useEffect(() => {
-    console.log('🟣 Effect running')
     let mounted = true
 
     async function load() {
-      console.log('🔴 Load function called')
-      
       if (!opClient && !baseClient && !arbClient) {
-        console.log('⚠️ No clients available yet')
+        console.log('Waiting for clients...')
         return
       }
 
-      console.log('✅ Clients ready, starting fetch')
-
       try {
+        console.log('Starting fetch...')
         setIsLoading(true)
         const allMarkees: Markee[] = []
 
@@ -60,7 +50,7 @@ export function useMarkees() {
 
           const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
           if (!strategyAddress) {
-            console.log(`⏭️ No contract on ${chain.name}`)
+            console.log(`No contract on ${chain.name}`)
             continue
           }
 
@@ -70,27 +60,28 @@ export function useMarkees() {
             arbClient
 
           if (!client) {
-            console.log(`⏭️ No client for ${chain.name}`)
+            console.log(`No client for ${chain.name}`)
             continue
           }
 
-          console.log(`🔍 Fetching from ${chain.name}`)
+          console.log(`Fetching from ${chain.name}`)
 
           try {
             const currentBlock = await client.getBlockNumber()
             const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id] || 0n
             
-            console.log(`📊 Block range: ${deploymentBlock} to ${currentBlock}`)
+            console.log(`Block range: ${deploymentBlock} to ${currentBlock}`)
 
             const allLogs = []
             let fromBlock = deploymentBlock
+            let chunkCount = 0
             
             while (fromBlock < currentBlock && mounted) {
               const toBlock = fromBlock + MAX_BLOCK_RANGE > currentBlock 
                 ? currentBlock 
                 : fromBlock + MAX_BLOCK_RANGE
 
-              console.log(`📦 Querying ${fromBlock} - ${toBlock}`)
+              console.log(`Chunk ${chunkCount + 1}: ${fromBlock} - ${toBlock}`)
 
               try {
                 const logs = await client.getLogs({
@@ -111,17 +102,30 @@ export function useMarkees() {
 
                 if (logs.length > 0) {
                   allLogs.push(...logs)
-                  console.log(`✨ Found ${logs.length} events`)
+                  console.log(`Found ${logs.length} events`)
+                }
+
+                // Add delay between chunks to avoid rate limiting
+                chunkCount++
+                if (fromBlock + MAX_BLOCK_RANGE < currentBlock) {
+                  console.log(`Waiting ${DELAY_BETWEEN_CHUNKS}ms...`)
+                  await delay(DELAY_BETWEEN_CHUNKS)
                 }
               } catch (err: any) {
-                console.error(`❌ Chunk error:`, err.message)
+                console.error(`Chunk error:`, err.message)
+                // If rate limited, wait longer
+                if (err.message.includes('429') || err.message.includes('rate')) {
+                  console.log('Rate limited, waiting 2s...')
+                  await delay(2000)
+                }
               }
 
               fromBlock = toBlock + 1n
             }
 
-            console.log(`📝 Total events on ${chain.name}: ${allLogs.length}`)
+            console.log(`Total events on ${chain.name}: ${allLogs.length}`)
 
+            // Fetch contract data for each Markee
             for (const log of allLogs) {
               if (!mounted) return
 
@@ -150,13 +154,13 @@ export function useMarkees() {
                   pricingStrategy: strategyAddress
                 })
 
-                console.log(`💬 Loaded: "${message}"`)
+                console.log(`Loaded: "${message}"`)
               } catch (err: any) {
-                console.error(`❌ Read contract error:`, err.message)
+                console.error(`Read error:`, err.message)
               }
             }
           } catch (err: any) {
-            console.error(`❌ Chain error (${chain.name}):`, err.message)
+            console.error(`Chain error (${chain.name}):`, err.message)
           }
         }
 
@@ -168,15 +172,14 @@ export function useMarkees() {
           return 0
         })
 
-        console.log(`🎉 Done! Total Markees: ${allMarkees.length}`)
+        console.log(`Done! Total Markees: ${allMarkees.length}`)
         setMarkees(allMarkees)
         setError(null)
       } catch (err: any) {
-        console.error('💥 Fatal error:', err)
+        console.error('Fatal error:', err)
         if (mounted) setError(err)
       } finally {
         if (mounted) {
-          console.log('🏁 Setting loading to false')
           setIsLoading(false)
         }
       }
@@ -185,7 +188,6 @@ export function useMarkees() {
     load()
 
     return () => {
-      console.log('🧹 Cleanup')
       mounted = false
     }
   }, [opClient, baseClient, arbClient])
@@ -193,8 +195,6 @@ export function useMarkees() {
   const userMarkee = address 
     ? markees.find((m) => m.owner.toLowerCase() === address.toLowerCase())
     : null
-
-  console.log('📤 Returning:', { markeesCount: markees.length, isLoading, hasError: !!error })
 
   return { markees, userMarkee, isLoading, error }
 }
