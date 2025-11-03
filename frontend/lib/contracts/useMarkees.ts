@@ -17,7 +17,11 @@ const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
 
 const MAX_BLOCK_RANGE = 10000n
 
+console.log('🔵 useMarkees module loaded')
+
 export function useMarkees() {
+  console.log('🟢 useMarkees hook called')
+  
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -27,17 +31,27 @@ export function useMarkees() {
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
 
+  console.log('🟡 Clients:', { 
+    op: !!opClient, 
+    base: !!baseClient, 
+    arb: !!arbClient 
+  })
+
   useEffect(() => {
+    console.log('🟣 Effect running')
     let mounted = true
 
     async function load() {
+      console.log('🔴 Load function called')
+      
       if (!opClient && !baseClient && !arbClient) {
-        console.log('Waiting for clients...')
+        console.log('⚠️ No clients available yet')
         return
       }
 
+      console.log('✅ Clients ready, starting fetch')
+
       try {
-        console.log('Starting fetch...')
         setIsLoading(true)
         const allMarkees: Markee[] = []
 
@@ -45,20 +59,28 @@ export function useMarkees() {
           if (!mounted) return
 
           const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
-          if (!strategyAddress) continue
+          if (!strategyAddress) {
+            console.log(`⏭️ No contract on ${chain.name}`)
+            continue
+          }
 
           const client = 
             chain.id === optimism.id ? opClient :
             chain.id === base.id ? baseClient :
             arbClient
 
-          if (!client) continue
+          if (!client) {
+            console.log(`⏭️ No client for ${chain.name}`)
+            continue
+          }
+
+          console.log(`🔍 Fetching from ${chain.name}`)
 
           try {
             const currentBlock = await client.getBlockNumber()
             const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id] || 0n
             
-            console.log(`Fetching from ${chain.name}`)
+            console.log(`📊 Block range: ${deploymentBlock} to ${currentBlock}`)
 
             const allLogs = []
             let fromBlock = deploymentBlock
@@ -68,7 +90,7 @@ export function useMarkees() {
                 ? currentBlock 
                 : fromBlock + MAX_BLOCK_RANGE
 
-              console.log(`Blocks ${fromBlock}-${toBlock}`)
+              console.log(`📦 Querying ${fromBlock} - ${toBlock}`)
 
               try {
                 const logs = await client.getLogs({
@@ -89,16 +111,16 @@ export function useMarkees() {
 
                 if (logs.length > 0) {
                   allLogs.push(...logs)
-                  console.log(`Found ${logs.length} events`)
+                  console.log(`✨ Found ${logs.length} events`)
                 }
               } catch (err: any) {
-                console.error(`Chunk error:`, err.message)
+                console.error(`❌ Chunk error:`, err.message)
               }
 
               fromBlock = toBlock + 1n
             }
 
-            console.log(`Total events: ${allLogs.length}`)
+            console.log(`📝 Total events on ${chain.name}: ${allLogs.length}`)
 
             for (const log of allLogs) {
               if (!mounted) return
@@ -128,13 +150,13 @@ export function useMarkees() {
                   pricingStrategy: strategyAddress
                 })
 
-                console.log(`Loaded: ${message}`)
+                console.log(`💬 Loaded: "${message}"`)
               } catch (err: any) {
-                console.error(`Read error:`, err.message)
+                console.error(`❌ Read contract error:`, err.message)
               }
             }
           } catch (err: any) {
-            console.error(`Chain error:`, err.message)
+            console.error(`❌ Chain error (${chain.name}):`, err.message)
           }
         }
 
@@ -146,20 +168,24 @@ export function useMarkees() {
           return 0
         })
 
-        console.log(`Done! Total: ${allMarkees.length}`)
+        console.log(`🎉 Done! Total Markees: ${allMarkees.length}`)
         setMarkees(allMarkees)
         setError(null)
       } catch (err: any) {
-        console.error('Fetch error:', err)
+        console.error('💥 Fatal error:', err)
         if (mounted) setError(err)
       } finally {
-        if (mounted) setIsLoading(false)
+        if (mounted) {
+          console.log('🏁 Setting loading to false')
+          setIsLoading(false)
+        }
       }
     }
 
     load()
 
     return () => {
+      console.log('🧹 Cleanup')
       mounted = false
     }
   }, [opClient, baseClient, arbClient])
@@ -167,6 +193,8 @@ export function useMarkees() {
   const userMarkee = address 
     ? markees.find((m) => m.owner.toLowerCase() === address.toLowerCase())
     : null
+
+  console.log('📤 Returning:', { markeesCount: markees.length, isLoading, hasError: !!error })
 
   return { markees, userMarkee, isLoading, error }
 }
