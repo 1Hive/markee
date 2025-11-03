@@ -12,11 +12,12 @@ interface InvestmentModalProps {
   isOpen: boolean
   onClose: () => void
   userMarkee?: Markee | null
+  onSuccess?: () => void
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModalProps) {
+export function InvestmentModal({ isOpen, onClose, userMarkee, onSuccess }: InvestmentModalProps) {
   const { address, isConnected, chain } = useAccount()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
@@ -57,17 +58,20 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
     setError(null)
   }, [userMarkee, isOpen])
 
-  // Reset state when transaction succeeds
+  // Reset state and trigger refresh when transaction succeeds
   useEffect(() => {
     if (isSuccess) {
       setTimeout(() => {
         setMessage('')
         setAmount('')
         setError(null)
+        if (onSuccess) {
+          onSuccess()
+        }
         onClose()
       }, 2000)
     }
-  }, [isSuccess, onClose])
+  }, [isSuccess, onClose, onSuccess])
 
   const handleCreateMarkee = async () => {
     if (!strategyAddress || !chain) {
@@ -248,7 +252,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your message..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
@@ -271,7 +275,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       disabled={isPending || isConfirming}
                     />
                     {minimumPrice && (
@@ -311,7 +315,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       disabled={isPending || isConfirming}
                     />
                   </div>
@@ -335,7 +339,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your new message..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
@@ -369,7 +373,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
                   <CheckCircle2 className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
                   <div>
                     <p className="text-sm font-medium text-green-900">Transaction successful!</p>
-                    <p className="text-xs text-green-700 mt-1">Your Markee has been updated.</p>
+                    <p className="text-xs text-green-700 mt-1">Refreshing leaderboard...</p>
                   </div>
                 </div>
               )}
