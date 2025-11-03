@@ -9,6 +9,16 @@ import type { Markee } from '@/types'
 
 const CHAINS = [base, optimism, arbitrum]
 
+// Known deployment blocks (update these as contracts are deployed)
+const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
+  [optimism.id]: 128400000n, // Approximate deployment block on Optimism
+  [base.id]: 0n,
+  [arbitrum.id]: 0n,
+}
+
+// Maximum blocks to query at once (conservative for public RPCs)
+const MAX_BLOCK_RANGE = 10000n
+
 export function useMarkees() {
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -28,47 +38,71 @@ export function useMarkees() {
       // Fetch from each chain
       for (const chain of CHAINS) {
         const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
-        if (!strategyAddress) continue
+        if (!strategyAddress) {
+          console.log(`No InvestorStrategy deployed on ${chain.name}`)
+          continue
+        }
 
         const client = 
           chain.id === optimism.id ? opClient :
           chain.id === base.id ? baseClient :
           arbClient
 
-        if (!client) continue
+        if (!client) {
+          console.log(`No client available for ${chain.name}`)
+          continue
+        }
 
         try {
-          // Get current block first
+          // Get current block
           const currentBlock = await client.getBlockNumber()
+          const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id] || 0n
           
-          // Use a reasonable block range (last ~3 months of blocks)
-          // Optimism: ~15M blocks per 3 months, Base/Arbitrum similar
-          const blockRange = 15000000n
-          const fromBlock = currentBlock > blockRange ? currentBlock - blockRange : 0n
+          console.log(`Fetching Markees from ${chain.name}`)
+          console.log(`Current block: ${currentBlock}`)
+          console.log(`Deployment block: ${deploymentBlock}`)
 
-          console.log(`Fetching Markees from ${chain.name} from block ${fromBlock} to ${currentBlock}`)
+          // Query in chunks to avoid "block range too large" errors
+          const allLogs = []
+          let fromBlock = deploymentBlock
+          
+          while (fromBlock < currentBlock) {
+            const toBlock = fromBlock + MAX_BLOCK_RANGE > currentBlock 
+              ? currentBlock 
+              : fromBlock + MAX_BLOCK_RANGE
 
-          // Get MarkeeCreated events
-          const logs = await client.getLogs({
-            address: strategyAddress,
-            event: {
-              type: 'event',
-              name: 'MarkeeCreated',
-              inputs: [
-                { type: 'address', name: 'markeeAddress', indexed: true },
-                { type: 'address', name: 'owner', indexed: true },
-                { type: 'string', name: 'message' },
-                { type: 'uint256', name: 'amount' }
-              ]
-            },
-            fromBlock,
-            toBlock: 'latest'
-          })
+            console.log(`Querying blocks ${fromBlock} to ${toBlock}`)
 
-          console.log(`Found ${logs.length} Markees on ${chain.name}`)
+            try {
+              const logs = await client.getLogs({
+                address: strategyAddress,
+                event: {
+                  type: 'event',
+                  name: 'MarkeeCreated',
+                  inputs: [
+                    { type: 'address', name: 'markeeAddress', indexed: true },
+                    { type: 'address', name: 'owner', indexed: true },
+                    { type: 'string', name: 'message' },
+                    { type: 'uint256', name: 'amount' }
+                  ]
+                },
+                fromBlock,
+                toBlock
+              })
+
+              allLogs.push(...logs)
+              console.log(`Found ${logs.length} Markees in this chunk`)
+            } catch (chunkError: any) {
+              console.error(`Error fetching chunk ${fromBlock}-${toBlock}:`, chunkError)
+            }
+
+            fromBlock = toBlock + 1n
+          }
+
+          console.log(`Total events found on ${chain.name}: ${allLogs.length}`)
 
           // For each Markee, fetch current data
-          for (const log of logs) {
+          for (const log of allLogs) {
             const { markeeAddress, owner } = log.args as any
             
             try {
@@ -94,6 +128,8 @@ export function useMarkees() {
                 chainId: chain.id,
                 pricingStrategy: strategyAddress
               })
+
+              console.log(`Loaded Markee ${markeeAddress}: "${message}"`)
             } catch (err) {
               console.error(`Error fetching Markee ${markeeAddress} data:`, err)
             }
@@ -110,7 +146,7 @@ export function useMarkees() {
         return 0
       })
 
-      console.log(`Total Markees fetched: ${allMarkees.length}`)
+      console.log(`Total Markees loaded: ${allMarkees.length}`)
       setMarkees(allMarkees)
       setError(null)
     } catch (err) {
