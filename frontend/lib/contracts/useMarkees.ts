@@ -9,16 +9,16 @@ import type { Markee } from '@/types'
 
 const CHAINS = [base, optimism, arbitrum]
 
+// Actual deployment blocks - when the InvestorStrategy contracts were deployed
 const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
-  [optimism.id]: 128400000n,
+  [optimism.id]: 128466300n, // Contract deployed at ~128466300, first Markee at 128466355
   [base.id]: 0n,
   [arbitrum.id]: 0n,
 }
 
-const MAX_BLOCK_RANGE = 10000n
-const DELAY_BETWEEN_CHUNKS = 500 // 500ms delay to avoid rate limits
+const MAX_BLOCK_RANGE = 50000n // Can use larger chunks now since we're searching less
+const DELAY_BETWEEN_CHUNKS = 300 // Shorter delay since we have fewer chunks
 
-// Helper to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export function useMarkees() {
@@ -70,7 +70,8 @@ export function useMarkees() {
             const currentBlock = await client.getBlockNumber()
             const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id] || 0n
             
-            console.log(`Block range: ${deploymentBlock} to ${currentBlock}`)
+            const blocksToSearch = currentBlock - deploymentBlock
+            console.log(`Searching ${blocksToSearch} blocks (${deploymentBlock} to ${currentBlock})`)
 
             const allLogs = []
             let fromBlock = deploymentBlock
@@ -81,7 +82,7 @@ export function useMarkees() {
                 ? currentBlock 
                 : fromBlock + MAX_BLOCK_RANGE
 
-              console.log(`Chunk ${chunkCount + 1}: ${fromBlock} - ${toBlock}`)
+              console.log(`Chunk ${chunkCount + 1}: blocks ${fromBlock}-${toBlock}`)
 
               try {
                 const logs = await client.getLogs({
@@ -102,17 +103,16 @@ export function useMarkees() {
 
                 if (logs.length > 0) {
                   allLogs.push(...logs)
-                  console.log(`Found ${logs.length} events`)
+                  console.log(`✓ Found ${logs.length} Markee(s)`)
                 }
 
-                // Add delay between chunks to avoid rate limiting
                 chunkCount++
+                // Add delay if we need more chunks
                 if (fromBlock + MAX_BLOCK_RANGE < currentBlock) {
-                  console.log(`Waiting ${DELAY_BETWEEN_CHUNKS}ms...`)
                   await delay(DELAY_BETWEEN_CHUNKS)
                 }
               } catch (err: any) {
-                console.error(`Chunk error:`, err.message)
+                console.error(`✗ Chunk error:`, err.message)
                 // If rate limited, wait longer
                 if (err.message.includes('429') || err.message.includes('rate')) {
                   console.log('Rate limited, waiting 2s...')
@@ -125,7 +125,7 @@ export function useMarkees() {
 
             console.log(`Total events on ${chain.name}: ${allLogs.length}`)
 
-            // Fetch contract data for each Markee
+            // Fetch current state for each Markee
             for (const log of allLogs) {
               if (!mounted) return
 
@@ -154,29 +154,30 @@ export function useMarkees() {
                   pricingStrategy: strategyAddress
                 })
 
-                console.log(`Loaded: "${message}"`)
+                console.log(`✓ Loaded: "${message}"`)
               } catch (err: any) {
-                console.error(`Read error:`, err.message)
+                console.error(`✗ Failed to read Markee ${markeeAddress}:`, err.message)
               }
             }
           } catch (err: any) {
-            console.error(`Chain error (${chain.name}):`, err.message)
+            console.error(`✗ Error on ${chain.name}:`, err.message)
           }
         }
 
         if (!mounted) return
 
+        // Sort by funds (descending)
         allMarkees.sort((a, b) => {
           if (a.totalFundsAdded > b.totalFundsAdded) return -1
           if (a.totalFundsAdded < b.totalFundsAdded) return 1
           return 0
         })
 
-        console.log(`Done! Total Markees: ${allMarkees.length}`)
+        console.log(`✅ Loaded ${allMarkees.length} Markee(s)`)
         setMarkees(allMarkees)
         setError(null)
       } catch (err: any) {
-        console.error('Fatal error:', err)
+        console.error('💥 Fatal error:', err)
         if (mounted) setError(err)
       } finally {
         if (mounted) {
