@@ -86,7 +86,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee }: InvestmentModal
     }
 
     const amountWei = parseEther(amount)
-    const minPrice = minimumPrice || 0n
+    const minPrice = minimumPrice || BigInt(0)
 
     if (amountWei < minPrice) {
       setError(`Minimum investment is ${formatEther(minPrice)} ETH`)
