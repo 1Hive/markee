@@ -9,7 +9,7 @@ import { InvestmentModal } from '@/components/modals/InvestmentModal'
 import { useAccount } from 'wagmi'
 
 export default function Home() {
-  const { markees, userMarkee, isLoading, error } = useMarkees()
+  const { markees, userMarkee, isLoading, error, refetch } = useMarkees()
   const { isConnected } = useAccount()
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -74,7 +74,16 @@ export default function Home() {
 
       {/* Leaderboard */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h3 className="text-2xl font-bold text-gray-900 mb-8">Investor Leaderboard</h3>
+        <div className="flex items-center justify-between mb-8">
+          <h3 className="text-2xl font-bold text-gray-900">Investor Leaderboard</h3>
+          <button
+            onClick={refetch}
+            disabled={isLoading}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
+          >
+            {isLoading ? 'Loading...' : '🔄 Refresh'}
+          </button>
+        </div>
         
         {isLoading && (
           <div className="text-center py-12">
@@ -86,12 +95,24 @@ export default function Home() {
         {error && (
           <div className="text-center py-12">
             <p className="text-red-600">Error loading Markees: {error.message}</p>
+            <button
+              onClick={refetch}
+              className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Try Again
+            </button>
           </div>
         )}
 
         {!isLoading && !error && markees.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-gray-600">No Markees yet. Be the first to invest!</p>
+            <p className="text-gray-600 mb-4">No Markees yet. Be the first to invest!</p>
+            <button
+              onClick={refetch}
+              className="text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Refresh
+            </button>
           </div>
         )}
 
@@ -137,6 +158,7 @@ export default function Home() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         userMarkee={userMarkee}
+        onSuccess={refetch}
       />
     </div>
   )
