@@ -1,17 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
-import { InvestmentModal } from '@/components/modals/InvestmentModal'
-import { useAccount } from 'wagmi'
 
 export default function Home() {
-  const { markees, userMarkee, isLoading, error } = useMarkees()
-  const { isConnected } = useAccount()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const { markees, isLoading, error } = useMarkees()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -52,34 +47,17 @@ export default function Home() {
       {/* CTA Section */}
       <section className="bg-white py-8 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            {userMarkee ? 'Manage Your Markee' : 'Invest in Markee & Feature Your Message'}
-          </h2>
-          <p className="text-lg text-gray-600 mb-6">
-            {userMarkee
-              ? 'Add more funds to climb the leaderboard or update your message'
-              : 'The more you invest, the more prominent your message becomes'}
-          </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700 transition"
-          >
-            {userMarkee ? 'Manage Markee' : 'Create Your Markee'}
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">Invest in Markee & Feature Your Message</h2>
+          <p className="text-lg text-gray-600 mb-6">The more you invest, the more prominent your message becomes</p>
+          <button className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700">
+            Create Your Markee
           </button>
-          {!isConnected && (
-            <p className="text-sm text-gray-500 mt-3">Connect your wallet to get started</p>
-          )}
         </div>
       </section>
 
       {/* Leaderboard */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-2xl font-bold text-gray-900">Investor Leaderboard</h3>
-          {isLoading && (
-            <span className="text-sm text-gray-500">Loading...</span>
-          )}
-        </div>
+        <h3 className="text-2xl font-bold text-gray-900 mb-8">Investor Leaderboard</h3>
         
         {isLoading && (
           <div className="text-center py-12">
@@ -96,7 +74,7 @@ export default function Home() {
 
         {!isLoading && !error && markees.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-gray-600 mb-4">No Markees yet. Be the first to invest!</p>
+            <p className="text-gray-600">No Markees yet. Be the first to invest!</p>
           </div>
         )}
 
@@ -136,13 +114,6 @@ export default function Home() {
           </>
         )}
       </section>
-
-      {/* Investment Modal */}
-      <InvestmentModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        userMarkee={userMarkee}
-      />
     </div>
   )
 }
