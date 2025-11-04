@@ -12,12 +12,13 @@ interface InvestmentModalProps {
   isOpen: boolean
   onClose: () => void
   userMarkee?: Markee | null
+  initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onSuccess?: () => void
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function InvestmentModal({ isOpen, onClose, userMarkee, onSuccess }: InvestmentModalProps) {
+export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSuccess }: InvestmentModalProps) {
   const { address, isConnected, chain } = useAccount()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
@@ -45,9 +46,16 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, onSuccess }: Inve
     chainId: chain?.id,
   })
 
-  // Set default tab based on whether user has a Markee
+  // Set default tab based on initialMode or whether user has a Markee
   useEffect(() => {
-    if (userMarkee) {
+    if (initialMode) {
+      setActiveTab(initialMode)
+      if (userMarkee) {
+        setMessage(userMarkee.message)
+      } else {
+        setMessage('')
+      }
+    } else if (userMarkee) {
       setActiveTab('addFunds')
       setMessage(userMarkee.message)
     } else {
@@ -56,7 +64,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, onSuccess }: Inve
     }
     setAmount('')
     setError(null)
-  }, [userMarkee, isOpen])
+  }, [userMarkee, initialMode, isOpen])
 
   // Reset state and trigger refresh when transaction succeeds
   useEffect(() => {
