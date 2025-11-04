@@ -214,6 +214,6 @@ export function useMarkees() {
     }
   }, [opClient, baseClient, arbClient, isFetchingFresh])
 
-  return { markees, isLoading, error, refetch: fetchMarkees }
+  return { markees, isLoading, error, isFetchingFresh, refetch: fetchMarkees }
 
 }
