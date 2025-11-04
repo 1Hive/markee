@@ -8,36 +8,79 @@ import { CONTRACTS } from './addresses'
 import type { Markee } from '@/types'
 
 const CHAINS = [base, optimism, arbitrum]
+const CACHE_KEY = 'markees_cache'
+const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 
-// Deployment blocks for InvestorStrategy contracts (to limit block range queries)
-// These should be updated with actual deployment block numbers
+// Deployment blocks for InvestorStrategy contracts
 const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
-  [optimism.id]: 140000000n, // Updated starting block
-  [base.id]: 0n, // Not yet deployed
-  [arbitrum.id]: 0n, // Not yet deployed
+  [optimism.id]: 128000000n, // Adjust to actual deployment block
+  [base.id]: 0n,
+  [arbitrum.id]: 0n,
 }
 
-// Chunk size for fetching logs (number of blocks per request)
 const BLOCK_CHUNK_SIZE = 10000n
+
+interface CachedData {
+  markees: Markee[]
+  timestamp: number
+}
 
 export function useMarkees() {
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isFetchingFresh, setIsFetchingFresh] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  // Get public clients for all chains
   const opClient = usePublicClient({ chainId: optimism.id })
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
 
+  // Load from cache immediately on mount
   useEffect(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (cached) {
+        const { markees: cachedMarkees, timestamp }: CachedData = JSON.parse(cached)
+        const age = Date.now() - timestamp
+        
+        if (age < CACHE_DURATION) {
+          // Cache is fresh - use it and don't fetch
+          setMarkees(cachedMarkees)
+          setLastUpdated(new Date(timestamp))
+          setIsLoading(false)
+          console.log(`Loaded ${cachedMarkees.length} markees from cache (${Math.round(age / 1000)}s old)`)
+          return
+        } else {
+          // Cache is stale - show it but fetch fresh data
+          setMarkees(cachedMarkees)
+          setLastUpdated(new Date(timestamp))
+          setIsLoading(false)
+          setIsFetchingFresh(true)
+          console.log(`Showing stale cache (${Math.round(age / 1000)}s old), fetching fresh data...`)
+        }
+      }
+    } catch (err) {
+      console.error('Error loading cache:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    let isCancelled = false
+
     async function fetchMarkees() {
+      // If we already have cached data and it's fresh, skip fetch
+      if (markees.length > 0 && !isFetchingFresh) {
+        return
+      }
+
       try {
-        setIsLoading(true)
         const allMarkees: Markee[] = []
 
         // Fetch from each chain
         for (const chain of CHAINS) {
+          if (isCancelled) break
+
           const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
           if (!strategyAddress) continue
 
@@ -52,14 +95,11 @@ export function useMarkees() {
           if (!deploymentBlock || deploymentBlock === 0n) continue
 
           try {
-            // Get current block number
             const currentBlock = await client.getBlockNumber()
-            
-            // Fetch logs in chunks to avoid "block range too large" errors
             const allLogs = []
             let fromBlock = deploymentBlock
             
-            while (fromBlock <= currentBlock) {
+            while (fromBlock <= currentBlock && !isCancelled) {
               const toBlock = fromBlock + BLOCK_CHUNK_SIZE > currentBlock 
                 ? currentBlock 
                 : fromBlock + BLOCK_CHUNK_SIZE
@@ -91,10 +131,11 @@ export function useMarkees() {
 
             // For each Markee, fetch current data
             for (const log of allLogs) {
+              if (isCancelled) break
+
               const { markeeAddress, owner } = log.args as any
               
               try {
-                // Read current message and totalFundsAdded from Markee contract
                 const [message, totalFundsAdded] = await Promise.all([
                   client.readContract({
                     address: markeeAddress,
@@ -125,6 +166,8 @@ export function useMarkees() {
           }
         }
 
+        if (isCancelled) return
+
         // Sort by totalFundsAdded (descending)
         allMarkees.sort((a, b) => {
           if (a.totalFundsAdded > b.totalFundsAdded) return -1
@@ -132,18 +175,44 @@ export function useMarkees() {
           return 0
         })
 
+        // Update state and cache
         setMarkees(allMarkees)
         setError(null)
+        const now = new Date()
+        setLastUpdated(now)
+
+        // Save to localStorage
+        try {
+          const cacheData: CachedData = {
+            markees: allMarkees,
+            timestamp: now.getTime()
+          }
+          localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+          console.log(`Cached ${allMarkees.length} markees`)
+        } catch (err) {
+          console.error('Error saving cache:', err)
+        }
       } catch (err) {
         console.error('Error fetching markees:', err)
-        setError(err as Error)
+        if (!isCancelled) {
+          setError(err as Error)
+        }
       } finally {
-        setIsLoading(false)
+        if (!isCancelled) {
+          setIsLoading(false)
+          setIsFetchingFresh(false)
+        }
       }
     }
 
-    fetchMarkees()
-  }, [opClient, baseClient, arbClient])
+    if (opClient || baseClient || arbClient) {
+      fetchMarkees()
+    }
 
-  return { markees, isLoading, error }
+    return () => {
+      isCancelled = true
+    }
+  }, [opClient, baseClient, arbClient, isFetchingFresh])
+
+  return { markees, isLoading, isFetchingFresh, error, lastUpdated }
 }
