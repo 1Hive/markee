@@ -1,14 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
+import { InvestmentModal } from '@/components/modals/InvestmentModal'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function Home() {
-  const { markees, isLoading, isFetchingFresh, error, lastUpdated } = useMarkees()
+  const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -51,7 +54,10 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Invest in Markee & Feature Your Message</h2>
           <p className="text-lg text-gray-600 mb-6">The more you invest, the more prominent your message becomes</p>
-          <button className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700">
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors"
+          >
             Create Your Markee
           </button>
         </div>
@@ -138,6 +144,18 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* Investment Modal */}
+      <InvestmentModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => {
+          // Refresh the leaderboard after successful transaction
+          if (refetch) {
+            refetch()
+          }
+        }}
+      />
     </div>
   )
 }
