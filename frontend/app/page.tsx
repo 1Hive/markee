@@ -16,7 +16,7 @@ export default function Home() {
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
-  const [modalMode, setModalMode] = useState<'create' | 'edit' | 'addFunds'>('create')
+  const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
 
   const handleCreateNew = () => {
     setSelectedMarkee(null)
@@ -26,7 +26,7 @@ export default function Home() {
 
   const handleEditMessage = (markee: Markee) => {
     setSelectedMarkee(markee)
-    setModalMode('edit')
+    setModalMode('updateMessage')
     setIsModalOpen(true)
   }
 
