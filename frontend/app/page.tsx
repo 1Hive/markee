@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
+import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
+import { formatDistanceToNow } from 'date-fns'
 
 export default function Home() {
-  const { markees, isLoading, error } = useMarkees()
+  const { markees, isLoading, isFetchingFresh, error, lastUpdated } = useMarkees()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -57,29 +59,51 @@ export default function Home() {
 
       {/* Leaderboard */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h3 className="text-2xl font-bold text-gray-900 mb-8">Investor Leaderboard</h3>
+        <div className="flex items-center justify-between mb-8">
+          <h3 className="text-2xl font-bold text-gray-900">Investor Leaderboard</h3>
+          
+          {/* Status indicator */}
+          <div className="flex items-center gap-3">
+            {isFetchingFresh && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span>Updating...</span>
+              </div>
+            )}
+            {lastUpdated && !isLoading && (
+              <div className="text-sm text-gray-500">
+                Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+              </div>
+            )}
+          </div>
+        </div>
         
-        {isLoading && (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading Markees...</p>
+        {isLoading && markees.length === 0 && (
+          <div>
+            <LeaderboardSkeleton />
           </div>
         )}
 
         {error && (
           <div className="text-center py-12">
-            <p className="text-red-600">Error loading Markees: {error.message}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-lg mx-auto">
+              <p className="text-red-600 font-medium mb-2">Error loading Markees</p>
+              <p className="text-red-500 text-sm">{error.message}</p>
+            </div>
           </div>
         )}
 
         {!isLoading && !error && markees.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-gray-600">No Markees yet. Be the first to invest!</p>
+            <div className="bg-gray-50 rounded-lg p-8 max-w-lg mx-auto">
+              <div className="text-6xl mb-4">🪧</div>
+              <p className="text-gray-600 text-lg">No Markees yet. Be the first to invest!</p>
+            </div>
           </div>
         )}
 
-        {!isLoading && !error && markees.length > 0 && (
-          <>
+        {markees.length > 0 && (
+          <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
             {/* #1 Spot - Full Width */}
             {markees[0] && <MarkeeCard markee={markees[0]} rank={1} size="hero" />}
 
@@ -111,7 +135,7 @@ export default function Home() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </section>
     </div>
