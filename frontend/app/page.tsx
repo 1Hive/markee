@@ -2,16 +2,44 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { InvestmentModal } from '@/components/modals/InvestmentModal'
 import { formatDistanceToNow } from 'date-fns'
+import type { Markee } from '@/types'
 
 export default function Home() {
+  const { address } = useAccount()
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | 'addFunds'>('create')
+
+  const handleCreateNew = () => {
+    setSelectedMarkee(null)
+    setModalMode('create')
+    setIsModalOpen(true)
+  }
+
+  const handleEditMessage = (markee: Markee) => {
+    setSelectedMarkee(markee)
+    setModalMode('edit')
+    setIsModalOpen(true)
+  }
+
+  const handleAddFunds = (markee: Markee) => {
+    setSelectedMarkee(markee)
+    setModalMode('addFunds')
+    setIsModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedMarkee(null)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -55,7 +83,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Invest in Markee & Feature Your Message</h2>
           <p className="text-lg text-gray-600 mb-6">The more you invest, the more prominent your message becomes</p>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={handleCreateNew}
             className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors"
           >
             Create Your Markee
@@ -111,13 +139,40 @@ export default function Home() {
         {markees.length > 0 && (
           <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
             {/* #1 Spot - Full Width */}
-            {markees[0] && <MarkeeCard markee={markees[0]} rank={1} size="hero" />}
+            {markees[0] && (
+              <MarkeeCard 
+                markee={markees[0]} 
+                rank={1} 
+                size="hero"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+              />
+            )}
 
             {/* #2 and #3 - Two Column */}
             {markees.length > 1 && (
               <div className="grid grid-cols-2 gap-6 mb-6">
-                {markees[1] && <MarkeeCard markee={markees[1]} rank={2} size="large" />}
-                {markees[2] && <MarkeeCard markee={markees[2]} rank={3} size="large" />}
+                {markees[1] && (
+                  <MarkeeCard 
+                    markee={markees[1]} 
+                    rank={2} 
+                    size="large"
+                    userAddress={address}
+                    onEditMessage={handleEditMessage}
+                    onAddFunds={handleAddFunds}
+                  />
+                )}
+                {markees[2] && (
+                  <MarkeeCard 
+                    markee={markees[2]} 
+                    rank={3} 
+                    size="large"
+                    userAddress={address}
+                    onEditMessage={handleEditMessage}
+                    onAddFunds={handleAddFunds}
+                  />
+                )}
               </div>
             )}
 
@@ -125,7 +180,15 @@ export default function Home() {
             {markees.length > 3 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 {markees.slice(3, 26).map((markee, index) => (
-                  <MarkeeCard key={markee.address} markee={markee} rank={index + 4} size="medium" />
+                  <MarkeeCard 
+                    key={markee.address} 
+                    markee={markee} 
+                    rank={index + 4} 
+                    size="medium"
+                    userAddress={address}
+                    onEditMessage={handleEditMessage}
+                    onAddFunds={handleAddFunds}
+                  />
                 ))}
               </div>
             )}
@@ -136,7 +199,15 @@ export default function Home() {
                 <h4 className="text-lg font-semibold text-gray-900 mb-4">More Investors</h4>
                 <div className="space-y-2">
                   {markees.slice(26).map((markee, index) => (
-                    <MarkeeCard key={markee.address} markee={markee} rank={index + 27} size="list" />
+                    <MarkeeCard 
+                      key={markee.address} 
+                      markee={markee} 
+                      rank={index + 27} 
+                      size="list"
+                      userAddress={address}
+                      onEditMessage={handleEditMessage}
+                      onAddFunds={handleAddFunds}
+                    />
                   ))}
                 </div>
               </div>
@@ -148,12 +219,12 @@ export default function Home() {
       {/* Investment Modal */}
       <InvestmentModal 
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleModalClose}
+        userMarkee={selectedMarkee}
+        initialMode={modalMode}
         onSuccess={() => {
           // Refresh the leaderboard after successful transaction
-          if (refetch) {
-            refetch()
-          }
+          refetch()
         }}
       />
     </div>
