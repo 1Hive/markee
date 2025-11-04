@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePublicClient, useAccount } from 'wagmi'
+import { usePublicClient } from 'wagmi'
 import { base, optimism, arbitrum } from 'wagmi/chains'
 import { InvestorStrategyABI, MarkeeABI } from './abis'
 import { CONTRACTS } from './addresses'
@@ -9,80 +9,60 @@ import type { Markee } from '@/types'
 
 const CHAINS = [base, optimism, arbitrum]
 
-// Actual deployment blocks - when the InvestorStrategy contracts were deployed
+// Deployment blocks for InvestorStrategy contracts (to limit block range queries)
+// These should be updated with actual deployment block numbers
 const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
-  [optimism.id]: 128466300n, // Contract deployed at ~128466300, first Markee at 128466355
-  [base.id]: 0n,
-  [arbitrum.id]: 0n,
+  [optimism.id]: 133640000n, // Update with actual deployment block
+  [base.id]: 0n, // Not yet deployed
+  [arbitrum.id]: 0n, // Not yet deployed
 }
 
-const MAX_BLOCK_RANGE = 50000n // Can use larger chunks now since we're searching less
-const DELAY_BETWEEN_CHUNKS = 300 // Shorter delay since we have fewer chunks
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+// Chunk size for fetching logs (number of blocks per request)
+const BLOCK_CHUNK_SIZE = 10000n
 
 export function useMarkees() {
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const { address } = useAccount()
 
+  // Get public clients for all chains
   const opClient = usePublicClient({ chainId: optimism.id })
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
 
   useEffect(() => {
-    let mounted = true
-
-    async function load() {
-      if (!opClient && !baseClient && !arbClient) {
-        console.log('Waiting for clients...')
-        return
-      }
-
+    async function fetchMarkees() {
       try {
-        console.log('Starting fetch...')
         setIsLoading(true)
         const allMarkees: Markee[] = []
 
+        // Fetch from each chain
         for (const chain of CHAINS) {
-          if (!mounted) return
-
           const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
-          if (!strategyAddress) {
-            console.log(`No contract on ${chain.name}`)
-            continue
-          }
+          if (!strategyAddress) continue
 
           const client = 
             chain.id === optimism.id ? opClient :
             chain.id === base.id ? baseClient :
             arbClient
 
-          if (!client) {
-            console.log(`No client for ${chain.name}`)
-            continue
-          }
+          if (!client) continue
 
-          console.log(`Fetching from ${chain.name}`)
+          const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id]
+          if (!deploymentBlock || deploymentBlock === 0n) continue
 
           try {
+            // Get current block number
             const currentBlock = await client.getBlockNumber()
-            const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id] || 0n
             
-            const blocksToSearch = currentBlock - deploymentBlock
-            console.log(`Searching ${blocksToSearch} blocks (${deploymentBlock} to ${currentBlock})`)
-
+            // Fetch logs in chunks to avoid "block range too large" errors
             const allLogs = []
             let fromBlock = deploymentBlock
-            let chunkCount = 0
             
-            while (fromBlock < currentBlock && mounted) {
-              const toBlock = fromBlock + MAX_BLOCK_RANGE > currentBlock 
+            while (fromBlock <= currentBlock) {
+              const toBlock = fromBlock + BLOCK_CHUNK_SIZE > currentBlock 
                 ? currentBlock 
-                : fromBlock + MAX_BLOCK_RANGE
-
-              console.log(`Chunk ${chunkCount + 1}: blocks ${fromBlock}-${toBlock}`)
+                : fromBlock + BLOCK_CHUNK_SIZE
 
               try {
                 const logs = await client.getLogs({
@@ -100,38 +80,21 @@ export function useMarkees() {
                   fromBlock,
                   toBlock
                 })
-
-                if (logs.length > 0) {
-                  allLogs.push(...logs)
-                  console.log(`✓ Found ${logs.length} Markee(s)`)
-                }
-
-                chunkCount++
-                // Add delay if we need more chunks
-                if (fromBlock + MAX_BLOCK_RANGE < currentBlock) {
-                  await delay(DELAY_BETWEEN_CHUNKS)
-                }
-              } catch (err: any) {
-                console.error(`✗ Chunk error:`, err.message)
-                // If rate limited, wait longer
-                if (err.message.includes('429') || err.message.includes('rate')) {
-                  console.log('Rate limited, waiting 2s...')
-                  await delay(2000)
-                }
+                
+                allLogs.push(...logs)
+              } catch (chunkError) {
+                console.error(`Error fetching logs from ${fromBlock} to ${toBlock}:`, chunkError)
               }
 
               fromBlock = toBlock + 1n
             }
 
-            console.log(`Total events on ${chain.name}: ${allLogs.length}`)
-
-            // Fetch current state for each Markee
+            // For each Markee, fetch current data
             for (const log of allLogs) {
-              if (!mounted) return
-
               const { markeeAddress, owner } = log.args as any
               
               try {
+                // Read current message and totalFundsAdded from Markee contract
                 const [message, totalFundsAdded] = await Promise.all([
                   client.readContract({
                     address: markeeAddress,
@@ -153,49 +116,34 @@ export function useMarkees() {
                   chainId: chain.id,
                   pricingStrategy: strategyAddress
                 })
-
-                console.log(`✓ Loaded: "${message}"`)
-              } catch (err: any) {
-                console.error(`✗ Failed to read Markee ${markeeAddress}:`, err.message)
+              } catch (err) {
+                console.error(`Error fetching Markee ${markeeAddress} data:`, err)
               }
             }
-          } catch (err: any) {
-            console.error(`✗ Error on ${chain.name}:`, err.message)
+          } catch (err) {
+            console.error(`Error fetching events from ${chain.name}:`, err)
           }
         }
 
-        if (!mounted) return
-
-        // Sort by funds (descending)
+        // Sort by totalFundsAdded (descending)
         allMarkees.sort((a, b) => {
           if (a.totalFundsAdded > b.totalFundsAdded) return -1
           if (a.totalFundsAdded < b.totalFundsAdded) return 1
           return 0
         })
 
-        console.log(`✅ Loaded ${allMarkees.length} Markee(s)`)
         setMarkees(allMarkees)
         setError(null)
-      } catch (err: any) {
-        console.error('💥 Fatal error:', err)
-        if (mounted) setError(err)
+      } catch (err) {
+        console.error('Error fetching markees:', err)
+        setError(err as Error)
       } finally {
-        if (mounted) {
-          setIsLoading(false)
-        }
+        setIsLoading(false)
       }
     }
 
-    load()
-
-    return () => {
-      mounted = false
-    }
+    fetchMarkees()
   }, [opClient, baseClient, arbClient])
 
-  const userMarkee = address 
-    ? markees.find((m) => m.owner.toLowerCase() === address.toLowerCase())
-    : null
-
-  return { markees, userMarkee, isLoading, error }
+  return { markees, isLoading, error }
 }
