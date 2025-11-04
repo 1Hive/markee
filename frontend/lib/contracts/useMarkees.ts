@@ -12,7 +12,7 @@ const CHAINS = [base, optimism, arbitrum]
 // Deployment blocks for InvestorStrategy contracts (to limit block range queries)
 // These should be updated with actual deployment block numbers
 const DEPLOYMENT_BLOCKS: Record<number, bigint> = {
-  [optimism.id]: 133640000n, // Update with actual deployment block
+  [optimism.id]: 140000000n, // Updated starting block
   [base.id]: 0n, // Not yet deployed
   [arbitrum.id]: 0n, // Not yet deployed
 }
