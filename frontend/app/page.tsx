@@ -165,7 +165,7 @@ export default function Home() {
           <div className="text-center py-12">
             <div className="bg-gray-50 rounded-lg p-8 max-w-lg mx-auto">
               <div className="text-6xl mb-4">🪧</div>
-              <p className="text-gray-600 text-lg">No Markees yet. Be the first to invest!</p>
+              <p className="text-gray-600 text-lg">No Markees yet. Be the first to make one!</p>
             </div>
           </div>
         )}
