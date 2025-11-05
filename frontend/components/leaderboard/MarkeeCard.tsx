@@ -95,7 +95,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <span className="text-sm font-bold text-gray-400 w-8">#{rank}</span>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <p className="text-sm text-gray-900 truncate flex-1">{markee.message}</p>
+            <p className="text-sm text-gray-900 truncate flex-1 message-text">{markee.message}</p>
             <OwnerBadge badgeSize="small" />
           </div>
           <span className="text-sm text-gray-600 flex-shrink-0">{formatAddress(markee.owner)}</span>
@@ -123,7 +123,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
               <div className="text-6xl font-bold text-yellow-600">🏆 #{rank}</div>
               <OwnerBadge badgeSize="large" />
             </div>
-            <div className="text-3xl font-bold text-gray-900 mb-4">{markee.message}</div>
+            <div className="text-3xl font-bold text-gray-900 mb-4 message-text">{markee.message}</div>
             <div className="flex items-center gap-6 text-gray-600 mb-4">
               <span className="text-xl font-semibold">{formatAddress(markee.owner)}</span>
               <div className="flex items-center gap-2">
@@ -149,7 +149,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             <OwnerBadge />
           </div>
         </div>
-        <div className="text-xl font-bold text-gray-900 mb-3 line-clamp-3">{markee.message}</div>
+        <div className="text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text">{markee.message}</div>
         <div className="flex items-center justify-between text-gray-600 mb-4">
           <div className="flex flex-col gap-2">
             <span className="font-medium">{formatAddress(markee.owner)}</span>
@@ -175,7 +175,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             <OwnerBadge badgeSize="small" />
           </div>
         </div>
-        <div className="text-sm font-semibold text-gray-900 mb-3 line-clamp-2">{markee.message}</div>
+        <div className="text-sm font-semibold text-gray-900 mb-3 line-clamp-2 message-text">{markee.message}</div>
         <div className="flex items-center justify-between text-xs text-gray-600 mb-3">
           <div className="flex flex-col gap-1">
             <span>{formatAddress(markee.owner)}</span>
