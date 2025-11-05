@@ -61,6 +61,7 @@ export default function Home() {
   }
 
   return (
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
@@ -69,7 +70,8 @@ export default function Home() {
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/investors" className="text-gray-600 hover:text-gray-900">Roadmap</Link>
+              <Link href="/" className="text-markee font-medium">Home</Link>
+              <Link href="/investors" className="text-gray-600 hover:text-gray-900">Our Collective</Link>
             </nav>
           </div>
           <ConnectButton />
@@ -111,14 +113,98 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Phase & Countdown Section */}
+      <section className="bg-white py-12 border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Countdown */}
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Phase 0 Price Ends In</h2>
+            <CountdownTimer targetDate={new Date('2025-12-21T00:00:00Z')} />
+          </div>
+
+          {/* Phase Visualization */}
+          <div className="max-w-4xl mx-auto">
+            <div className="space-y-3">
+              {/* Phase 0 - Current */}
+              <div className="relative bg-gradient-to-r from-markee to-green-400 rounded-xl p-6 shadow-lg border-4 border-markee">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-white text-2xl font-bold">Phase 0</span>
+                      <span className="bg-white text-markee px-3 py-1 rounded-full text-sm font-bold">
+                        ACTIVE NOW
+                      </span>
+                    </div>
+                    <p className="text-white text-lg">Ends December 21, 2025</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white/80 text-sm mb-1">Current Price</p>
+                    <p className="text-white text-4xl font-bold">50,000</p>
+                    <p className="text-white text-lg">$ABC per ETH</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Phase 1 - Next */}
+              <div className="bg-gray-100 rounded-xl p-5 opacity-70">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-700 text-xl font-bold mb-1">Phase 1</p>
+                    <p className="text-gray-600">Ends March 21, 2026</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-700 text-3xl font-bold">30,000</p>
+                    <p className="text-gray-600">$ABC per ETH</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Phase 2 - Future */}
+              <div className="bg-gray-50 rounded-xl p-5 opacity-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xl font-bold mb-1">Phase 2</p>
+                    <p className="text-gray-500">Ends June 21, 2026</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-600 text-3xl font-bold">24,000</p>
+                    <p className="text-gray-500">$ABC per ETH</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Phase 3+ - Future */}
+              <div className="bg-gray-50 rounded-xl p-5 opacity-30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-xl font-bold mb-1">Phase 3+</p>
+                    <p className="text-gray-400">Future phases...</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-500 text-3xl font-bold">TBD</p>
+                    <p className="text-gray-400">$ABC per ETH</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CTA Button */}
+            <div className="text-center mt-8">
+              <button 
+                onClick={handleCreateNew}
+                className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
+              >
+                Lock In Phase 0 Pricing
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Leaderboard */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex items-center justify-between mb-8">
-          <button 
-            onClick={handleCreateNew}
-            className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
-          >
-          <h3 className="text-2xl font-bold text-gray-900">Leaderboard</h3>
+          <h3 className="text-2xl font-bold text-gray-900">Markee Leaderboard</h3>
           
           {/* Status indicator */}
           <div className="flex items-center gap-3">
