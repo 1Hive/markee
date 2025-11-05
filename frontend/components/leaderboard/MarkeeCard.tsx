@@ -15,8 +15,8 @@ interface MarkeeCardProps {
 function getChainColor(chainId: number): string {
   switch (chainId) {
     case 10: return 'bg-red-500' // Optimism
-    case 8453: return 'bg-blue-500' // Base
-    case 42161: return 'bg-blue-400' // Arbitrum
+    case 8453: return 'bg-markee-500' // Base
+    case 42161: return 'bg-markee-400' // Arbitrum
     default: return 'bg-gray-400'
   }
 }
@@ -62,7 +62,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
               e.stopPropagation()
               onAddFunds(markee)
             }}
-            className={`${sizeClasses[buttonSize]} bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center`}
+            className={`${sizeClasses[buttonSize]} bg-markee text-white rounded-lg font-medium hover:bg-markee-600 transition-colors flex items-center`}
           >
             💰 Add Funds
           </button>
@@ -102,7 +102,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
           <div className={`w-2 h-2 rounded-full ${chainColor}`} title={chainName} />
-          <span className="text-sm font-bold text-blue-600 min-w-[80px] text-right">
+          <span className="text-sm font-bold text-markee min-w-[80px] text-right">
             {formatEth(markee.totalFundsAdded)} ETH
           </span>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -130,7 +130,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
                 <div className={`w-3 h-3 rounded-full ${chainColor}`} />
                 <span className="text-sm">{chainName}</span>
               </div>
-              <span className="text-2xl font-bold text-blue-600">{formatEth(markee.totalFundsAdded)} ETH</span>
+              <span className="text-2xl font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
             </div>
             <ActionButtons buttonSize="large" />
           </div>
@@ -158,7 +158,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
               <span className="text-xs">{chainName}</span>
             </div>
           </div>
-          <span className="text-lg font-bold text-blue-600">{formatEth(markee.totalFundsAdded)} ETH</span>
+          <span className="text-lg font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
         </div>
         <ActionButtons />
       </div>
@@ -184,7 +184,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
               <span>{chainName}</span>
             </div>
           </div>
-          <span className="font-bold text-blue-600">{formatEth(markee.totalFundsAdded)} ETH</span>
+          <span className="font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
         </div>
         <ActionButtons buttonSize="small" />
       </div>
