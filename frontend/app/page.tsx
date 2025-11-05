@@ -101,11 +101,8 @@ export default function Home() {
                   <div className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-markee transition-colors">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
-                  <div className="text-sm text-gray-500">
-                    {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
-                  </div>
-                  <div className="mt-2 text-xs text-markee opacity-0 group-hover:opacity-100 transition-opacity">
-                    Click to change →
+                  <div className="mt-2 text-sm text-markee opacity-0 group-hover:opacity-100 transition-opacity">
+                    {fixedMarkee.price ? `Pay ${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
                   </div>
                 </button>
               ))
