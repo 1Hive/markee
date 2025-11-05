@@ -96,12 +96,12 @@ export default function Home() {
                 <button
                   key={index}
                   onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-                  className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-markee-200 hover:border-markee-400 hover:shadow-lg transition-all cursor-pointer group"
+                  className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-markee-200 hover:border-markee-400 hover:shadow-lg transition-all cursor-pointer group relative min-h-[140px] flex items-center justify-center"
                 >
-                  <div className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-markee transition-colors">
+                  <div className="text-xl font-bold text-gray-900 line-clamp-2 group-hover:text-markee transition-colors">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
-                  <div className="mt-2 text-sm text-markee opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute bottom-4 left-0 right-0 text-sm text-markee opacity-0 group-hover:opacity-100 transition-opacity">
                     {fixedMarkee.price ? `Pay ${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
                   </div>
                 </button>
