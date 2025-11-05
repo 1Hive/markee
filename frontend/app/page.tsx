@@ -70,8 +70,7 @@ export default function Home() {
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/" className="text-markee font-medium">Home</Link>
-              <Link href="/investors" className="text-gray-600 hover:text-gray-900">Our Collective</Link>
+              <Link href="/investors" className="text-gray-600 hover:text-gray-900">Roadmap</Link>
             </nav>
           </div>
           <ConnectButton />
