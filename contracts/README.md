@@ -4,7 +4,7 @@
 ## Deployed Contracts
 
 ### Optimism Mainnet
-- InvestorStrategy: `0xD6780b51FDa9889e2d5fd14b02656FF339667829`
+- InvestorStrategy: `0xF0478A341aAd256C45CC7896ba08D2f00EAb72DA`
 - FixedStrategy:
   - "This is a sign": `0xd1D8e8d2b48a63dff78E1Cc501d3101d45bA447e`
   - "Anyone can pay to change": `0xB816427e69b1950d8689362bB244096EE08d93F4`
