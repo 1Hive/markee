@@ -23,11 +23,24 @@ export const REVNET_CONFIG = {
 export const CONTRACTS = {
   [optimism.id]: {
     investorStrategy: '0xD6780b51FDa9889e2d5fd14b02656FF339667829' as const,
-    fixedStrategy: '0x7E3810f9af6Fd2b31E973Fe3577B715afD043582' as const,
+    fixedStrategies: [
+      {
+        name: 'This is a sign',
+        strategyAddress: '0xd1D8e8d2b48a63dff78E1Cc501d3101d45bA447e' as const,
+      },
+      {
+        name: 'Anyone can pay to change',
+        strategyAddress: '0xB816427e69b1950d8689362bB244096EE08d93F4' as const,
+      },
+      {
+        name: 'That funds stuff you love',
+        strategyAddress: '0x73f10F44eA244d811A1236e3570288f82688bb18' as const,
+      },
+    ],
   },
   // TODO: Deploy to Base and Arbitrum
-  // [base.id]: { investorStrategy: '0x...', fixedStrategy: '0x...' },
-  // [arbitrum.id]: { investorStrategy: '0x...', fixedStrategy: '0x...' },
+  // [base.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
+  // [arbitrum.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
 } as const
 
 export type SupportedChainId = keyof typeof REVNET_CONFIG
