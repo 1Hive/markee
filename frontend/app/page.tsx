@@ -66,9 +66,9 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold text-blue-600">Markee</h1>
+            <h1 className="text-2xl font-bold text-markee">Markee</h1>
             <nav className="flex gap-6">
-              <Link href="/" className="text-blue-600 font-medium">Home</Link>
+              <Link href="/" className="text-markee font-medium">Home</Link>
               <Link href="/investors" className="text-gray-600 hover:text-gray-900">Our Collective</Link>
             </nav>
           </div>
@@ -77,14 +77,14 @@ export default function Home() {
       </header>
 
       {/* Hero Section - Fixed Price Messages */}
-      <section className="bg-gradient-to-br from-blue-50 to-indigo-50 py-12 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
             {isLoadingFixed ? (
               // Loading state
               <>
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200 animate-pulse">
+                  <div key={i} className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-markee-200 animate-pulse">
                     <div className="h-6 bg-gray-200 rounded mb-2"></div>
                     <div className="h-4 bg-gray-100 rounded"></div>
                   </div>
@@ -96,15 +96,15 @@ export default function Home() {
                 <button
                   key={index}
                   onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-                  className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer group"
+                  className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-markee-200 hover:border-markee-400 hover:shadow-lg transition-all cursor-pointer group"
                 >
-                  <div className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                  <div className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-markee transition-colors">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
                   <div className="text-sm text-gray-500">
                     {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
                   </div>
-                  <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="mt-2 text-xs text-markee opacity-0 group-hover:opacity-100 transition-opacity">
                     Click to change →
                   </div>
                 </button>
@@ -121,7 +121,7 @@ export default function Home() {
           <p className="text-lg text-gray-600 mb-6">Our Collective is owned by $ABC holders. To get $ABC, create a Markee here or Add Funds to an existing Markee below</p>
           <button 
             onClick={handleCreateNew}
-            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors"
+            className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
           >
             Create a Markee
           </button>
@@ -137,7 +137,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             {isFetchingFresh && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-markee"></div>
                 <span>Updating...</span>
               </div>
             )}
