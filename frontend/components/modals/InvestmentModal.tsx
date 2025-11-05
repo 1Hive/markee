@@ -322,7 +322,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     )}
                     {amount && parseFloat(amount) > 0 && (
                       <p className="text-xs text-markee-700 mt-1 font-medium">
-                        ≈ {parseFloat(amount)} $ABC tokens
+                        ≈ {(parseFloat(amount) * 50000).toLocaleString()} $ABC tokens
                       </p>
                     )}
                   </div>
