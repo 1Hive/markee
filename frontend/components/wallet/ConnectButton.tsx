@@ -28,7 +28,7 @@ export function ConnectButton() {
     return (
       <button
         onClick={() => connect({ connector: connectors[0] })}
-        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 transition-colors"
+        className="bg-markee text-white px-6 py-2 rounded-lg font-medium hover:bg-markee-600 flex items-center gap-2 transition-colors"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">Connect Wallet</span>
@@ -40,7 +40,7 @@ export function ConnectButton() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 transition-colors"
+        className="bg-markee text-white px-4 py-2 rounded-lg font-medium hover:bg-markee-600 flex items-center gap-2 transition-colors"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">
@@ -60,8 +60,8 @@ export function ConnectButton() {
               <div className="flex items-center gap-2 mt-2">
                 <div className={`w-2 h-2 rounded-full ${
                   chain.id === 10 ? 'bg-red-500' :
-                  chain.id === 8453 ? 'bg-blue-500' :
-                  chain.id === 42161 ? 'bg-blue-400' :
+                  chain.id === 8453 ? 'bg-markee' :
+                  chain.id === 42161 ? 'bg-markee-400' :
                   'bg-gray-400'
                 }`} />
                 <p className="text-sm text-gray-600 dark:text-gray-300">{chain.name}</p>
