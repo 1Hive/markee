@@ -5,18 +5,27 @@ import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
+import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { InvestmentModal } from '@/components/modals/InvestmentModal'
+import { FixedMarkeeModal } from '@/components/modals/FixedMarkeeModal'
 import { formatDistanceToNow } from 'date-fns'
+import { formatEther } from 'viem'
 import type { Markee } from '@/types'
+import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 export default function Home() {
   const { address } = useAccount()
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
+  const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
+  
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
   const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
+  
+  const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
+  const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
   const handleCreateNew = () => {
     setSelectedMarkee(null)
@@ -41,6 +50,16 @@ export default function Home() {
     setSelectedMarkee(null)
   }
 
+  const handleFixedMarkeeClick = (fixedMarkee: FixedMarkee) => {
+    setSelectedFixedMarkee(fixedMarkee)
+    setIsFixedModalOpen(true)
+  }
+
+  const handleFixedModalClose = () => {
+    setIsFixedModalOpen(false)
+    setSelectedFixedMarkee(null)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -60,19 +79,37 @@ export default function Home() {
       {/* Hero Section - Fixed Price Messages */}
       <section className="bg-gradient-to-br from-blue-50 to-indigo-50 py-12 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-3 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200">
-              <div className="text-2xl font-bold text-gray-900 mb-2">This is a sign</div>
-              <div className="text-sm text-gray-500">100 ETH to change</div>
-            </div>
-            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200">
-              <div className="text-2xl font-bold text-gray-900 mb-2">Anyone can pay to change</div>
-              <div className="text-sm text-gray-500">100 ETH to change</div>
-            </div>
-            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200">
-              <div className="text-2xl font-bold text-gray-900 mb-2">that funds communities</div>
-              <div className="text-sm text-gray-500">100 ETH to change</div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
+            {isLoadingFixed ? (
+              // Loading state
+              <>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200 animate-pulse">
+                    <div className="h-6 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-4 bg-gray-100 rounded"></div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              // Real data
+              fixedMarkees.map((fixedMarkee, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleFixedMarkeeClick(fixedMarkee)}
+                  className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer group"
+                >
+                  <div className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                    {fixedMarkee.message || fixedMarkee.name}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
+                  </div>
+                  <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Click to change →
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
       </section>
@@ -225,6 +262,17 @@ export default function Home() {
         onSuccess={() => {
           // Refresh the leaderboard after successful transaction
           refetch()
+        }}
+      />
+
+      {/* Fixed Markee Modal */}
+      <FixedMarkeeModal 
+        isOpen={isFixedModalOpen}
+        onClose={handleFixedModalClose}
+        fixedMarkee={selectedFixedMarkee}
+        onSuccess={() => {
+          // Optionally refresh the page or refetch fixed markees
+          window.location.reload()
         }}
       />
     </div>
