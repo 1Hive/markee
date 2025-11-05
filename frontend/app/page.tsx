@@ -66,7 +66,9 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold text-markee">Markee</h1>
+            <Link href="/" className="flex items-center">
+              <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
+            </Link>
             <nav className="flex gap-6">
               <Link href="/" className="text-markee font-medium">Home</Link>
               <Link href="/investors" className="text-gray-600 hover:text-gray-900">Our Collective</Link>
@@ -98,7 +100,7 @@ export default function Home() {
                   onClick={() => handleFixedMarkeeClick(fixedMarkee)}
                   className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-markee-200 hover:border-markee-400 hover:shadow-lg transition-all cursor-pointer group relative min-h-[140px] flex items-center justify-center"
                 >
-                  <div className="text-xl font-bold text-gray-900 line-clamp-2 group-hover:text-markee transition-colors">
+                  <div className="text-xl font-bold text-gray-900 line-clamp-2 group-hover:text-markee transition-colors message-text">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
                   <div className="absolute bottom-4 left-0 right-0 text-sm text-markee opacity-0 group-hover:opacity-100 transition-opacity">
@@ -165,7 +167,7 @@ export default function Home() {
           <div className="text-center py-12">
             <div className="bg-gray-50 rounded-lg p-8 max-w-lg mx-auto">
               <div className="text-6xl mb-4">🪧</div>
-              <p className="text-gray-600 text-lg">No Markees yet. Be the first to make one!</p>
+              <p className="text-gray-600 text-lg">No Markees yet. Be the first!</p>
             </div>
           </div>
         )}
