@@ -113,24 +113,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="bg-white py-8 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Join our Collective by Creating a Markee</h2>
-          <p className="text-lg text-gray-600 mb-6">Our Collective is owned by $ABC holders. To get $ABC, create a Markee here or Add Funds to an existing Markee below</p>
+      {/* Leaderboard */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="flex items-center justify-between mb-8">
           <button 
             onClick={handleCreateNew}
             className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
           >
-            Create a Markee
-          </button>
-        </div>
-      </section>
-
-      {/* Leaderboard */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-2xl font-bold text-gray-900">Markee Leaderboard</h3>
+          <h3 className="text-2xl font-bold text-gray-900">Leaderboard</h3>
           
           {/* Status indicator */}
           <div className="flex items-center gap-3">
