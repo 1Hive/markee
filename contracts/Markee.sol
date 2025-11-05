@@ -2,16 +2,18 @@
 pragma solidity ^0.8.23;
 
 /// @title Markee
-/// @notice A simple contract that stores a message, tracks funds, and is controlled by a PricingStrategy
+/// @notice A simple contract that stores a message, name, tracks funds, and is controlled by a PricingStrategy
 contract Markee {
     // State variables
     string public message;
+    string public name;
     uint256 public totalFundsAdded;
     address public pricingStrategy;
     address public owner;
     
     // Events
     event MessageChanged(string newMessage, address indexed changedBy);
+    event NameChanged(string newName, address indexed changedBy);
     event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy);
     event PricingStrategyChanged(address indexed oldStrategy, address indexed newStrategy);
     event OwnerChanged(address indexed oldOwner, address indexed newOwner);
@@ -20,22 +22,29 @@ contract Markee {
     /// @param _owner The owner of this Markee (can switch pricing strategies)
     /// @param _pricingStrategy The initial pricing strategy contract
     /// @param _initialMessage The initial message to display
+    /// @param _name The optional name for the Markee creator
     /// @param _initialFunds The initial amount of funds to record
     constructor(
         address _owner,
         address _pricingStrategy,
         string memory _initialMessage,
+        string memory _name,
         uint256 _initialFunds
     ) {
         require(_owner != address(0), "Owner cannot be zero address");
         require(_pricingStrategy != address(0), "Strategy cannot be zero address");
+        require(bytes(_name).length <= 32, "Name cannot exceed 32 characters");
         
         owner = _owner;
         pricingStrategy = _pricingStrategy;
         message = _initialMessage;
+        name = _name;
         totalFundsAdded = _initialFunds;
         
         emit MessageChanged(_initialMessage, _pricingStrategy);
+        if (bytes(_name).length > 0) {
+            emit NameChanged(_name, _pricingStrategy);
+        }
         if (_initialFunds > 0) {
             emit FundsAdded(_initialFunds, _initialFunds, _pricingStrategy);
         }
@@ -47,6 +56,15 @@ contract Markee {
         require(msg.sender == pricingStrategy, "Only pricing strategy contract can change message");
         message = _message;
         emit MessageChanged(_message, tx.origin);
+    }
+    
+    /// @notice Updates the name (only callable by pricing strategy)
+    /// @param _name The new name to display
+    function setName(string calldata _name) external {
+        require(msg.sender == pricingStrategy, "Only pricing strategy contract can change name");
+        require(bytes(_name).length <= 32, "Name cannot exceed 32 characters");
+        name = _name;
+        emit NameChanged(_name, tx.origin);
     }
     
     /// @notice Adds funds to the total (only callable by pricing strategy)
