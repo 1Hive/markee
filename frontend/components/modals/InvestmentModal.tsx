@@ -214,7 +214,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
               disabled={!canSwitchTabs}
               className={`flex-1 px-6 py-3 font-medium transition ${
                 activeTab === 'addFunds'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  ? 'text-markee border-b-2 border-markee'
                   : 'text-gray-600 hover:text-gray-900'
               } ${!canSwitchTabs ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -225,7 +225,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
               disabled={!canSwitchTabs}
               className={`flex-1 px-6 py-3 font-medium transition ${
                 activeTab === 'updateMessage'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  ? 'text-markee border-b-2 border-markee'
                   : 'text-gray-600 hover:text-gray-900'
               } ${!canSwitchTabs ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -261,7 +261,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your message..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
@@ -284,7 +284,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       disabled={isPending || isConfirming}
                     />
                     {minimumPrice && (
@@ -294,8 +294,8 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     )}
                   </div>
 
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-sm text-blue-900">
+                  <div className="bg-markee-50 rounded-lg p-4">
+                    <p className="text-sm text-markee-900">
                       🎯 Your investment creates your Markee and ranks you on the leaderboard. The
                       more you invest, the higher you rank!
                     </p>
@@ -308,7 +308,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm text-gray-600 mb-1">Current Investment</p>
-                    <p className="text-2xl font-bold text-blue-600">
+                    <p className="text-2xl font-bold text-markee">
                       {formatEther(userMarkee.totalFundsAdded)} ETH
                     </p>
                   </div>
@@ -324,13 +324,13 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       disabled={isPending || isConfirming}
                     />
                   </div>
 
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-sm text-blue-900">
+                  <div className="bg-markee-50 rounded-lg p-4">
+                    <p className="text-sm text-markee-900">
                       💰 Add more funds to climb the leaderboard and increase your prominence!
                     </p>
                   </div>
@@ -348,7 +348,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your new message..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
@@ -360,8 +360,8 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     )}
                   </div>
 
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-sm text-blue-900">
+                  <div className="bg-markee-50 rounded-lg p-4">
+                    <p className="text-sm text-markee-900">
                       ✏️ Update your message for free anytime! Your investment amount stays the same.
                     </p>
                   </div>
@@ -396,7 +396,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     else handleUpdateMessage()
                   }}
                   disabled={isPending || isConfirming || isSuccess}
-                  className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                  className="w-full bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
                 >
                   {isPending || isConfirming ? (
                     <>
