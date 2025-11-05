@@ -7,7 +7,8 @@ export const InvestorStrategyABI = [
       { internalType: "uint256", name: "_revNetProjectId", type: "uint256" },
       { internalType: "address", name: "_adminAddress", type: "address" },
       { internalType: "uint256", name: "_minimumPrice", type: "uint256" },
-      { internalType: "uint256", name: "_maxMessageLength", type: "uint256" }
+      { internalType: "uint256", name: "_maxMessageLength", type: "uint256" },
+      { internalType: "uint256", name: "_maxNameLength", type: "uint256" }
     ],
     stateMutability: "nonpayable",
     type: "constructor"
@@ -18,6 +19,7 @@ export const InvestorStrategyABI = [
       { indexed: true, internalType: "address", name: "markeeAddress", type: "address" },
       { indexed: true, internalType: "address", name: "owner", type: "address" },
       { indexed: false, internalType: "string", name: "message", type: "string" },
+      { indexed: false, internalType: "string", name: "name", type: "string" },
       { indexed: false, internalType: "uint256", name: "amount", type: "uint256" }
     ],
     name: "MarkeeCreated",
@@ -45,6 +47,16 @@ export const InvestorStrategyABI = [
     type: "event"
   },
   {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: "address", name: "markeeAddress", type: "address" },
+      { indexed: true, internalType: "address", name: "updatedBy", type: "address" },
+      { indexed: false, internalType: "string", name: "newName", type: "string" }
+    ],
+    name: "NameUpdated",
+    type: "event"
+  },
+  {
     inputs: [],
     name: "NATIVE_TOKEN",
     outputs: [{ internalType: "address", name: "", type: "address" }],
@@ -52,7 +64,10 @@ export const InvestorStrategyABI = [
     type: "function"
   },
   {
-    inputs: [{ internalType: "string", name: "_message", type: "string" }],
+    inputs: [
+      { internalType: "string", name: "_message", type: "string" },
+      { internalType: "string", name: "_name", type: "string" }
+    ],
     name: "createMarkee",
     outputs: [{ internalType: "address", name: "markeeAddress", type: "address" }],
     stateMutability: "payable",
@@ -76,6 +91,16 @@ export const InvestorStrategyABI = [
     type: "function"
   },
   {
+    inputs: [
+      { internalType: "address", name: "_markeeAddress", type: "address" },
+      { internalType: "string", name: "_newName", type: "string" }
+    ],
+    name: "updateName",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
     inputs: [],
     name: "minimumPrice",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
@@ -85,6 +110,13 @@ export const InvestorStrategyABI = [
   {
     inputs: [],
     name: "maxMessageLength",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "maxNameLength",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
     stateMutability: "view",
     type: "function"
@@ -104,6 +136,7 @@ export const MarkeeABI = [
       { internalType: "address", name: "_owner", type: "address" },
       { internalType: "address", name: "_pricingStrategy", type: "address" },
       { internalType: "string", name: "_initialMessage", type: "string" },
+      { internalType: "string", name: "_name", type: "string" },
       { internalType: "uint256", name: "_initialFunds", type: "uint256" }
     ],
     stateMutability: "nonpayable",
@@ -121,6 +154,15 @@ export const MarkeeABI = [
   {
     anonymous: false,
     inputs: [
+      { indexed: false, internalType: "string", name: "newName", type: "string" },
+      { indexed: true, internalType: "address", name: "changedBy", type: "address" }
+    ],
+    name: "NameChanged",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
       { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
       { indexed: false, internalType: "uint256", name: "newTotal", type: "uint256" },
       { indexed: true, internalType: "address", name: "addedBy", type: "address" }
@@ -131,6 +173,13 @@ export const MarkeeABI = [
   {
     inputs: [],
     name: "message",
+    outputs: [{ internalType: "string", name: "", type: "string" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "name",
     outputs: [{ internalType: "string", name: "", type: "string" }],
     stateMutability: "view",
     type: "function"
@@ -159,6 +208,13 @@ export const MarkeeABI = [
   {
     inputs: [{ internalType: "string", name: "_message", type: "string" }],
     name: "setMessage",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ internalType: "string", name: "_name", type: "string" }],
+    name: "setName",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function"
