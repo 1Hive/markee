@@ -105,11 +105,16 @@ export function useMarkees() {
             const { markeeAddress, owner } = log.args as any
             
             try {
-              const [message, totalFundsAdded] = await Promise.all([
+              const [message, name, totalFundsAdded] = await Promise.all([
                 client.readContract({
                   address: markeeAddress,
                   abi: MarkeeABI,
                   functionName: 'message'
+                }),
+                client.readContract({
+                  address: markeeAddress,
+                  abi: MarkeeABI,
+                  functionName: 'name'
                 }),
                 client.readContract({
                   address: markeeAddress,
@@ -122,6 +127,7 @@ export function useMarkees() {
                 address: markeeAddress,
                 owner,
                 message: message as string,
+                name: (name as string) || undefined,
                 totalFundsAdded: totalFundsAdded as bigint,
                 chainId: chain.id,
                 pricingStrategy: strategyAddress
