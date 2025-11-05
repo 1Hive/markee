@@ -129,13 +129,13 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
               </div>
 
               {/* Price Info */}
-              <div className="mb-6 bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <div className="mb-6 bg-markee-50 rounded-lg p-4 border border-markee-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-blue-900 font-medium">Price to Change Message</p>
-                    <p className="text-xs text-blue-700 mt-1">You'll receive $ABC tokens for this amount</p>
+                    <p className="text-sm text-markee-900 font-medium">Price to Change Message</p>
+                    <p className="text-xs text-markee-600 mt-1">You'll receive $ABC tokens for this amount</p>
                   </div>
-                  <div className="text-2xl font-bold text-blue-600">
+                  <div className="text-2xl font-bold text-markee">
                     {fixedMarkee.price ? formatEther(fixedMarkee.price) : '...'} ETH
                   </div>
                 </div>
@@ -150,7 +150,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Enter your new message..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                   rows={3}
                   disabled={isPending || isConfirming}
                 />
@@ -188,7 +188,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
               <button
                 onClick={handleChangeMessage}
                 disabled={isPending || isConfirming || isSuccess || !newMessage.trim()}
-                className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                className="w-full bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
               >
                 {isPending || isConfirming ? (
                   <>
