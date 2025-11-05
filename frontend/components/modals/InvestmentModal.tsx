@@ -22,6 +22,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
   const { address, isConnected, chain } = useAccount()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
+  const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -43,6 +44,13 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
     address: strategyAddress,
     abi: InvestorStrategyABI,
     functionName: 'maxMessageLength',
+    chainId: chain?.id,
+  })
+
+  const { data: maxNameLength } = useReadContract({
+    address: strategyAddress,
+    abi: InvestorStrategyABI,
+    functionName: 'maxNameLength',
     chainId: chain?.id,
   })
 
@@ -118,7 +126,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
         address: strategyAddress,
         abi: InvestorStrategyABI,
         functionName: 'createMarkee',
-        args: [message, ''],  // Empty string for name (optional)
+        args: [message, name],
         value: amountWei,
         chainId: chain.id,
       })
@@ -195,7 +203,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">
-            {userMarkee ? 'Manage Your Markee' : 'Create Your Markee'}
+            {userMarkee ? 'Manage Your Markee' : 'Create a Markee'}
           </h2>
           <button
             onClick={onClose}
@@ -255,12 +263,12 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Your Message
+                      Set Your Message
                     </label>
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Enter your message..."
+                      placeholder="Tell us how you really feel..."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
@@ -275,7 +283,27 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Investment Amount (ETH)
+                      Your Name (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="CryptoSarah"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      maxLength={32}
+                      disabled={isPending || isConfirming}
+                    />
+                    {maxNameLength && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {name.length} / {maxNameLength.toString()} characters
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Amount to Pay (ETH)
                     </label>
                     <input
                       type="number"
@@ -292,12 +320,16 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                         Minimum: {formatEther(minimumPrice)} ETH
                       </p>
                     )}
+                    {amount && parseFloat(amount) > 0 && (
+                      <p className="text-xs text-markee-700 mt-1 font-medium">
+                        ≈ {parseFloat(amount)} $ABC tokens
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      🎯 Your investment creates your Markee and ranks you on the leaderboard. The
-                      more you invest, the higher you rank!
+                      By creating a Markee and getting $ABC tokens, you agree to the Covenant of our digital collective.
                     </p>
                   </div>
                 </div>
