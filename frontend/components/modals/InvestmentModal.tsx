@@ -118,7 +118,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
         address: strategyAddress,
         abi: InvestorStrategyABI,
         functionName: 'createMarkee',
-        args: [message],
+        args: [message, ''],  // Empty string for name (optional)
         value: amountWei,
         chainId: chain.id,
       })
