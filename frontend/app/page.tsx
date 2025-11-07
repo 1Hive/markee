@@ -92,10 +92,6 @@ function CountdownTimer({ onCreateClick }: { onCreateClick: () => void }) {
 
   return (
     <div className="text-center mb-8">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">
-        Current Rate: {currentPhase.rate.toLocaleString()} $ABC per ETH
-      </h2>
-      <p className="text-gray-600 mb-6">Price increases in:</p>
       <div className="flex justify-center gap-4 mb-8">
         <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
           <div className="text-3xl font-bold text-markee">{timeLeft.days}</div>
@@ -125,7 +121,7 @@ function PhaseVisualization({ onCreateClick }: { onCreateClick: () => void }) {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="bg-white rounded-xl shadow-lg p-8">
-        <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">Token Price Roadmap</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">Now Serving: Phase 0</h3>
         
         {/* Progress Bar */}
         <div className="relative mb-8">
@@ -178,9 +174,9 @@ function PhaseVisualization({ onCreateClick }: { onCreateClick: () => void }) {
                   }`}>
                     {phase.rate.toLocaleString()}
                   </div>
-                  <div className="text-xs text-gray-500">$ABC / ETH</div>
+                  <div className="text-xs text-gray-500">ABC / ETH</div>
                   <div className="text-xs text-gray-400 mt-2">
-                    {isPast ? 'Ended' : isFuture ? 'Upcoming' : 'Ends'} {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {isPast ? 'Ended' : isFuture ? 'Ends' : 'Ends'} {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                 </div>
               </div>
@@ -193,10 +189,10 @@ function PhaseVisualization({ onCreateClick }: { onCreateClick: () => void }) {
             onClick={onCreateClick}
             className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
           >
-            Create Your Markee Now
+            Create a Markee
           </button>
           <p className="text-sm text-gray-500 mt-2">
-            Lock in the current rate before it increases
+            Join the collective by setting your own message
           </p>
         </div>
       </div>
@@ -259,8 +255,8 @@ export default function Home() {
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/" className="text-markee font-medium">Home</Link>
-              <Link href="/investors" className="text-gray-600 hover:text-gray-900">Our Collective</Link>
+              <Link href="/" className="text-markee font-medium">Leaderboard</Link>
+              <Link href="/investors" className="text-gray-600 hover:text-gray-900">Info</Link>
             </nav>
           </div>
           <ConnectButton />
