@@ -17,6 +17,7 @@ contract InvestorStrategy {
     address public adminAddress;
     uint256 public minimumPrice;
     uint256 public maxMessageLength;
+    uint256 public maxNameLength;
     
     // Mapping to track which Markees are using this strategy
     mapping(address => bool) public isMarkeeUsingThisStrategy;
@@ -26,12 +27,18 @@ contract InvestorStrategy {
         address indexed markeeAddress,
         address indexed owner,
         string message,
+        string name,
         uint256 amount
     );
     event MessageUpdated(
         address indexed markeeAddress,
         address indexed updatedBy,
         string newMessage
+    );
+    event NameUpdated(
+        address indexed markeeAddress,
+        address indexed updatedBy,
+        string newName
     );
     event FundsAddedToMarkee(
         address indexed markeeAddress,
@@ -48,6 +55,7 @@ contract InvestorStrategy {
     event AdminAddressUpdated(address indexed oldAdmin, address indexed newAdmin);
     event MinimumPriceUpdated(uint256 oldPrice, uint256 newPrice);
     event MaxMessageLengthUpdated(uint256 oldLength, uint256 newLength);
+    event MaxNameLengthUpdated(uint256 oldLength, uint256 newLength);
     
     /// @notice Creates a new InvestorStrategy
     /// @param _revNetTerminal Address of the Juicebox terminal for RevNet payments
@@ -55,22 +63,26 @@ contract InvestorStrategy {
     /// @param _adminAddress Address of the admin
     /// @param _minimumPrice The minimum price to create a Markee
     /// @param _maxMessageLength The maximum message length
+    /// @param _maxNameLength The maximum name length
     constructor(
         address _revNetTerminal,
         uint256 _revNetProjectId,
         address _adminAddress,
         uint256 _minimumPrice,
-        uint256 _maxMessageLength
+        uint256 _maxMessageLength,
+        uint256 _maxNameLength
     ) {
         require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
         require(_adminAddress != address(0), "Admin address cannot be zero address");
         require(_maxMessageLength > 0, "Maximum message length must be greater than zero");
+        require(_maxNameLength > 0, "Maximum name length must be greater than zero");
         
         revNetTerminal = _revNetTerminal;
         revNetProjectId = _revNetProjectId;
         adminAddress = _adminAddress;
         minimumPrice = _minimumPrice;
         maxMessageLength = _maxMessageLength;
+        maxNameLength = _maxNameLength;
     }
     
     /// @notice Modifier to restrict functions to admin only
@@ -81,8 +93,9 @@ contract InvestorStrategy {
     
     /// @notice Creates a new Markee and forwards payment to RevNet
     /// @param _message The initial message for the Markee
+    /// @param _name The optional name for the Markee creator (can be empty string)
     /// @return markeeAddress The address of the newly created Markee
-    function createMarkee(string calldata _message) 
+    function createMarkee(string calldata _message, string calldata _name) 
         external 
         payable 
         returns (address markeeAddress) 
@@ -93,11 +106,15 @@ contract InvestorStrategy {
         // Check message length
         require(bytes(_message).length <= maxMessageLength, "Message exceeds maximum length");
         
+        // Check name length
+        require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+        
         // Deploy new Markee contract
         Markee markee = new Markee(
             msg.sender,           // owner = the payer
             address(this),        // pricingStrategy = this contract
             _message,             // initial message
+            _name,                // name (can be empty)
             msg.value             // initial funds
         );
         
@@ -117,7 +134,7 @@ contract InvestorStrategy {
             ""                    // metadata
         );
         
-        emit MarkeeCreated(markeeAddress, msg.sender, _message, msg.value);
+        emit MarkeeCreated(markeeAddress, msg.sender, _message, _name, msg.value);
     }
     
     /// @notice Allows the Markee owner to update their message for free
@@ -141,6 +158,29 @@ contract InvestorStrategy {
         markee.setMessage(_newMessage);
         
         emit MessageUpdated(_markeeAddress, msg.sender, _newMessage);
+    }
+    
+    /// @notice Allows the Markee owner to update their name for free
+    /// @param _markeeAddress The address of the Markee to update
+    /// @param _newName The new name
+    function updateName(address _markeeAddress, string calldata _newName) 
+        external 
+    {
+        Markee markee = Markee(_markeeAddress);
+        
+        // Verify this Markee is using this strategy
+        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
+        
+        // Verify caller is the owner
+        require(msg.sender == markee.owner(), "Only Markee owner can update name");
+        
+        // Check name length
+        require(bytes(_newName).length <= maxNameLength, "Name exceeds maximum length");
+        
+        // Update the name
+        markee.setName(_newName);
+        
+        emit NameUpdated(_markeeAddress, msg.sender, _newName);
     }
     
     /// @notice Allows the Markee owner to add more funds to increase their leaderboard position
@@ -245,5 +285,14 @@ contract InvestorStrategy {
         uint256 oldLength = maxMessageLength;
         maxMessageLength = _newMaxLength;
         emit MaxMessageLengthUpdated(oldLength, _newMaxLength);
+    }
+    
+    /// @notice Allows admin to update the maximum name length
+    /// @param _newMaxLength The new maximum length in characters
+    function setMaxNameLength(uint256 _newMaxLength) external onlyAdmin {
+        require(_newMaxLength > 0, "Maximum name length must be greater than zero");
+        uint256 oldLength = maxNameLength;
+        maxNameLength = _newMaxLength;
+        emit MaxNameLengthUpdated(oldLength, _newMaxLength);
     }
 }
