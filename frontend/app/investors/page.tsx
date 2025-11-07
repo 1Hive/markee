@@ -26,17 +26,6 @@ export default function InvestorsPage() {
           <div className="max-w-2xl mx-auto">
             <div className="text-6xl mb-6">🚧</div>
             <h2 className="text-4xl font-bold text-gray-900 mb-4">Coming Soon</h2>
-            <p className="text-lg text-gray-600 mb-8">
-              We're working on bringing you detailed information about the Markee collective, tokenomics, and how to participate.
-            </p>
-            <div className="flex justify-center gap-4">
-              <Link 
-                href="/"
-                className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition-colors"
-              >
-                Back to Leaderboard
-              </Link>
-            </div>
           </div>
         </div>
       </main>
