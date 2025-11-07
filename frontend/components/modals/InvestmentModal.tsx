@@ -330,14 +330,14 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                         <p className="text-4xl font-bold text-markee mb-2">
                           {(parseFloat(amount) * 50000).toLocaleString()}
                         </p>
-                        <p className="text-xl font-semibold text-markee-700">$ABC tokens</p>
+                        <p className="text-xl font-semibold text-markee-700">ABC tokens</p>
                       </div>
                     </div>
                   )}
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      By creating a Markee and getting $ABC tokens, you agree to the Covenant of our digital collective.
+                      By creating a Markee and getting ABC, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
                 </div>
