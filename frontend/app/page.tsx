@@ -13,35 +13,35 @@ const PHASES = [
     rate: 50000, 
     endDate: new Date('2025-12-21T00:00:00Z'),
     label: 'Phase 0',
-    color: 'bg-green-500'
+    color: 'bg-[#20bf6b]'
   },
   { 
     phase: 1, 
     rate: 30000, 
     endDate: new Date('2026-03-21T00:00:00Z'),
     label: 'Phase 1',
-    color: 'bg-blue-500'
+    color: 'bg-[#1da85c]'
   },
   { 
     phase: 2, 
     rate: 24000, 
     endDate: new Date('2026-06-21T00:00:00Z'),
     label: 'Phase 2',
-    color: 'bg-purple-500'
+    color: 'bg-[#1a914d]'
   },
   { 
     phase: 3, 
     rate: 20000, 
     endDate: new Date('2026-09-21T00:00:00Z'),
     label: 'Phase 3',
-    color: 'bg-orange-500'
+    color: 'bg-[#177a3e]'
   },
   { 
     phase: 4, 
     rate: 17000, 
     endDate: new Date('2026-12-21T00:00:00Z'),
     label: 'Phase 4',
-    color: 'bg-red-500'
+    color: 'bg-[#14632f]'
   },
 ]
 
@@ -89,19 +89,19 @@ function CountdownTimer() {
       <p className="text-gray-600 mb-6">Price increases in:</p>
       <div className="flex justify-center gap-4 mb-8">
         <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-blue-600">{timeLeft.days}</div>
+          <div className="text-3xl font-bold text-[#20bf6b]">{timeLeft.days}</div>
           <div className="text-sm text-gray-600">Days</div>
         </div>
         <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-blue-600">{timeLeft.hours}</div>
+          <div className="text-3xl font-bold text-[#20bf6b]">{timeLeft.hours}</div>
           <div className="text-sm text-gray-600">Hours</div>
         </div>
         <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-blue-600">{timeLeft.minutes}</div>
+          <div className="text-3xl font-bold text-[#20bf6b]">{timeLeft.minutes}</div>
           <div className="text-sm text-gray-600">Minutes</div>
         </div>
         <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-blue-600">{timeLeft.seconds}</div>
+          <div className="text-3xl font-bold text-[#20bf6b]">{timeLeft.seconds}</div>
           <div className="text-sm text-gray-600">Seconds</div>
         </div>
       </div>
@@ -122,7 +122,7 @@ function PhaseVisualization() {
         <div className="relative mb-8">
           <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 transition-all duration-1000"
+              className="h-full bg-gradient-to-r from-[#20bf6b] via-[#1da85c] to-[#1a914d] transition-all duration-1000"
               style={{ 
                 width: `${((currentPhaseIndex + 1) / PHASES.length) * 100}%` 
               }}
@@ -142,7 +142,7 @@ function PhaseVisualization() {
                 key={phase.phase}
                 className={`relative rounded-lg p-4 border-2 transition-all ${
                   isCurrent
-                    ? 'border-blue-500 bg-blue-50 shadow-lg scale-105'
+                    ? 'border-[#20bf6b] bg-green-50 shadow-lg scale-105'
                     : isPast
                     ? 'border-gray-300 bg-gray-100 opacity-60'
                     : 'border-gray-300 bg-white opacity-50'
@@ -150,7 +150,7 @@ function PhaseVisualization() {
               >
                 {isCurrent && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                    <span className="bg-[#20bf6b] text-white text-xs font-bold px-3 py-1 rounded-full">
                       ACTIVE
                     </span>
                   </div>
@@ -160,7 +160,7 @@ function PhaseVisualization() {
                 
                 <div className="text-center">
                   <div className={`text-sm font-semibold mb-1 ${
-                    isCurrent ? 'text-blue-600' : 'text-gray-600'
+                    isCurrent ? 'text-[#20bf6b]' : 'text-gray-600'
                   }`}>
                     {phase.label}
                   </div>
@@ -180,7 +180,7 @@ function PhaseVisualization() {
         </div>
 
         <div className="mt-6 text-center">
-          <button className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors">
+          <button className="bg-[#20bf6b] text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#1da85c] transition-colors">
             Create Your Markee Now
           </button>
           <p className="text-sm text-gray-500 mt-2">
@@ -201,9 +201,9 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold text-blue-600">Markee</h1>
+            <h1 className="text-2xl font-bold text-[#20bf6b]">Markee</h1>
             <nav className="flex gap-6">
-              <Link href="/" className="text-blue-600 font-medium">Home</Link>
+              <Link href="/" className="text-[#20bf6b] font-medium">Home</Link>
               <Link href="/investors" className="text-gray-600 hover:text-gray-900">For Investors</Link>
             </nav>
           </div>
@@ -212,19 +212,19 @@ export default function Home() {
       </header>
 
       {/* Hero Section - Fixed Price Messages */}
-      <section className="bg-gradient-to-br from-blue-50 to-indigo-50 py-12 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-green-50 to-emerald-50 py-12 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-3 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200">
-              <div className="text-2xl font-bold text-gray-900 mb-2">This is a sign</div>
+            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-green-200">
+              <div className="text-2xl font-bold text-gray-900 mb-2 message-text">This is a sign</div>
               <div className="text-sm text-gray-500">100 ETH to change</div>
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200">
-              <div className="text-2xl font-bold text-gray-900 mb-2">Anyone can pay to change</div>
+            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-green-200">
+              <div className="text-2xl font-bold text-gray-900 mb-2 message-text">Anyone can pay to change</div>
               <div className="text-sm text-gray-500">100 ETH to change</div>
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-blue-200">
-              <div className="text-2xl font-bold text-gray-900 mb-2">that funds communities</div>
+            <div className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-green-200">
+              <div className="text-2xl font-bold text-gray-900 mb-2 message-text">that funds communities</div>
               <div className="text-sm text-gray-500">100 ETH to change</div>
             </div>
           </div>
@@ -232,7 +232,7 @@ export default function Home() {
       </section>
 
       {/* Countdown and Phase Visualization Section */}
-      <section className="bg-gradient-to-br from-gray-50 to-blue-50 py-12 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-gray-50 to-green-50 py-12 border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <CountdownTimer />
           <PhaseVisualization />
@@ -245,7 +245,7 @@ export default function Home() {
         
         {isLoading && (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#20bf6b] mx-auto"></div>
             <p className="mt-4 text-gray-600">Loading Markees...</p>
           </div>
         )}
