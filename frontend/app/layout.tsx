@@ -7,8 +7,8 @@ import { Web3Provider } from '@/components/providers/Web3Provider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Markee - Community Fundraising',
-  description: 'A community-first digital marketing platform',
+  title: 'Markee - Community Fundraising Platform',
+  description: 'This is a sign. Anyone can pay to change. That funds stuff you love.',
 }
 
 export default function RootLayout({
