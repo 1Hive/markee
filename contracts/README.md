@@ -6,9 +6,9 @@
 ### Optimism Mainnet
 - InvestorStrategy: `0xF0478A341aAd256C45CC7896ba08D2f00EAb72DA`
 - FixedStrategy:
-  - "This is a sign": `0xd1D8e8d2b48a63dff78E1Cc501d3101d45bA447e`
-  - "Anyone can pay to change": `0xB816427e69b1950d8689362bB244096EE08d93F4`
-  - "That funds stuff you love": `0x73f10F44eA244d811A1236e3570288f82688bb18`
+  - "This is a sign": `0x7D9C126745f8C0921Cc656A9301E0BB485f7cAF7`
+  - "Anyone can pay to change": `0x4DE2a8F1deb851078979F53680fb1B2277e9E237`
+  - "That funds stuff you love": `0x092817fb3C4cc60f588A422DfCd8630b3c51c7E1`
 
 ### RevNet Configuration
 - Terminal: `0x2dB6d704058E552DeFE415753465df8dF0361846` (same across all chains)
