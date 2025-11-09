@@ -1,6 +1,7 @@
 'use client'
 
 import { formatEth, formatAddress } from '@/lib/utils'
+import { Eye, Wallet } from 'lucide-react'
 import type { Markee } from '@/types'
 
 interface MarkeeCardProps {
@@ -10,13 +11,15 @@ interface MarkeeCardProps {
   userAddress?: string
   onEditMessage?: (markee: Markee) => void
   onAddFunds?: (markee: Markee) => void
+  messageViews?: number // Views on current message
+  totalViews?: number // All-time views on this Markee
 }
 
 function getChainColor(chainId: number): string {
   switch (chainId) {
     case 10: return 'bg-red-500' // Optimism
-    case 8453: return 'bg-markee-500' // Base
-    case 42161: return 'bg-markee-400' // Arbitrum
+    case 8453: return 'bg-blue-500' // Base
+    case 42161: return 'bg-blue-400' // Arbitrum
     default: return 'bg-gray-400'
   }
 }
@@ -30,84 +33,84 @@ function getChainName(chainId: number): string {
   }
 }
 
-export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onAddFunds }: MarkeeCardProps) {
+function formatNumber(num: number): string {
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
+  return num.toString()
+}
+
+// Subtle stats component
+function MarkeeStats({ 
+  messageViews, 
+  totalViews, 
+  totalFunds, 
+  size 
+}: { 
+  messageViews?: number
+  totalViews?: number
+  totalFunds: bigint
+  size: string
+}) {
+  const textSize = size === 'hero' ? 'text-sm' : size === 'large' ? 'text-xs' : 'text-[10px]'
+  
+  return (
+    <div className={`flex items-center gap-3 ${textSize} text-gray-500`}>
+      {/* Message Views */}
+      {messageViews !== undefined && (
+        <div className="flex items-center gap-1 group relative">
+          <Eye size={size === 'hero' ? 14 : 12} className="opacity-60" />
+          <span>{formatNumber(messageViews)}</span>
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+            {messageViews.toLocaleString()} views on this message
+          </div>
+        </div>
+      )}
+      
+      {/* Total Funds */}
+      <div className="flex items-center gap-1 group relative">
+        <Wallet size={size === 'hero' ? 14 : 12} className="opacity-60" />
+        <span>{formatEth(totalFunds)} ETH</span>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+          Total raised: {formatEth(totalFunds)} ETH
+        </div>
+      </div>
+      
+      {/* All-time Views (optional, only if different from message views) */}
+      {totalViews !== undefined && totalViews !== messageViews && (
+        <div className="flex items-center gap-1 opacity-50 group relative">
+          <Eye size={size === 'hero' ? 14 : 12} />
+          <span>{formatNumber(totalViews)}</span>
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+            {totalViews.toLocaleString()} all-time views
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onAddFunds, messageViews, totalViews }: MarkeeCardProps) {
   const chainColor = getChainColor(markee.chainId)
   const chainName = getChainName(markee.chainId)
-  const isOwner = userAddress && markee.owner.toLowerCase() === userAddress.toLowerCase()
-
-  // Action Buttons Component
-  const ActionButtons = ({ buttonSize = 'default' }: { buttonSize?: 'default' | 'small' | 'large' }) => {
-    const sizeClasses = {
-      small: 'text-xs px-2 py-1 gap-1',
-      default: 'text-sm px-3 py-1.5 gap-2',
-      large: 'text-base px-4 py-2 gap-2'
-    }
-
-    return (
-      <div className="flex gap-2">
-        {isOwner && onEditMessage && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEditMessage(markee)
-            }}
-            className={`${sizeClasses[buttonSize]} bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors flex items-center`}
-          >
-            ✏️ Edit Message
-          </button>
-        )}
-        {onAddFunds && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddFunds(markee)
-            }}
-            className={`${sizeClasses[buttonSize]} bg-markee text-white rounded-lg font-medium hover:bg-markee-600 transition-colors flex items-center`}
-          >
-            💰 Add Funds
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  // Ownership Badge
-  const OwnerBadge = ({ badgeSize = 'default' }: { badgeSize?: 'default' | 'small' | 'large' }) => {
-    if (!isOwner) return null
-    
-    const sizeClasses = {
-      small: 'text-xs px-2 py-0.5',
-      default: 'text-xs px-2 py-1',
-      large: 'text-sm px-3 py-1'
-    }
-
-    return (
-      <span className={`${sizeClasses[badgeSize]} bg-green-100 text-green-800 rounded-full font-medium`}>
-        Your Markee
-      </span>
-    )
-  }
+  const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
 
   // List view (compact, single line)
   if (size === 'list') {
     return (
-      <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 group">
+      <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50">
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <span className="text-sm font-bold text-gray-400 w-8">#{rank}</span>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <p className="text-sm text-gray-900 truncate flex-1 message-text">{markee.message}</p>
-            <OwnerBadge badgeSize="small" />
-          </div>
+          <p className="text-sm text-gray-900 truncate flex-1">{markee.message}</p>
           <span className="text-sm text-gray-600 flex-shrink-0">{formatAddress(markee.owner)}</span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+          <MarkeeStats 
+            messageViews={messageViews}
+            totalViews={totalViews}
+            totalFunds={markee.totalFundsAdded}
+            size={size}
+          />
           <div className={`w-2 h-2 rounded-full ${chainColor}`} title={chainName} />
-          <span className="text-sm font-bold text-markee min-w-[80px] text-right">
-            {formatEth(markee.totalFundsAdded)} ETH
-          </span>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <ActionButtons buttonSize="small" />
-          </div>
         </div>
       </div>
     )
@@ -119,20 +122,40 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
       <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-xl shadow-lg p-8 mb-6 border-4 border-yellow-400">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="text-6xl font-bold text-yellow-600">🏆 #{rank}</div>
-              <OwnerBadge badgeSize="large" />
-            </div>
+            <div className="text-6xl font-bold text-yellow-600 mb-2">🏆 #{rank}</div>
             <div className="text-3xl font-bold text-gray-900 mb-4 message-text">{markee.message}</div>
-            <div className="flex items-center gap-6 text-gray-600 mb-4">
-              <span className="text-xl font-semibold">{formatAddress(markee.owner)}</span>
+            <div className="flex items-center gap-6 text-gray-600 mb-3">
+              <span className="text-xl font-semibold">{markee.name || formatAddress(markee.owner)}</span>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${chainColor}`} />
                 <span className="text-sm">{chainName}</span>
               </div>
-              <span className="text-2xl font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
             </div>
-            <ActionButtons buttonSize="large" />
+            {/* Stats row */}
+            <MarkeeStats 
+              messageViews={messageViews}
+              totalViews={totalViews}
+              totalFunds={markee.totalFundsAdded}
+              size={size}
+            />
+          </div>
+          <div className="flex gap-2 ml-4">
+            {isOwner && (
+              <>
+                <button 
+                  onClick={() => onEditMessage?.(markee)}
+                  className="text-sm px-3 py-1 bg-white rounded hover:bg-gray-50 transition"
+                >
+                  ✏️ Edit
+                </button>
+                <button 
+                  onClick={() => onAddFunds?.(markee)}
+                  className="text-sm px-3 py-1 bg-white rounded hover:bg-gray-50 transition"
+                >
+                  💰 Add Funds
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -144,23 +167,43 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
     return (
       <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200 h-full">
         <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="text-3xl font-bold text-gray-400">#{rank}</div>
-            <OwnerBadge />
-          </div>
+          <div className="text-3xl font-bold text-gray-400">#{rank}</div>
+          {isOwner && (
+            <div className="flex gap-2">
+              <button 
+                onClick={() => onEditMessage?.(markee)}
+                className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition"
+              >
+                ✏️
+              </button>
+              <button 
+                onClick={() => onAddFunds?.(markee)}
+                className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition"
+              >
+                💰
+              </button>
+            </div>
+          )}
         </div>
         <div className="text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text">{markee.message}</div>
-        <div className="flex items-center justify-between text-gray-600 mb-4">
+        <div className="flex items-center justify-between text-gray-600 mb-3">
           <div className="flex flex-col gap-2">
-            <span className="font-medium">{formatAddress(markee.owner)}</span>
+            <span className="font-medium">{markee.name || formatAddress(markee.owner)}</span>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${chainColor}`} />
               <span className="text-xs">{chainName}</span>
             </div>
           </div>
-          <span className="text-lg font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
         </div>
-        <ActionButtons />
+        {/* Stats at bottom */}
+        <div className="pt-3 border-t border-gray-100">
+          <MarkeeStats 
+            messageViews={messageViews}
+            totalViews={totalViews}
+            totalFunds={markee.totalFundsAdded}
+            size={size}
+          />
+        </div>
       </div>
     )
   }
@@ -170,23 +213,43 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
     return (
       <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 h-full">
         <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className="text-lg font-bold text-gray-400">#{rank}</div>
-            <OwnerBadge badgeSize="small" />
-          </div>
+          <div className="text-lg font-bold text-gray-400">#{rank}</div>
+          {isOwner && (
+            <div className="flex gap-1 text-sm">
+              <button 
+                onClick={() => onEditMessage?.(markee)}
+                className="hover:scale-110 transition"
+              >
+                ✏️
+              </button>
+              <button 
+                onClick={() => onAddFunds?.(markee)}
+                className="hover:scale-110 transition"
+              >
+                💰
+              </button>
+            </div>
+          )}
         </div>
-        <div className="text-sm font-semibold text-gray-900 mb-3 line-clamp-2 message-text">{markee.message}</div>
-        <div className="flex items-center justify-between text-xs text-gray-600 mb-3">
+        <div className="text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text">{markee.message}</div>
+        <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
           <div className="flex flex-col gap-1">
-            <span>{formatAddress(markee.owner)}</span>
+            <span>{markee.name || formatAddress(markee.owner)}</span>
             <div className="flex items-center gap-1">
               <div className={`w-1.5 h-1.5 rounded-full ${chainColor}`} />
               <span>{chainName}</span>
             </div>
           </div>
-          <span className="font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
         </div>
-        <ActionButtons buttonSize="small" />
+        {/* Stats at bottom */}
+        <div className="pt-2 border-t border-gray-100">
+          <MarkeeStats 
+            messageViews={messageViews}
+            totalViews={totalViews}
+            totalFunds={markee.totalFundsAdded}
+            size={size}
+          />
+        </div>
       </div>
     )
   }
