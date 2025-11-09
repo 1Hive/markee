@@ -35,40 +35,13 @@ export function useMarkees() {
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
 
-  // Load from cache on mount
-  useEffect(() => {
-    const cached = localStorage.getItem(CACHE_KEY)
-    if (cached) {
-      try {
-        const { markees: cachedMarkees, timestamp }: CacheData = JSON.parse(cached)
-        const age = Date.now() - timestamp
-        
-        if (age < CACHE_DURATION) {
-          // Use cached data
-          setMarkees(cachedMarkees)
-          setLastUpdated(new Date(timestamp))
-          setIsLoading(false)
-          return
-        }
-      } catch (err) {
-        console.error('Error loading cache:', err)
-      }
-    }
-    
-    // No valid cache, fetch fresh data
-    fetchMarkees()
-  }, []) // Only run once on mount
-
   const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
-  try {
-    if (showFetchingIndicator && markees.length > 0) {
-      setIsFetchingFresh(true)
-    } else {
-      setIsLoading(true)
-    }
-    // ... rest
-  }
-  }, [opClient, baseClient, arbClient])
+    try {
+      if (showFetchingIndicator && markees.length > 0) {
+        setIsFetchingFresh(true)
+      } else {
+        setIsLoading(true)
+      }
 
       const allMarkees: Markee[] = []
 
@@ -178,7 +151,31 @@ export function useMarkees() {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [opClient, baseClient, arbClient, markees.length])
+  }, [opClient, baseClient, arbClient]) // Removed markees.length - this was causing infinite loop!
+
+  // Load from cache on mount
+  useEffect(() => {
+    const cached = localStorage.getItem(CACHE_KEY)
+    if (cached) {
+      try {
+        const { markees: cachedMarkees, timestamp }: CacheData = JSON.parse(cached)
+        const age = Date.now() - timestamp
+        
+        if (age < CACHE_DURATION) {
+          // Use cached data
+          setMarkees(cachedMarkees)
+          setLastUpdated(new Date(timestamp))
+          setIsLoading(false)
+          return
+        }
+      } catch (err) {
+        console.error('Error loading cache:', err)
+      }
+    }
+    
+    // No valid cache, fetch fresh data
+    fetchMarkees()
+  }, []) // Only run once on mount
 
   // Manual refetch function
   const refetch = useCallback(() => {
