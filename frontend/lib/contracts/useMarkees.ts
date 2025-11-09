@@ -60,12 +60,15 @@ export function useMarkees() {
   }, []) // Only run once on mount
 
   const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
-    try {
-      if (showFetchingIndicator && markees.length > 0) {
-        setIsFetchingFresh(true)
-      } else {
-        setIsLoading(true)
-      }
+  try {
+    if (showFetchingIndicator && markees.length > 0) {
+      setIsFetchingFresh(true)
+    } else {
+      setIsLoading(true)
+    }
+    // ... rest
+  }
+  }, [opClient, baseClient, arbClient])
 
       const allMarkees: Markee[] = []
 
