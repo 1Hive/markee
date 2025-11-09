@@ -13,7 +13,7 @@ const CACHE_DURATION = 1000 * 60 * 5 // 5 minutes
 
 // Deployment blocks for each chain to avoid querying from 'earliest'
 const DEPLOYMENT_BLOCKS = {
-  [optimism.id]: 128900000n, // Update with actual deployment block
+  [optimism.id]: 143559000n, // Update with actual deployment block
   [base.id]: 0n, // Update when deployed
   [arbitrum.id]: 0n, // Update when deployed
 } as const
