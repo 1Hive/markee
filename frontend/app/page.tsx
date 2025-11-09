@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -10,6 +10,7 @@ import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { InvestmentModal } from '@/components/modals/InvestmentModal'
 import { FixedMarkeeModal } from '@/components/modals/FixedMarkeeModal'
+import { trackMarkeeView, getMarkeeStats } from '@/lib/analytics'
 import { formatDistanceToNow } from 'date-fns'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
@@ -212,6 +213,31 @@ export default function Home() {
   const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
+  // Get stats for all markees
+  const markeeStats = useMemo(() => {
+    return markees.reduce((acc, markee) => {
+      acc[markee.address] = getMarkeeStats(markee.address, markee.message)
+      return acc
+    }, {} as Record<string, { messageViews: number; totalViews: number }>)
+  }, [markees])
+
+  // Track views on mount (once per session)
+  useEffect(() => {
+    const tracked = sessionStorage.getItem('leaderboard_viewed')
+    if (!tracked && markees.length > 0) {
+      // Track top 10 markees as viewed
+      markees.slice(0, 10).forEach((markee, index) => {
+        trackMarkeeView(
+          markee.address,
+          markee.message,
+          index + 1,
+          markee.chainId
+        )
+      })
+      sessionStorage.setItem('leaderboard_viewed', 'true')
+    }
+  }, [markees])
+
   const handleCreateNew = () => {
     setSelectedMarkee(null)
     setModalMode('create')
@@ -359,6 +385,8 @@ export default function Home() {
                 markee={markees[0]} 
                 rank={1} 
                 size="hero"
+                messageViews={markeeStats[markees[0].address]?.messageViews}
+                totalViews={markeeStats[markees[0].address]?.totalViews}
                 userAddress={address}
                 onEditMessage={handleEditMessage}
                 onAddFunds={handleAddFunds}
@@ -373,6 +401,8 @@ export default function Home() {
                     markee={markees[1]} 
                     rank={2} 
                     size="large"
+                    messageViews={markeeStats[markees[1].address]?.messageViews}
+                    totalViews={markeeStats[markees[1].address]?.totalViews}
                     userAddress={address}
                     onEditMessage={handleEditMessage}
                     onAddFunds={handleAddFunds}
@@ -383,6 +413,8 @@ export default function Home() {
                     markee={markees[2]} 
                     rank={3} 
                     size="large"
+                    messageViews={markeeStats[markees[2].address]?.messageViews}
+                    totalViews={markeeStats[markees[2].address]?.totalViews}
                     userAddress={address}
                     onEditMessage={handleEditMessage}
                     onAddFunds={handleAddFunds}
@@ -400,6 +432,8 @@ export default function Home() {
                     markee={markee} 
                     rank={index + 4} 
                     size="medium"
+                    messageViews={markeeStats[markee.address]?.messageViews}
+                    totalViews={markeeStats[markee.address]?.totalViews}
                     userAddress={address}
                     onEditMessage={handleEditMessage}
                     onAddFunds={handleAddFunds}
@@ -419,6 +453,8 @@ export default function Home() {
                       markee={markee} 
                       rank={index + 27} 
                       size="list"
+                      messageViews={markeeStats[markee.address]?.messageViews}
+                      totalViews={markeeStats[markee.address]?.totalViews}
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
