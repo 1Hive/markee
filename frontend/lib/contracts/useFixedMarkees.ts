@@ -25,6 +25,11 @@ export function useFixedMarkees() {
       abi: FixedStrategyABI,
       functionName: 'markeeAddress',
       chainId: optimism.id,
+      query: {
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        staleTime: 1000 * 60 * 5, // 5 min cache
+      }
     })
 
     // Read price from FixedStrategy
@@ -33,6 +38,11 @@ export function useFixedMarkees() {
       abi: FixedStrategyABI,
       functionName: 'price',
       chainId: optimism.id,
+      query: {
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        staleTime: 1000 * 60 * 5, // 5 min cache
+      }
     })
 
     // Read message from Markee (only if we have the address)
@@ -43,7 +53,10 @@ export function useFixedMarkees() {
       chainId: optimism.id,
       query: {
         enabled: !!markeeAddress,
-      },
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        staleTime: 1000 * 60 * 5, // 5 min cache
+      }
     })
 
     return {
