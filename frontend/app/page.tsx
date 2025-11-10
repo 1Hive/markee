@@ -150,7 +150,6 @@ export default function Home() {
             )}
           </div>
         </div>
-        </div>
 
         {isLoading && markees.length === 0 && (
           <div>
