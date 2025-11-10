@@ -5,6 +5,55 @@ import { useState, useEffect } from 'react'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { ChevronDown } from 'lucide-react'
 
+// Phase configuration
+const PHASES = [
+  { 
+    phase: 0, 
+    rate: 50000, 
+    endDate: new Date('2025-12-21T00:00:00Z'),
+    label: 'Phase 0',
+    color: 'bg-markee'
+  },
+  { 
+    phase: 1, 
+    rate: 30000, 
+    endDate: new Date('2026-03-21T00:00:00Z'),
+    label: 'Phase 1',
+    color: 'bg-markee-600'
+  },
+  { 
+    phase: 2, 
+    rate: 24000, 
+    endDate: new Date('2026-06-21T00:00:00Z'),
+    label: 'Phase 2',
+    color: 'bg-markee-700'
+  },
+  { 
+    phase: 3, 
+    rate: 20000, 
+    endDate: new Date('2026-09-21T00:00:00Z'),
+    label: 'Phase 3',
+    color: 'bg-markee-800'
+  },
+  { 
+    phase: 4, 
+    rate: 17000, 
+    endDate: new Date('2026-12-21T00:00:00Z'),
+    label: 'Phase 4',
+    color: 'bg-markee-900'
+  },
+]
+
+function getCurrentPhase() {
+  const now = new Date()
+  for (let i = 0; i < PHASES.length; i++) {
+    if (now < PHASES[i].endDate) {
+      return i
+    }
+  }
+  return PHASES.length - 1
+}
+
 export default function InfoPage() {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -17,7 +66,7 @@ export default function InfoPage() {
             </Link>
             <nav className="flex gap-6">
               <Link href="/" className="text-gray-600 hover:text-gray-900">Leaderboard</Link>
-              <Link href="/info" className="text-blue-600 font-medium">Info</Link>
+              <Link href="/info" className="text-markee font-medium">Info</Link>
             </nav>
           </div>
           <ConnectButton />
@@ -30,15 +79,15 @@ export default function InfoPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-8">What is Markee?</h1>
           <div className="space-y-4 text-lg text-gray-700">
             <p className="flex items-start gap-3">
-              <span className="text-blue-600 font-bold">•</span>
+              <span className="text-markee font-bold">•</span>
               <span>Markee is open source digital marketing: <strong>a sign anyone can pay to edit.</strong></span>
             </p>
             <p className="flex items-start gap-3">
-              <span className="text-blue-600 font-bold">•</span>
+              <span className="text-markee font-bold">•</span>
               <span>It's owned by the open source version of organizational designs: <strong>a Digital Cooperative.</strong></span>
             </p>
             <p className="flex items-start gap-3">
-              <span className="text-blue-600 font-bold">•</span>
+              <span className="text-markee font-bold">•</span>
               <span>And earns money through the open source version of revenue generation: <strong>RevNets on Ethereum.</strong></span>
             </p>
           </div>
@@ -46,7 +95,7 @@ export default function InfoPage() {
       </section>
 
       {/* Integration Partners - Social Proof */}
-      <section className="bg-gradient-to-br from-blue-50 to-indigo-50 py-12 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Built With</h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 items-center">
@@ -59,8 +108,13 @@ export default function InfoPage() {
         </div>
       </section>
 
-      {/* Countdown Timer */}
-      <CountdownSection />
+      {/* Countdown and Phase Visualization Section */}
+      <section className="bg-gradient-to-br from-gray-50 to-markee-50 py-12 border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <CountdownTimer />
+          <PhaseVisualization />
+        </div>
+      </section>
 
       {/* Money Flow Diagrams */}
       <section className="py-16 bg-white border-b border-gray-200">
@@ -79,13 +133,13 @@ export default function InfoPage() {
       </section>
 
       {/* CTA Footer */}
-      <section className="bg-blue-600 py-12">
+      <section className="bg-markee py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to create your Markee?</h2>
-          <p className="text-blue-100 mb-8 text-lg">Join the leaderboard and become part of the cooperative</p>
+          <p className="text-markee-100 mb-8 text-lg">Join the leaderboard and become part of the cooperative</p>
           <Link 
             href="/"
-            className="inline-block bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-colors"
+            className="inline-block bg-white text-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-50 transition-colors"
           >
             Create Your Markee
           </Link>
@@ -103,16 +157,16 @@ function PartnerLogo({ name }: { name: string }) {
   )
 }
 
-function CountdownSection() {
+function CountdownTimer() {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-  
+  const currentPhaseIndex = getCurrentPhase()
+  const currentPhase = PHASES[currentPhaseIndex]
+
   useEffect(() => {
-    const targetDate = new Date('2025-12-21T00:00:00Z')
-    
-    const updateCountdown = () => {
+    function updateCountdown() {
       const now = new Date()
-      const difference = targetDate.getTime() - now.getTime()
-      
+      const difference = currentPhase.endDate.getTime() - now.getTime()
+
       if (difference > 0) {
         setTimeLeft({
           days: Math.floor(difference / (1000 * 60 * 60 * 24)),
@@ -122,46 +176,123 @@ function CountdownSection() {
         })
       }
     }
-    
+
     updateCountdown()
     const interval = setInterval(updateCountdown, 1000)
+
     return () => clearInterval(interval)
-  }, [])
+  }, [currentPhase.endDate])
 
   return (
-    <section className="bg-gradient-to-r from-yellow-50 to-orange-50 py-16 border-b border-gray-200">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Next Price Increase</h2>
-        <div className="grid grid-cols-4 gap-4 max-w-2xl mx-auto mb-8">
-          <TimeUnit value={timeLeft.days} label="Days" />
-          <TimeUnit value={timeLeft.hours} label="Hours" />
-          <TimeUnit value={timeLeft.minutes} label="Minutes" />
-          <TimeUnit value={timeLeft.seconds} label="Seconds" />
+    <div className="text-center mb-8">
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        Current Rate: {currentPhase.rate.toLocaleString()} $ABC per ETH
+      </h2>
+      <p className="text-gray-600 mb-6">Price increases in:</p>
+      <div className="flex justify-center gap-4 mb-8">
+        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
+          <div className="text-3xl font-bold text-markee">{timeLeft.days}</div>
+          <div className="text-sm text-gray-600">Days</div>
         </div>
-        <div className="bg-white rounded-lg p-6 shadow-md max-w-2xl mx-auto">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <p className="text-sm text-gray-500">Current Price</p>
-              <p className="text-2xl font-bold text-green-600">50,000 tokens/ETH</p>
-            </div>
-            <div className="text-gray-400 text-2xl">→</div>
-            <div>
-              <p className="text-sm text-gray-500">Next Price</p>
-              <p className="text-2xl font-bold text-red-600">17,000 tokens/ETH</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">December 21, 2025</p>
+        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
+          <div className="text-3xl font-bold text-markee">{timeLeft.hours}</div>
+          <div className="text-sm text-gray-600">Hours</div>
+        </div>
+        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
+          <div className="text-3xl font-bold text-markee">{timeLeft.minutes}</div>
+          <div className="text-sm text-gray-600">Minutes</div>
+        </div>
+        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
+          <div className="text-3xl font-bold text-markee">{timeLeft.seconds}</div>
+          <div className="text-sm text-gray-600">Seconds</div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 
-function TimeUnit({ value, label }: { value: number; label: string }) {
+function PhaseVisualization() {
+  const currentPhaseIndex = getCurrentPhase()
+  const now = new Date()
+
   return (
-    <div className="bg-white rounded-lg p-4 shadow-md">
-      <div className="text-4xl font-bold text-blue-600">{value.toString().padStart(2, '0')}</div>
-      <div className="text-sm text-gray-500 mt-1">{label}</div>
+    <div className="max-w-5xl mx-auto">
+      <div className="bg-white rounded-xl shadow-lg p-8">
+        <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">Token Price Roadmap</h3>
+
+        {/* Progress Bar */}
+        <div className="relative mb-8">
+          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-markee via-markee-600 to-markee-700 transition-all duration-1000"
+              style={{ 
+                width: `${((currentPhaseIndex + 1) / PHASES.length) * 100}%` 
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Phase Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {PHASES.map((phase, index) => {
+            const isPast = now > phase.endDate
+            const isCurrent = index === currentPhaseIndex
+            const isFuture = index > currentPhaseIndex
+
+            return (
+              <div
+                key={phase.phase}
+                className={`relative rounded-lg p-4 border-2 transition-all ${
+                  isCurrent
+                    ? 'border-markee bg-markee-50 shadow-lg scale-105'
+                    : isPast
+                    ? 'border-gray-300 bg-gray-100 opacity-60'
+                    : 'border-gray-300 bg-white opacity-50'
+                }`}
+              >
+                {isCurrent && (
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <span className="bg-markee text-white text-xs font-bold px-3 py-1 rounded-full">
+                      ACTIVE
+                    </span>
+                  </div>
+                )}
+
+                <div className={`w-3 h-3 rounded-full mx-auto mb-2 ${phase.color}`} />
+
+                <div className="text-center">
+                  <div className={`text-sm font-semibold mb-1 ${
+                    isCurrent ? 'text-markee' : 'text-gray-600'
+                  }`}>
+                    {phase.label}
+                  </div>
+                  <div className={`text-2xl font-bold mb-1 ${
+                    isCurrent ? 'text-gray-900' : 'text-gray-500'
+                  }`}>
+                    {phase.rate.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-500">$ABC / ETH</div>
+                  <div className="text-xs text-gray-400 mt-2">
+                    {isPast ? 'Ended' : isFuture ? 'Upcoming' : 'Ends'} {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-6 text-center">
+          <Link 
+            href="/"
+            className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors inline-block"
+          >
+            Create Your Markee Now
+          </Link>
+          <p className="text-sm text-gray-500 mt-2">
+            Lock in the current rate before it increases
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -176,7 +307,7 @@ function MoneyFlowDiagrams() {
           onClick={() => setActiveTab('leaderboard')}
           className={`px-6 py-3 rounded-lg font-medium transition-colors ${
             activeTab === 'leaderboard' 
-              ? 'bg-blue-600 text-white' 
+              ? 'bg-markee text-white' 
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
@@ -186,7 +317,7 @@ function MoneyFlowDiagrams() {
           onClick={() => setActiveTab('website')}
           className={`px-6 py-3 rounded-lg font-medium transition-colors ${
             activeTab === 'website' 
-              ? 'bg-blue-600 text-white' 
+              ? 'bg-markee text-white' 
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
@@ -196,7 +327,7 @@ function MoneyFlowDiagrams() {
           onClick={() => setActiveTab('platform')}
           className={`px-6 py-3 rounded-lg font-medium transition-colors ${
             activeTab === 'platform' 
-              ? 'bg-blue-600 text-white' 
+              ? 'bg-markee text-white' 
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
@@ -217,7 +348,7 @@ function LeaderboardFlow() {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <div className="inline-block bg-blue-100 text-blue-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
+        <div className="inline-block bg-markee-100 text-markee-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
           Your Payment: 1 ETH
         </div>
       </div>
@@ -256,7 +387,7 @@ function WebsiteFlow() {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <div className="inline-block bg-blue-100 text-blue-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
+        <div className="inline-block bg-markee-100 text-markee-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
           User Payment: 1 ETH
         </div>
       </div>
@@ -275,7 +406,7 @@ function WebsiteFlow() {
         </div>
         <div className="text-center">
           <div className="text-2xl text-gray-400 mb-2">↘</div>
-          <div className="bg-blue-100 text-blue-800 px-6 py-4 rounded-lg mb-4">
+          <div className="bg-markee-100 text-markee-800 px-6 py-4 rounded-lg mb-4">
             <div className="font-bold text-xl mb-2">32%</div>
             <div className="text-sm">RevNet</div>
           </div>
@@ -299,7 +430,7 @@ function PlatformFlow() {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <div className="inline-block bg-blue-100 text-blue-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
+        <div className="inline-block bg-markee-100 text-markee-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
           User Payment: 1 ETH
         </div>
       </div>
@@ -319,7 +450,7 @@ function PlatformFlow() {
         </div>
         <div className="text-center">
           <div className="text-2xl text-gray-400 mb-2">↘</div>
-          <div className="bg-blue-100 text-blue-800 px-6 py-4 rounded-lg mb-4">
+          <div className="bg-markee-100 text-markee-800 px-6 py-4 rounded-lg mb-4">
             <div className="font-bold text-xl mb-2">32%</div>
             <div className="text-sm">RevNet</div>
           </div>
@@ -369,7 +500,7 @@ function FAQAccordion() {
         <div className="space-y-4">
           <p><strong>RevNets = 100% automated tokenized revenue</strong></p>
           <p>Built on Juicebox crowdfunding smart contracts, RevNets apply these concepts to revenue-generating digital cooperatives with preset terms for how revenue is shared between founders, investors, platform partners, and end users.</p>
-          <p className="text-sm text-gray-600">Learn more: <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">revnet.eth.sucks</a></p>
+          <p className="text-sm text-gray-600">Learn more: <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-markee hover:underline">revnet.eth.sucks</a></p>
         </div>
       )
     },
@@ -381,7 +512,7 @@ function FAQAccordion() {
           <p><strong>Initial Allocation:</strong> 50,000,000 tokens minted to Markee LLC at launch. This is the first and last issuance the LLC ever receives from the RevNet.</p>
           <p><strong>Reserve Rate:</strong> 38% distributed to the cooperative. Initially, all cooperative tokens go into a funding pool on Gardens governed by the co-op.</p>
           <p><strong>Governance:</strong> The cooperative's Board of Directors (elected by token holders) can adjust distribution settings.</p>
-          <p className="text-sm text-gray-600">View full terms: <a href="https://app.revnet.eth.sucks/v5:op:46/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">app.revnet.eth.sucks/v5:op:46/terms</a></p>
+          <p className="text-sm text-gray-600">View full terms: <a href="https://app.revnet.eth.sucks/v5:op:46/terms" target="_blank" rel="noopener noreferrer" className="text-markee hover:underline">app.revnet.eth.sucks/v5:op:46/terms</a></p>
         </div>
       )
     },
