@@ -94,16 +94,29 @@ export default function InfoPage() {
         </div>
       </section>
 
-      {/* Integration Partners - Social Proof */}
+      {/* Integration Partners - Coming Soon */}
       <section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Built With</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 items-center">
-            <PartnerLogo name="Gardens" />
-            <PartnerLogo name="Juicebox" />
-            <PartnerLogo name="RevNets" />
-            <PartnerLogo name="1Hive" />
-            <PartnerLogo name="Gnosis" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-8 items-center mb-8">
+            <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
+            <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
+            <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
+          </div>
+          <div className="text-center mt-8 bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
+            <h3 className="text-xl font-semibold text-gray-900 mb-3">Want Markee on your platform?</h3>
+            <p className="text-gray-600 mb-4">
+              Join our waitlist for platform integration and be among the first to monetize your digital spaces.
+            </p>
+            <a 
+              href="mailto:hello@markee.xyz?subject=Platform%20Integration%20Waitlist"
+              className="inline-block bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition-colors"
+            >
+              Join the Waitlist
+            </a>
+            <p className="text-sm text-gray-500 mt-3">
+              Email us at <a href="mailto:hello@markee.xyz" className="text-markee hover:underline">hello@markee.xyz</a>
+            </p>
           </div>
         </div>
       </section>
@@ -136,10 +149,10 @@ export default function InfoPage() {
       <section className="bg-markee py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to create your Markee?</h2>
-          <p className="text-markee-100 mb-8 text-lg">Join the leaderboard and become part of the cooperative</p>
+          <p className="text-white opacity-90 mb-8 text-lg">Join the leaderboard and become part of the cooperative</p>
           <Link 
             href="/"
-            className="inline-block bg-white text-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-50 transition-colors"
+            className="inline-block bg-white text-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-50 transition-colors"
           >
             Create Your Markee
           </Link>
@@ -149,10 +162,10 @@ export default function InfoPage() {
   )
 }
 
-function PartnerLogo({ name }: { name: string }) {
+function PartnerLogo({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 flex items-center justify-center h-24">
-      <span className="text-xl font-bold text-gray-700">{name}</span>
+    <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 flex items-center justify-center h-32">
+      <img src={src} alt={alt} className="max-h-20 max-w-full object-contain" />
     </div>
   )
 }
