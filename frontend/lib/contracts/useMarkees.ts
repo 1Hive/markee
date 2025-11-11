@@ -15,8 +15,8 @@ const MAX_BLOCK_RANGE = 10000n // Limit range to avoid RPC errors
 // Deployment blocks for each chain
 const DEPLOYMENT_BLOCKS = {
   [optimism.id]: 143559000n,
-  [base.id]: 0n,
-  [arbitrum.id]: 0n,
+  [base.id]: 38048058n,
+  [arbitrum.id]: 399214464n,
 } as const
 
 interface CacheData {
