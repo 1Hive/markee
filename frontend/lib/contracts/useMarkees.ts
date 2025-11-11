@@ -10,12 +10,13 @@ import type { Markee } from '@/types'
 const CHAINS = [base, optimism, arbitrum]
 const CACHE_KEY = 'markees_cache'
 const CACHE_DURATION = 1000 * 60 * 5 // 5 minutes
+const MAX_BLOCK_RANGE = 10000n // Limit range to avoid RPC errors
 
-// Deployment blocks for each chain to avoid querying from 'earliest'
+// Deployment blocks for each chain
 const DEPLOYMENT_BLOCKS = {
-  [optimism.id]: 143559000n, // Update with actual deployment block
-  [base.id]: 0n, // Update when deployed
-  [arbitrum.id]: 0n, // Update when deployed
+  [optimism.id]: 143559000n,
+  [base.id]: 0n,
+  [arbitrum.id]: 0n,
 } as const
 
 interface CacheData {
@@ -30,7 +31,6 @@ export function useMarkees() {
   const [error, setError] = useState<Error | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  // Get public clients for all chains
   const opClient = usePublicClient({ chainId: optimism.id })
   const baseClient = usePublicClient({ chainId: base.id })
   const arbClient = usePublicClient({ chainId: arbitrum.id })
@@ -45,7 +45,6 @@ export function useMarkees() {
 
       const allMarkees: Markee[] = []
 
-      // Fetch from each chain
       for (const chain of CHAINS) {
         const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
         if (!strategyAddress) continue
@@ -58,9 +57,15 @@ export function useMarkees() {
         if (!client) continue
 
         try {
+          const latestBlock = await client.getBlockNumber()
           const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id as keyof typeof DEPLOYMENT_BLOCKS]
           
-          // Get MarkeeCreated events from deployment block onwards
+          // Use deployment block if available, otherwise use a safe recent range
+          const fromBlock = deploymentBlock || (latestBlock > MAX_BLOCK_RANGE ? latestBlock - MAX_BLOCK_RANGE : 0n)
+          
+          console.log(`Fetching ${chain.name} events from block ${fromBlock} to ${latestBlock}`)
+          
+          // Get MarkeeCreated events with name field (matches current InvestorStrategy.sol)
           const logs = await client.getLogs({
             address: strategyAddress,
             event: {
@@ -74,11 +79,13 @@ export function useMarkees() {
                 { type: 'uint256', name: 'amount' }
               ]
             },
-            fromBlock: deploymentBlock || 'earliest',
-            toBlock: 'latest'
+            fromBlock: fromBlock,
+            toBlock: latestBlock
           })
 
-          // For each Markee, fetch current data
+          console.log(`Found ${logs.length} Markees on ${chain.name}`)
+
+          // Fetch current data for each Markee
           for (const log of logs) {
             const { markeeAddress, owner } = log.args as any
             
@@ -127,6 +134,7 @@ export function useMarkees() {
         return 0
       })
 
+      console.log(`Total Markees loaded: ${allMarkees.length}`)
       setMarkees(allMarkees)
       setError(null)
       
@@ -151,7 +159,7 @@ export function useMarkees() {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [opClient, baseClient, arbClient]) // Removed markees.length - this was causing infinite loop!
+  }, [opClient, baseClient, arbClient])
 
   // Load from cache on mount
   useEffect(() => {
@@ -162,7 +170,7 @@ export function useMarkees() {
         const age = Date.now() - timestamp
         
         if (age < CACHE_DURATION) {
-          // Use cached data
+          console.log('Using cached markees data')
           setMarkees(cachedMarkees)
           setLastUpdated(new Date(timestamp))
           setIsLoading(false)
@@ -173,11 +181,9 @@ export function useMarkees() {
       }
     }
     
-    // No valid cache, fetch fresh data
     fetchMarkees()
-  }, []) // Only run once on mount
+  }, [fetchMarkees])
 
-  // Manual refetch function
   const refetch = useCallback(() => {
     fetchMarkees(true)
   }, [fetchMarkees])
