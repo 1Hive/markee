@@ -138,8 +138,8 @@ export default function Home() {
               Learn More
             </Link>
           </div>
-          
-          <div className="mb-6 text-left inline-block">
+         
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <p className="text-lg text-gray-700 mb-6">Buy a Message today and get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong></p>
           </div>
 
