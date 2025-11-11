@@ -118,6 +118,14 @@ export default function Home() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-8">
           <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard</h3>
+            <div className="space-y-4 text-lg text-gray-700">
+              <p className="flex items-start gap-3">
+              We are in <strong>Phase 0 fundraising</strong> with our first integration partner builds scheduled to go live in <strong>Q1 2026.</strong>
+              </p>
+              <p className="flex items-start gap-3">
+              Join the Markee Cooperative by buying a Markee 🪧 You'll get Phase 0 priced MARKEE tokens, a spot on the leaderboard, and a stake in the Cooperative's RevNet where all future revenue flows.
+              </p>
+    
           <div className="flex gap-4 justify-center">
             <button 
               onClick={handleCreateNew}
