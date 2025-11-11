@@ -114,33 +114,31 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Invitation Section */}
-      <section className="bg-white py-12 border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
-          
-          <p className="text-lg text-gray-700 mb-6">
-            Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026. Buy a Message to get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.
-          </p>
+     {/* Invitation Section */}
+<section className="bg-white py-12 border-b border-gray-200">
+  <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+    <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
+    
+    <p className="text-lg text-gray-700 mb-6">
+      Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026. Buy a Message to get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong>
+    </p>
 
-        </div>
-          
-          <div className="flex gap-4 justify-center">
-            <button 
-              onClick={handleCreateNew}
-              className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
-            >
-              Buy a Message
-            </button>
-            <Link 
-              href="/info"
-              className="bg-white text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-green-50 transition-colors"
-            >
-              Learn More
-            </Link>
-          </div>
-
-      </section>
+    <div className="flex gap-4 justify-center">
+      <button 
+        onClick={handleCreateNew}
+        className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
+      >
+        Buy a Message
+      </button>
+      <Link 
+        href="/info"
+        className="bg-white text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-green-50 transition-colors"
+      >
+        Learn More
+      </Link>
+    </div>
+  </div>
+</section>
 
       {/* Leaderboard */}
       <section className="bg-gradient-to-br from-markee-50 to-green-50 py-16">
