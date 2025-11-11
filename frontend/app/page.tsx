@@ -114,35 +114,30 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Leaderboard */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-8">
-          <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard</h3>
+      {/* Invitation Section */}
+      <section className="bg-white py-16 border-b border-gray-200">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited to Join 🪧</h2>
           
-          {/* Subheader */}
-          <div className="mb-8 max-w-2xl mx-auto">
-            <p className="text-lg text-gray-700 mb-4">
-              Join our Cooperative by buying a Markee 🪧
-            </p>
-            <p className="text-md text-gray-600 mb-3">
-              We're in <strong>Phase 0 fundraising</strong> with our first integration builds scheduled to go live in Q1 2026.
-            </p>
-            <div className="text-left inline-block">
-              <p className="text-md text-gray-700 mb-2">A Markee gets you:</p>
-              <ul className="list-disc list-inside text-gray-600 space-y-1">
-                <li>Phase 0 MARKEE tokens</li>
-                <li>a spot with your own message on the leaderboard</li>
-                <li>a stake in the Cooperative's RevNet where all future revenue flows</li>
-              </ul>
-            </div>
+          <p className="text-lg text-gray-700 mb-6">
+            Markee is in Phase 0 fundraising with our first integration builds scheduled to go live in Q1 2026.
+          </p>
+          
+          <div className="mb-8 text-left inline-block">
+            <p className="text-lg text-gray-800 font-semibold mb-3">Buy a Message today and get:</p>
+            <ul className="list-disc list-inside text-gray-700 space-y-2 text-lg">
+              <li>Phase 0 MARKEE tokens</li>
+              <li>a spot on the leaderboard</li>
+              <li>a stake in the Cooperative's RevNet, where all future revenue flows</li>
+            </ul>
           </div>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-4 justify-center mt-8">
             <button 
               onClick={handleCreateNew}
               className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
             >
-              Buy a Markee
+              Buy a Message
             </button>
             <Link 
               href="/info"
@@ -151,6 +146,13 @@ export default function Home() {
               Learn More
             </Link>
           </div>
+        </div>
+      </section>
+
+      {/* Leaderboard */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="text-center mb-8">
+          <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard</h3>
         </div>
 
         <div className="flex items-center justify-between mb-8">
