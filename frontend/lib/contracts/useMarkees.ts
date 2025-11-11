@@ -61,29 +61,48 @@ export function useMarkees() {
           const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id as keyof typeof DEPLOYMENT_BLOCKS]
           
           // Use deployment block if available, otherwise use a safe recent range
-          const fromBlock = deploymentBlock || (latestBlock > MAX_BLOCK_RANGE ? latestBlock - MAX_BLOCK_RANGE : 0n)
+          const startBlock = deploymentBlock || (latestBlock > MAX_BLOCK_RANGE ? latestBlock - MAX_BLOCK_RANGE : 0n)
           
-          console.log(`Fetching ${chain.name} events from block ${fromBlock} to ${latestBlock}`)
+          console.log(`Fetching ${chain.name} events from block ${startBlock} to ${latestBlock}`)
           
-          // Get MarkeeCreated events with name field (matches current InvestorStrategy.sol)
-          const logs = await client.getLogs({
-            address: strategyAddress,
-            event: {
-              type: 'event',
-              name: 'MarkeeCreated',
-              inputs: [
-                { type: 'address', name: 'markeeAddress', indexed: true },
-                { type: 'address', name: 'owner', indexed: true },
-                { type: 'string', name: 'message' },
-                { type: 'string', name: 'name' },
-                { type: 'uint256', name: 'amount' }
-              ]
-            },
-            fromBlock: fromBlock,
-            toBlock: latestBlock
-          })
+          // Chunk requests to avoid "block range too large" errors
+          const allLogs: any[] = []
+          let currentFrom = startBlock
+          
+          while (currentFrom <= latestBlock) {
+            const currentTo = currentFrom + MAX_BLOCK_RANGE > latestBlock 
+              ? latestBlock 
+              : currentFrom + MAX_BLOCK_RANGE
+            
+            try {
+              const logs = await client.getLogs({
+                address: strategyAddress,
+                event: {
+                  type: 'event',
+                  name: 'MarkeeCreated',
+                  inputs: [
+                    { type: 'address', name: 'markeeAddress', indexed: true },
+                    { type: 'address', name: 'owner', indexed: true },
+                    { type: 'string', name: 'message' },
+                    { type: 'string', name: 'name' },
+                    { type: 'uint256', name: 'amount' }
+                  ]
+                },
+                fromBlock: currentFrom,
+                toBlock: currentTo
+              })
+              
+              allLogs.push(...logs)
+              console.log(`  Fetched ${logs.length} events from ${currentFrom} to ${currentTo}`)
+            } catch (chunkErr) {
+              console.error(`Error fetching chunk ${currentFrom}-${currentTo}:`, chunkErr)
+            }
+            
+            currentFrom = currentTo + 1n
+          }
 
-          console.log(`Found ${logs.length} Markees on ${chain.name}`)
+          console.log(`Found ${allLogs.length} total Markees on ${chain.name}`)
+          const logs = allLogs
 
           // Fetch current data for each Markee
           for (const log of logs) {
