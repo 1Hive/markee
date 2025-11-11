@@ -118,14 +118,25 @@ export default function Home() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-8">
           <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard</h3>
-            <div className="space-y-4 text-lg text-gray-700">
-              <p className="flex items-start gap-3">
-              We are in <strong>Phase 0 fundraising</strong> with our first integration partner builds scheduled to go live in <strong>Q1 2026.</strong>
-              </p>
-              <p className="flex items-start gap-3">
-              Join the Markee Cooperative by buying a Markee 🪧 You'll get Phase 0 priced MARKEE tokens, a spot on the leaderboard, and a stake in the Cooperative's RevNet where all future revenue flows.
-              </p>
-    
+          
+          {/* Subheader */}
+          <div className="mb-8 max-w-2xl mx-auto">
+            <p className="text-lg text-gray-700 mb-4">
+              Join our Cooperative by buying a Markee 🪧
+            </p>
+            <p className="text-md text-gray-600 mb-3">
+              We're in <strong>Phase 0 fundraising</strong> with our first integration builds scheduled to go live in Q1 2026.
+            </p>
+            <div className="text-left inline-block">
+              <p className="text-md text-gray-700 mb-2">A Markee gets you:</p>
+              <ul className="list-disc list-inside text-gray-600 space-y-1">
+                <li>Phase 0 MARKEE tokens</li>
+                <li>a spot with your own message on the leaderboard</li>
+                <li>a stake in the Cooperative's RevNet where all future revenue flows</li>
+              </ul>
+            </div>
+          </div>
+
           <div className="flex gap-4 justify-center">
             <button 
               onClick={handleCreateNew}
