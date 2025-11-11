@@ -127,7 +127,7 @@ export default function Home() {
             </button>
             <Link 
               href="/info"
-              className="bg-white text-blue-600 border-2 border-blue-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-colors"
+              className="bg-white text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-green-50 transition-colors"
             >
               Learn More
             </Link>
