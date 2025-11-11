@@ -120,10 +120,10 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
             <>
               {/* Current Message */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-mono text-gray-700 mb-2">
                   Current Message
                 </label>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200" font-mono>
                   <p className="text-gray-900">{fixedMarkee.message || 'Loading...'}</p>
                 </div>
               </div>
