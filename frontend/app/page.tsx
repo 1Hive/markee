@@ -122,7 +122,7 @@ export default function Home() {
           <p className="text-lg text-gray-700 mb-6">
             Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026.
           </p>
-            </div>
+        </div>
           
           <div className="flex gap-4 justify-center">
             <button 
@@ -140,7 +140,7 @@ export default function Home() {
           </div>
          
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <p className="text-lg text-gray-700 mb-6">Buy a Message today and get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong></p>
+            <p className="text-lg text-gray-700 mb-6">A Message gets you <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong></p>
           </div>
 
       </section>
@@ -150,6 +150,10 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard</h3>
+
+             <p className="text-lg text-gray-700 mb-6">
+              Top MARKEE holders in the Cooperative by total funds added.
+            </p>
           </div>
 
           <div className="flex items-center justify-between mb-8">
