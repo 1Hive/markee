@@ -164,7 +164,7 @@ export default function InfoPage() {
 
 function PartnerLogo({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 flex items-center justify-center h-32">
+    <div className="flex items-center justify-center h-32 p-6">
       <img src={src} alt={alt} className="max-h-20 max-w-full object-contain" />
     </div>
   )
