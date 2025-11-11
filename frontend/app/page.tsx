@@ -115,7 +115,7 @@ export default function Home() {
       </section>
 
       {/* Invitation Section */}
-      <section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
+      <section className="bg-white py-12 border-b border-gray-200">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
           
@@ -145,7 +145,7 @@ export default function Home() {
       </section>
 
       {/* Leaderboard */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 bg-white py-16 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-markee-50 to-green-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12  py-16">
         <div className="text-center mb-8">
           <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard</h3>
         </div>
