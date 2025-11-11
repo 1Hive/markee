@@ -101,7 +101,7 @@ export default function Home() {
                   onClick={() => handleFixedMarkeeClick(fixedMarkee)}
                   className="bg-white rounded-lg shadow-md p-6 text-center border-2 border-markee-200 hover:border-markee-400 hover:shadow-lg transition-all cursor-pointer group relative min-h-[140px] flex items-center justify-center"
                 >
-                  <div className="text-xl font-bold text-gray-900 line-clamp-2 group-hover:text-markee transition-colors message-text">
+                  <div className="text-xl font-mono text-gray-900 line-clamp-2 group-hover:text-markee transition-colors message-text">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
                   <div className="absolute bottom-4 left-0 right-0 text-sm text-markee opacity-0 group-hover:opacity-100 transition-opacity">
