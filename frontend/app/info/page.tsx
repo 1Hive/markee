@@ -84,7 +84,7 @@ export default function InfoPage() {
             </p>
             <p className="flex items-start gap-3">
               <span className="text-markee font-bold">•</span>
-              <span>It's owned by the open source version of organizational designs: <strong>a Digital Cooperative.</strong></span>
+              <span>It's owned by the open source version of an organization: <strong>a Digital Cooperative.</strong></span>
             </p>
             <p className="flex items-start gap-3">
               <span className="text-markee font-bold">•</span>
@@ -199,7 +199,7 @@ function CountdownTimer() {
   return (
     <div className="text-center mb-8">
       <h2 className="text-2xl font-bold text-gray-900 mb-2">
-        Current Rate: {currentPhase.rate.toLocaleString()} $ABC per ETH
+        Join the Cooperative by getting MARKEE tokens
       </h2>
       <p className="text-gray-600 mb-6">Price increases in:</p>
       <div className="flex justify-center gap-4 mb-8">
@@ -231,7 +231,7 @@ function PhaseVisualization() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="bg-white rounded-xl shadow-lg p-8">
-        <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">Token Price Roadmap</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">MARKEE Token Stages</h3>
 
         {/* Progress Bar */}
         <div className="relative mb-8">
@@ -284,7 +284,7 @@ function PhaseVisualization() {
                   }`}>
                     {phase.rate.toLocaleString()}
                   </div>
-                  <div className="text-xs text-gray-500">$ABC / ETH</div>
+                  <div className="text-xs text-gray-500">MARKEE / ETH</div>
                   <div className="text-xs text-gray-400 mt-2">
                     {isPast ? 'Ended' : isFuture ? 'Upcoming' : 'Ends'} {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
@@ -299,10 +299,10 @@ function PhaseVisualization() {
             href="/"
             className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors inline-block"
           >
-            Create Your Markee Now
+            Set a Message to Join
           </Link>
           <p className="text-sm text-gray-500 mt-2">
-            Lock in the current rate before it increases
+            Create a message to join the cooperative and get MARKEE tokens.
           </p>
         </div>
       </div>
