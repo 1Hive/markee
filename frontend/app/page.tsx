@@ -117,19 +117,14 @@ export default function Home() {
       {/* Invitation Section */}
       <section className="bg-white py-16 border-b border-gray-200">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited to Join 🪧</h2>
+          <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
           
           <p className="text-lg text-gray-700 mb-6">
-            Markee is in Phase 0 fundraising with our first integration builds scheduled to go live in Q1 2026.
+            Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026.
           </p>
           
           <div className="mb-8 text-left inline-block">
-            <p className="text-lg text-gray-800 font-semibold mb-3">Buy a Message today and get:</p>
-            <ul className="list-disc list-inside text-gray-700 space-y-2 text-lg">
-              <li>Phase 0 MARKEE tokens</li>
-              <li>a spot on the leaderboard</li>
-              <li>a stake in the Cooperative's RevNet, where all future revenue flows</li>
-            </ul>
+            <p className="text-lg text-gray-800 font-semibold mb-3">Buy a Message today and get Phase 0 MARKEE tokens, a spot on the Leaderboard, and a stake in the Cooperative's RevNet where all future revenue flows.</p>
           </div>
 
           <div className="flex gap-4 justify-center mt-8">
