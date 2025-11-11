@@ -131,7 +131,7 @@ export default function Home() {
               onClick={handleCreateNew}
               className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
             >
-              Create a Markee
+              Buy a Markee
             </button>
             <Link 
               href="/info"
