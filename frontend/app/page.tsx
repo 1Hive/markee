@@ -124,7 +124,7 @@ export default function Home() {
           </p>
           
           <div className="mb-8 text-left inline-block">
-            <p className="text-lg text-gray-800 font-semibold mb-3">Buy a Message today and get Phase 0 MARKEE tokens, a spot on the Leaderboard, and a stake in the Cooperative's RevNet where all future revenue flows.</p>
+            <p className="text-lg text-gray-700 mb-6">Buy a Message today and get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong></p>
           </div>
 
           <div className="flex gap-4 justify-center mt-8">
