@@ -120,7 +120,7 @@ export default function Home() {
     <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
     
     <p className="text-lg text-gray-700 mb-6">
-      Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026. Buy a Message to get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong>
+      Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026. Buy a Message to get <strong>MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong>
     </p>
 
     <div className="flex gap-4 justify-center">
