@@ -104,9 +104,9 @@ export default function InfoPage() {
             <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
           </div>
           <div className="text-center mt-8 bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
-            <h3 className="text-xl font-semibold text-gray-900 mb-3">Want Markee on your platform?</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-3">Want a Markee on your site?</h3>
             <p className="text-gray-600 mb-4">
-              Join our waitlist for platform integration and be among the first to monetize your digital spaces.
+              Join the waitlist and be among the first to get a Markee for your digital space.
             </p>
             <a 
               href="mailto:hello@markee.xyz?subject=Platform%20Integration%20Waitlist"
@@ -149,12 +149,12 @@ export default function InfoPage() {
       <section className="bg-markee py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to create your Markee?</h2>
-          <p className="text-white opacity-90 mb-8 text-lg">Join the leaderboard and become part of the cooperative</p>
+          <p className="text-white opacity-90 mb-8 text-lg">Set a message and become part of our cooperative</p>
           <Link 
             href="/"
             className="inline-block bg-white text-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-50 transition-colors"
           >
-            Create Your Markee
+            Create a Markee
           </Link>
         </div>
       </section>
@@ -302,7 +302,7 @@ function PhaseVisualization() {
             Set a Message to Join
           </Link>
           <p className="text-sm text-gray-500 mt-2">
-            Create a message to join the cooperative and get MARKEE tokens.
+            Stages are preset in the Cooperative's RevNet.
           </p>
         </div>
       </div>
@@ -324,7 +324,7 @@ function MoneyFlowDiagrams() {
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
-          Leaderboard (Now)
+          Leaderboard Markee
         </button>
         <button
           onClick={() => setActiveTab('website')}
@@ -334,7 +334,7 @@ function MoneyFlowDiagrams() {
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
-          Website Plugin (Q1 2026)
+          Website Integrated Markees
         </button>
         <button
           onClick={() => setActiveTab('platform')}
@@ -344,7 +344,7 @@ function MoneyFlowDiagrams() {
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
-          Platform Integration (Q2 2026)
+          Platform Integrated Markees
         </button>
       </div>
 
