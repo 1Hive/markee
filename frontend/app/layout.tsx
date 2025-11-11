@@ -10,8 +10,8 @@ const barlow = Barlow({
 })
 
 export const metadata: Metadata = {
-  title: 'Markee - Community Fundraising',
-  description: 'A community-first digital marketing platform',
+  title: 'Markee - Digital Real Estate',
+  description: 'Markee is a sign anyone can pay to edit that funds websites, daos, communities, open source, and more',
 }
 
 export default function RootLayout({
