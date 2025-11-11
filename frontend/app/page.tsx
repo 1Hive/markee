@@ -122,11 +122,8 @@ export default function Home() {
           <p className="text-lg text-gray-700 mb-6">
             Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026.
           </p>
+            </div>
           
-          <div className="mb-6 text-left inline-block">
-            <p className="text-lg text-gray-700 mb-6">Buy a Message today and get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong></p>
-          </div>
-
           <div className="flex gap-4 justify-center">
             <button 
               onClick={handleCreateNew}
@@ -141,7 +138,11 @@ export default function Home() {
               Learn More
             </Link>
           </div>
-        </div>
+          
+          <div className="mb-6 text-left inline-block">
+            <p className="text-lg text-gray-700 mb-6">Buy a Message today and get <strong>Phase 0 MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong></p>
+          </div>
+
       </section>
 
       {/* Leaderboard */}
