@@ -348,7 +348,7 @@ export default function Home() {
             </div>
             
             <div className="text-sm text-gray-400">
-              © 2025 Markee. All rights reserved.
+              © 2025 Markee
             </div>
           </div>
         </div>
