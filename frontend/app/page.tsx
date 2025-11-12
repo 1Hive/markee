@@ -132,7 +132,7 @@ export default function Home() {
       </button>
       <Link 
         href="/info"
-        className="bg-white text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-green-50 transition-colors"
+        className="bg-green-50 text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-white transition-colors"
       >
         Learn More
       </Link>
@@ -185,7 +185,7 @@ export default function Home() {
 
           {!isLoading && !error && markees.length === 0 && (
             <div className="text-center py-12">
-              <div className="bg-gray-50 rounded-lg p-8 max-w-lg mx-auto">
+              <div className="bg-markee-50 rounded-lg p-8 max-w-lg mx-auto">
                 <div className="text-6xl mb-4">🪧</div>
                 <p className="text-gray-600 text-lg">No Markees yet. Be the first!</p>
               </div>
@@ -281,7 +281,7 @@ export default function Home() {
             </button>
             <Link 
               href="/info"
-              className="bg-white text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-green-50 transition-colors"
+              className="bg-green-50 text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-white transition-colors"
             >
               Learn More
             </Link>
