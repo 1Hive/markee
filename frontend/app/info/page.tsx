@@ -154,7 +154,7 @@ export default function InfoPage() {
             href="/"
             className="inline-block bg-white text-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-50 transition-colors"
           >
-            Create a Markee
+            Buy a Message
           </Link>
         </div>
       </section>
