@@ -10,14 +10,7 @@ import type { Markee } from '@/types'
 const CHAINS = [base, optimism, arbitrum]
 const CACHE_KEY = 'markees_cache'
 const CACHE_DURATION = 1000 * 60 * 5 // 5 minutes
-const MAX_BLOCK_RANGE = 10000n // Limit range to avoid RPC errors
-
-// Deployment blocks for each chain
-const DEPLOYMENT_BLOCKS = {
-  [optimism.id]: 143559000n,
-  [base.id]: 38048058n,
-  [arbitrum.id]: 399214464n,
-} as const
+const MAX_BLOCK_RANGE = 9n // Alchemy free tier allows max 10 blocks per request
 
 interface CacheData {
   markees: Markee[]
@@ -59,10 +52,14 @@ export function useMarkees() {
 
         try {
           const latestBlock = await client.getBlockNumber()
-          const deploymentBlock = DEPLOYMENT_BLOCKS[chain.id as keyof typeof DEPLOYMENT_BLOCKS]
           
-          // Use deployment block if available, otherwise use a safe recent range
-          const startBlock = deploymentBlock || (latestBlock > MAX_BLOCK_RANGE ? latestBlock - MAX_BLOCK_RANGE : 0n)
+          // Only scan last 100,000 blocks to avoid rate limits
+          // Adjust this number based on your needs:
+          // - 50,000 blocks = faster load, might miss older markees
+          // - 100,000 blocks = good balance (~1-2 min load time)
+          // - 500,000 blocks = comprehensive but slow (~5-10 min load time)
+          const blocksToScan = 100000n
+          const startBlock = latestBlock > blocksToScan ? latestBlock - blocksToScan : 0n
           
           console.log(`Fetching ${chain.name} events from block ${startBlock} to ${latestBlock}`)
           
@@ -179,7 +176,7 @@ export function useMarkees() {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [opClient, baseClient, arbClient, markees.length]) // Keep markees.length for showFetchingIndicator logic
+  }, [opClient, baseClient, arbClient, markees.length])
 
   // Load from cache on mount, then fetch fresh data
   useEffect(() => {
@@ -206,7 +203,7 @@ export function useMarkees() {
     }
     
     fetchMarkees(false)
-  }, []) // Empty deps - only run once on mount
+  }, [])
 
   const refetch = useCallback(() => {
     fetchMarkees(true)
