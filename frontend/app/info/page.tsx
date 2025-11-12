@@ -80,15 +80,15 @@ export default function InfoPage() {
           <div className="space-y-4 text-lg text-gray-700">
             <p className="flex items-start gap-3">
               <span className="text-markee font-bold">•</span>
-              <span>Markee is open source digital marketing: <strong>a sign anyone can pay to edit.</strong></span>
+              <span>Markee is open source marketing: <strong>a message anyone can pay to edit.</strong></span>
             </p>
             <p className="flex items-start gap-3">
               <span className="text-markee font-bold">•</span>
-              <span>It's owned by the open source version of an organization: <strong>a Digital Cooperative.</strong></span>
+              <span>It's owned by an open source organization: <strong>a Digital Cooperative.</strong></span>
             </p>
             <p className="flex items-start gap-3">
               <span className="text-markee font-bold">•</span>
-              <span>And earns money through the open source version of revenue generation: <strong>RevNets on Ethereum.</strong></span>
+              <span>And earns money through open source revenue generation: <strong>RevNets on Ethereum.</strong></span>
             </p>
           </div>
         </div>
