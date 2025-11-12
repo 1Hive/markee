@@ -646,6 +646,33 @@ function FAQAccordion() {
       )
     }
   ]
+  
+  return (
+    <div className="space-y-4">
+      {faqs.map((faq, index) => (
+        <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setOpenIndex(openIndex === index ? null : index)}
+            className="w-full px-6 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors"
+          >
+            <span className="font-semibold text-gray-900 text-left">{faq.question}</span>
+            <ChevronDown 
+              size={20} 
+              className={`text-gray-500 transition-transform flex-shrink-0 ml-4 ${
+                openIndex === index ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+          {openIndex === index && (
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 text-gray-700">
+              {faq.answer}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-8">
@@ -711,31 +738,3 @@ function FAQAccordion() {
           </div>
         </div>
       </footer>
-
-  
-  return (
-    <div className="space-y-4">
-      {faqs.map((faq, index) => (
-        <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <button
-            onClick={() => setOpenIndex(openIndex === index ? null : index)}
-            className="w-full px-6 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors"
-          >
-            <span className="font-semibold text-gray-900 text-left">{faq.question}</span>
-            <ChevronDown 
-              size={20} 
-              className={`text-gray-500 transition-transform flex-shrink-0 ml-4 ${
-                openIndex === index ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
-          {openIndex === index && (
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 text-gray-700">
-              {faq.answer}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
