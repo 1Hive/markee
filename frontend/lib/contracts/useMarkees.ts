@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { usePublicClient } from 'wagmi'
 import { base, optimism, arbitrum } from 'wagmi/chains'
 import { InvestorStrategyABI, MarkeeABI } from './abis'
@@ -30,6 +30,7 @@ export function useMarkees() {
   const [isFetchingFresh, setIsFetchingFresh] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const hasFetchedRef = useRef(false)
 
   const opClient = usePublicClient({ chainId: optimism.id })
   const baseClient = usePublicClient({ chainId: base.id })
@@ -178,10 +179,14 @@ export function useMarkees() {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [opClient, baseClient, arbClient])
+  }, [opClient, baseClient, arbClient, markees.length]) // Keep markees.length for showFetchingIndicator logic
 
-  // Load from cache on mount
+  // Load from cache on mount, then fetch fresh data
   useEffect(() => {
+    // Only run once
+    if (hasFetchedRef.current) return
+    hasFetchedRef.current = true
+
     const cached = localStorage.getItem(CACHE_KEY)
     if (cached) {
       try {
@@ -200,8 +205,8 @@ export function useMarkees() {
       }
     }
     
-    fetchMarkees()
-  }, [fetchMarkees])
+    fetchMarkees(false)
+  }, []) // Empty deps - only run once on mount
 
   const refetch = useCallback(() => {
     fetchMarkees(true)
