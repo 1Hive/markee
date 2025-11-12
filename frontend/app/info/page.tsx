@@ -567,7 +567,7 @@ function FAQAccordion() {
               <li>68% of RevNet tokens → Buyer</li>
               <li>32% of RevNet tokens → Cooperative</li>
             </ul>
-            <p className="text-sm text-gray-600 mt-2">This is direct RevNet investment - the only way to buy in during angel phase.</p>
+            <p className="text-sm text-gray-600 mt-2">This is direct RevNet investment - the only way to join during phase 0.</p>
           </div>
           <div>
             <p className="font-semibold">2. Website Plugin Markees (Q1 2026)</p>
@@ -596,7 +596,7 @@ function FAQAccordion() {
       answer: (
         <div className="space-y-4">
           <div>
-            <p className="font-semibold">Q4 2025 - Angel Fundraising Phase</p>
+            <p className="font-semibold">Q4 2025 - Phase 0 Fundraising</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>RevNet opens at lowest price (50,000 tokens/ETH)</li>
               <li>Leaderboard goes live on Optimism</li>
