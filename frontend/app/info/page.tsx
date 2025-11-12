@@ -179,7 +179,7 @@ export default function InfoPage() {
               
               {/* Discord */}
               <a 
-                href="https://discord.gg/markee" 
+                href="https://discord.gg/UhhRDzwwkM" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="hover:text-markee transition-colors"
@@ -192,7 +192,7 @@ export default function InfoPage() {
               
               {/* Telegram */}
               <a 
-                href="https://t.me/markee_xyz" 
+                href="https://t.me/+pRiD0TURr5o5ZmUx" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="hover:text-markee transition-colors"
