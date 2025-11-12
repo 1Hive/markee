@@ -414,137 +414,33 @@ function MoneyFlowDiagrams() {
       </div>
 
       <div className="bg-white rounded-lg p-8 shadow-md border border-gray-200">
-        {activeTab === 'leaderboard' && <LeaderboardFlow />}
-        {activeTab === 'website' && <WebsiteFlow />}
-        {activeTab === 'platform' && <PlatformFlow />}
-      </div>
-    </div>
-  )
-}
-
-function LeaderboardFlow() {
-  return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <div className="inline-block bg-markee-100 text-markee-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
-          Your Payment: 1 ETH
-        </div>
-      </div>
-      
-      <div className="flex justify-center">
-        <div className="text-4xl text-gray-400">↓</div>
-      </div>
-
-      <div className="text-center">
-        <div className="inline-block bg-green-100 text-green-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
-          100% to RevNet
-        </div>
-      </div>
-
-      <div className="flex justify-center gap-12">
-        <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-2">↙</div>
-          <div className="bg-purple-100 text-purple-800 px-6 py-4 rounded-lg">
-            <div className="font-bold text-xl mb-2">68%</div>
-            <div className="text-sm">You receive tokens</div>
+        {activeTab === 'leaderboard' && (
+          <div className="flex justify-center">
+            <img 
+              src="/leaderboard-funding.png" 
+              alt="Leaderboard Markee Funding Flow" 
+              className="max-w-full h-auto"
+            />
           </div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-2">↘</div>
-          <div className="bg-orange-100 text-orange-800 px-6 py-4 rounded-lg">
-            <div className="font-bold text-xl mb-2">32%</div>
-            <div className="text-sm">Cooperative receives tokens</div>
+        )}
+        {activeTab === 'website' && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="text-6xl mb-4">🏗️</div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Coming Soon</h3>
+            <p className="text-gray-600 text-center max-w-md">
+              Website integrated Markees launching Q1 2026
+            </p>
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function WebsiteFlow() {
-  return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <div className="inline-block bg-markee-100 text-markee-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
-          User Payment: 1 ETH
-        </div>
-      </div>
-      
-      <div className="flex justify-center">
-        <div className="text-4xl text-gray-400">↓</div>
-      </div>
-
-      <div className="flex justify-center gap-12">
-        <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-2">↙</div>
-          <div className="bg-green-100 text-green-800 px-6 py-4 rounded-lg">
-            <div className="font-bold text-xl mb-2">68%</div>
-            <div className="text-sm">Website Owner</div>
+        )}
+        {activeTab === 'platform' && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="text-6xl mb-4">🏗️</div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Coming Soon</h3>
+            <p className="text-gray-600 text-center max-w-md">
+              Platform integrated Markees launching Q2 2026
+            </p>
           </div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-2">↘</div>
-          <div className="bg-markee-100 text-markee-800 px-6 py-4 rounded-lg mb-4">
-            <div className="font-bold text-xl mb-2">32%</div>
-            <div className="text-sm">RevNet</div>
-          </div>
-          <div className="flex gap-6">
-            <div className="bg-purple-100 text-purple-800 px-4 py-2 rounded text-sm">
-              <div className="font-bold">68% tokens</div>
-              <div>Buyer</div>
-            </div>
-            <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded text-sm">
-              <div className="font-bold">32% tokens</div>
-              <div>Cooperative</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PlatformFlow() {
-  return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <div className="inline-block bg-markee-100 text-markee-800 px-6 py-3 rounded-lg font-semibold text-lg mb-4">
-          User Payment: 1 ETH
-        </div>
-      </div>
-      
-      <div className="flex justify-center">
-        <div className="text-4xl text-gray-400">↓</div>
-      </div>
-
-      <div className="flex justify-center gap-12">
-        <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-2">↙</div>
-          <div className="bg-green-100 text-green-800 px-6 py-4 rounded-lg">
-            <div className="font-bold text-xl mb-2">68%</div>
-            <div className="text-sm">Community</div>
-            <div className="text-xs text-gray-600">(set by platform user)</div>
-          </div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-2">↘</div>
-          <div className="bg-markee-100 text-markee-800 px-6 py-4 rounded-lg mb-4">
-            <div className="font-bold text-xl mb-2">32%</div>
-            <div className="text-sm">RevNet</div>
-          </div>
-          <div className="space-y-3">
-            <div className="bg-indigo-100 text-indigo-800 px-4 py-2 rounded text-sm">
-              <div className="font-bold">68% tokens → Platform</div>
-            </div>
-            <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded text-sm">
-              <div className="font-bold">32% tokens → Cooperative</div>
-              <div className="text-xs mt-1 space-y-1">
-                <div>32% to buyer</div>
-                <div>68% to all token holders</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
