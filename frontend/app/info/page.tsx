@@ -367,7 +367,7 @@ function PhaseVisualization() {
             Buy a Message to Join
           </Link>
           <p className="text-sm text-gray-500 mt-2">
-            Stages are preset in the Cooperative's RevNet.
+            Stages are preset in the Cooperative's .
           </p>
         </div>
       </div>
@@ -486,7 +486,7 @@ function FAQAccordion() {
           <p><strong>Initial Allocation:</strong> 50,000,000 tokens minted to Markee LLC at launch. This is the first and last issuance the LLC ever receives from the RevNet.</p>
           <p><strong>Reserve Rate:</strong> 38% distributed to the cooperative. Initially, all cooperative tokens go into a funding pool on Gardens governed by the co-op.</p>
           <p><strong>Governance:</strong> The cooperative's Board of Directors (elected by token holders) can adjust distribution settings.</p>
-          <p className="text-sm text-gray-600">View full terms: <a href="https://app.revnet.eth.sucks/v5:op:46/terms" target="_blank" rel="noopener noreferrer" className="text-markee hover:underline">app.revnet.eth.sucks/v5:op:46/terms</a></p>
+          <p className="text-sm text-gray-600">View full terms: <a href="https://app.revnet.eth.sucks/v5:op:52/terms" target="_blank" rel="noopener noreferrer" className="text-markee hover:underline">app.revnet.eth.sucks/v5:op:52/terms</a></p>
         </div>
       )
     },
