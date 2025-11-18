@@ -18,8 +18,9 @@ interface MarkeeCardProps {
 function getChainColor(chainId: number): string {
   switch (chainId) {
     case 10: return 'bg-red-500' // Optimism
-    case 8453: return 'bg-blue-500' // Base
-    case 42161: return 'bg-blue-400' // Arbitrum
+    case 8453: return 'bg-markee' // Base
+    case 42161: return 'bg-markee-400' // Arbitrum
+    case 1: return 'bg-purple-500' // Mainnet
     default: return 'bg-gray-400'
   }
 }
@@ -29,6 +30,7 @@ function getChainName(chainId: number): string {
     case 10: return 'Optimism'
     case 8453: return 'Base'
     case 42161: return 'Arbitrum'
+    case 1: return 'Mainnet'
     default: return 'Unknown'
   }
 }
