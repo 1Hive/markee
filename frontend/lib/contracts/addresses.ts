@@ -18,7 +18,7 @@ export const REVNET_CONFIG = {
     terminal: JB_TERMINAL,
   },
   [mainnet.id]: {
-    projectId: 33,
+    projectId: 53,
     terminal: JB_TERMINAL,
   },
 } as const
@@ -26,13 +26,26 @@ export const REVNET_CONFIG = {
 // Markee contract addresses per chain
 export const CONTRACTS = {
   [optimism.id]: {
-    investorStrategy: '0xD6780b51FDa9889e2d5fd14b02656FF339667829' as const,
-    fixedStrategy: '0x7E3810f9af6Fd2b31E973Fe3577B715afD043582' as const,
+    investorStrategy: '0xF0478A341aAd256C45CC7896ba08D2f00EAb72DA' as const,
+    fixedStrategies: [
+      {
+        name: 'This is a sign',
+        strategyAddress: '0x11ecb357084ebf87D7478414256C2745659e1760' as const,
+      },
+      {
+        name: 'Anyone can pay to change',
+        strategyAddress: '0xbC07fb2fC8F869bC1852A6a8d29eDc8a6eb0a66A' as const,
+      },
+      {
+        name: 'That funds stuff you love',
+        strategyAddress: '0x5b40a248cE3533e97cf3db696b065465428AB860' as const,
+      },
+    ],
   },
   // TODO: Deploy to Base, Arbitrum, and Mainnet
-  // [base.id]: { investorStrategy: '0x...', fixedStrategy: '0x...' },
-  // [arbitrum.id]: { investorStrategy: '0x...', fixedStrategy: '0x...' },
-  // [mainnet.id]: { investorStrategy: '0x...', fixedStrategy: '0x...' },
+  // [base.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
+  // [arbitrum.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
+  // [mainnet.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
 } as const
 
 export type SupportedChainId = keyof typeof REVNET_CONFIG
