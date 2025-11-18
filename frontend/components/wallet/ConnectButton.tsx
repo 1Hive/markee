@@ -62,6 +62,7 @@ export function ConnectButton() {
                   chain.id === 10 ? 'bg-red-500' :
                   chain.id === 8453 ? 'bg-markee' :
                   chain.id === 42161 ? 'bg-markee-400' :
+                  chain.id === 1 ? 'bg-purple-500' :
                   'bg-gray-400'
                 }`} />
                 <p className="text-sm text-gray-600 dark:text-gray-300">{chain.name}</p>
