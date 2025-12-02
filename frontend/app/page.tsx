@@ -16,6 +16,14 @@ import { formatEther } from 'viem'
 import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
+function PartnerLogo({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="flex items-center justify-center h-32 p-6">
+      <img src={src} alt={alt} className="max-h-20 max-w-full object-contain" />
+    </div>
+  )
+}
+
 export default function Home() {
   const { address } = useAccount()
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
@@ -114,8 +122,21 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Integration Partners - Coming Soon */}
+      <section className="bg-white py-12 border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
+            <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
+            <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
+            <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
+            <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
+          </div>
+        </div>
+      </section>
+
      {/* Invitation Section */}
-<section className="bg-white py-12 border-b border-gray-200">
+<section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
   <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
     <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
     
@@ -141,7 +162,7 @@ export default function Home() {
 </section>
 
       {/* Leaderboard */}
-      <section className="bg-gradient-to-br from-markee-50 to-green-50 py-16">
+      <section className="bg-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard 🏅</h3>
