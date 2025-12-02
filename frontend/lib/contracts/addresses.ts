@@ -42,10 +42,6 @@ export const CONTRACTS = {
       },
     ],
   },
-  // TODO: Deploy to Base, Arbitrum, and Mainnet
-  // [base.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
-  // [arbitrum.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
-  // [mainnet.id]: { investorStrategy: '0x...', fixedStrategies: [...] },
 } as const
 
 export type SupportedChainId = keyof typeof REVNET_CONFIG
