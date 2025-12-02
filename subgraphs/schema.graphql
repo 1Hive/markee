@@ -1,0 +1,71 @@
+type Markee @entity {
+  id: ID! # Markee contract address
+  address: Bytes!
+  owner: Bytes!
+  message: String!
+  name: String!
+  totalFundsAdded: BigInt!
+  pricingStrategy: Bytes!
+  chainId: BigInt!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  updatedAt: BigInt!
+  fundsAddedCount: BigInt!
+  messageUpdateCount: BigInt!
+  
+  # Relations
+  fundsAddedEvents: [FundsAdded!]! @derivedFrom(field: "markee")
+  messageUpdates: [MessageUpdate!]! @derivedFrom(field: "markee")
+  nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
+}
+
+type FundsAdded @entity {
+  id: ID! # Transaction hash + log index
+  markee: Markee!
+  addedBy: Bytes!
+  amount: BigInt!
+  newTotal: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type MessageUpdate @entity {
+  id: ID! # Transaction hash + log index
+  markee: Markee!
+  updatedBy: Bytes!
+  oldMessage: String!
+  newMessage: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type NameUpdate @entity {
+  id: ID! # Transaction hash + log index
+  markee: Markee!
+  updatedBy: Bytes!
+  oldName: String!
+  newName: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type InvestorStrategy @entity {
+  id: ID! # Contract address
+  address: Bytes!
+  minimumPrice: BigInt!
+  maxMessageLength: BigInt!
+  maxNameLength: BigInt!
+  totalMarkeesCreated: BigInt!
+  totalFundsRaised: BigInt!
+}
+
+# Global statistics
+type GlobalStats @entity {
+  id: ID! # Always "1"
+  totalMarkees: BigInt!
+  totalFundsRaised: BigInt!
+  totalTransactions: BigInt!
+}
