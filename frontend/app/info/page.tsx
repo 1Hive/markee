@@ -98,10 +98,11 @@ export default function InfoPage() {
       <section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-8 items-center mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center mb-8">
             <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
             <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
             <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
+            <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
           </div>
           <div className="text-center mt-8 bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
             <h3 className="text-xl font-semibold text-gray-900 mb-3">Want a Markee on your site?</h3>
