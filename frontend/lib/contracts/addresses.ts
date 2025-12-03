@@ -29,15 +29,15 @@ export const CONTRACTS = {
     investorStrategy: '0xF0478A341aAd256C45CC7896ba08D2f00EAb72DA' as const,
     fixedStrategies: [
       {
-        name: 'This is a sign',
+        name: 'Left Message',
         strategyAddress: '0x11ecb357084ebf87D7478414256C2745659e1760' as const,
       },
       {
-        name: 'Anyone can pay to change',
+        name: 'Center Message',
         strategyAddress: '0xbC07fb2fC8F869bC1852A6a8d29eDc8a6eb0a66A' as const,
       },
       {
-        name: 'That funds stuff you love',
+        name: 'Right Message',
         strategyAddress: '0x5b40a248cE3533e97cf3db696b065465428AB860' as const,
       },
     ],
