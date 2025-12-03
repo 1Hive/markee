@@ -18,6 +18,9 @@ dataSources:
         - Markee
         - InvestorStrategy
         - GlobalStats
+        - FundsAdded
+        - MessageUpdate
+        - NameUpdate
       abis:
         - name: InvestorStrategy
           file: ./abis/InvestorStrategy.json
@@ -129,10 +132,10 @@ templates:
         - name: Markee
           file: ./abis/Markee.json
       eventHandlers:
+        - event: FundsAdded(uint256,uint256,indexed address)
+          handler: handleFundsAdded
         - event: MessageChanged(string,indexed address)
           handler: handleMessageChanged
         - event: NameChanged(string,indexed address)
           handler: handleNameChanged
-        - event: FundsAdded(uint256,uint256,indexed address)
-          handler: handleFundsAdded
       file: ./src/markee.ts
