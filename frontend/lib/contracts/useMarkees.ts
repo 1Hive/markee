@@ -1,16 +1,12 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { usePublicClient } from 'wagmi'
-import { base, optimism, arbitrum, mainnet } from 'wagmi/chains'
-import { InvestorStrategyABI, MarkeeABI } from './abis'
-import { CONTRACTS } from './addresses'
-import type { Markee } from '@/types'
+import { request, gql } from 'graphql-request'
+import type { Markee, FundsAdded, MessageUpdate, NameUpdate } from '@/types'
 
-const CHAINS = [base, optimism, arbitrum, mainnet]
+const SUBGRAPH_URL = 'https://gateway.thegraph.com/api/subgraphs/id/3kUc3txg9GPt6MvdKFZPYzwU5GZoXvtWyoMwLRsXreXm'
 const CACHE_KEY = 'markees_cache'
 const CACHE_DURATION = 1000 * 60 * 5 // 5 minutes
-const MAX_BLOCK_RANGE = 9n // Alchemy free tier allows max 10 blocks per request
 
 interface CacheData {
   markees: Markee[]
@@ -25,13 +21,6 @@ export function useMarkees() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const hasFetchedRef = useRef(false)
 
-
-  const opClient = usePublicClient({ chainId: optimism.id })
-  const baseClient = usePublicClient({ chainId: base.id })
-  const arbClient = usePublicClient({ chainId: arbitrum.id })
-  const mainnetClient = usePublicClient({ chainId: mainnet.id })
-
-
   const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
     try {
       if (showFetchingIndicator && markees.length > 0) {
@@ -40,149 +29,103 @@ export function useMarkees() {
         setIsLoading(true)
       }
 
-      const allMarkees: Markee[] = []
-
-      for (const chain of CHAINS) {
-        const strategyAddress = CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy
-        if (!strategyAddress) continue
-
-        const client = 
-          chain.id === optimism.id ? opClient :
-          chain.id === base.id ? baseClient :
-          chain.id === mainnet.id ? mainnetClient :
-          arbClient
-
-        if (!client) continue
-
-        try {
-          const latestBlock = await client.getBlockNumber()
-          
-          // Only scan last 100,000 blocks to avoid rate limits
-          const blocksToScan = 100000n
-          const startBlock = latestBlock > blocksToScan ? latestBlock - blocksToScan : 0n
-          
-          console.log(`Fetching ${chain.name} events from block ${startBlock} to ${latestBlock}`)
-          
-          // Chunk requests to avoid "block range too large" errors
-          const allLogs: any[] = []
-          let currentFrom = startBlock
-          
-          while (currentFrom <= latestBlock) {
-            const currentTo = currentFrom + MAX_BLOCK_RANGE > latestBlock 
-              ? latestBlock 
-              : currentFrom + MAX_BLOCK_RANGE
-            
-            try {
-              const logs = await client.getLogs({
-                address: strategyAddress,
-                event: {
-                  type: 'event',
-                  name: 'MarkeeCreated',
-                  inputs: [
-                    { type: 'address', name: 'markeeAddress', indexed: true },
-                    { type: 'address', name: 'owner', indexed: true },
-                    { type: 'string', name: 'message' },
-                    { type: 'string', name: 'name' },
-                    { type: 'uint256', name: 'amount' }
-                  ]
-                },
-                fromBlock: currentFrom,
-                toBlock: currentTo
-              })
-
-              allLogs.push(...logs)
-              console.log(`  Fetched ${logs.length} events from ${currentFrom} to ${currentTo}`)
-            } catch (chunkErr) {
-              console.error(`Error fetching chunk ${currentFrom}-${currentTo}:`, chunkErr)
+      const query = gql`
+        query GetMarkees {
+          markees(first: 1000, orderBy: totalFundsAdded, orderDirection: desc) {
+            id
+            address
+            owner
+            message
+            name
+            totalFundsAdded
+            pricingStrategy
+            chainId
+            createdAt
+            createdAtBlock
+            updatedAt
+            fundsAddedCount
+            messageUpdateCount
+            fundsAddedEvents {
+              id
+              addedBy
+              amount
+              newTotal
+              timestamp
+              blockNumber
+              transactionHash
             }
-            
-            currentFrom = currentTo + 1n
-          }
-
-          console.log(`Found ${allLogs.length} total Markees on ${chain.name}`)
-          const logs = allLogs
-
-          // Fetch current data for each Markee
-          for (const log of logs) {
-            const { markeeAddress, owner } = log.args as any
-            
-            try {
-              // Read current message, name, and totalFundsAdded from Markee contract
-              const [message, name, totalFundsAdded] = await Promise.all([
-                client.readContract({
-                  address: markeeAddress,
-                  abi: MarkeeABI,
-                  functionName: 'message'
-                }),
-                client.readContract({
-                  address: markeeAddress,
-                  abi: MarkeeABI,
-                  functionName: 'name'
-                }),
-                client.readContract({
-                  address: markeeAddress,
-                  abi: MarkeeABI,
-                  functionName: 'totalFundsAdded'
-                })
-              ])
-
-              allMarkees.push({
-                address: markeeAddress,
-                owner,
-                message: message as string,
-                name: name as string,
-                totalFundsAdded: totalFundsAdded as bigint,
-                chainId: chain.id,
-                pricingStrategy: strategyAddress
-              })
-            } catch (err) {
-              console.error(`Error fetching Markee ${markeeAddress} data:`, err)
+            messageUpdates {
+              id
+              updatedBy
+              oldMessage
+              newMessage
+              timestamp
+              blockNumber
+              transactionHash
             }
-
-
+            nameUpdates {
+              id
+              updatedBy
+              oldName
+              newName
+              timestamp
+              blockNumber
+              transactionHash
+            }
           }
-        } catch (err) {
-          console.error(`Error fetching events from ${chain.name}:`, err)
         }
-      }
+      `
 
-      // Sort by totalFundsAdded (descending)
-      allMarkees.sort((a, b) => {
-        if (a.totalFundsAdded > b.totalFundsAdded) return -1
-        if (a.totalFundsAdded < b.totalFundsAdded) return 1
-        return 0
-      })
+      const data = await request(SUBGRAPH_URL, query)
 
-      console.log(`Total Markees loaded: ${allMarkees.length}`)
+      const allMarkees: Markee[] = data.markees.map((m: any) => ({
+        ...m,
+        totalFundsAdded: BigInt(m.totalFundsAdded),
+        chainId: Number(m.chainId),
+        fundsAddedEvents: m.fundsAddedEvents.map((e: any) => ({
+          ...e,
+          amount: BigInt(e.amount),
+          newTotal: BigInt(e.newTotal),
+          timestamp: BigInt(e.timestamp),
+          blockNumber: BigInt(e.blockNumber)
+        })) as FundsAdded[],
+        messageUpdates: m.messageUpdates.map((e: any) => ({
+          ...e,
+          timestamp: BigInt(e.timestamp),
+          blockNumber: BigInt(e.blockNumber)
+        })) as MessageUpdate[],
+        nameUpdates: m.nameUpdates.map((e: any) => ({
+          ...e,
+          timestamp: BigInt(e.timestamp),
+          blockNumber: BigInt(e.blockNumber)
+        })) as NameUpdate[]
+      }))
+
+      console.log(`Fetched ${allMarkees.length} markees with events from subgraph`)
+
       setMarkees(allMarkees)
       setError(null)
-      
       const now = Date.now()
       setLastUpdated(new Date(now))
 
       // Save to cache
       try {
-        const cacheData: CacheData = {
-          markees: allMarkees,
-          timestamp: now
-        }
+        const cacheData: CacheData = { markees: allMarkees, timestamp: now }
         localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
       } catch (err) {
         console.error('Error saving cache:', err)
       }
-
     } catch (err) {
-      console.error('Error fetching markees:', err)
+      console.error('Error fetching markees from subgraph:', err)
       setError(err as Error)
     } finally {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [opClient, baseClient, arbClient, mainnetClient])
+  }, [markees])
 
   // Load from cache on mount, then fetch fresh data
   useEffect(() => {
-    // Only run once
     if (hasFetchedRef.current) return
     hasFetchedRef.current = true
 
@@ -191,7 +134,6 @@ export function useMarkees() {
       try {
         const { markees: cachedMarkees, timestamp }: CacheData = JSON.parse(cached)
         const age = Date.now() - timestamp
-        
         if (age < CACHE_DURATION) {
           console.log('Using cached markees data')
           setMarkees(cachedMarkees)
@@ -201,12 +143,9 @@ export function useMarkees() {
         }
       } catch (err) {
         console.error('Error loading cache:', err)
-
-
-
       }
     }
-    
+
     fetchMarkees(false)
   }, [fetchMarkees])
 
