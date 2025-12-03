@@ -5,7 +5,7 @@ import { request, gql } from 'graphql-request'
 import type { Markee, FundsAdded, MessageUpdate, NameUpdate } from '@/types'
 
 const SUBGRAPH_URL =
-  'https://api.studio.thegraph.com/query/40814/markee-optimism/v.0.0.3'
+  'https://api.studio.thegraph.com/query/40814/markee-optimism/v0.0.3'
 const CACHE_KEY = 'markees_cache'
 const CACHE_DURATION = 1000 * 60 * 5 // 5 minutes
 
