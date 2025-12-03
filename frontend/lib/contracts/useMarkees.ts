@@ -68,115 +68,108 @@ export function useMarkees() {
   const hasFetchedRef = useRef(false)
 
   const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
-    try {
-      if (showFetchingIndicator && markees.length > 0) setIsFetchingFresh(true)
-      else setIsLoading(true)
+  try {
+    if (showFetchingIndicator && markees.length > 0) setIsFetchingFresh(true)
+    else setIsLoading(true)
 
-      const query = gql`
-        query GetMarkees {
-          markees(first: 1000, orderBy: totalFundsAdded, orderDirection: desc) {
+    const query = gql`
+      query GetMarkees {
+        markees(first: 1000, orderBy: totalFundsAdded, orderDirection: desc) {
+          id
+          address
+          owner
+          message
+          name
+          totalFundsAdded
+          pricingStrategy
+          chainId
+          createdAt
+          createdAtBlock
+          updatedAt
+          fundsAddedCount
+          messageUpdateCount
+          fundsAddedEvents {
             id
-            address
-            owner
-            message
-            name
-            totalFundsAdded
-            pricingStrategy
-            chainId
-            createdAt
-            createdAtBlock
-            updatedAt
-            fundsAddedCount
-            messageUpdateCount
-            fundsAddedEvents {
-              id
-              addedBy
-              amount
-              newTotal
-              timestamp
-              blockNumber
-              transactionHash
-            }
-            messageUpdates {
-              id
-              updatedBy
-              oldMessage
-              newMessage
-              timestamp
-              blockNumber
-              transactionHash
-            }
-            nameUpdates {
-              id
-              updatedBy
-              oldName
-              newName
-              timestamp
-              blockNumber
-              transactionHash
-            }
+            addedBy
+            amount
+            newTotal
+            timestamp
+            blockNumber
+            transactionHash
+          }
+          messageUpdates {
+            id
+            updatedBy
+            oldMessage
+            newMessage
+            timestamp
+            blockNumber
+            transactionHash
+          }
+          nameUpdates {
+            id
+            updatedBy
+            oldName
+            newName
+            timestamp
+            blockNumber
+            transactionHash
           }
         }
-      `
-
-      const SUBGRAPH_TOKEN = process.env.NEXT_PUBLIC_GRAPH_TOKEN
-      
-      const data = await request(
-        SUBGRAPH_URL,
-        query,
-        {}, // variables
-          {
-          Authorization: `Bearer ${SUBGRAPH_TOKEN}`,
-          }
-        )
-
-      const allMarkees: Markee[] = data.markees.map((m) => ({
-        address: m.address,
-        owner: m.owner,
-        message: m.message,
-        name: m.name,
-        totalFundsAdded: BigInt(m.totalFundsAdded),
-        pricingStrategy: m.pricingStrategy,
-        chainId: Number(m.chainId),
-        fundsAddedEvents: (m.fundsAddedEvents ?? []).map((e) => ({
-          ...e,
-          amount: BigInt(e.amount),
-          newTotal: BigInt(e.newTotal),
-          timestamp: BigInt(e.timestamp),
-          blockNumber: BigInt(e.blockNumber)
-        })) as FundsAdded[],
-        messageUpdates: (m.messageUpdates ?? []).map((e) => ({
-          ...e,
-          timestamp: BigInt(e.timestamp),
-          blockNumber: BigInt(e.blockNumber)
-        })) as MessageUpdate[],
-        nameUpdates: (m.nameUpdates ?? []).map((e) => ({
-          ...e,
-          timestamp: BigInt(e.timestamp),
-          blockNumber: BigInt(e.blockNumber)
-        })) as NameUpdate[]
-      }))
-
-      console.log(`Fetched ${allMarkees.length} markees with events from subgraph`)
-
-      setMarkees(allMarkees)
-      setError(null)
-      const now = Date.now()
-      setLastUpdated(new Date(now))
-
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ markees: allMarkees, timestamp: now }))
-      } catch (err) {
-        console.error('Error saving cache:', err)
       }
-    } catch (err) {
-      console.error('Error fetching markees from subgraph:', err)
-      setError(err as Error)
-    } finally {
-      setIsLoading(false)
-      setIsFetchingFresh(false)
-    }
-  }, []) // ✅ removed markees from deps
+    `
+
+    const data = await request<MarkeeSubgraph>(
+      SUBGRAPH_URL,
+      query,
+      {},
+      {
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_GRAPH_TOKEN}`,
+      }
+    )
+
+    const allMarkees: Markee[] = data.markees.map((m) => ({
+      address: m.address,
+      owner: m.owner,
+      message: m.message,
+      name: m.name,
+      totalFundsAdded: BigInt(m.totalFundsAdded),
+      pricingStrategy: m.pricingStrategy,
+      chainId: Number(m.chainId),
+      fundsAddedEvents: (m.fundsAddedEvents ?? []).map((e) => ({
+        ...e,
+        amount: BigInt(e.amount),
+        newTotal: BigInt(e.newTotal),
+        timestamp: BigInt(e.timestamp),
+        blockNumber: BigInt(e.blockNumber),
+      })) as FundsAdded[],
+      messageUpdates: (m.messageUpdates ?? []).map((e) => ({
+        ...e,
+        timestamp: BigInt(e.timestamp),
+        blockNumber: BigInt(e.blockNumber),
+      })) as MessageUpdate[],
+      nameUpdates: (m.nameUpdates ?? []).map((e) => ({
+        ...e,
+        timestamp: BigInt(e.timestamp),
+        blockNumber: BigInt(e.blockNumber),
+      })) as NameUpdate[],
+    }))
+
+    console.log(`Fetched ${allMarkees.length} markees with events from subgraph`)
+    setMarkees(allMarkees)
+    setError(null)
+    const now = Date.now()
+    setLastUpdated(new Date(now))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ markees: allMarkees, timestamp: now }))
+  } catch (err) {
+    console.error('Error fetching markees from subgraph:', err)
+    setError(err as Error)
+  } finally {
+    setIsLoading(false)
+    setIsFetchingFresh(false)
+  }
+}, [])
+
 
   useEffect(() => {
     if (hasFetchedRef.current) return
