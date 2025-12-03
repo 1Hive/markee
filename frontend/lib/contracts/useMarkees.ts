@@ -119,7 +119,16 @@ export function useMarkees() {
         }
       `
 
-      const data = await request<MarkeeSubgraph>(SUBGRAPH_URL, query)
+      const SUBGRAPH_TOKEN = process.env.NEXT_PUBLIC_GRAPH_TOKEN
+      
+      const data = await request(
+        SUBGRAPH_URL,
+        query,
+        {}, // variables
+          {
+          Authorization: `Bearer ${SUBGRAPH_TOKEN}`,
+          }
+        )
 
       const allMarkees: Markee[] = data.markees.map((m) => ({
         address: m.address,
