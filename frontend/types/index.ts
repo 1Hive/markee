@@ -1,3 +1,36 @@
+export interface FundsAdded {
+  id: string
+  markee: string
+  addedBy: string
+  amount: bigint
+  newTotal: bigint
+  timestamp: bigint
+  blockNumber: bigint
+  transactionHash: string
+}
+
+export interface MessageUpdate {
+  id: string
+  markee: string
+  updatedBy: string
+  oldMessage: string
+  newMessage: string
+  timestamp: bigint
+  blockNumber: bigint
+  transactionHash: string
+}
+
+export interface NameUpdate {
+  id: string
+  markee: string
+  updatedBy: string
+  oldName: string
+  newName: string
+  timestamp: bigint
+  blockNumber: bigint
+  transactionHash: string
+}
+
 export interface Markee {
   address: string
   owner: string
@@ -6,6 +39,11 @@ export interface Markee {
   totalFundsAdded: bigint
   chainId: number
   pricingStrategy: string
+
+  // Optional relations
+  fundsAddedEvents?: FundsAdded[]
+  messageUpdates?: MessageUpdate[]
+  nameUpdates?: NameUpdate[]
 }
 
 export interface MarkeeWithChain extends Markee {
