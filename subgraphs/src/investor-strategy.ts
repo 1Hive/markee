@@ -7,9 +7,16 @@ import {
 } from "../generated/InvestorStrategy/InvestorStrategy"
 import { Markee as MarkeeContract } from "../generated/InvestorStrategy/Markee"
 import { Markee as MarkeeTemplate } from "../generated/templates"
-import { Markee, InvestorStrategy, GlobalStats, FundsAdded, MessageUpdate, NameUpdate } from "../generated/schema"
+import {
+  Markee,
+  InvestorStrategy,
+  GlobalStats,
+  FundsAdded,
+  MessageUpdate,
+  NameUpdate
+} from "../generated/schema"
 
-// Helper function to load or create GlobalStats
+// Helper: load or create GlobalStats
 function loadOrCreateGlobalStats(): GlobalStats {
   let stats = GlobalStats.load("1")
   if (stats == null) {
@@ -17,11 +24,12 @@ function loadOrCreateGlobalStats(): GlobalStats {
     stats.totalMarkees = BigInt.fromI32(0)
     stats.totalFundsRaised = BigInt.fromI32(0)
     stats.totalTransactions = BigInt.fromI32(0)
+    stats.save()
   }
   return stats
 }
 
-// Helper function to load or create InvestorStrategy
+// Helper: load or create InvestorStrategy
 function loadOrCreateInvestorStrategy(address: Address): InvestorStrategy {
   let strategy = InvestorStrategy.load(address.toHexString())
   if (strategy == null) {
@@ -32,6 +40,7 @@ function loadOrCreateInvestorStrategy(address: Address): InvestorStrategy {
     strategy.maxNameLength = BigInt.fromI32(0)
     strategy.totalMarkeesCreated = BigInt.fromI32(0)
     strategy.totalFundsRaised = BigInt.fromI32(0)
+    strategy.save()
   }
   return strategy
 }
@@ -43,37 +52,27 @@ export function handleMarkeeCreated(event: MarkeeCreated): void {
     event.params.message
   ])
 
-  // Create Markee entity
-  let markee = new Markee(event.params.markeeAddress.toHexString())
-  markee.address = event.params.markeeAddress
-  markee.owner = event.params.owner
-  markee.message = event.params.message
-  markee.name = event.params.name
-  markee.totalFundsAdded = event.params.amount
-  markee.pricingStrategy = event.address
-  markee.chainId = BigInt.fromI32(10) // Optimism
-  markee.createdAt = event.block.timestamp
-  markee.createdAtBlock = event.block.number
-  markee.updatedAt = event.block.timestamp
-  markee.fundsAddedCount = BigInt.fromI32(1)
-  markee.messageUpdateCount = BigInt.fromI32(0)
-  markee.save()
+  // Create the root Markee entity if it doesn't exist
+  let markee = Markee.load(event.params.markeeAddress.toHexString())
+  if (markee == null) {
+    markee = new Markee(event.params.markeeAddress.toHexString())
+    markee.address = event.params.markeeAddress
+    markee.owner = event.params.owner
+    markee.message = event.params.message
+    markee.name = event.params.name
+    markee.totalFundsAdded = event.params.amount
+    markee.pricingStrategy = event.address
+    markee.chainId = BigInt.fromI32(10) // Optimism
+    markee.createdAt = event.block.timestamp
+    markee.createdAtBlock = event.block.number
+    markee.updatedAt = event.block.timestamp
+    markee.fundsAddedCount = BigInt.fromI32(1)
+    markee.messageUpdateCount = BigInt.fromI32(0)
+    markee.save()
+  }
 
-  // Start indexing this Markee contract
+  // Start indexing the Markee contract for future events
   MarkeeTemplate.create(event.params.markeeAddress)
-
-  // Update InvestorStrategy stats
-  let strategy = loadOrCreateInvestorStrategy(event.address)
-  strategy.totalMarkeesCreated = strategy.totalMarkeesCreated.plus(BigInt.fromI32(1))
-  strategy.totalFundsRaised = strategy.totalFundsRaised.plus(event.params.amount)
-  strategy.save()
-
-  // Update global stats
-  let stats = loadOrCreateGlobalStats()
-  stats.totalMarkees = stats.totalMarkees.plus(BigInt.fromI32(1))
-  stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
-  stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
-  stats.save()
 
   // Create initial FundsAdded event
   let fundsAdded = new FundsAdded(
@@ -87,29 +86,39 @@ export function handleMarkeeCreated(event: MarkeeCreated): void {
   fundsAdded.blockNumber = event.block.number
   fundsAdded.transactionHash = event.transaction.hash
   fundsAdded.save()
+
+  // Update InvestorStrategy stats
+  let strategy = loadOrCreateInvestorStrategy(event.address)
+  strategy.totalMarkeesCreated = strategy.totalMarkeesCreated.plus(BigInt.fromI32(1))
+  strategy.totalFundsRaised = strategy.totalFundsRaised.plus(event.params.amount)
+  strategy.save()
+
+  // Update global stats
+  let stats = loadOrCreateGlobalStats()
+  stats.totalMarkees = stats.totalMarkees.plus(BigInt.fromI32(1))
+  stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
+  stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
+  stats.save()
 }
 
 export function handleFundsAddedToMarkee(event: FundsAddedToMarkee): void {
-  log.info("FundsAddedToMarkee event: markeeAddress={}, addedBy={}, amount={}", [
+  log.info("FundsAddedToMarkee: markeeAddress={}, addedBy={}, amount={}", [
     event.params.markeeAddress.toHexString(),
     event.params.addedBy.toHexString(),
     event.params.amount.toString()
   ])
 
-  // Load Markee entity
   let markee = Markee.load(event.params.markeeAddress.toHexString())
   if (markee == null) {
     log.warning("Markee not found: {}", [event.params.markeeAddress.toHexString()])
     return
   }
 
-  // Update Markee
   markee.totalFundsAdded = event.params.newTotal
   markee.updatedAt = event.block.timestamp
   markee.fundsAddedCount = markee.fundsAddedCount.plus(BigInt.fromI32(1))
   markee.save()
 
-  // Create FundsAdded event
   let fundsAdded = new FundsAdded(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   )
@@ -122,12 +131,10 @@ export function handleFundsAddedToMarkee(event: FundsAddedToMarkee): void {
   fundsAdded.transactionHash = event.transaction.hash
   fundsAdded.save()
 
-  // Update InvestorStrategy stats
   let strategy = loadOrCreateInvestorStrategy(event.address)
   strategy.totalFundsRaised = strategy.totalFundsRaised.plus(event.params.amount)
   strategy.save()
 
-  // Update global stats
   let stats = loadOrCreateGlobalStats()
   stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
@@ -135,19 +142,12 @@ export function handleFundsAddedToMarkee(event: FundsAddedToMarkee): void {
 }
 
 export function handleMessageUpdated(event: MessageUpdated): void {
-  log.info("MessageUpdated event: markeeAddress={}, newMessage={}", [
-    event.params.markeeAddress.toHexString(),
-    event.params.newMessage
-  ])
-
-  // Load Markee entity
   let markee = Markee.load(event.params.markeeAddress.toHexString())
   if (markee == null) {
     log.warning("Markee not found: {}", [event.params.markeeAddress.toHexString()])
     return
   }
 
-  // Create MessageUpdate event
   let messageUpdate = new MessageUpdate(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   )
@@ -160,32 +160,23 @@ export function handleMessageUpdated(event: MessageUpdated): void {
   messageUpdate.transactionHash = event.transaction.hash
   messageUpdate.save()
 
-  // Update Markee
   markee.message = event.params.newMessage
   markee.updatedAt = event.block.timestamp
   markee.messageUpdateCount = markee.messageUpdateCount.plus(BigInt.fromI32(1))
   markee.save()
 
-  // Update global stats
   let stats = loadOrCreateGlobalStats()
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   stats.save()
 }
 
 export function handleNameUpdated(event: NameUpdated): void {
-  log.info("NameUpdated event: markeeAddress={}, newName={}", [
-    event.params.markeeAddress.toHexString(),
-    event.params.newName
-  ])
-
-  // Load Markee entity
   let markee = Markee.load(event.params.markeeAddress.toHexString())
   if (markee == null) {
     log.warning("Markee not found: {}", [event.params.markeeAddress.toHexString()])
     return
   }
 
-  // Create NameUpdate event
   let nameUpdate = new NameUpdate(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   )
@@ -198,12 +189,10 @@ export function handleNameUpdated(event: NameUpdated): void {
   nameUpdate.transactionHash = event.transaction.hash
   nameUpdate.save()
 
-  // Update Markee
   markee.name = event.params.newName
   markee.updatedAt = event.block.timestamp
   markee.save()
 
-  // Update global stats
   let stats = loadOrCreateGlobalStats()
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   stats.save()
