@@ -13,6 +13,52 @@ interface CacheData {
   timestamp: number
 }
 
+// Type for GraphQL response
+interface MarkeeSubgraph {
+  markees: Array<{
+    id: string
+    address: string
+    owner: string
+    message: string
+    name?: string
+    totalFundsAdded: string
+    pricingStrategy: string
+    chainId: string
+    createdAt?: string
+    createdAtBlock?: string
+    updatedAt?: string
+    fundsAddedCount?: string
+    messageUpdateCount?: string
+    fundsAddedEvents?: Array<{
+      id: string
+      addedBy: string
+      amount: string
+      newTotal: string
+      timestamp: string
+      blockNumber: string
+      transactionHash: string
+    }> | null
+    messageUpdates?: Array<{
+      id: string
+      updatedBy: string
+      oldMessage: string
+      newMessage: string
+      timestamp: string
+      blockNumber: string
+      transactionHash: string
+    }> | null
+    nameUpdates?: Array<{
+      id: string
+      updatedBy: string
+      oldName: string
+      newName: string
+      timestamp: string
+      blockNumber: string
+      transactionHash: string
+    }> | null
+  }>
+}
+
 export function useMarkees() {
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -23,11 +69,8 @@ export function useMarkees() {
 
   const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
     try {
-      if (showFetchingIndicator && markees.length > 0) {
-        setIsFetchingFresh(true)
-      } else {
-        setIsLoading(true)
-      }
+      if (showFetchingIndicator && markees.length > 0) setIsFetchingFresh(true)
+      else setIsLoading(true)
 
       const query = gql`
         query GetMarkees {
@@ -76,25 +119,29 @@ export function useMarkees() {
         }
       `
 
-      const data = await request(SUBGRAPH_URL, query)
+      const data = await request<MarkeeSubgraph>(SUBGRAPH_URL, query)
 
-      const allMarkees: Markee[] = data.markees.map((m: any) => ({
-        ...m,
+      const allMarkees: Markee[] = data.markees.map((m) => ({
+        address: m.address,
+        owner: m.owner,
+        message: m.message,
+        name: m.name,
         totalFundsAdded: BigInt(m.totalFundsAdded),
+        pricingStrategy: m.pricingStrategy,
         chainId: Number(m.chainId),
-        fundsAddedEvents: m.fundsAddedEvents.map((e: any) => ({
+        fundsAddedEvents: (m.fundsAddedEvents ?? []).map((e) => ({
           ...e,
           amount: BigInt(e.amount),
           newTotal: BigInt(e.newTotal),
           timestamp: BigInt(e.timestamp),
           blockNumber: BigInt(e.blockNumber)
         })) as FundsAdded[],
-        messageUpdates: m.messageUpdates.map((e: any) => ({
+        messageUpdates: (m.messageUpdates ?? []).map((e) => ({
           ...e,
           timestamp: BigInt(e.timestamp),
           blockNumber: BigInt(e.blockNumber)
         })) as MessageUpdate[],
-        nameUpdates: m.nameUpdates.map((e: any) => ({
+        nameUpdates: (m.nameUpdates ?? []).map((e) => ({
           ...e,
           timestamp: BigInt(e.timestamp),
           blockNumber: BigInt(e.blockNumber)
@@ -108,10 +155,8 @@ export function useMarkees() {
       const now = Date.now()
       setLastUpdated(new Date(now))
 
-      // Save to cache
       try {
-        const cacheData: CacheData = { markees: allMarkees, timestamp: now }
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ markees: allMarkees, timestamp: now }))
       } catch (err) {
         console.error('Error saving cache:', err)
       }
@@ -122,9 +167,8 @@ export function useMarkees() {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [markees])
+  }, []) // ✅ removed markees from deps
 
-  // Load from cache on mount, then fetch fresh data
   useEffect(() => {
     if (hasFetchedRef.current) return
     hasFetchedRef.current = true
@@ -133,8 +177,7 @@ export function useMarkees() {
     if (cached) {
       try {
         const { markees: cachedMarkees, timestamp }: CacheData = JSON.parse(cached)
-        const age = Date.now() - timestamp
-        if (age < CACHE_DURATION) {
+        if (Date.now() - timestamp < CACHE_DURATION) {
           console.log('Using cached markees data')
           setMarkees(cachedMarkees)
           setLastUpdated(new Date(timestamp))
@@ -153,12 +196,5 @@ export function useMarkees() {
     fetchMarkees(true)
   }, [fetchMarkees])
 
-  return { 
-    markees, 
-    isLoading, 
-    isFetchingFresh,
-    error, 
-    lastUpdated,
-    refetch 
-  }
+  return { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch }
 }
