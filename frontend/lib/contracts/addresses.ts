@@ -26,7 +26,7 @@ export const REVNET_CONFIG = {
 // Markee contract addresses per chain
 export const CONTRACTS = {
   [optimism.id]: {
-    investorStrategy: '0xF0478A341aAd256C45CC7896ba08D2f00EAb72DA' as const,
+    investorStrategy: '0x3B840B91fbEB6f942CE5770d094F89cb36D27BA1' as const,
     fixedStrategies: [
       {
         name: 'Left Message',
