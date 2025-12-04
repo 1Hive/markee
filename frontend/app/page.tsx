@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -35,6 +35,24 @@ export default function Home() {
 
   const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
+  
+  const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
+
+  // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
+  const debouncedRefetch = useCallback(() => {
+    // Clear any pending refetch
+    if (refetchTimeout) {
+      clearTimeout(refetchTimeout)
+    }
+    
+    // Schedule new refetch after 3 seconds
+    const timeout = setTimeout(() => {
+      console.log('[Markees] Refetching after transaction success')
+      refetch()
+    }, 3000)
+    
+    setRefetchTimeout(timeout)
+  }, [refetch, refetchTimeout])
 
   const handleCreateNew = () => {
     setSelectedMarkee(null)
@@ -381,10 +399,7 @@ export default function Home() {
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
         initialMode={modalMode}
-        onSuccess={() => {
-          // Refresh the leaderboard after successful transaction
-          refetch()
-        }}
+        onSuccess={debouncedRefetch}
       />
 
       {/* Fixed Markee Modal */}
@@ -392,10 +407,7 @@ export default function Home() {
         isOpen={isFixedModalOpen}
         onClose={handleFixedModalClose}
         fixedMarkee={selectedFixedMarkee}
-        onSuccess={() => {
-          // Optionally refresh the page or refetch fixed markees
-          window.location.reload()
-        }}
+        onSuccess={debouncedRefetch}
       />
     </div>
   )
