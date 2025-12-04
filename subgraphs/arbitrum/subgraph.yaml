@@ -20,9 +20,9 @@ dataSources:
         - GlobalStats
       abis:
         - name: InvestorStrategy
-          file: ./abis/InvestorStrategy.json
+          file: ../abis/InvestorStrategy.json
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: MarkeeCreated(indexed address,indexed address,string,string,uint256)
           handler: handleMarkeeCreated
@@ -32,7 +32,7 @@ dataSources:
           handler: handleMessageUpdated
         - event: NameUpdated(indexed address,indexed address,string)
           handler: handleNameUpdated
-      file: ./src/investor-strategy.ts
+      file: ../src/investor-strategy.ts
 
 templates:
   # Template for dynamically created Markee contracts
@@ -52,7 +52,7 @@ templates:
         - NameUpdate
       abis:
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: MessageChanged(string,indexed address)
           handler: handleMessageChanged
@@ -60,4 +60,4 @@ templates:
           handler: handleNameChanged
         - event: FundsAdded(uint256,uint256,indexed address)
           handler: handleFundsAdded
-      file: ./src/markee.ts
+      file: ../src/markee.ts
