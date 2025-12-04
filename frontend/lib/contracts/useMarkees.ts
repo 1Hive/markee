@@ -75,7 +75,7 @@ export function useMarkees() {
 
       const query = gql`
         query GetMarkees {
-          markees(first: 1000, orderBy: totalFundsAdded, orderDirection: desc) {
+          markees(first: 100, orderBy: totalFundsAdded, orderDirection: desc) {
             id
             address
             owner
