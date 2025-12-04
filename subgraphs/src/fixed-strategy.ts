@@ -1,7 +1,3 @@
-cd ~/markee/subgraphs/src
-
-# Create the file
-cat > fixed-strategy.ts << 'EOF'
 import { BigInt, log } from "@graphprotocol/graph-ts"
 import { MessageChanged } from "../generated/FixedStrategy1/FixedStrategy"
 import { Markee, GlobalStats } from "../generated/schema"
