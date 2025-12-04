@@ -68,4 +68,3 @@ export function handleFixedMessageChanged(event: MessageChanged): void {
   
   markee.save()
 }
-EOF
