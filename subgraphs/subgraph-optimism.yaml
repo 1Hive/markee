@@ -7,7 +7,7 @@ dataSources:
     name: InvestorStrategy
     network: optimism
     source:
-      address: "0xF0478A341aAd256C45CC7896ba08D2f00EAb72DA"
+      address: "0x3B840B91fbEB6f942CE5770d094F89cb36D27BA1"
       abi: InvestorStrategy
       startBlock: 143700000
     mapping:
