@@ -1,4 +1,7 @@
-type Markee @entity {
+cd ~/markee/subgraphs
+
+cat > schema.graphql << 'EOF'
+type Markee @entity(immutable: false) {
   id: ID! # Markee contract address
   address: Bytes!
   owner: Bytes!
@@ -19,7 +22,7 @@ type Markee @entity {
   nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
 }
 
-type FundsAdded @entity {
+type FundsAdded @entity(immutable: true) {
   id: ID! # Transaction hash + log index
   markee: Markee!
   addedBy: Bytes!
@@ -30,7 +33,7 @@ type FundsAdded @entity {
   transactionHash: Bytes!
 }
 
-type MessageUpdate @entity {
+type MessageUpdate @entity(immutable: true) {
   id: ID! # Transaction hash + log index
   markee: Markee!
   updatedBy: Bytes!
@@ -41,7 +44,7 @@ type MessageUpdate @entity {
   transactionHash: Bytes!
 }
 
-type NameUpdate @entity {
+type NameUpdate @entity(immutable: true) {
   id: ID! # Transaction hash + log index
   markee: Markee!
   updatedBy: Bytes!
@@ -52,7 +55,7 @@ type NameUpdate @entity {
   transactionHash: Bytes!
 }
 
-type InvestorStrategy @entity {
+type InvestorStrategy @entity(immutable: false) {
   id: ID! # Contract address
   address: Bytes!
   minimumPrice: BigInt!
@@ -63,9 +66,10 @@ type InvestorStrategy @entity {
 }
 
 # Global statistics
-type GlobalStats @entity {
+type GlobalStats @entity(immutable: false) {
   id: ID! # Always "1"
   totalMarkees: BigInt!
   totalFundsRaised: BigInt!
   totalTransactions: BigInt!
 }
+EOF
