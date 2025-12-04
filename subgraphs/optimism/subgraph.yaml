@@ -23,9 +23,9 @@ dataSources:
         - NameUpdate
       abis:
         - name: InvestorStrategy
-          file: ./abis/InvestorStrategy.json
+          file: ../abis/InvestorStrategy.json
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: MarkeeCreated(indexed address,indexed address,string,string,uint256)
           handler: handleMarkeeCreated
@@ -35,7 +35,7 @@ dataSources:
           handler: handleMessageUpdated
         - event: NameUpdated(indexed address,indexed address,string)
           handler: handleNameUpdated
-      file: ./src/investor-strategy.ts
+      file: ../src/investor-strategy.ts
 
   # FixedStrategy 1 - "This is a sign"
   - kind: ethereum
@@ -54,13 +54,13 @@ dataSources:
         - GlobalStats
       abis:
         - name: FixedStrategy
-          file: ./abis/FixedStrategy.json
+          file: ../abis/FixedStrategy.json
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: MessageChanged(indexed address,string,string,uint256)
           handler: handleFixedMessageChanged
-      file: ./src/fixed-strategy.ts
+      file: ../src/fixed-strategy.ts
 
   # FixedStrategy 2 - "Anyone can pay to change"
   - kind: ethereum
@@ -79,13 +79,13 @@ dataSources:
         - GlobalStats
       abis:
         - name: FixedStrategy
-          file: ./abis/FixedStrategy.json
+          file: ../abis/FixedStrategy.json
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: MessageChanged(indexed address,string,string,uint256)
           handler: handleFixedMessageChanged
-      file: ./src/fixed-strategy.ts
+      file: ../src/fixed-strategy.ts
 
   # FixedStrategy 3 - "That funds stuff you love"
   - kind: ethereum
@@ -104,13 +104,13 @@ dataSources:
         - GlobalStats
       abis:
         - name: FixedStrategy
-          file: ./abis/FixedStrategy.json
+          file: ../abis/FixedStrategy.json
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: MessageChanged(indexed address,string,string,uint256)
           handler: handleFixedMessageChanged
-      file: ./src/fixed-strategy.ts
+      file: ../src/fixed-strategy.ts
 
 templates:
   # Template for dynamically created Markee contracts from InvestorStrategy
@@ -130,7 +130,7 @@ templates:
         - NameUpdate
       abis:
         - name: Markee
-          file: ./abis/Markee.json
+          file: ../abis/Markee.json
       eventHandlers:
         - event: FundsAdded(uint256,uint256,indexed address)
           handler: handleFundsAdded
@@ -138,4 +138,4 @@ templates:
           handler: handleMessageChanged
         - event: NameChanged(string,indexed address)
           handler: handleNameChanged
-      file: ./src/markee.ts
+      file: ../src/markee.ts
