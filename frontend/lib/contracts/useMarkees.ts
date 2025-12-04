@@ -7,7 +7,7 @@ import type { Markee, FundsAdded, MessageUpdate, NameUpdate } from '@/types'
 const SUBGRAPH_URL =
   'https://api.studio.thegraph.com/query/40814/markee-optimism/version/latest'
 const CACHE_KEY = 'markees_cache'
-const CACHE_DURATION = 1000 * 60 * 5 // 5 minutes
+const CACHE_DURATION = 1000 * 60 * 10 // 10 minutes
 
 interface CacheData {
   markees: Markee[]
