@@ -89,33 +89,6 @@ export function useMarkees() {
             updatedAt
             fundsAddedCount
             messageUpdateCount
-            fundsAddedEvents {
-              id
-              addedBy
-              amount
-              newTotal
-              timestamp
-              blockNumber
-              transactionHash
-            }
-            messageUpdates {
-              id
-              updatedBy
-              oldMessage
-              newMessage
-              timestamp
-              blockNumber
-              transactionHash
-            }
-            nameUpdates {
-              id
-              updatedBy
-              oldName
-              newName
-              timestamp
-              blockNumber
-              transactionHash
-            }
           }
         }
       `
