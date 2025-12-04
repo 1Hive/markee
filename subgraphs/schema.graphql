@@ -1,8 +1,5 @@
-cd ~/markee/subgraphs
-
-cat > schema.graphql << 'EOF'
 type Markee @entity(immutable: false) {
-  id: ID! # Markee contract address
+  id: ID!
   address: Bytes!
   owner: Bytes!
   message: String!
@@ -15,15 +12,13 @@ type Markee @entity(immutable: false) {
   updatedAt: BigInt!
   fundsAddedCount: BigInt!
   messageUpdateCount: BigInt!
-  
-  # Relations
   fundsAddedEvents: [FundsAdded!]! @derivedFrom(field: "markee")
   messageUpdates: [MessageUpdate!]! @derivedFrom(field: "markee")
   nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
 }
 
 type FundsAdded @entity(immutable: true) {
-  id: ID! # Transaction hash + log index
+  id: ID!
   markee: Markee!
   addedBy: Bytes!
   amount: BigInt!
@@ -34,7 +29,7 @@ type FundsAdded @entity(immutable: true) {
 }
 
 type MessageUpdate @entity(immutable: true) {
-  id: ID! # Transaction hash + log index
+  id: ID!
   markee: Markee!
   updatedBy: Bytes!
   oldMessage: String!
@@ -45,7 +40,7 @@ type MessageUpdate @entity(immutable: true) {
 }
 
 type NameUpdate @entity(immutable: true) {
-  id: ID! # Transaction hash + log index
+  id: ID!
   markee: Markee!
   updatedBy: Bytes!
   oldName: String!
@@ -56,7 +51,7 @@ type NameUpdate @entity(immutable: true) {
 }
 
 type InvestorStrategy @entity(immutable: false) {
-  id: ID! # Contract address
+  id: ID!
   address: Bytes!
   minimumPrice: BigInt!
   maxMessageLength: BigInt!
@@ -65,11 +60,9 @@ type InvestorStrategy @entity(immutable: false) {
   totalFundsRaised: BigInt!
 }
 
-# Global statistics
 type GlobalStats @entity(immutable: false) {
-  id: ID! # Always "1"
+  id: ID!
   totalMarkees: BigInt!
   totalFundsRaised: BigInt!
   totalTransactions: BigInt!
 }
-EOF
