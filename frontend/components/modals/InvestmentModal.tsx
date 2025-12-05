@@ -268,7 +268,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Tell us how you really feel... as owner of this Leaderboard Markee you can change this message whenever you'd like."
+                      placeholder="Tell us how you really feel... as owner of this message you'll be able to change it whenever you'd like."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
@@ -289,7 +289,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Take credit for your written masterpiece..."
+                      placeholder="Take credit for your masterpiece..."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       maxLength={32}
                       disabled={isPending || isConfirming}
