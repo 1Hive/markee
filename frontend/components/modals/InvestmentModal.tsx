@@ -402,7 +402,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      ✏️ Update your message for free anytime! Your investment amount stays the same.
+                      ✏️ As owner you can update your message for free anytime!
                     </p>
                   </div>
                 </div>
