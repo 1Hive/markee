@@ -263,12 +263,12 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Set Your Message
+                      Set Your First Message
                     </label>
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Tell us how you really feel..."
+                      placeholder="Tell us how you really feel... as owner of this Leaderboard Markee you can change this message whenever you'd like."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
@@ -289,7 +289,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Vitalik"
+                      placeholder="Take credit for your written masterpiece..."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       maxLength={32}
                       disabled={isPending || isConfirming}
@@ -322,22 +322,22 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     )}
                   </div>
 
-                  {/* Featured $ABC Token Display */}
+                  {/* Featured $MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
                     <div className="bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
                       <div className="text-center">
                         <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
                         <p className="text-4xl font-bold text-markee mb-2">
-                          {(parseFloat(amount) * 50000).toLocaleString()}
+                          {(parseFloat(amount) * 31000).toLocaleString()}
                         </p>
-                        <p className="text-xl font-semibold text-markee-700">ABC tokens</p>
+                        <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
                       </div>
                     </div>
                   )}
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      By creating a Markee and getting ABC, you agree to the Covenant and become a member of the Markee Cooperative.
+                      By creating a Markee and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
                 </div>
