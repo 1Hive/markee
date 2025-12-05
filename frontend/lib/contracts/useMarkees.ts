@@ -2,10 +2,17 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { request, gql } from 'graphql-request'
-import type { Markee, FundsAdded, MessageUpdate, NameUpdate } from '@/types'
+import type { Markee } from '@/types'
 
-const SUBGRAPH_URL =
+// Primary endpoint: The Graph Network (production)
+const NETWORK_SUBGRAPH_URL = process.env.NEXT_PUBLIC_GRAPH_API_KEY
+  ? `https://gateway-arbitrum.network.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/3kUc3txg9GPt6MvdKFZPYzwU5GZoXvtWyoMwLRsXreXm`
+  : null
+
+// Fallback endpoint: The Graph Studio (development)
+const STUDIO_SUBGRAPH_URL =
   'https://api.studio.thegraph.com/query/40814/markee-optimism/version/latest'
+
 const CACHE_KEY = 'markees_cache'
 const CACHE_DURATION = 1000 * 60 * 10 // 10 minutes
 
@@ -30,33 +37,6 @@ interface MarkeeSubgraph {
     updatedAt?: string
     fundsAddedCount?: string
     messageUpdateCount?: string
-    fundsAddedEvents?: Array<{
-      id: string
-      addedBy: string
-      amount: string
-      newTotal: string
-      timestamp: string
-      blockNumber: string
-      transactionHash: string
-    }> | null
-    messageUpdates?: Array<{
-      id: string
-      updatedBy: string
-      oldMessage: string
-      newMessage: string
-      timestamp: string
-      blockNumber: string
-      transactionHash: string
-    }> | null
-    nameUpdates?: Array<{
-      id: string
-      updatedBy: string
-      oldName: string
-      newName: string
-      timestamp: string
-      blockNumber: string
-      transactionHash: string
-    }> | null
   }>
 }
 
@@ -70,6 +50,13 @@ export function useMarkees() {
 
   const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
     try {
+      // Add query counter for monitoring
+      const queryCount = parseInt(localStorage.getItem('markees_query_count') || '0') + 1
+      localStorage.setItem('markees_query_count', queryCount.toString())
+      
+      console.log('[Markees] Query #' + queryCount + ' at', new Date().toISOString())
+      console.log('[Markees] Using cache:', showFetchingIndicator && markees.length > 0 ? 'background refresh' : 'initial load')
+      
       if (showFetchingIndicator && markees.length > 0) setIsFetchingFresh(true)
       else setIsLoading(true)
 
@@ -94,10 +81,41 @@ export function useMarkees() {
       `
 
       const headers = {
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_GRAPH_TOKEN}`,
+        'Content-Type': 'application/json',
       }
 
-      const data = await request<MarkeeSubgraph>(SUBGRAPH_URL, query, {}, headers)
+      let data: MarkeeSubgraph | null = null
+      let usedEndpoint = ''
+
+      // Try Network endpoint first (production)
+      if (NETWORK_SUBGRAPH_URL) {
+        try {
+          console.log('[Markees] Trying Network endpoint...')
+          data = await request<MarkeeSubgraph>(NETWORK_SUBGRAPH_URL, query, {}, headers)
+          usedEndpoint = 'Network'
+          console.log('[Markees] ✓ Network endpoint succeeded')
+        } catch (networkError: any) {
+          console.warn('[Markees] Network endpoint failed:', networkError.message)
+          console.log('[Markees] Falling back to Studio endpoint...')
+        }
+      }
+
+      // Fallback to Studio endpoint if Network failed or not configured
+      if (!data) {
+        try {
+          // Add Studio authorization header
+          const studioHeaders = {
+            ...headers,
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_GRAPH_TOKEN}`,
+          }
+          data = await request<MarkeeSubgraph>(STUDIO_SUBGRAPH_URL, query, {}, studioHeaders)
+          usedEndpoint = 'Studio'
+          console.log('[Markees] ✓ Studio endpoint succeeded')
+        } catch (studioError: any) {
+          console.error('[Markees] Studio endpoint also failed:', studioError.message)
+          throw new Error('Both Network and Studio endpoints failed')
+        }
+      }
 
       const allMarkees: Markee[] = data.markees.map((m) => ({
         address: m.address,
@@ -107,26 +125,9 @@ export function useMarkees() {
         totalFundsAdded: BigInt(m.totalFundsAdded),
         pricingStrategy: m.pricingStrategy,
         chainId: Number(m.chainId),
-        fundsAddedEvents: (m.fundsAddedEvents ?? []).map((e) => ({
-          ...e,
-          amount: BigInt(e.amount),
-          newTotal: BigInt(e.newTotal),
-          timestamp: BigInt(e.timestamp),
-          blockNumber: BigInt(e.blockNumber),
-        })) as FundsAdded[],
-        messageUpdates: (m.messageUpdates ?? []).map((e) => ({
-          ...e,
-          timestamp: BigInt(e.timestamp),
-          blockNumber: BigInt(e.blockNumber),
-        })) as MessageUpdate[],
-        nameUpdates: (m.nameUpdates ?? []).map((e) => ({
-          ...e,
-          timestamp: BigInt(e.timestamp),
-          blockNumber: BigInt(e.blockNumber),
-        })) as NameUpdate[],
       }))
 
-      console.log(`Fetched ${allMarkees.length} markees from subgraph`)
+      console.log(`[Markees] Successfully fetched ${allMarkees.length} markees from ${usedEndpoint}`)
       setMarkees(allMarkees)
       setError(null)
       const now = Date.now()
@@ -135,16 +136,16 @@ export function useMarkees() {
       try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({ markees: allMarkees, timestamp: now }))
       } catch (err) {
-        console.error('Error saving cache:', err)
+        console.error('[Markees] Error saving cache:', err)
       }
     } catch (err) {
-      console.error('Error fetching markees from subgraph:', err)
+      console.error('[Markees] Error fetching markees:', err)
       setError(err as Error)
     } finally {
       setIsLoading(false)
       setIsFetchingFresh(false)
     }
-  }, [])
+  }, [markees.length])
 
   useEffect(() => {
     if (hasFetchedRef.current) return
@@ -155,15 +156,17 @@ export function useMarkees() {
       if (cached) {
         const { markees: cachedMarkees, timestamp }: CacheData = JSON.parse(cached)
         if (Date.now() - timestamp < CACHE_DURATION) {
-          console.log('Using cached markees data')
+          console.log('[Markees] Using cached data from', new Date(timestamp).toISOString())
           setMarkees(cachedMarkees)
           setLastUpdated(new Date(timestamp))
           setIsLoading(false)
           return
+        } else {
+          console.log('[Markees] Cache expired, fetching fresh data')
         }
       }
     } catch (err) {
-      console.error('Error reading cache:', err)
+      console.error('[Markees] Error reading cache:', err)
     }
 
     fetchMarkees(false)
