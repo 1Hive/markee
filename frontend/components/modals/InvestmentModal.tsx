@@ -371,7 +371,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      💰 Add more funds to climb the leaderboard!
+                      💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
                     </p>
                   </div>
                 </div>
@@ -402,7 +402,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      ✏️ As owner you can update your message for free anytime!
+                      💡 How it works: Anyone can add funds to this message and move it up the Leaderboard. Only the owner can change this message.
                     </p>
                   </div>
                 </div>
