@@ -58,14 +58,14 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
   useEffect(() => {
     if (initialMode) {
       setActiveTab(initialMode)
-      if (userMarkee) {
-        setMessage(userMarkee.message)
+      if (initialMode === 'updateMessage' && userMarkee) {
+        setMessage('') // Start with empty for new message
       } else {
         setMessage('')
       }
     } else if (userMarkee) {
       setActiveTab('addFunds')
-      setMessage(userMarkee.message)
+      setMessage('')
     } else {
       setActiveTab('create')
       setMessage('')
@@ -322,7 +322,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     )}
                   </div>
 
-                  {/* Featured $MARKEE Token Display */}
+                  {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
                     <div className="bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
                       <div className="text-center">
@@ -369,6 +369,19 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     />
                   </div>
 
+                  {/* Featured MARKEE Token Display */}
+                  {amount && parseFloat(amount) > 0 && (
+                    <div className="bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
+                      <div className="text-center">
+                        <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
+                        <p className="text-4xl font-bold text-markee mb-2">
+                          {(parseFloat(amount) * 31000).toLocaleString()}
+                        </p>
+                        <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
                       💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
@@ -380,6 +393,17 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
               {/* Update Message */}
               {activeTab === 'updateMessage' && userMarkee && (
                 <div className="space-y-4">
+                  {/* Current Message */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Message
+                    </label>
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <p className="text-gray-900 font-mono">{userMarkee.message || 'Loading...'}</p>
+                    </div>
+                  </div>
+
+                  {/* New Message */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       New Message
@@ -388,7 +412,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your new message..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
