@@ -2,6 +2,7 @@
 
 import { formatEth, formatAddress } from '@/lib/utils'
 import { Eye } from 'lucide-react'
+import Image from 'next/image'
 import type { Markee } from '@/types'
 
 interface MarkeeCardProps {
@@ -102,8 +103,8 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <span className="text-sm font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</span>
           <p className="font-mono text-sm text-gray-900 truncate flex-1">{markee.message}</p>
-          <span className="text-xs text-gray-500">
-            Owner: <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
+          <span className="text-xs text-gray-500 italic">
+            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
           </span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
@@ -122,49 +123,55 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
   if (size === 'hero') {
     return (
       <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-xl shadow-lg p-8 mb-6 border-4 border-yellow-400">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-6xl">{medal}</div>
               <div className="text-4xl font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</div>
             </div>
             <div className="font-mono text-3xl font-bold text-gray-900 mb-4 message-text">{markee.message}</div>
-            <div className="flex items-center gap-6 text-gray-600 mb-3">
-              <span className="text-xl">
-                <span className="font-medium">Owner:</span>{' '}
-                <span className={hasCustomName ? 'font-semibold' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
-              </span>
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${chainColor}`} />
-                <span className="text-sm">{chainName}</span>
-              </div>
-            </div>
-            {/* Stats row */}
-            <MarkeeStats 
-              messageViews={messageViews}
-              totalViews={totalViews}
-              size={size}
-            />
           </div>
           <div className="flex gap-2 ml-4">
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
-                className="text-sm px-3 py-1 bg-white rounded hover:bg-gray-50 transition"
+                className="text-sm px-3 py-1 bg-white rounded hover:bg-gray-50 transition group relative"
               >
                 ✏️ Edit
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                  Change Message
+                </div>
               </button>
             )}
             <button 
               onClick={() => onAddFunds?.(markee)}
-              className="text-sm px-3 py-1 bg-white rounded hover:bg-gray-50 transition group relative"
+              className="text-sm px-3 py-1 bg-white rounded hover:bg-gray-50 transition group relative flex items-center gap-1"
             >
-              ➕
+              <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                 Add Funds
               </div>
             </button>
           </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${chainColor}`} />
+            <span className="text-sm text-gray-600">{chainName}</span>
+          </div>
+          <div className="text-right">
+            <p className="text-base text-gray-600 italic">
+              — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
+            </p>
+          </div>
+        </div>
+        {/* Stats row */}
+        <div className="mt-3 pt-3 border-t border-yellow-200">
+          <MarkeeStats 
+            messageViews={messageViews}
+            totalViews={totalViews}
+            size={size}
+          />
         </div>
       </div>
     )
@@ -173,7 +180,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
   // Large view (ranks 2-3)
   if (size === 'large') {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200 h-full">
+      <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200 h-full flex flex-col">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
             {medal && <div className="text-3xl">{medal}</div>}
@@ -183,34 +190,34 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
-                className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition"
+                className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition group relative"
               >
                 ✏️
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                  Change Message
+                </div>
               </button>
             )}
             <button 
               onClick={() => onAddFunds?.(markee)}
-              className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition group relative"
+              className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition group relative flex items-center justify-center"
             >
-              ➕
+              <Image src="/green-plus.png" alt="Add Funds" width={14} height={14} />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                 Add Funds
               </div>
             </button>
           </div>
         </div>
-        <div className="font-mono text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text">{markee.message}</div>
-        <div className="flex items-center justify-between text-gray-600 mb-3">
-          <div className="flex flex-col gap-2">
-            <span className="text-sm">
-              <span className="font-medium">Owner:</span>{' '}
-              <span className={hasCustomName ? 'font-semibold' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
-            </span>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${chainColor}`} />
-              <span className="text-xs">{chainName}</span>
-            </div>
+        <div className="font-mono text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text flex-grow">{markee.message}</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${chainColor}`} />
+            <span className="text-xs text-gray-600">{chainName}</span>
           </div>
+          <p className="text-sm text-gray-600 italic">
+            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
+          </p>
         </div>
         {/* Stats at bottom */}
         <div className="pt-3 border-t border-gray-100">
@@ -227,41 +234,41 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
   // Medium view (ranks 4-26)
   if (size === 'medium') {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 h-full">
+      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 h-full flex flex-col">
         <div className="flex items-start justify-between mb-2">
           <div className="text-lg font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</div>
           <div className="flex gap-1 text-sm">
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
-                className="hover:scale-110 transition"
+                className="hover:scale-110 transition group relative"
               >
                 ✏️
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                  Change Message
+                </div>
               </button>
             )}
             <button 
               onClick={() => onAddFunds?.(markee)}
               className="hover:scale-110 transition group relative"
             >
-              ➕
+              <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                 Add Funds
               </div>
             </button>
           </div>
         </div>
-        <div className="font-mono text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text">{markee.message}</div>
+        <div className="font-mono text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text flex-grow">{markee.message}</div>
         <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
-          <div className="flex flex-col gap-1">
-            <span>
-              <span className="font-medium">Owner:</span>{' '}
-              <span className={hasCustomName ? '' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
-            </span>
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 rounded-full ${chainColor}`} />
-              <span>{chainName}</span>
-            </div>
+          <div className="flex items-center gap-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${chainColor}`} />
+            <span>{chainName}</span>
           </div>
+          <p className="italic">
+            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>{hasCustomName ? markee.name : formatAddress(markee.owner)}</span>
+          </p>
         </div>
         {/* Stats at bottom */}
         <div className="pt-2 border-t border-gray-100">
