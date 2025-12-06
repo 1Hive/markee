@@ -186,7 +186,7 @@ export default function Home() {
             <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard 🏅</h3>
 
              <p className="text-lg text-gray-700 mb-6">
-              Top MARKEE holders in the Cooperative by total funds added.
+              Top Markees by Total Funds Added.
             </p>
           </div>
 
