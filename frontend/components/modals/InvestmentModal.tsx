@@ -196,6 +196,15 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
   if (!isOpen) return null
 
   const canSwitchTabs = !isPending && !isConfirming
+  const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
+
+  // Determine modal title
+  const getModalTitle = () => {
+    if (!userMarkee) return 'Buy a Message'
+    if (activeTab === 'addFunds') return 'Add Funds'
+    if (activeTab === 'updateMessage') return 'Update Message'
+    return 'Manage Your Markee'
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -203,7 +212,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">
-            {userMarkee ? 'Manage Your Markee' : 'Create a Markee'}
+            {getModalTitle()}
           </h2>
           <button
             onClick={onClose}
@@ -214,8 +223,8 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
           </button>
         </div>
 
-        {/* Tabs */}
-        {userMarkee && (
+        {/* Tabs - only show if user is owner */}
+        {userMarkee && isOwner && (
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => canSwitchTabs && setActiveTab('addFunds')}
@@ -258,7 +267,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
             </div>
           ) : (
             <>
-              {/* Create Markee */}
+              {/* Buy a Message (Create) */}
               {activeTab === 'create' && (
                 <div className="space-y-4">
                   <div>
@@ -337,7 +346,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
                   <div className="bg-markee-50 rounded-lg p-4">
                     <p className="text-sm text-markee-900">
-                      By creating a Markee and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
+                      By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
                 </div>
@@ -474,7 +483,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     </>
                   ) : (
                     <>
-                      {activeTab === 'create' && 'Create Markee'}
+                      {activeTab === 'create' && 'Buy Message'}
                       {activeTab === 'addFunds' && 'Add Funds'}
                       {activeTab === 'updateMessage' && 'Update Message'}
                     </>
