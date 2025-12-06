@@ -135,7 +135,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
-                className="text-sm px-3 py-1 rounded hover:bg-gray-50 transition group relative"
+                className="text-sm px-3 py-1 hover:scale-110 transition group relative"
               >
                 ✏️ Edit
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
@@ -145,7 +145,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             )}
             <button 
               onClick={() => onAddFunds?.(markee)}
-              className="text-sm px-3 py-1 rounded hover:bg-gray-50 transition group relative flex items-center gap-1"
+              className="text-sm px-3 py-1 hover:scale-110 transition group relative flex items-center gap-1"
             >
               <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
@@ -190,7 +190,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
-                className="text-xs px-2 py-1 rounded hover:bg-gray-200 transition group relative"
+                className="text-xs px-2 py-1 hover:scale-110 transition group relative"
               >
                 ✏️
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
@@ -200,7 +200,7 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
             )}
             <button 
               onClick={() => onAddFunds?.(markee)}
-              className="text-xs px-2 py-1 rounded hover:bg-gray-200 transition group relative flex items-center justify-center"
+              className="text-xs px-2 py-1 hover:scale-110 transition group relative flex items-center justify-center"
             >
               <Image src="/green-plus.png" alt="Add Funds" width={14} height={14} />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
@@ -236,7 +236,10 @@ export function MarkeeCard({ markee, rank, size, userAddress, onEditMessage, onA
     return (
       <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 h-full flex flex-col">
         <div className="flex items-start justify-between mb-2">
-          <div className="text-lg font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-gray-400">#{rank}</span>
+            <div className="text-lg font-bold text-markee">{formatEth(markee.totalFundsAdded)} ETH</div>
+          </div>
           <div className="flex gap-1 text-sm">
             {isOwner && (
               <button 
