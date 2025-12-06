@@ -356,7 +356,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1">Current Investment</p>
+                    <p className="text-sm text-gray-600 mb-1">Total Funds Added</p>
                     <p className="text-2xl font-bold text-markee">
                       {formatEther(userMarkee.totalFundsAdded)} ETH
                     </p>
