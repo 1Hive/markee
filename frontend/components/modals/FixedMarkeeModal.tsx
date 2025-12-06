@@ -140,6 +140,19 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
                 </div>
               </div>
 
+              {/* Featured MARKEE Token Display */}
+              {fixedMarkee.price && (
+                <div className="mb-6 bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
+                  <div className="text-center">
+                    <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
+                    <p className="text-4xl font-bold text-markee mb-2">
+                      {(parseFloat(formatEther(fixedMarkee.price)) * 31000).toLocaleString()}
+                    </p>
+                    <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
+                  </div>
+                </div>
+              )}
+
               {/* New Message Input */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
