@@ -133,7 +133,6 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-markee-900 font-medium">Price to Change Message</p>
-                    <p className="text-xs text-markee-600 mt-1">You'll receive ABC tokens for this amount</p>
                   </div>
                   <div className="text-2xl font-bold text-markee">
                     {fixedMarkee.price ? formatEther(fixedMarkee.price) : '...'} ETH
@@ -159,7 +158,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
               {/* Info Box */}
               <div className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <p className="text-sm text-gray-700">
-                  💡 <strong>How it works:</strong> Anyone can change this message by paying the fixed amount. Payments go to the Markee RevNet and receive ABC tokens in return.
+                  🪧 By changing this Markee and getting MARKEE tokens, you become a member of the Markee Cooperative and agree to the Covenant.
                 </p>
               </div>
 
