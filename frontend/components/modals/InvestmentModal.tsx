@@ -284,7 +284,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Tell us how you really feel... as owner of this message you'll be able to change it whenever you'd like."
+                      placeholder="Tell us how you really feel..."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
