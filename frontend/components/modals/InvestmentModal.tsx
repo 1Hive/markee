@@ -258,17 +258,12 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-gray-600 mb-4">Please connect your wallet to continue</p>
-              <div className="flex flex-col gap-2 mt-6">
-                {connectors.map((connector) => (
-                  <button
-                    key={connector.uid}
-                    onClick={() => connect({ connector })}
-                    className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition"
-                  >
-                    Connect {connector.name}
-                  </button>
-                ))}
-              </div>
+              <button
+                onClick={() => connect({ connector: connectors[0] })}
+                className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition mt-4"
+              >
+                Connect Wallet
+              </button>
             </div>
           ) : !strategyAddress ? (
             <div className="text-center py-8">
