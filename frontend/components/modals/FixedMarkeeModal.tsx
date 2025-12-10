@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useConnect } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { FixedStrategyABI } from '@/lib/contracts/abis'
@@ -17,6 +17,7 @@ interface FixedMarkeeModalProps {
 
 export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedMarkeeModalProps) {
   const { isConnected, chain } = useAccount()
+  const { connectors, connect } = useConnect()
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -108,6 +109,17 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-gray-600 mb-4">Please connect your wallet to continue</p>
+              <div className="flex flex-col gap-2 mt-6">
+                {connectors.map((connector) => (
+                  <button
+                    key={connector.uid}
+                    onClick={() => connect({ connector })}
+                    className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition"
+                  >
+                    Connect {connector.name}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : isWrongNetwork ? (
             <div className="text-center py-8">
