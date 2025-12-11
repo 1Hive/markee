@@ -6,6 +6,7 @@ import { useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
+import { useReactions } from '@/hooks/useReactions'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { InvestmentModal } from '@/components/modals/InvestmentModal'
@@ -28,6 +29,7 @@ export default function Home() {
   const { address } = useAccount()
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
+  const { reactions, addReaction, isLoading: reactionsLoading, error: reactionsError } = useReactions()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
@@ -70,6 +72,20 @@ export default function Home() {
     setSelectedMarkee(markee)
     setModalMode('addFunds')
     setIsModalOpen(true)
+  }
+
+  const handleReact = async (markee: Markee, emoji: string) => {
+    if (!address) {
+      console.error('Wallet not connected')
+      return
+    }
+
+    try {
+      await addReaction(markee.address, emoji, markee.chainId)
+    } catch (err) {
+      console.error('Failed to add reaction:', err)
+      // Error is already handled in the hook
+    }
   }
 
   const handleModalClose = () => {
@@ -193,7 +209,7 @@ export default function Home() {
           <div className="flex items-center justify-between mb-8">
             {/* Status indicator */}
             <div className="flex items-center gap-3 ml-auto">
-              {isFetchingFresh && (
+              {(isFetchingFresh || reactionsLoading) && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-markee"></div>
                   <span>Updating...</span>
@@ -206,6 +222,13 @@ export default function Home() {
               )}
             </div>
           </div>
+
+          {/* Error display for reactions */}
+          {reactionsError && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 max-w-2xl mx-auto">
+              <p className="text-sm">{reactionsError}</p>
+            </div>
+          )}
 
           {isLoading && markees.length === 0 && (
             <div>
@@ -242,6 +265,8 @@ export default function Home() {
                   userAddress={address}
                   onEditMessage={handleEditMessage}
                   onAddFunds={handleAddFunds}
+                  onReact={handleReact}
+                  reactions={reactions.get(markees[0].address.toLowerCase())}
                 />
               )}
 
@@ -256,6 +281,8 @@ export default function Home() {
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      reactions={reactions.get(markees[1].address.toLowerCase())}
                     />
                   )}
                   {markees[2] && (
@@ -266,6 +293,8 @@ export default function Home() {
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      reactions={reactions.get(markees[2].address.toLowerCase())}
                     />
                   )}
                 </div>
@@ -283,6 +312,8 @@ export default function Home() {
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      reactions={reactions.get(markee.address.toLowerCase())}
                     />
                   ))}
                 </div>
@@ -302,6 +333,8 @@ export default function Home() {
                         userAddress={address}
                         onEditMessage={handleEditMessage}
                         onAddFunds={handleAddFunds}
+                        onReact={handleReact}
+                        reactions={reactions.get(markee.address.toLowerCase())}
                       />
                     ))}
                   </div>
