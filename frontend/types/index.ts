@@ -9,6 +9,14 @@ export interface FundsAdded {
   transactionHash: string
 }
 
+export interface EmojiReaction {
+  id: string
+  markeeAddress: string
+  userAddress: string
+  emoji: string
+  timestamp: bigint
+}
+
 export interface MessageUpdate {
   id: string
   markee: string
@@ -35,6 +43,7 @@ export interface Markee {
   address: string
   owner: string
   name?: string
+  reactions?: EmojiReaction[
   message: string
   totalFundsAdded: bigint
   chainId: number
