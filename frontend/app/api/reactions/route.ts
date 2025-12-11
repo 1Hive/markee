@@ -60,7 +60,7 @@ function saveReactions(reactions: Reaction[]): void {
 async function verifyBalance(address: string, chainId: number): Promise<boolean> {
   try {
     // Skip verification if using placeholder address
-    if (MARKEE_TOKEN === '0x0000000000000000000000000000000000000000') {
+    if (MARKEE_TOKEN === '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807') {
       console.warn('Using placeholder MARKEE token address - skipping balance verification')
       return true
     }
