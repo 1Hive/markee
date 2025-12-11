@@ -6,7 +6,7 @@ import Image from 'next/image'
 import type { Markee, EmojiReaction } from '@/types'
 import { useState } from 'react'
 import { useAccount, useReadContract } from 'wagmi'
-import { formatUnits } from 'viem'
+import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
 
 interface MarkeeCardProps {
   markee: Markee
@@ -24,13 +24,10 @@ interface MarkeeCardProps {
 const AVAILABLE_EMOJIS = ['❤️', '👍', '👎', '💯', '😂', '🎉', '😮', '💩', '😠', '🚀', '👑', '🤔', '🪧']
 const MARKEE_THRESHOLD = 100n * 10n**18n // 100 MARKEE tokens
 
-// JB Controller ABI for balanceOf
-const CONTROLLER_ABI = [
+// ERC20 ABI for balanceOf
+const ERC20_ABI = [
   {
-    inputs: [
-      { name: 'account', type: 'address' },
-      { name: 'projectId', type: 'uint256' }
-    ],
+    inputs: [{ name: 'account', type: 'address' }],
     name: 'balanceOf',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
@@ -262,20 +259,22 @@ export function MarkeeCard({
   const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
   const hasCustomName = markee.name && markee.name.trim()
   
-  // Check user's MARKEE balance
-  // Note: We'd need to get the JB Controller address from the config
-  // For now, using a placeholder - this would need to be properly configured
+  // Check user's MARKEE balance using the address from addresses.ts
   const { data: balance } = useReadContract({
-    address: '0x1234567890123456789012345678901234567890', // TODO: Get actual JB Controller address
-    abi: CONTROLLER_ABI,
+    address: MARKEE_TOKEN,
+    abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: address ? [address, BigInt(markee.chainId === 8453 ? 52 : 52)] : undefined,
+    args: address ? [address] : undefined,
     query: {
-      enabled: !!address
+      // Skip if using placeholder address
+      enabled: !!address && MARKEE_TOKEN !== '0x0000000000000000000000000000000000000000'
     }
   })
   
-  const hasMinBalance = balance ? balance >= MARKEE_THRESHOLD : false
+  // If using placeholder token, allow all reactions for testing
+  const hasMinBalance = MARKEE_TOKEN === '0x0000000000000000000000000000000000000000' 
+    ? true 
+    : balance ? balance >= MARKEE_THRESHOLD : false
 
   // List view (compact, single line)
   if (size === 'list') {
