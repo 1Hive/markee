@@ -3,6 +3,10 @@ import { base, optimism, arbitrum, mainnet } from 'wagmi/chains'
 // JB Multi Terminal V5 (same across all chains)
 export const JB_TERMINAL = '0x2dB6d704058E552DeFE415753465df8dF0361846' as const
 
+// MARKEE token address (same across all chains)
+// TODO: Update this with the actual MARKEE token address when deployed
+export const MARKEE_TOKEN = '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807' as const
+
 // RevNet Project IDs per chain (MARKEE token)
 export const REVNET_CONFIG = {
   [base.id]: {
