@@ -4,7 +4,7 @@ import { formatEth, formatAddress } from '@/lib/utils'
 import { Eye } from 'lucide-react'
 import Image from 'next/image'
 import type { Markee, EmojiReaction } from '@/types'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAccount, useReadContract } from 'wagmi'
 import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
 
@@ -68,121 +68,149 @@ function getMedalEmoji(rank: number): string {
   return ''
 }
 
-// Emoji Reactions Component
+// Emoji Reactions Component - Messaging App Style
 function EmojiReactions({ 
   reactions, 
   markee, 
   onReact, 
   userAddress, 
-  hasMinBalance 
+  hasMinBalance,
+  messageRef
 }: { 
   reactions?: EmojiReaction[]
   markee: Markee
   onReact?: (markee: Markee, emoji: string) => void
   userAddress?: string
   hasMinBalance: boolean
+  messageRef: React.RefObject<HTMLDivElement>
 }) {
   const [showPicker, setShowPicker] = useState(false)
-  
+  const [pickerPosition, setPickerPosition] = useState({ x: 0, y: 0 })
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  // Close picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        setShowPicker(false)
+      }
+    }
+
+    if (showPicker) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showPicker])
+
+  // Handle right-click / context menu on message
+  useEffect(() => {
+    const messageElement = messageRef.current
+    if (!messageElement || !hasMinBalance || !userAddress) return
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      setPickerPosition({ x: e.clientX, y: e.clientY })
+      setShowPicker(true)
+    }
+
+    // Touch and hold for mobile
+    let touchTimer: NodeJS.Timeout
+    const handleTouchStart = (e: TouchEvent) => {
+      touchTimer = setTimeout(() => {
+        const touch = e.touches[0]
+        setPickerPosition({ x: touch.clientX, y: touch.clientY })
+        setShowPicker(true)
+      }, 500) // 500ms hold
+    }
+
+    const handleTouchEnd = () => {
+      clearTimeout(touchTimer)
+    }
+
+    messageElement.addEventListener('contextmenu', handleContextMenu)
+    messageElement.addEventListener('touchstart', handleTouchStart)
+    messageElement.addEventListener('touchend', handleTouchEnd)
+
+    return () => {
+      messageElement.removeEventListener('contextmenu', handleContextMenu)
+      messageElement.removeEventListener('touchstart', handleTouchStart)
+      messageElement.removeEventListener('touchend', handleTouchEnd)
+      clearTimeout(touchTimer)
+    }
+  }, [messageRef, hasMinBalance, userAddress])
+
   if (!reactions || reactions.length === 0) {
-    // Only show add button if user has sufficient balance
-    if (!hasMinBalance || !userAddress) return null
-    
-    return (
-      <div className="relative">
-        <button
-          onClick={() => setShowPicker(!showPicker)}
-          className="text-xs px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600"
-        >
-          + React
-        </button>
-        
-        {showPicker && (
-          <div className="absolute bottom-full left-0 mb-2 p-2 bg-white border border-gray-200 rounded-lg shadow-lg flex gap-1 z-10">
-            {AVAILABLE_EMOJIS.map(emoji => (
-              <button
-                key={emoji}
-                onClick={() => {
-                  onReact?.(markee, emoji)
-                  setShowPicker(false)
-                }}
-                className="text-lg hover:scale-125 transition-transform p-1"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
+    return null
   }
-  
+
   // Group reactions by emoji
   const reactionCounts = reactions.reduce((acc, reaction) => {
     acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1
     return acc
   }, {} as Record<string, number>)
-  
+
   // Sort by count
   const sortedReactions = Object.entries(reactionCounts)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5) // Show top 5
-  
-  const userReacted = reactions.some(r => r.userAddress.toLowerCase() === userAddress?.toLowerCase())
-  
+
   return (
-    <div className="flex items-center gap-1.5 flex-wrap relative">
-      {sortedReactions.map(([emoji, count]) => {
-        const userHasThisReaction = reactions.some(
-          r => r.emoji === emoji && r.userAddress.toLowerCase() === userAddress?.toLowerCase()
-        )
-        
-        return (
-          <button
-            key={emoji}
-            onClick={() => hasMinBalance && onReact?.(markee, emoji)}
-            disabled={!hasMinBalance}
-            className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs transition-all ${
-              userHasThisReaction 
-                ? 'bg-markee-100 border border-markee-400' 
-                : 'bg-gray-100 hover:bg-gray-200 border border-transparent'
-            } ${hasMinBalance ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-          >
-            <span>{emoji}</span>
-            <span className="text-[10px] font-medium text-gray-700">{count}</span>
-          </button>
-        )
-      })}
-      
-      {/* Add more button if user hasn't reacted yet and has balance */}
-      {!userReacted && hasMinBalance && userAddress && (
-        <>
-          <button
-            onClick={() => setShowPicker(!showPicker)}
-            className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600"
-          >
-            +
-          </button>
-          
-          {showPicker && (
-            <div className="absolute bottom-full left-0 mb-2 p-2 bg-white border border-gray-200 rounded-lg shadow-lg flex gap-1 z-10">
-              {AVAILABLE_EMOJIS.filter(e => !Object.keys(reactionCounts).includes(e)).map(emoji => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-                    onReact?.(markee, emoji)
-                    setShowPicker(false)
-                  }}
-                  className="text-lg hover:scale-125 transition-transform p-1"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+    <>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {sortedReactions.map(([emoji, count]) => {
+          const userHasThisReaction = reactions.some(
+            r => r.emoji === emoji && r.userAddress.toLowerCase() === userAddress?.toLowerCase()
+          )
+
+          return (
+            <button
+              key={emoji}
+              onClick={() => {
+                if (hasMinBalance) {
+                  onReact?.(markee, emoji)
+                }
+              }}
+              disabled={!hasMinBalance}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs transition-all ${
+                userHasThisReaction 
+                  ? 'bg-markee-100 border border-markee-400' 
+                  : 'bg-gray-100 hover:bg-gray-200 border border-transparent'
+              } ${hasMinBalance ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+              title={hasMinBalance ? 'Click to react' : 'Need 100 MARKEE to react'}
+            >
+              <span>{emoji}</span>
+              <span className="text-[10px] font-medium text-gray-700">{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Emoji Picker - Appears on right-click/long-press */}
+      {showPicker && (
+        <div
+          ref={pickerRef}
+          className="fixed z-50 p-2 bg-white border border-gray-200 rounded-lg shadow-lg flex gap-1"
+          style={{
+            left: `${pickerPosition.x}px`,
+            top: `${pickerPosition.y}px`,
+            transform: 'translate(-50%, -100%) translateY(-8px)'
+          }}
+        >
+          {AVAILABLE_EMOJIS.map(emoji => (
+            <button
+              key={emoji}
+              onClick={() => {
+                onReact?.(markee, emoji)
+                setShowPicker(false)
+              }}
+              className="text-xl hover:scale-125 transition-transform p-1 hover:bg-gray-100 rounded"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -258,21 +286,20 @@ export function MarkeeCard({
   const { address } = useAccount()
   const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
   const hasCustomName = markee.name && markee.name.trim()
+  const messageRef = useRef<HTMLDivElement>(null)
   
-  // Check user's MARKEE balance using the address from addresses.ts
+  // Check user's MARKEE balance
   const { data: balance } = useReadContract({
     address: MARKEE_TOKEN,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: {
-      // Skip if using placeholder address
-      enabled: !!address && MARKEE_TOKEN !== '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807'
+      enabled: !!address && MARKEE_TOKEN !== '0x0000000000000000000000000000000000000000'
     }
   })
   
-  // If using placeholder token, allow all reactions for testing
-  const hasMinBalance = MARKEE_TOKEN === '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807' 
+  const hasMinBalance = MARKEE_TOKEN === '0x0000000000000000000000000000000000000000' 
     ? true 
     : balance ? balance >= MARKEE_THRESHOLD : false
 
@@ -281,7 +308,13 @@ export function MarkeeCard({
     return (
       <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50">
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <p className="font-mono text-sm text-gray-900 truncate flex-1">{markee.message}</p>
+          <p 
+            ref={messageRef}
+            className="font-mono text-sm text-gray-900 truncate flex-1 cursor-context-menu"
+            title={hasMinBalance && address ? 'Right-click to react' : ''}
+          >
+            {markee.message}
+          </p>
           <span className="text-xs text-gray-500 italic">
             — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
               {hasCustomName ? markee.name : formatAddress(markee.owner)}
@@ -307,7 +340,11 @@ export function MarkeeCard({
     return (
       <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-xl shadow-lg p-8 mb-6 border-4 border-yellow-400">
         {/* Message is the star */}
-        <div className="font-mono text-3xl font-bold text-gray-900 mb-6 message-text">
+        <div 
+          ref={messageRef}
+          className="font-mono text-3xl font-bold text-gray-900 mb-6 message-text cursor-context-menu select-none"
+          title={hasMinBalance && address ? 'Right-click to react' : ''}
+        >
           {markee.message}
         </div>
         
@@ -328,6 +365,7 @@ export function MarkeeCard({
             onReact={onReact}
             userAddress={userAddress}
             hasMinBalance={hasMinBalance}
+            messageRef={messageRef}
           />
         </div>
         
@@ -398,7 +436,11 @@ export function MarkeeCard({
         </div>
         
         {/* Message */}
-        <div className="font-mono text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text flex-grow">
+        <div 
+          ref={messageRef}
+          className="font-mono text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text flex-grow cursor-context-menu select-none"
+          title={hasMinBalance && address ? 'Right-click to react' : ''}
+        >
           {markee.message}
         </div>
         
@@ -419,6 +461,7 @@ export function MarkeeCard({
             onReact={onReact}
             userAddress={userAddress}
             hasMinBalance={hasMinBalance}
+            messageRef={messageRef}
           />
         </div>
         
@@ -466,7 +509,11 @@ export function MarkeeCard({
         </div>
         
         {/* Message */}
-        <div className="font-mono text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text flex-grow">
+        <div 
+          ref={messageRef}
+          className="font-mono text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text flex-grow cursor-context-menu select-none"
+          title={hasMinBalance && address ? 'Right-click to react' : ''}
+        >
           {markee.message}
         </div>
         
@@ -487,6 +534,7 @@ export function MarkeeCard({
             onReact={onReact}
             userAddress={userAddress}
             hasMinBalance={hasMinBalance}
+            messageRef={messageRef}
           />
         </div>
         
