@@ -24,50 +24,34 @@ const clients = {
   1: createPublicClient({ chain: mainnet, transport: http() }),
 }
 
-// Storage keys
-const REACTIONS_KEY = 'markee_reactions'
-
-// Type definitions
+// Type definitions - using NUMBER for timestamp instead of bigint
 interface Reaction {
   id: string
   markeeAddress: string
   userAddress: string
   emoji: string
-  timestamp: number
+  timestamp: number // ← Changed from bigint to number for JSON serialization
   chainId: number
 }
 
-// Get reactions from localStorage (browser) or in-memory store (server)
+// In-memory storage (server-side only)
 let serverReactions: Reaction[] = []
 
 function getReactions(): Reaction[] {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(REACTIONS_KEY)
-    return stored ? JSON.parse(stored) : []
-  }
   return serverReactions
 }
 
 function saveReactions(reactions: Reaction[]): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(REACTIONS_KEY, JSON.stringify(reactions))
-  } else {
-    serverReactions = reactions
-  }
+  serverReactions = reactions
 }
 
 // Verify MARKEE balance
 async function verifyBalance(address: string, chainId: number): Promise<boolean> {
   try {
-    // Skip verification if using placeholder address
-    if (MARKEE_TOKEN === '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807') {
-      console.warn('Using placeholder MARKEE token address - skipping balance verification')
-      return true
-    }
-
     const client = clients[chainId as keyof typeof clients]
     if (!client) {
-      throw new Error(`Unsupported chain ID: ${chainId}`)
+      console.error(`Unsupported chain ID: ${chainId}`)
+      return false
     }
 
     const balance = await client.readContract({
@@ -77,9 +61,12 @@ async function verifyBalance(address: string, chainId: number): Promise<boolean>
       args: [address as `0x${string}`]
     })
 
-    return balance >= MARKEE_THRESHOLD
+    const hasBalance = balance >= MARKEE_THRESHOLD
+    console.log(`[Reactions] Balance check for ${address} on chain ${chainId}: ${hasBalance ? 'PASS' : 'FAIL'} (${balance.toString()})`)
+    
+    return hasBalance
   } catch (error) {
-    console.error('Error verifying balance:', error)
+    console.error('[Reactions] Error verifying balance:', error)
     return false
   }
 }
@@ -101,7 +88,7 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json({ reactions })
   } catch (error) {
-    console.error('GET reactions error:', error)
+    console.error('[Reactions] GET error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch reactions' },
       { status: 500 }
@@ -123,14 +110,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log(`[Reactions] Checking balance for ${userAddress} on chain ${chainId}`)
+
     // Verify balance
     const hasBalance = await verifyBalance(userAddress, chainId)
     if (!hasBalance) {
+      console.log(`[Reactions] Balance check FAILED for ${userAddress}`)
       return NextResponse.json(
         { error: 'Insufficient MARKEE balance. You need at least 100 MARKEE tokens to react.' },
         { status: 403 }
       )
     }
+
+    console.log(`[Reactions] Balance check PASSED for ${userAddress}`)
 
     // Get existing reactions
     const reactions = getReactions()
@@ -146,16 +138,18 @@ export async function POST(request: NextRequest) {
       markeeAddress,
       userAddress,
       emoji,
-      timestamp: Date.now(),
+      timestamp: Date.now(), // Regular number, not BigInt
       chainId
     }
 
     if (existingIndex >= 0) {
       // Update existing reaction
       reactions[existingIndex] = reaction
+      console.log(`[Reactions] Updated reaction for ${userAddress} on ${markeeAddress}`)
     } else {
       // Add new reaction
       reactions.push(reaction)
+      console.log(`[Reactions] Added new reaction for ${userAddress} on ${markeeAddress}`)
     }
 
     saveReactions(reactions)
@@ -165,7 +159,7 @@ export async function POST(request: NextRequest) {
       reaction 
     })
   } catch (error) {
-    console.error('POST reaction error:', error)
+    console.error('[Reactions] POST error:', error)
     return NextResponse.json(
       { error: 'Failed to add reaction' },
       { status: 500 }
@@ -194,10 +188,11 @@ export async function DELETE(request: NextRequest) {
     )
 
     saveReactions(filtered)
+    console.log(`[Reactions] Removed reaction for ${userAddress} on ${markeeAddress}`)
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE reaction error:', error)
+    console.error('[Reactions] DELETE error:', error)
     return NextResponse.json(
       { error: 'Failed to delete reaction' },
       { status: 500 }
