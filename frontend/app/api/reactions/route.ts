@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http } from 'viem'
 import { optimism, base, arbitrum, mainnet } from 'viem/chains'
 import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
+import { kv } from '@vercel/kv'
 
 const MARKEE_THRESHOLD = 100n * 10n**18n // 100 MARKEE tokens
 
@@ -30,19 +31,18 @@ interface Reaction {
   markeeAddress: string
   userAddress: string
   emoji: string
-  timestamp: number // ← Changed from bigint to number for JSON serialization
+  timestamp: number
   chainId: number
 }
 
-// In-memory storage (server-side only)
-let serverReactions: Reaction[] = []
-
-function getReactions(): Reaction[] {
-  return serverReactions
+// Vercel KV storage (persistent)
+async function getReactions(): Promise<Reaction[]> {
+  const reactions = await kv.get<Reaction[]>('markee_reactions')
+  return reactions || []
 }
 
-function saveReactions(reactions: Reaction[]): void {
-  serverReactions = reactions
+async function saveReactions(reactions: Reaction[]): Promise<void> {
+  await kv.set('markee_reactions', reactions)
 }
 
 // Verify MARKEE balance
@@ -50,7 +50,7 @@ async function verifyBalance(address: string, chainId: number): Promise<boolean>
   try {
     const client = clients[chainId as keyof typeof clients]
     if (!client) {
-      console.error(`Unsupported chain ID: ${chainId}`)
+      console.error(`[Reactions] Unsupported chain ID: ${chainId}`)
       return false
     }
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const markeeAddress = searchParams.get('markeeAddress')
     
-    const reactions = getReactions()
+    const reactions = await getReactions()
     
     if (markeeAddress) {
       const filtered = reactions.filter(
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     console.log(`[Reactions] Balance check PASSED for ${userAddress}`)
 
     // Get existing reactions
-    const reactions = getReactions()
+    const reactions = await getReactions()
     
     // Check if user already reacted to this Markee
     const existingIndex = reactions.findIndex(
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       markeeAddress,
       userAddress,
       emoji,
-      timestamp: Date.now(), // Regular number, not BigInt
+      timestamp: Date.now(),
       chainId
     }
 
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Reactions] Added new reaction for ${userAddress} on ${markeeAddress}`)
     }
 
-    saveReactions(reactions)
+    await saveReactions(reactions)
 
     return NextResponse.json({ 
       success: true, 
@@ -181,13 +181,13 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const reactions = getReactions()
+    const reactions = await getReactions()
     const filtered = reactions.filter(
       r => !(r.markeeAddress.toLowerCase() === markeeAddress.toLowerCase() &&
              r.userAddress.toLowerCase() === userAddress.toLowerCase())
     )
 
-    saveReactions(filtered)
+    await saveReactions(filtered)
     console.log(`[Reactions] Removed reaction for ${userAddress} on ${markeeAddress}`)
 
     return NextResponse.json({ success: true })
