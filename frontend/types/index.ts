@@ -43,7 +43,7 @@ export interface Markee {
   address: string
   owner: string
   name?: string
-  reactions?: EmojiReaction[
+  reactions?: EmojiReaction[]
   message: string
   totalFundsAdded: bigint
   chainId: number
