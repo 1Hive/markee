@@ -1,206 +1,150 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createPublicClient, http } from 'viem'
-import { optimism, base, arbitrum, mainnet } from 'viem/chains'
-import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
+'use client'
 
-const MARKEE_THRESHOLD = 100n * 10n**18n // 100 MARKEE tokens
+import { useState, useEffect, useCallback } from 'react'
+import { useAccount } from 'wagmi'
+import type { EmojiReaction } from '@/types'
 
-// ERC20 ABI for balanceOf
-const ERC20_ABI = [
-  {
-    inputs: [{ name: 'account', type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function'
-  }
-] as const
-
-// Create viem clients for each chain
-const clients = {
-  10: createPublicClient({ chain: optimism, transport: http() }),
-  8453: createPublicClient({ chain: base, transport: http() }),
-  42161: createPublicClient({ chain: arbitrum, transport: http() }),
-  1: createPublicClient({ chain: mainnet, transport: http() }),
+interface UseReactionsReturn {
+  reactions: Map<string, EmojiReaction[]> // Map of markeeAddress -> reactions
+  isLoading: boolean
+  error: string | null
+  addReaction: (markeeAddress: string, emoji: string, chainId: number) => Promise<void>
+  removeReaction: (markeeAddress: string) => Promise<void>
+  refetch: () => Promise<void>
 }
 
-// Storage keys
-const REACTIONS_KEY = 'markee_reactions'
+export function useReactions(): UseReactionsReturn {
+  const { address } = useAccount()
+  const [reactions, setReactions] = useState<Map<string, EmojiReaction[]>>(new Map())
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-// Type definitions
-interface Reaction {
-  id: string
-  markeeAddress: string
-  userAddress: string
-  emoji: string
-  timestamp: number
-  chainId: number
-}
+  // Fetch all reactions
+  const fetchReactions = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
 
-// Get reactions from localStorage (browser) or in-memory store (server)
-let serverReactions: Reaction[] = []
+      const response = await fetch('/api/reactions')
+      if (!response.ok) {
+        throw new Error('Failed to fetch reactions')
+      }
 
-function getReactions(): Reaction[] {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(REACTIONS_KEY)
-    return stored ? JSON.parse(stored) : []
-  }
-  return serverReactions
-}
+      const data = await response.json()
+      
+      // Group reactions by markeeAddress
+      const grouped = new Map<string, EmojiReaction[]>()
+      data.reactions.forEach((reaction: any) => {
+        const key = reaction.markeeAddress.toLowerCase()
+        if (!grouped.has(key)) {
+          grouped.set(key, [])
+        }
+        grouped.get(key)!.push({
+          id: reaction.id,
+          markeeAddress: reaction.markeeAddress,
+          userAddress: reaction.userAddress,
+          emoji: reaction.emoji,
+          timestamp: BigInt(reaction.timestamp)
+        })
+      })
 
-function saveReactions(reactions: Reaction[]): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(REACTIONS_KEY, JSON.stringify(reactions))
-  } else {
-    serverReactions = reactions
-  }
-}
+      setReactions(grouped)
+    } catch (err) {
+      console.error('Error fetching reactions:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch reactions')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
-// Verify MARKEE balance
-async function verifyBalance(address: string, chainId: number): Promise<boolean> {
-  try {
-    // Skip verification if using placeholder address
-    if (MARKEE_TOKEN === '0x0000000000000000000000000000000000000000') {
-      console.warn('Using placeholder MARKEE token address - skipping balance verification')
-      return true
+  // Add or update a reaction
+  const addReaction = useCallback(async (
+    markeeAddress: string,
+    emoji: string,
+    chainId: number
+  ) => {
+    if (!address) {
+      setError('Wallet not connected')
+      return
     }
 
-    const client = clients[chainId as keyof typeof clients]
-    if (!client) {
-      throw new Error(`Unsupported chain ID: ${chainId}`)
+    try {
+      setError(null)
+
+      const response = await fetch('/api/reactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          markeeAddress,
+          userAddress: address,
+          emoji,
+          chainId
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to add reaction')
+      }
+
+      // Refetch to update UI
+      await fetchReactions()
+    } catch (err) {
+      console.error('Error adding reaction:', err)
+      setError(err instanceof Error ? err.message : 'Failed to add reaction')
+      throw err
+    }
+  }, [address, fetchReactions])
+
+  // Remove a reaction
+  const removeReaction = useCallback(async (markeeAddress: string) => {
+    if (!address) {
+      setError('Wallet not connected')
+      return
     }
 
-    const balance = await client.readContract({
-      address: MARKEE_TOKEN,
-      abi: ERC20_ABI,
-      functionName: 'balanceOf',
-      args: [address as `0x${string}`]
-    })
+    try {
+      setError(null)
 
-    return balance >= MARKEE_THRESHOLD
-  } catch (error) {
-    console.error('Error verifying balance:', error)
-    return false
-  }
-}
-
-// GET: Fetch reactions for a specific Markee or all
-export async function GET(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams
-    const markeeAddress = searchParams.get('markeeAddress')
-    
-    const reactions = getReactions()
-    
-    if (markeeAddress) {
-      const filtered = reactions.filter(
-        r => r.markeeAddress.toLowerCase() === markeeAddress.toLowerCase()
+      const response = await fetch(
+        `/api/reactions?markeeAddress=${markeeAddress}&userAddress=${address}`,
+        { method: 'DELETE' }
       )
-      return NextResponse.json({ reactions: filtered })
+
+      if (!response.ok) {
+        throw new Error('Failed to remove reaction')
+      }
+
+      // Refetch to update UI
+      await fetchReactions()
+    } catch (err) {
+      console.error('Error removing reaction:', err)
+      setError(err instanceof Error ? err.message : 'Failed to remove reaction')
+      throw err
     }
-    
-    return NextResponse.json({ reactions })
-  } catch (error) {
-    console.error('GET reactions error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch reactions' },
-      { status: 500 }
-    )
+  }, [address, fetchReactions])
+
+  // Initial fetch
+  useEffect(() => {
+    fetchReactions()
+  }, [fetchReactions])
+
+  return {
+    reactions,
+    isLoading,
+    error,
+    addReaction,
+    removeReaction,
+    refetch: fetchReactions
   }
 }
 
-// POST: Add or update a reaction
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { markeeAddress, userAddress, emoji, chainId } = body
-
-    // Validation
-    if (!markeeAddress || !userAddress || !emoji || !chainId) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
-    }
-
-    // Verify balance
-    const hasBalance = await verifyBalance(userAddress, chainId)
-    if (!hasBalance) {
-      return NextResponse.json(
-        { error: 'Insufficient MARKEE balance. You need at least 100 MARKEE tokens to react.' },
-        { status: 403 }
-      )
-    }
-
-    // Get existing reactions
-    const reactions = getReactions()
-    
-    // Check if user already reacted to this Markee
-    const existingIndex = reactions.findIndex(
-      r => r.markeeAddress.toLowerCase() === markeeAddress.toLowerCase() &&
-           r.userAddress.toLowerCase() === userAddress.toLowerCase()
-    )
-
-    const reaction: Reaction = {
-      id: `${markeeAddress}-${userAddress}`,
-      markeeAddress,
-      userAddress,
-      emoji,
-      timestamp: Date.now(),
-      chainId
-    }
-
-    if (existingIndex >= 0) {
-      // Update existing reaction
-      reactions[existingIndex] = reaction
-    } else {
-      // Add new reaction
-      reactions.push(reaction)
-    }
-
-    saveReactions(reactions)
-
-    return NextResponse.json({ 
-      success: true, 
-      reaction 
-    })
-  } catch (error) {
-    console.error('POST reaction error:', error)
-    return NextResponse.json(
-      { error: 'Failed to add reaction' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE: Remove a reaction
-export async function DELETE(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams
-    const markeeAddress = searchParams.get('markeeAddress')
-    const userAddress = searchParams.get('userAddress')
-
-    if (!markeeAddress || !userAddress) {
-      return NextResponse.json(
-        { error: 'Missing required parameters' },
-        { status: 400 }
-      )
-    }
-
-    const reactions = getReactions()
-    const filtered = reactions.filter(
-      r => !(r.markeeAddress.toLowerCase() === markeeAddress.toLowerCase() &&
-             r.userAddress.toLowerCase() === userAddress.toLowerCase())
-    )
-
-    saveReactions(filtered)
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('DELETE reaction error:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete reaction' },
-      { status: 500 }
-    )
-  }
+// Helper hook to get reactions for a specific Markee
+export function useMarkeeReactions(markeeAddress?: string): EmojiReaction[] {
+  const { reactions } = useReactions()
+  
+  if (!markeeAddress) return []
+  
+  return reactions.get(markeeAddress.toLowerCase()) || []
 }
