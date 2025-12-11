@@ -44,13 +44,13 @@ export function useReactions(): UseReactionsReturn {
           markeeAddress: reaction.markeeAddress,
           userAddress: reaction.userAddress,
           emoji: reaction.emoji,
-          timestamp: BigInt(reaction.timestamp)
+          timestamp: BigInt(reaction.timestamp) // Server sends number, convert to BigInt for type
         })
       })
 
       setReactions(grouped)
     } catch (err) {
-      console.error('Error fetching reactions:', err)
+      console.error('[useReactions] Error fetching reactions:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch reactions')
     } finally {
       setIsLoading(false)
@@ -71,6 +71,8 @@ export function useReactions(): UseReactionsReturn {
     try {
       setError(null)
 
+      console.log(`[useReactions] Adding reaction: ${emoji} to ${markeeAddress} on chain ${chainId}`)
+
       const response = await fetch('/api/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -85,13 +87,16 @@ export function useReactions(): UseReactionsReturn {
       const data = await response.json()
 
       if (!response.ok) {
+        console.error('[useReactions] API error:', data)
         throw new Error(data.error || 'Failed to add reaction')
       }
+
+      console.log('[useReactions] Reaction added successfully')
 
       // Refetch to update UI
       await fetchReactions()
     } catch (err) {
-      console.error('Error adding reaction:', err)
+      console.error('[useReactions] Error adding reaction:', err)
       setError(err instanceof Error ? err.message : 'Failed to add reaction')
       throw err
     }
@@ -119,7 +124,7 @@ export function useReactions(): UseReactionsReturn {
       // Refetch to update UI
       await fetchReactions()
     } catch (err) {
-      console.error('Error removing reaction:', err)
+      console.error('[useReactions] Error removing reaction:', err)
       setError(err instanceof Error ? err.message : 'Failed to remove reaction')
       throw err
     }
