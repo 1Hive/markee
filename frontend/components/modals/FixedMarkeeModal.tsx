@@ -178,7 +178,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
               {/* Info Box */}
               <div className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <p className="text-sm text-gray-700">
-                  🪧 By changing this Markee and getting MARKEE tokens, you become a member of the Markee Cooperative and agree to the Covenant.
+                  🪧 You thought you could afford to change the hero signs on this site?? HA! Keep dreaming. If you've got the ETH to change this, you'll get MARKEE tokens and become a member of the Markee Cooperative and agree to the Covenant.
                 </p>
               </div>
 
