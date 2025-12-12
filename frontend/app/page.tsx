@@ -113,8 +113,9 @@ export default function Home() {
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/" className="text-markee font-medium">Leaderboard</Link>
-              <Link href="/info" className="text-gray-600 hover:text-gray-900">Info</Link>
+              <Link href="/how-it-works" className="text-gray-600 hover:text-gray-900">How it Works</Link>
+              <Link href="/ecosystem" className="text-gray-600 hover:text-gray-900">Ecosystem</Link>
+              <Link href="/owners" className="text-gray-600 hover:text-gray-900">Owners</Link>
             </nav>
           </div>
           <ConnectButton />
