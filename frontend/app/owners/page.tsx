@@ -78,7 +78,7 @@ export default function Owners() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-6">Ownership Structure</h1>
           <p className="text-xl text-gray-700">
-            Markee is owned by a Digital Cooperative powered by RevNets—transparent, on-chain tokenomics that progressively shift ownership to the community.
+            Markee is owned by a Digital Cooperative powered by RevNets, permissionlessly shifting ownership from the founding team to the community as revenue is generated.
           </p>
         </div>
       </section>
