@@ -28,7 +28,7 @@ export default function Ecosystem() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-6">Markee Ecosystem</h1>
           <p className="text-xl text-gray-700 mb-8">
-            A growing network of platforms and communities using Markee to fund their work through transparent, on-chain revenue.
+            A growing network of platforms and communities using Markee to monetize their digital real estate for their users and themselves.
           </p>
         </div>
       </section>
