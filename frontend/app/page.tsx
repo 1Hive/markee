@@ -175,18 +175,26 @@ export default function Home() {
   </div>
 </section>
 
-      {/* Integration Partners - Coming Soon */}
-      <section className="bg-white py-12 border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
-            <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
-            <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
-            <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
-            <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
-          </div>
-        </div>{/* Hero Section - Fixed Price Messages */}
-      </section>
+{/* Integration Partners - Coming Soon */}
+<section className="bg-white py-12 border-b border-gray-200">
+  <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
+      <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
+      <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
+      <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
+      <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
+    </div>
+    <div className="text-center mt-8">
+      <Link 
+        href="/ecosystem"
+        className="inline-block bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
+      >
+        Explore our Ecosystem
+      </Link>
+    </div>
+  </div>
+</section>
 
 {/* Leaderboard */}
 <section className="bg-gray-50 py-16">
@@ -197,6 +205,22 @@ export default function Home() {
        <p className="text-lg text-gray-700 mb-6">
         Top Messages by Total Funds Added.
       </p>
+
+      {/* CTA Buttons - moved here */}
+      <div className="flex gap-4 justify-center mb-8">
+        <button 
+          onClick={handleCreateNew}
+          className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
+        >
+          Buy a Message
+        </button>
+        <Link 
+          href="/how-it-works"
+          className="bg-white text-markee border-2 border-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-50 transition-colors"
+        >
+          How it Works
+        </Link>
+      </div>
     </div>
 
     <div className="flex items-center justify-between mb-8">
@@ -335,22 +359,6 @@ export default function Home() {
         )}
       </div>
     )}
-
-    {/* CTA Buttons */}
-    <div className="flex gap-4 justify-center mt-12">
-      <button 
-        onClick={handleCreateNew}
-        className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
-      >
-        Buy a Message
-      </button>
-      <Link 
-        href="/how-it-works"
-        className="bg-white text-markee border-2 border-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-50 transition-colors"
-      >
-        How it Works
-      </Link>
-    </div>
   </div>
 </section>
 
