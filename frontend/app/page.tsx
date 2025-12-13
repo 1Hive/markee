@@ -188,16 +188,156 @@ export default function Home() {
         </div>{/* Hero Section - Fixed Price Messages */}
       </section>
 
-     {/* Invitation Section */}
-<section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
-  <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-    <h2 className="text-4xl font-bold text-gray-900 mb-6">You're Invited 🪧</h2>
-    
-    <p className="text-lg text-gray-700 mb-6">
-      Markee is in <strong>Phase 0 fundraising</strong> with our first integrations scheduled to go live in Q1 2026. Buy a Message to get <strong>MARKEE tokens</strong>, a spot on the <strong>Leaderboard</strong>, and a stake in the Cooperative's RevNet where <strong>all future revenue flows.</strong>
-    </p>
+{/* Leaderboard */}
+<section className="bg-gray-50 py-16">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="text-center mb-8">
+      <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard 🏅</h3>
 
-    <div className="flex gap-4 justify-center">
+       <p className="text-lg text-gray-700 mb-6">
+        Top Messages by Total Funds Added.
+      </p>
+    </div>
+
+    <div className="flex items-center justify-between mb-8">
+      {/* Status indicator */}
+      <div className="flex items-center gap-3 ml-auto">
+        {(isFetchingFresh || reactionsLoading) && (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-markee"></div>
+            <span>Updating...</span>
+          </div>
+        )}
+        {lastUpdated && !isLoading && (
+          <div className="text-sm text-gray-500">
+            Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* Error display for reactions */}
+    {reactionsError && (
+      <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 max-w-2xl mx-auto">
+        <p className="text-sm">{reactionsError}</p>
+      </div>
+    )}
+
+    {isLoading && markees.length === 0 && (
+      <div>
+        <LeaderboardSkeleton />
+      </div>
+    )}
+
+    {error && (
+      <div className="text-center py-12">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-lg mx-auto">
+          <p className="text-red-600 font-medium mb-2">Error loading Markees</p>
+          <p className="text-red-500 text-sm">{error.message}</p>
+        </div>
+      </div>
+    )}
+
+    {!isLoading && !error && markees.length === 0 && (
+      <div className="text-center py-12">
+        <div className="bg-markee-50 rounded-lg p-8 max-w-lg mx-auto">
+          <div className="text-6xl mb-4">🪧</div>
+          <p className="text-gray-600 text-lg">No Markees yet. Be the first!</p>
+        </div>
+      </div>
+    )}
+
+    {markees.length > 0 && (
+      <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
+        {/* #1 Spot - Full Width */}
+        {markees[0] && (
+          <MarkeeCard 
+            markee={markees[0]} 
+            rank={1} 
+            size="hero"
+            userAddress={address}
+            onEditMessage={handleEditMessage}
+            onAddFunds={handleAddFunds}
+            onReact={handleReact}
+            reactions={reactions.get(markees[0].address.toLowerCase())}
+          />
+        )}
+
+        {/* #2 and #3 - Two Column */}
+        {markees.length > 1 && (
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            {markees[1] && (
+              <MarkeeCard 
+                markee={markees[1]} 
+                rank={2} 
+                size="large"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+                onReact={handleReact}
+                reactions={reactions.get(markees[1].address.toLowerCase())}
+              />
+            )}
+            {markees[2] && (
+              <MarkeeCard 
+                markee={markees[2]} 
+                rank={3} 
+                size="large"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+                onReact={handleReact}
+                reactions={reactions.get(markees[2].address.toLowerCase())}
+              />
+            )}
+          </div>
+        )}
+
+        {/* #4-26 - Grid */}
+        {markees.length > 3 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {markees.slice(3, 26).map((markee, index) => (
+              <MarkeeCard 
+                key={markee.address} 
+                markee={markee} 
+                rank={index + 4} 
+                size="medium"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+                onReact={handleReact}
+                reactions={reactions.get(markee.address.toLowerCase())}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* #27+ - List View */}
+        {markees.length > 26 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">More Investors</h4>
+            <div className="space-y-2">
+              {markees.slice(26).map((markee, index) => (
+                <MarkeeCard 
+                  key={markee.address} 
+                  markee={markee} 
+                  rank={index + 27} 
+                  size="list"
+                  userAddress={address}
+                  onEditMessage={handleEditMessage}
+                  onAddFunds={handleAddFunds}
+                  onReact={handleReact}
+                  reactions={reactions.get(markee.address.toLowerCase())}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* CTA Buttons */}
+    <div className="flex gap-4 justify-center mt-12">
       <button 
         onClick={handleCreateNew}
         className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
@@ -205,180 +345,14 @@ export default function Home() {
         Buy a Message
       </button>
       <Link 
-        href="/info"
-        className="bg-green-50 text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-white transition-colors"
+        href="/how-it-works"
+        className="bg-white text-markee border-2 border-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-50 transition-colors"
       >
-        Learn More
+        How it Works
       </Link>
     </div>
   </div>
 </section>
-
-      {/* Leaderboard */}
-      <section className="bg-white py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard 🏅</h3>
-
-             <p className="text-lg text-gray-700 mb-6">
-              Top Messages by Total Funds Added.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between mb-8">
-            {/* Status indicator */}
-            <div className="flex items-center gap-3 ml-auto">
-              {(isFetchingFresh || reactionsLoading) && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-markee"></div>
-                  <span>Updating...</span>
-                </div>
-              )}
-              {lastUpdated && !isLoading && (
-                <div className="text-sm text-gray-500">
-                  Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Error display for reactions */}
-          {reactionsError && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 max-w-2xl mx-auto">
-              <p className="text-sm">{reactionsError}</p>
-            </div>
-          )}
-
-          {isLoading && markees.length === 0 && (
-            <div>
-              <LeaderboardSkeleton />
-            </div>
-          )}
-
-          {error && (
-            <div className="text-center py-12">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-lg mx-auto">
-                <p className="text-red-600 font-medium mb-2">Error loading Markees</p>
-                <p className="text-red-500 text-sm">{error.message}</p>
-              </div>
-            </div>
-          )}
-
-          {!isLoading && !error && markees.length === 0 && (
-            <div className="text-center py-12">
-              <div className="bg-markee-50 rounded-lg p-8 max-w-lg mx-auto">
-                <div className="text-6xl mb-4">🪧</div>
-                <p className="text-gray-600 text-lg">No Markees yet. Be the first!</p>
-              </div>
-            </div>
-          )}
-
-          {markees.length > 0 && (
-            <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
-              {/* #1 Spot - Full Width */}
-              {markees[0] && (
-                <MarkeeCard 
-                  markee={markees[0]} 
-                  rank={1} 
-                  size="hero"
-                  userAddress={address}
-                  onEditMessage={handleEditMessage}
-                  onAddFunds={handleAddFunds}
-                  onReact={handleReact}
-                  reactions={reactions.get(markees[0].address.toLowerCase())}
-                />
-              )}
-
-              {/* #2 and #3 - Two Column */}
-              {markees.length > 1 && (
-                <div className="grid grid-cols-2 gap-6 mb-6">
-                  {markees[1] && (
-                    <MarkeeCard 
-                      markee={markees[1]} 
-                      rank={2} 
-                      size="large"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      reactions={reactions.get(markees[1].address.toLowerCase())}
-                    />
-                  )}
-                  {markees[2] && (
-                    <MarkeeCard 
-                      markee={markees[2]} 
-                      rank={3} 
-                      size="large"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      reactions={reactions.get(markees[2].address.toLowerCase())}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* #4-26 - Grid */}
-              {markees.length > 3 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                  {markees.slice(3, 26).map((markee, index) => (
-                    <MarkeeCard 
-                      key={markee.address} 
-                      markee={markee} 
-                      rank={index + 4} 
-                      size="medium"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      reactions={reactions.get(markee.address.toLowerCase())}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* #27+ - List View */}
-              {markees.length > 26 && (
-                <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">More Investors</h4>
-                  <div className="space-y-2">
-                    {markees.slice(26).map((markee, index) => (
-                      <MarkeeCard 
-                        key={markee.address} 
-                        markee={markee} 
-                        rank={index + 27} 
-                        size="list"
-                        userAddress={address}
-                        onEditMessage={handleEditMessage}
-                        onAddFunds={handleAddFunds}
-                        onReact={handleReact}
-                        reactions={reactions.get(markee.address.toLowerCase())}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Bottom CTA Buttons */}
-          <div className="flex gap-4 justify-center mt-12">
-            <button 
-              onClick={handleCreateNew}
-              className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
-            >
-              Buy a Message
-            </button>
-            <Link 
-              href="/info"
-              className="bg-green-50 text-green-600 border-2 border-green-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-white transition-colors"
-            >
-              Learn More
-            </Link>
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-4">
