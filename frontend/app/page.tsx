@@ -133,7 +133,7 @@ export default function Home() {
             <div key={i} className="relative">
               <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain animate-pulse" 
                    style={{ backgroundImage: 'url(/placard.png)' }}>
-                <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-12">
+                <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-16">
                   <div className="w-3/4 h-12 bg-gray-200 rounded"></div>
                 </div>
               </div>
