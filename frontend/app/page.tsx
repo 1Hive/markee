@@ -143,36 +143,32 @@ export default function Home() {
       ) : (
         // Real data
         fixedMarkees.map((fixedMarkee, index) => (
-          <div
+          <button
             key={index}
-            className="group relative"
+            onClick={() => handleFixedMarkeeClick(fixedMarkee)}
+            className="group relative cursor-pointer transition-transform hover:scale-105"
           >
-            <button
-              onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-              className="w-full cursor-pointer transition-transform hover:scale-105"
-            >
-              {/* Placard background */}
-              <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain" 
-                   style={{ backgroundImage: 'url(/placard.png)' }}>
-                
-                {/* Message area - positioned on the sign with scrolling */}
-                <div className="absolute inset-0 flex items-start justify-center pt-6 pb-20 px-12">
-                  <div className="text-center w-full overflow-y-auto max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-                    <div className="text-sm md:text-base font-mono font-bold text-gray-900 group-hover:text-markee transition-colors message-text break-words">
-                      {fixedMarkee.message || fixedMarkee.name}
-                    </div>
+            {/* Placard background */}
+            <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain" 
+                 style={{ backgroundImage: 'url(/placard.png)' }}>
+              
+              {/* Message area - positioned on the sign with scrolling */}
+              <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-12">
+                <div className="text-center w-full overflow-y-auto max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+                  <div className="text-sm md:text-base font-mono font-bold text-gray-900 group-hover:text-markee transition-colors message-text break-words">
+                    {fixedMarkee.message || fixedMarkee.name}
                   </div>
                 </div>
               </div>
-            </button>
 
-            {/* Hover price indicator - appears below the entire sign */}
-            <div className="text-center opacity-0 group-hover:opacity-100 transition-opacity mt-2">
-              <div className="inline-block bg-markee text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg">
-                {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
+              {/* Hover price indicator - appears at bottom of the post */}
+              <div className="absolute bottom-4 left-0 right-0 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="inline-block bg-markee text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg">
+                  {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
+                </div>
               </div>
             </div>
-          </div>
+          </button>
         ))
       )}
     </div>
