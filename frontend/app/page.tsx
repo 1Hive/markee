@@ -123,7 +123,7 @@ export default function Home() {
       </header>
 
 {/* Hero Section - Fixed Price Messages */}
-<section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
+<section className="bg-gradient-to-br from-markee-50 to-green-50 py-8 border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
       {isLoadingFixed ? (
@@ -155,7 +155,7 @@ export default function Home() {
               {/* Message area - positioned on the sign */}
               <div className="absolute inset-0 flex items-center justify-center pt-8 pb-32 px-8">
                 <div className="text-center w-full">
-                  <div className="text-lg md:text-xl font-mono text-gray-900 line-clamp-3 group-hover:text-markee transition-colors message-text px-2">
+                  <div className="text-lg md:text-xl font-mono font-bold text-gray-900 line-clamp-3 group-hover:text-markee transition-colors message-text px-2">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
                 </div>
