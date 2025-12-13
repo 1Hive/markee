@@ -123,18 +123,18 @@ export default function Home() {
       </header>
 
 {/* Hero Section - Fixed Price Messages */}
-<section className="bg-gradient-to-br from-markee-50 to-green-50 py-4 border-b border-gray-200">
+<section className="bg-gradient-to-br from-markee-50 to-green-50 py-8 border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
       {isLoadingFixed ? (
         // Loading state
         <>
           {[1, 2, 3].map((i) => (
             <div key={i} className="relative">
-              <div className="aspect-[3/4] bg-center bg-no-repeat bg-contain animate-pulse" 
+              <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain animate-pulse" 
                    style={{ backgroundImage: 'url(/placard.png)' }}>
-                <div className="absolute inset-0 flex items-center justify-center pt-8 pb-32">
-                  <div className="w-3/4 h-16 bg-gray-200 rounded"></div>
+                <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20">
+                  <div className="w-3/4 h-12 bg-gray-200 rounded"></div>
                 </div>
               </div>
             </div>
@@ -149,20 +149,20 @@ export default function Home() {
             className="group relative cursor-pointer transition-transform hover:scale-105"
           >
             {/* Placard background */}
-            <div className="aspect-[3/4] bg-center bg-no-repeat bg-contain" 
+            <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain" 
                  style={{ backgroundImage: 'url(/placard.png)' }}>
               
               {/* Message area - positioned on the sign */}
-              <div className="absolute inset-0 flex items-center justify-center pt-8 pb-32 px-8">
+              <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-6">
                 <div className="text-center w-full">
-                  <div className="text-lg md:text-xl font-mono font-bold text-gray-900 line-clamp-3 group-hover:text-markee transition-colors message-text px-2">
+                  <div className="text-base md:text-lg font-mono font-bold text-gray-900 line-clamp-3 group-hover:text-markee transition-colors message-text px-2">
                     {fixedMarkee.message || fixedMarkee.name}
                   </div>
                 </div>
               </div>
 
               {/* Hover price indicator - appears above the post */}
-              <div className="absolute bottom-24 left-0 right-0 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-16 left-0 right-0 text-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="inline-block bg-markee text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg">
                   {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
                 </div>
