@@ -125,7 +125,7 @@ export default function Home() {
 {/* Hero Section - Fixed Price Messages */}
 <section className="bg-gradient-to-br from-markee-50 to-green-50 py-8 border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-6xl mx-auto">
       {isLoadingFixed ? (
         // Loading state
         <>
@@ -153,7 +153,7 @@ export default function Home() {
                  style={{ backgroundImage: 'url(/placard.png)' }}>
               
               {/* Message area - positioned on the sign with scrolling */}
-              <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-12">
+              <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-16">
                 <div className="text-center w-full overflow-y-auto max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
                   <div className="text-sm md:text-base font-mono font-bold text-gray-900 group-hover:text-markee transition-colors message-text break-words">
                     {fixedMarkee.message || fixedMarkee.name}
