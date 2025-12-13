@@ -122,19 +122,6 @@ export default function Home() {
         </div>
       </header>
 
-
-
-      {/* Integration Partners - Coming Soon */}
-      <section className="bg-white py-12 border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
-            <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
-            <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
-            <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
-            <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
-          </div>
-        </div>{/* Hero Section - Fixed Price Messages */}
 <section className="bg-gradient-to-br from-markee-50 to-green-50 py-8 border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
@@ -186,6 +173,18 @@ export default function Home() {
     </div>
   </div>
 </section>
+
+      {/* Integration Partners - Coming Soon */}
+      <section className="bg-white py-12 border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
+            <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
+            <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
+            <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
+            <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
+          </div>
+        </div>{/* Hero Section - Fixed Price Messages */}
       </section>
 
      {/* Invitation Section */}
