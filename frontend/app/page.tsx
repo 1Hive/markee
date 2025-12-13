@@ -123,7 +123,7 @@ export default function Home() {
       </header>
 
 {/* Hero Section - Fixed Price Messages */}
-<section className="bg-gradient-to-br from-markee-50 to-green-50 py-8 border-b border-gray-200">
+<section className="bg-gradient-to-br from-markee-50 to-green-50 py-4 border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
       {isLoadingFixed ? (
@@ -381,7 +381,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8">
+      <footer className="bg-gray-900 text-white py-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center">
             <div className="flex gap-6 mb-4">
