@@ -7,7 +7,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { useReactions } from '@/hooks/useReactions'
-import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
+import MarkeeCard from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { InvestmentModal } from '@/components/modals/InvestmentModal'
 import { FixedMarkeeModal } from '@/components/modals/FixedMarkeeModal'
@@ -122,50 +122,41 @@ export default function Home() {
         </div>
       </header>
 
-{/* Hero Section - Fixed Price Messages */}
-<section className="bg-gradient-to-br from-markee-50 to-green-50 py-8 border-b border-gray-200">
+{/* Hero Section - Fixed Price Messages (Readerboard Style) */}
+<section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-6xl mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
       {isLoadingFixed ? (
         // Loading state
         <>
           {[1, 2, 3].map((i) => (
-            <div key={i} className="relative">
-              <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain animate-pulse" 
-                   style={{ backgroundImage: 'url(/placard.png)' }}>
-                <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-16">
-                  <div className="w-3/4 h-12 bg-gray-200 rounded"></div>
-                </div>
+            <div key={i} className="readerboard-card animate-pulse">
+              <div className="readerboard-inner">
+                <div className="h-16 bg-gray-200 rounded mx-8"></div>
               </div>
             </div>
           ))}
         </>
       ) : (
-        // Real data
+        // Real data - Readerboard styled
         fixedMarkees.map((fixedMarkee, index) => (
           <button
             key={index}
             onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-            className="group relative cursor-pointer transition-transform hover:scale-105"
+            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:-translate-y-1"
           >
-            {/* Placard background */}
-            <div className="aspect-[5/3] bg-center bg-no-repeat bg-contain" 
-                 style={{ backgroundImage: 'url(/placard.png)' }}>
-              
-              {/* Message area - positioned on the sign with scrolling */}
-              <div className="absolute inset-0 flex items-center justify-center pt-4 pb-20 px-16">
-                <div className="text-center w-full overflow-y-auto max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-                  <div className="text-sm md:text-base font-mono font-bold text-gray-900 group-hover:text-markee transition-colors message-text break-words">
-                    {fixedMarkee.message || fixedMarkee.name}
-                  </div>
-                </div>
+            {/* Readerboard inner area with grooves */}
+            <div className="readerboard-inner">
+              {/* Message text */}
+              <div className="readerboard-text">
+                {(fixedMarkee.message || fixedMarkee.name).toUpperCase()}
               </div>
+            </div>
 
-              {/* Hover price indicator - appears at bottom of the post */}
-              <div className="absolute bottom-4 left-0 right-0 text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="inline-block bg-markee text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg">
-                  {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
-                </div>
+            {/* Hover price indicator */}
+            <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
+              <div className="bg-markee text-white text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
+                {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
               </div>
             </div>
           </button>
@@ -174,6 +165,66 @@ export default function Home() {
     </div>
   </div>
 </section>
+
+<style jsx>{`
+  .readerboard-card {
+    position: relative;
+    background: #1a1a1a;
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.3);
+    aspect-ratio: 2 / 1;
+  }
+
+  .readerboard-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: 
+      repeating-linear-gradient(
+        0deg,
+        #ffffff 0px,
+        #ffffff 28px,
+        #e8e8e8 28px,
+        #e8e8e8 30px
+      );
+    border: 4px solid #888;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: hidden;
+  }
+
+  .readerboard-text {
+    font-family: Impact, 'Arial Black', 'Bebas Neue', sans-serif;
+    font-size: clamp(18px, 3vw, 28px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -0.5px;
+    color: #000000;
+    text-align: center;
+    word-wrap: break-word;
+    max-width: 100%;
+    transition: all 0.2s ease;
+  }
+
+  .group:hover .readerboard-text {
+    color: #14532d;
+    transform: scale(1.02);
+  }
+
+  @media (max-width: 768px) {
+    .readerboard-card {
+      aspect-ratio: 5 / 3;
+    }
+    
+    .readerboard-text {
+      font-size: 20px;
+    }
+  }
+`}</style>
 
 {/* Integration Partners - Coming Soon */}
 <section className="bg-white py-12 border-b border-gray-200">
