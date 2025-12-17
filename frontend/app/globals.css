@@ -3,25 +3,37 @@
 @tailwind utilities;
 
 :root {
-  /* Background Colors */
-  --background: #020106;
-  --foreground: #ffffff;
-  --background-secondary: #0f1115;
+  /* Core Backgrounds - Deep Space */
+  --background: #060A2A;
+  --background-secondary: #0A0F3D;
+  --background-cosmic: #0F1B6B;
   
-  /* Theme Colors - VS Code Inspired */
-  --accent-purple: #C678DD;
-  --accent-blue: #61AFEF;
-  --accent-red: #E06C75;
-  --accent-peach: #E5C07B;
-  --accent-cyan: #56B6C2;
+  /* Primary Gradients - Space Glow */
+  --electric-blue: #172090;
+  --royal-blue: #30342C;
+  --nebula-violet: #4B3ACC;
+  --galactic-purple: #6A4AE3;
   
-  /* Text Colors */
-  --text-primary: #ABB2BF;
-  --text-secondary: #888888;
-  --text-white: #ffffff;
+  /* Accent & UI Highlights */
+  --soft-pink: #F897FE;
+  --lavender-accent: #935AF0;
+  --periwinkle-blue: #483ACC;
+  --cool-sky-blue: #7C9CFF;
   
-  /* Border */
-  --border-color: rgba(136, 136, 136, 0.2);
+  /* Planet / Decorative Accents */
+  --peach-orb: #FF8E8E;
+  --coral-blush: #FF7A90;
+  --icy-blue: #8BC8FF;
+  --amethyst: #7B6AF4;
+  
+  /* Text & Subtle UI */
+  --text-primary: #EDEEFF;
+  --text-secondary: #B8B6D9;
+  --text-muted: #8A8FBF;
+  
+  /* Legacy */
+  --foreground: #EDEEFF;
+  --border-color: rgba(138, 143, 191, 0.2);
 }
 
 body {
@@ -40,7 +52,7 @@ body {
   }
 }
 
-/* Custom scrollbar for dark theme */
+/* Custom scrollbar for space theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -51,21 +63,21 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--text-secondary);
+  background: var(--text-muted);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-purple);
+  background: var(--soft-pink);
 }
 
 /* Selection color */
 ::selection {
-  background: var(--accent-purple);
+  background: var(--soft-pink);
   color: var(--background);
 }
 
 ::-moz-selection {
-  background: var(--accent-purple);
+  background: var(--soft-pink);
   color: var(--background);
 }
