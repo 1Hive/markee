@@ -29,7 +29,7 @@ export function ConnectButton() {
     return (
       <button
         onClick={() => connect({ connector: connectors[0] })}
-        className="bg-[#61AFEF] text-[#020106] px-6 py-2 rounded-lg font-medium hover:bg-[#C678DD] flex items-center gap-2 transition-colors"
+        className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">Connect Wallet</span>
@@ -41,7 +41,7 @@ export function ConnectButton() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-[#61AFEF] text-[#020106] px-4 py-2 rounded-lg font-medium hover:bg-[#C678DD] flex items-center gap-2 transition-colors"
+        className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">
@@ -51,22 +51,22 @@ export function ConnectButton() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 bg-[#0f1115] rounded-lg shadow-lg border border-[#888888]/30 overflow-hidden z-50">
-          <div className="p-4 border-b border-[#888888]/30">
-            <p className="text-sm text-[#888888]">Connected with</p>
-            <p className="font-medium text-[#ffffff] mt-1">
+        <div className="absolute right-0 mt-2 w-72 bg-[#0A0F3D] rounded-lg shadow-lg border border-[#8A8FBF]/30 overflow-hidden z-50">
+          <div className="p-4 border-b border-[#8A8FBF]/30">
+            <p className="text-sm text-[#8A8FBF]">Connected with</p>
+            <p className="font-medium text-[#EDEEFF] mt-1">
               {ensName || formatAddress(address)}
             </p>
             {chain && (
               <div className="flex items-center gap-2 mt-2">
                 <div className={`w-2 h-2 rounded-full ${
-                  chain.id === 10 ? 'bg-[#E06C75]' :
-                  chain.id === 8453 ? 'bg-[#61AFEF]' :
-                  chain.id === 42161 ? 'bg-[#C678DD]' :
-                  chain.id === 1 ? 'bg-[#E5C07B]' :
-                  'bg-[#888888]'
+                  chain.id === 10 ? 'bg-[#FF8E8E]' :
+                  chain.id === 8453 ? 'bg-[#7C9CFF]' :
+                  chain.id === 42161 ? 'bg-[#F897FE]' :
+                  chain.id === 1 ? 'bg-[#8BC8FF]' :
+                  'bg-[#8A8FBF]'
                 }`} />
-                <p className="text-sm text-[#ABB2BF]">{chain.name}</p>
+                <p className="text-sm text-[#B8B6D9]">{chain.name}</p>
               </div>
             )}
           </div>
@@ -77,7 +77,7 @@ export function ConnectButton() {
                 disconnect()
                 setIsOpen(false)
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#E06C75] hover:bg-[#E06C75]/20 rounded-md transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#FF8E8E] hover:bg-[#FF8E8E]/20 rounded-md transition-colors"
             >
               <Power size={16} />
               Disconnect
