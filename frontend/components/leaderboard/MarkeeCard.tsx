@@ -329,22 +329,25 @@ export function MarkeeCard({
   // Hero view (rank #1)
   if (size === 'hero') {
     return (
-      <div className="relative bg-gradient-to-r from-[#C678DD]/20 to-[#61AFEF]/20 rounded-xl shadow-lg p-8 mb-6 border-4 border-[#C678DD] group">
+      <div className="relative bg-gradient-to-r from-[#C678DD]/20 to-[#61AFEF]/20 rounded-xl shadow-lg p-8 mb-6 group">
         {/* Discord-style hover emoji bar */}
         <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
 
-        {/* Message is the star */}
-        <div className="font-mono text-3xl font-bold text-[#ffffff] mb-6 message-text select-none">
-          {markee.message}
-        </div>
+        {/* Message and Author - Bordered Section */}
+        <div className="border-4 border-[#C678DD] rounded-lg p-6 mb-4">
+          {/* Message is the star */}
+          <div className="font-mono text-3xl font-bold text-[#ffffff] mb-4 message-text select-none">
+            {markee.message}
+          </div>
 
-        {/* Author */}
-        <div className="mb-4">
-          <p className="text-base text-[#888888] italic">
-            — <span className={hasCustomName ? 'text-[#ABB2BF] font-medium' : 'text-[#888888]'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </p>
+          {/* Author */}
+          <div>
+            <p className="text-base text-[#888888] italic">
+              — <span className={hasCustomName ? 'text-[#ABB2BF] font-medium' : 'text-[#888888]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
+          </div>
         </div>
 
         {/* Reactions */}
@@ -400,46 +403,49 @@ export function MarkeeCard({
   // Large view (ranks 2-3)
   if (size === 'large') {
     return (
-      <div className="relative bg-[#0f1115] rounded-lg shadow-md p-6 border-2 border-[#888888]/30 h-full flex flex-col group">
+      <div className="relative bg-[#0f1115] rounded-lg shadow-md p-6 h-full flex flex-col group">
         {/* Discord-style hover emoji bar */}
         <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
 
-        {/* Action buttons at top right */}
-        <div className="flex justify-end gap-2 mb-3">
-          {isOwner && (
+        {/* Message and Author - Bordered Section */}
+        <div className="border-2 border-[#888888]/30 rounded-lg p-4 mb-3 flex-grow">
+          {/* Action buttons at top right */}
+          <div className="flex justify-end gap-2 mb-3">
+            {isOwner && (
+              <button 
+                onClick={() => onEditMessage?.(markee)}
+                className="text-xs px-2 py-1 hover:scale-110 transition group relative text-[#E5C07B]"
+              >
+                ✏️
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
+                  Change Message
+                </div>
+              </button>
+            )}
             <button 
-              onClick={() => onEditMessage?.(markee)}
-              className="text-xs px-2 py-1 hover:scale-110 transition group relative text-[#E5C07B]"
+              onClick={() => onAddFunds?.(markee)}
+              className="text-xs px-2 py-1 hover:scale-110 transition group relative flex items-center justify-center text-[#61AFEF]"
             >
-              ✏️
+              +
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
-                Change Message
+                Add Funds
               </div>
             </button>
-          )}
-          <button 
-            onClick={() => onAddFunds?.(markee)}
-            className="text-xs px-2 py-1 hover:scale-110 transition group relative flex items-center justify-center text-[#61AFEF]"
-          >
-            +
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
-              Add Funds
-            </div>
-          </button>
-        </div>
+          </div>
 
-        {/* Message */}
-        <div className="font-mono text-xl font-bold text-[#ffffff] mb-3 line-clamp-3 message-text flex-grow select-none">
-          {markee.message}
-        </div>
+          {/* Message */}
+          <div className="font-mono text-xl font-bold text-[#ffffff] mb-3 line-clamp-3 message-text select-none">
+            {markee.message}
+          </div>
 
-        {/* Author */}
-        <div className="mb-3">
-          <p className="text-sm text-[#888888] italic">
-            — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </p>
+          {/* Author */}
+          <div>
+            <p className="text-sm text-[#888888] italic">
+              — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
+          </div>
         </div>
 
         {/* Reactions */}
@@ -472,46 +478,49 @@ export function MarkeeCard({
   // Medium view (ranks 4-26)
   if (size === 'medium') {
     return (
-      <div className="relative bg-[#0f1115] rounded-lg shadow-sm p-4 border border-[#888888]/30 h-full flex flex-col group">
+      <div className="relative bg-[#0f1115] rounded-lg shadow-sm p-4 h-full flex flex-col group">
         {/* Discord-style hover emoji bar */}
         <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
 
-        {/* Action buttons at top right */}
-        <div className="flex justify-end gap-1 text-sm mb-2">
-          {isOwner && (
+        {/* Message and Author - Bordered Section */}
+        <div className="border border-[#888888]/30 rounded-lg p-3 mb-2 flex-grow">
+          {/* Action buttons at top right */}
+          <div className="flex justify-end gap-1 text-sm mb-2">
+            {isOwner && (
+              <button 
+                onClick={() => onEditMessage?.(markee)}
+                className="hover:scale-110 transition group relative text-[#E5C07B]"
+              >
+                ✏️
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
+                  Change Message
+                </div>
+              </button>
+            )}
             <button 
-              onClick={() => onEditMessage?.(markee)}
-              className="hover:scale-110 transition group relative text-[#E5C07B]"
+              onClick={() => onAddFunds?.(markee)}
+              className="hover:scale-110 transition group relative text-[#61AFEF]"
             >
-              ✏️
+              +
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
-                Change Message
+                Add Funds
               </div>
             </button>
-          )}
-          <button 
-            onClick={() => onAddFunds?.(markee)}
-            className="hover:scale-110 transition group relative text-[#61AFEF]"
-          >
-            +
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
-              Add Funds
-            </div>
-          </button>
-        </div>
+          </div>
 
-        {/* Message */}
-        <div className="font-mono text-sm font-semibold text-[#ffffff] mb-2 line-clamp-2 message-text flex-grow select-none">
-          {markee.message}
-        </div>
+          {/* Message */}
+          <div className="font-mono text-sm font-semibold text-[#ffffff] mb-2 line-clamp-2 message-text select-none">
+            {markee.message}
+          </div>
 
-        {/* Author */}
-        <div className="mb-2">
-          <p className="text-xs text-[#888888] italic">
-            — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </p>
+          {/* Author */}
+          <div>
+            <p className="text-xs text-[#888888] italic">
+              — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
+          </div>
         </div>
 
         {/* Reactions */}
