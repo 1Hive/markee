@@ -1,545 +1,499 @@
 'use client'
 
-import { formatEth, formatAddress } from '@/lib/utils'
-import { Eye } from 'lucide-react'
-import Image from 'next/image'
-import type { Markee, EmojiReaction } from '@/types'
-import { useState } from 'react'
-import { useAccount, useReadContract } from 'wagmi'
-import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
+import { useState, useCallback } from 'react'
+import Link from 'next/link'
+import { useAccount } from 'wagmi'
+import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { useMarkees } from '@/lib/contracts/useMarkees'
+import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
+import { useReactions } from '@/hooks/useReactions'
+import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
+import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
+import { InvestmentModal } from '@/components/modals/InvestmentModal'
+import { FixedMarkeeModal } from '@/components/modals/FixedMarkeeModal'
 
-interface MarkeeCardProps {
-  markee: Markee
-  rank: number
-  size: 'hero' | 'large' | 'medium' | 'small' | 'list'
-  userAddress?: string
-  onEditMessage?: (markee: Markee) => void
-  onAddFunds?: (markee: Markee) => void
-  onReact?: (markee: Markee, emoji: string) => void
-  messageViews?: number
-  totalViews?: number
-  reactions?: EmojiReaction[]
+import { formatDistanceToNow } from 'date-fns'
+import { formatEther } from 'viem'
+import type { Markee } from '@/types'
+import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
+
+function PartnerLogo({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="flex items-center justify-center h-32 p-6">
+      <img src={src} alt={alt} className="max-h-20 max-w-full object-contain" />
+    </div>
+  )
 }
 
-const QUICK_EMOJIS = ['❤️', '👍', '😂', '🎉', '🚀', '🪧'] // Top 6 for quick access
-const ALL_EMOJIS = ['❤️', '👍', '👎', '💯', '😂', '🎉', '😮', '💩', '😠', '🚀', '👑', '🤔', '🪧']
-const MARKEE_THRESHOLD = 100n * 10n**18n // 100 MARKEE tokens
+export default function Home() {
+  const { address } = useAccount()
+  const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
+  const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
+  const { reactions, addReaction, isLoading: reactionsLoading, error: reactionsError } = useReactions()
 
-// ERC20 ABI for balanceOf
-const ERC20_ABI = [
-  {
-    inputs: [{ name: 'account', type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function'
-  }
-] as const
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
+  const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
 
-function getChainColor(chainId: number): string {
-  switch (chainId) {
-    case 10: return 'bg-red-500'
-    case 8453: return 'bg-markee'
-    case 42161: return 'bg-markee-400'
-    case 1: return 'bg-purple-500'
-    default: return 'bg-gray-400'
-  }
-}
+  const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
+  const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
+  
+  const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
 
-function getChainName(chainId: number): string {
-  switch (chainId) {
-    case 10: return 'Optimism'
-    case 8453: return 'Base'
-    case 42161: return 'Arbitrum'
-    case 1: return 'Mainnet'
-    default: return 'Unknown'
-  }
-}
+  // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
+  const debouncedRefetch = useCallback(() => {
+    // Clear any pending refetch
+    if (refetchTimeout) {
+      clearTimeout(refetchTimeout)
+    }
+    
+    // Schedule new refetch after 3 seconds
+    const timeout = setTimeout(() => {
+      console.log('[Markees] Refetching after transaction success')
+      refetch()
+    }, 3000)
+    
+    setRefetchTimeout(timeout)
+  }, [refetch, refetchTimeout])
 
-function formatNumber(num: number): string {
-  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
-  return num.toString()
-}
-
-function getMedalEmoji(rank: number): string {
-  if (rank === 1) return '🥇'
-  if (rank === 2) return '🥈'
-  if (rank === 3) return '🥉'
-  return ''
-}
-
-// Discord-Style Emoji Reactions Component
-function EmojiReactions({ 
-  reactions, 
-  markee, 
-  onReact, 
-  userAddress, 
-  hasMinBalance,
-  size
-}: { 
-  reactions?: EmojiReaction[]
-  markee: Markee
-  onReact?: (markee: Markee, emoji: string) => void
-  userAddress?: string
-  hasMinBalance: boolean
-  size: string
-}) {
-  const [showAllEmojis, setShowAllEmojis] = useState(false)
-
-  if (!reactions || reactions.length === 0) {
-    return null
+  const handleCreateNew = () => {
+    setSelectedMarkee(null)
+    setModalMode('create')
+    setIsModalOpen(true)
   }
 
-  // Group reactions by emoji
-  const reactionCounts = reactions.reduce((acc, reaction) => {
-    acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
+  const handleEditMessage = (markee: Markee) => {
+    setSelectedMarkee(markee)
+    setModalMode('updateMessage')
+    setIsModalOpen(true)
+  }
 
-  // Sort by count
-  const sortedReactions = Object.entries(reactionCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5) // Show top 5
+  const handleAddFunds = (markee: Markee) => {
+    setSelectedMarkee(markee)
+    setModalMode('addFunds')
+    setIsModalOpen(true)
+  }
 
-  const buttonSize = size === 'hero' ? 'text-base' : size === 'large' ? 'text-sm' : 'text-xs'
+  const handleReact = async (markee: Markee, emoji: string) => {
+    if (!address) {
+      console.error('Wallet not connected')
+      return
+    }
+
+    try {
+      await addReaction(markee.address, emoji, markee.chainId)
+    } catch (err) {
+      console.error('Failed to add reaction:', err)
+      // Error is already handled in the hook
+    }
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedMarkee(null)
+  }
+
+  const handleFixedMarkeeClick = (fixedMarkee: FixedMarkee) => {
+    setSelectedFixedMarkee(fixedMarkee)
+    setIsFixedModalOpen(true)
+  }
+
+  const handleFixedModalClose = () => {
+    setIsFixedModalOpen(false)
+    setSelectedFixedMarkee(null)
+  }
 
   return (
-    <div className="relative">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {sortedReactions.map(([emoji, count]) => {
-          const userHasThisReaction = reactions.some(
-            r => r.emoji === emoji && r.userAddress.toLowerCase() === userAddress?.toLowerCase()
-          )
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-8">
+            <Link href="/" className="flex items-center">
+              <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
+            </Link>
+            <nav className="flex gap-6">
+              <Link href="/how-it-works" className="text-gray-600 hover:text-gray-900">How it Works</Link>
+              <Link href="/ecosystem" className="text-gray-600 hover:text-gray-900">Ecosystem</Link>
+              <Link href="/owners" className="text-gray-600 hover:text-gray-900">Owners</Link>
+            </nav>
+          </div>
+          <ConnectButton />
+        </div>
+      </header>
 
-          return (
-            <button
-              key={emoji}
-              onClick={() => {
-                if (hasMinBalance) {
-                  onReact?.(markee, emoji)
-                }
-              }}
-              disabled={!hasMinBalance}
-              className={`flex items-center gap-0.5 px-2 py-1 rounded-full ${buttonSize} transition-all ${
-                userHasThisReaction 
-                  ? 'bg-markee-100 border-2 border-markee-400' 
-                  : 'bg-gray-100 hover:bg-gray-200 border border-gray-300'
-              } ${hasMinBalance ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed opacity-50'}`}
-              title={hasMinBalance ? `${count} reaction${count > 1 ? 's' : ''}` : 'Need 100 MARKEE to react'}
-            >
-              <span>{emoji}</span>
-              <span className="text-[10px] font-medium text-gray-700">{count}</span>
-            </button>
-          )
-        })}
-        
-        {/* Add more button if user has balance */}
-        {hasMinBalance && userAddress && (
-          <div className="relative">
-            <button
-              onClick={() => setShowAllEmojis(!showAllEmojis)}
-              className={`flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-300 ${buttonSize} transition-all hover:scale-105`}
-              title="More reactions"
-            >
-              ➕
-            </button>
-            
-            {/* All emojis picker */}
-            {showAllEmojis && (
-              <div className="absolute top-full left-0 mt-2 p-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 flex gap-1 flex-wrap max-w-[200px]">
-                {ALL_EMOJIS.map(emoji => (
-                  <button
-                    key={emoji}
-                    onClick={() => {
-                      onReact?.(markee, emoji)
-                      setShowAllEmojis(false)
-                    }}
-                    className="text-xl hover:scale-125 transition-transform p-1 hover:bg-gray-100 rounded"
-                  >
-                    {emoji}
-                  </button>
-                ))}
+{/* Hero Section - Fixed Price Messages (Readerboard Style) */}
+<section className="bg-gradient-to-br from-markee-50 to-green-50 py-12 border-b border-gray-200">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+      {isLoadingFixed ? (
+        // Loading state
+        <>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="readerboard-card animate-pulse">
+              <div className="readerboard-inner">
+                <div className="h-16 bg-gray-200 rounded mx-8"></div>
               </div>
-            )}
+            </div>
+          ))}
+        </>
+      ) : (
+        // Real data - Readerboard styled
+        fixedMarkees.map((fixedMarkee, index) => (
+          <button
+            key={index}
+            onClick={() => handleFixedMarkeeClick(fixedMarkee)}
+            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:-translate-y-1"
+          >
+            {/* Readerboard inner area with grooves */}
+            <div className="readerboard-inner">
+              {/* Message text */}
+              <div className="readerboard-text">
+                {(fixedMarkee.message || fixedMarkee.name).toUpperCase()}
+              </div>
+            </div>
+
+            {/* Hover price indicator */}
+            <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
+              <div className="bg-markee text-white text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
+                {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
+              </div>
+            </div>
+          </button>
+        ))
+      )}
+    </div>
+  </div>
+</section>
+
+<style jsx>{`
+  .readerboard-card {
+    position: relative;
+    background: #1a1a1a;
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.3);
+    aspect-ratio: 2 / 1;
+  }
+
+  .readerboard-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: 
+      repeating-linear-gradient(
+        0deg,
+        #ffffff 0px,
+        #ffffff 28px,
+        #e8e8e8 28px,
+        #e8e8e8 30px
+      );
+    border: 4px solid #888;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: hidden;
+  }
+
+  .readerboard-text {
+    font-family: Impact, 'Arial Black', 'Bebas Neue', sans-serif;
+    font-size: clamp(18px, 3vw, 28px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -0.5px;
+    color: #000000;
+    text-align: center;
+    word-wrap: break-word;
+    max-width: 100%;
+    transition: all 0.2s ease;
+  }
+
+  .group:hover .readerboard-text {
+    color: #14532d;
+    transform: scale(1.02);
+  }
+
+  @media (max-width: 768px) {
+    .readerboard-card {
+      aspect-ratio: 5 / 3;
+    }
+    
+    .readerboard-text {
+      font-size: 20px;
+    }
+  }
+`}</style>
+
+{/* Integration Partners - Coming Soon */}
+<section className="bg-white py-12 border-b border-gray-200">
+  <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Coming Soon to...</h2>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
+      <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
+      <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
+      <PartnerLogo src="/partners/revnets.png" alt="RevNets" />
+      <PartnerLogo src="/partners/breadcoop.png" alt="Bread Coop" />
+    </div>
+    <div className="text-center mt-8">
+      <Link 
+        href="/ecosystem"
+        className="inline-block bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
+      >
+        Explore our Ecosystem
+      </Link>
+    </div>
+  </div>
+</section>
+
+{/* Leaderboard */}
+<section className="bg-gray-50 py-16">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="text-center mb-8">
+      <h3 className="text-3xl font-bold text-gray-900 mb-6">Markee Leaderboard 🏅</h3>
+
+       <p className="text-lg text-gray-700 mb-6">
+        Top Messages by Total Funds Added.
+      </p>
+
+      {/* CTA Buttons - moved here */}
+      <div className="flex gap-4 justify-center mb-8">
+        <button 
+          onClick={handleCreateNew}
+          className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors"
+        >
+          Buy a Message
+        </button>
+        <Link 
+          href="/how-it-works"
+          className="bg-white text-markee border-2 border-markee px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-50 transition-colors"
+        >
+          How it Works
+        </Link>
+      </div>
+    </div>
+
+    <div className="flex items-center justify-between mb-8">
+      {/* Status indicator */}
+      <div className="flex items-center gap-3 ml-auto">
+        {(isFetchingFresh || reactionsLoading) && (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-markee"></div>
+            <span>Updating...</span>
+          </div>
+        )}
+        {lastUpdated && !isLoading && (
+          <div className="text-sm text-gray-500">
+            Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
           </div>
         )}
       </div>
-      
-      {/* Clickable overlay closer */}
-      {showAllEmojis && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => setShowAllEmojis(false)}
-        />
-      )}
     </div>
-  )
-}
 
-// Discord-Style Hover Emoji Bar
-function HoverEmojiBar({
-  markee,
-  onReact,
-  hasMinBalance
-}: {
-  markee: Markee
-  onReact?: (markee: Markee, emoji: string) => void
-  hasMinBalance: boolean
-}) {
-  if (!hasMinBalance) return null
-
-  return (
-    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-      <div className="flex gap-1 p-1.5 bg-white border border-gray-200 rounded-lg shadow-lg">
-        {QUICK_EMOJIS.map(emoji => (
-          <button
-            key={emoji}
-            onClick={(e) => {
-              e.stopPropagation()
-              onReact?.(markee, emoji)
-            }}
-            className="text-lg hover:scale-125 transition-transform p-1 hover:bg-gray-100 rounded"
-            title={`React with ${emoji}`}
-          >
-            {emoji}
-          </button>
-        ))}
+    {/* Error display for reactions */}
+    {reactionsError && (
+      <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 max-w-2xl mx-auto">
+        <p className="text-sm">{reactionsError}</p>
       </div>
-    </div>
-  )
-}
+    )}
 
-// Stats component - now at bottom with ETH, views, rank, and medal
-function MarkeeStats({ 
-  messageViews, 
-  totalViews,
-  ethAmount,
-  rank,
-  size,
-  chainId
-}: { 
-  messageViews?: number
-  totalViews?: number
-  ethAmount: bigint
-  rank: number
-  size: string
-  chainId: number
-}) {
-  const textSize = size === 'hero' ? 'text-sm' : size === 'large' ? 'text-xs' : 'text-[10px]'
-  const medal = getMedalEmoji(rank)
-  const chainColor = getChainColor(chainId)
-  const chainName = getChainName(chainId)
-  
-  return (
-    <div className={`flex items-center justify-between ${textSize} text-gray-600`}>
-      <div className="flex items-center gap-3">
-        {/* Medal and Rank */}
-        {medal ? (
-          <div className="flex items-center gap-1">
-            <span className={size === 'hero' ? 'text-2xl' : size === 'large' ? 'text-xl' : 'text-base'}>{medal}</span>
-          </div>
-        ) : rank <= 26 ? (
-          <span className="font-bold text-gray-400">#{rank}</span>
-        ) : null}
-        
-        {/* ETH Amount */}
-        <span className="font-bold text-markee">{formatEth(ethAmount)} ETH</span>
-        
-        {/* Chain indicator */}
-        <div className="flex items-center gap-1">
-          <div className={`w-2 h-2 rounded-full ${chainColor}`} />
-          <span className="text-gray-500">{chainName}</span>
+    {isLoading && markees.length === 0 && (
+      <div>
+        <LeaderboardSkeleton />
+      </div>
+    )}
+
+    {error && (
+      <div className="text-center py-12">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-lg mx-auto">
+          <p className="text-red-600 font-medium mb-2">Error loading Markees</p>
+          <p className="text-red-500 text-sm">{error.message}</p>
         </div>
       </div>
-      
-      {/* Views */}
-      {totalViews !== undefined && (
-        <div className="flex items-center gap-1 group relative">
-          <Eye size={size === 'hero' ? 14 : 12} className="opacity-60" />
-          <span>{formatNumber(totalViews)}</span>
-          <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-            {totalViews.toLocaleString()} all-time views
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+    )}
 
-export function MarkeeCard({ 
-  markee, 
-  rank, 
-  size, 
-  userAddress, 
-  onEditMessage, 
-  onAddFunds, 
-  onReact,
-  messageViews, 
-  totalViews,
-  reactions
-}: MarkeeCardProps) {
-  const { address } = useAccount()
-  const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
-  const hasCustomName = markee.name && markee.name.trim()
-  
-  // Check user's MARKEE balance
-  const { data: balance } = useReadContract({
-    address: MARKEE_TOKEN,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: address ? [address] : undefined,
-    query: {
-      enabled: !!address && MARKEE_TOKEN !== '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807'
-    }
-  })
-  
-  const hasMinBalance = MARKEE_TOKEN === '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807' 
-    ? true 
-    : balance ? balance >= MARKEE_THRESHOLD : false
-
-  // List view (compact, single line)
-  if (size === 'list') {
-    return (
-      <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50">
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <p className="font-mono text-sm text-gray-900 truncate flex-1">
-            {markee.message}
-          </p>
-          <span className="text-xs text-gray-500 italic">
-            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </span>
-        </div>
-        <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-          <MarkeeStats 
-            messageViews={messageViews}
-            totalViews={totalViews}
-            ethAmount={markee.totalFundsAdded}
-            rank={rank}
-            size={size}
-            chainId={markee.chainId}
-          />
+    {!isLoading && !error && markees.length === 0 && (
+      <div className="text-center py-12">
+        <div className="bg-markee-50 rounded-lg p-8 max-w-lg mx-auto">
+          <div className="text-6xl mb-4">🪧</div>
+          <p className="text-gray-600 text-lg">No Markees yet. Be the first!</p>
         </div>
       </div>
-    )
-  }
+    )}
 
-  // Hero view (rank #1)
-  if (size === 'hero') {
-    return (
-      <div className="relative bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-xl shadow-lg p-8 mb-6 border-4 border-yellow-400 group">
-        {/* Discord-style hover emoji bar */}
-        <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
-        
-        {/* Message is the star */}
-        <div className="font-mono text-3xl font-bold text-gray-900 mb-6 message-text select-none">
-          {markee.message}
-        </div>
-        
-        {/* Author */}
-        <div className="mb-4">
-          <p className="text-base text-gray-600 italic">
-            — <span className={hasCustomName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </p>
-        </div>
-        
-        {/* Reactions */}
-        <div className="mb-4">
-          <EmojiReactions 
-            reactions={reactions}
-            markee={markee}
-            onReact={onReact}
-            userAddress={userAddress}
-            hasMinBalance={hasMinBalance}
-            size={size}
+    {markees.length > 0 && (
+      <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
+        {/* #1 Spot - Full Width */}
+        {markees[0] && (
+          <MarkeeCard 
+            markee={markees[0]} 
+            rank={1} 
+            size="hero"
+            userAddress={address}
+            onEditMessage={handleEditMessage}
+            onAddFunds={handleAddFunds}
+            onReact={handleReact}
+            reactions={reactions.get(markees[0].address.toLowerCase())}
           />
-        </div>
-        
-        {/* Stats and Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-yellow-200">
-          <MarkeeStats 
-            messageViews={messageViews}
-            totalViews={totalViews}
-            ethAmount={markee.totalFundsAdded}
-            rank={rank}
-            size={size}
-            chainId={markee.chainId}
-          />
-          
-          <div className="flex gap-2">
-            {isOwner && (
-              <button 
-                onClick={() => onEditMessage?.(markee)}
-                className="text-sm px-3 py-1 hover:scale-110 transition group relative"
-              >
-                ✏️ Edit
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                  Change Message
-                </div>
-              </button>
+        )}
+
+        {/* #2 and #3 - Two Column */}
+        {markees.length > 1 && (
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            {markees[1] && (
+              <MarkeeCard 
+                markee={markees[1]} 
+                rank={2} 
+                size="large"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+                onReact={handleReact}
+                reactions={reactions.get(markees[1].address.toLowerCase())}
+              />
             )}
-            <button 
-              onClick={() => onAddFunds?.(markee)}
-              className="text-sm px-3 py-1 hover:scale-110 transition group relative flex items-center gap-1"
-            >
-              <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                Add Funds
-              </div>
-            </button>
+            {markees[2] && (
+              <MarkeeCard 
+                markee={markees[2]} 
+                rank={3} 
+                size="large"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+                onReact={handleReact}
+                reactions={reactions.get(markees[2].address.toLowerCase())}
+              />
+            )}
+          </div>
+        )}
+
+        {/* #4-26 - Grid */}
+        {markees.length > 3 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {markees.slice(3, 26).map((markee, index) => (
+              <MarkeeCard 
+                key={markee.address} 
+                markee={markee} 
+                rank={index + 4} 
+                size="medium"
+                userAddress={address}
+                onEditMessage={handleEditMessage}
+                onAddFunds={handleAddFunds}
+                onReact={handleReact}
+                reactions={reactions.get(markee.address.toLowerCase())}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* #27+ - List View */}
+        {markees.length > 26 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">More Investors</h4>
+            <div className="space-y-2">
+              {markees.slice(26).map((markee, index) => (
+                <MarkeeCard 
+                  key={markee.address} 
+                  markee={markee} 
+                  rank={index + 27} 
+                  size="list"
+                  userAddress={address}
+                  onEditMessage={handleEditMessage}
+                  onAddFunds={handleAddFunds}
+                  onReact={handleReact}
+                  reactions={reactions.get(markee.address.toLowerCase())}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+</section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-center">
+            <div className="flex gap-6 mb-4">
+              {/* X (Twitter) */}
+              <a 
+                href="https://x.com/markee_xyz" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="hover:text-markee transition-colors"
+                aria-label="X (Twitter)"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+              </a>
+              
+              {/* Discord */}
+              <a 
+                href="https://discord.gg/UhhRDzwwkM" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="hover:text-markee transition-colors"
+                aria-label="Discord"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.956-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.955-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.946 2.418-2.157 2.418z"/>
+                </svg>
+              </a>
+              
+              {/* Telegram */}
+              <a 
+                href="https://t.me/+pRiD0TURr5o5ZmUx" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="hover:text-markee transition-colors"
+                aria-label="Telegram"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12a12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472c-.18 1.898-.962 6.502-1.36 8.627c-.168.9-.499 1.201-.82 1.23c-.696.065-1.225-.46-1.9-.902c-1.056-.693-1.653-1.124-2.678-1.8c-1.185-.78-.417-1.21.258-1.91c.177-.184 3.247-2.977 3.307-3.23c.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345c-.48.33-.913.49-1.302.48c-.428-.008-1.252-.241-1.865-.44c-.752-.245-1.349-.374-1.297-.789c.027-.216.325-.437.893-.663c3.498-1.524 5.83-2.529 6.998-3.014c3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                </svg>
+              </a>
+              
+              {/* Farcaster */}
+              <a 
+                href="https://warpcast.com/markee" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="hover:text-markee transition-colors"
+                aria-label="Farcaster"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18.24 6.24h-2.226v11.376h2.226V6.24zm-4.596 0H10.67v11.376h2.974V6.24zM5.76 6.24H3.534v11.376H5.76V6.24zm-.29 13.38H3.243v1.14H5.47v-1.14zm13.29 0h-2.226v1.14h2.226v-1.14zm-4.887 0h-2.707v1.14h2.707v-1.14zM3.243 3.24h2.226V4.38H3.243V3.24zm4.427 0h2.974V4.38H7.67V3.24zm6.073 0h2.226V4.38h-2.226V3.24z"/>
+                </svg>
+              </a>
+            </div>
+            
+            <div className="text-sm text-gray-400">
+              © 2025 Markee
+            </div>
           </div>
         </div>
-      </div>
-    )
-  }
+      </footer>
 
-  // Large view (ranks 2-3)
-  if (size === 'large') {
-    return (
-      <div className="relative bg-white rounded-lg shadow-md p-6 border-2 border-gray-200 h-full flex flex-col group">
-        {/* Discord-style hover emoji bar */}
-        <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
-        
-        {/* Action buttons at top right */}
-        <div className="flex justify-end gap-2 mb-3">
-          {isOwner && (
-            <button 
-              onClick={() => onEditMessage?.(markee)}
-              className="text-xs px-2 py-1 hover:scale-110 transition group relative"
-            >
-              ✏️
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                Change Message
-              </div>
-            </button>
-          )}
-          <button 
-            onClick={() => onAddFunds?.(markee)}
-            className="text-xs px-2 py-1 hover:scale-110 transition group relative flex items-center justify-center"
-          >
-            <Image src="/green-plus.png" alt="Add Funds" width={14} height={14} />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-              Add Funds
-            </div>
-          </button>
-        </div>
-        
-        {/* Message */}
-        <div className="font-mono text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text flex-grow select-none">
-          {markee.message}
-        </div>
-        
-        {/* Author */}
-        <div className="mb-3">
-          <p className="text-sm text-gray-600 italic">
-            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </p>
-        </div>
-        
-        {/* Reactions */}
-        <div className="mb-3">
-          <EmojiReactions 
-            reactions={reactions}
-            markee={markee}
-            onReact={onReact}
-            userAddress={userAddress}
-            hasMinBalance={hasMinBalance}
-            size={size}
-          />
-        </div>
-        
-        {/* Stats at bottom */}
-        <div className="pt-3 border-t border-gray-100">
-          <MarkeeStats 
-            messageViews={messageViews}
-            totalViews={totalViews}
-            ethAmount={markee.totalFundsAdded}
-            rank={rank}
-            size={size}
-            chainId={markee.chainId}
-          />
-        </div>
-      </div>
-    )
-  }
+      {/* Investment Modal */}
+      <InvestmentModal 
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        userMarkee={selectedMarkee}
+        initialMode={modalMode}
+        onSuccess={debouncedRefetch}
+      />
 
-  // Medium view (ranks 4-26)
-  if (size === 'medium') {
-    return (
-      <div className="relative bg-white rounded-lg shadow-sm p-4 border border-gray-200 h-full flex flex-col group">
-        {/* Discord-style hover emoji bar */}
-        <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
-        
-        {/* Action buttons at top right */}
-        <div className="flex justify-end gap-1 text-sm mb-2">
-          {isOwner && (
-            <button 
-              onClick={() => onEditMessage?.(markee)}
-              className="hover:scale-110 transition group relative"
-            >
-              ✏️
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                Change Message
-              </div>
-            </button>
-          )}
-          <button 
-            onClick={() => onAddFunds?.(markee)}
-            className="hover:scale-110 transition group relative"
-          >
-            <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-              Add Funds
-            </div>
-          </button>
-        </div>
-        
-        {/* Message */}
-        <div className="font-mono text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text flex-grow select-none">
-          {markee.message}
-        </div>
-        
-        {/* Author */}
-        <div className="mb-2">
-          <p className="text-xs text-gray-600 italic">
-            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
-            </span>
-          </p>
-        </div>
-        
-        {/* Reactions */}
-        <div className="mb-2">
-          <EmojiReactions 
-            reactions={reactions}
-            markee={markee}
-            onReact={onReact}
-            userAddress={userAddress}
-            hasMinBalance={hasMinBalance}
-            size={size}
-          />
-        </div>
-        
-        {/* Stats at bottom */}
-        <div className="pt-2 border-t border-gray-100">
-          <MarkeeStats 
-            messageViews={messageViews}
-            totalViews={totalViews}
-            ethAmount={markee.totalFundsAdded}
-            rank={rank}
-            size={size}
-            chainId={markee.chainId}
-          />
-        </div>
-      </div>
-    )
-  }
-
-  return null
+      {/* Fixed Markee Modal */}
+      <FixedMarkeeModal 
+        isOpen={isFixedModalOpen}
+        onClose={handleFixedModalClose}
+        fixedMarkee={selectedFixedMarkee}
+        onSuccess={debouncedRefetch}
+      />
+    </div>
+  )
 }
