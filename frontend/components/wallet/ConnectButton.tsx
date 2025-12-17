@@ -20,6 +20,7 @@ export function ConnectButton() {
         setIsOpen(false)
       }
     }
+
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
@@ -28,7 +29,7 @@ export function ConnectButton() {
     return (
       <button
         onClick={() => connect({ connector: connectors[0] })}
-        className="bg-markee text-white px-6 py-2 rounded-lg font-medium hover:bg-markee-600 flex items-center gap-2 transition-colors"
+        className="bg-[#61AFEF] text-[#020106] px-6 py-2 rounded-lg font-medium hover:bg-[#C678DD] flex items-center gap-2 transition-colors"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">Connect Wallet</span>
@@ -40,7 +41,7 @@ export function ConnectButton() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-markee text-white px-4 py-2 rounded-lg font-medium hover:bg-markee-600 flex items-center gap-2 transition-colors"
+        className="bg-[#61AFEF] text-[#020106] px-4 py-2 rounded-lg font-medium hover:bg-[#C678DD] flex items-center gap-2 transition-colors"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">
@@ -50,22 +51,22 @@ export function ConnectButton() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Connected with</p>
-            <p className="font-medium text-gray-900 dark:text-white mt-1">
+        <div className="absolute right-0 mt-2 w-72 bg-[#0f1115] rounded-lg shadow-lg border border-[#888888]/30 overflow-hidden z-50">
+          <div className="p-4 border-b border-[#888888]/30">
+            <p className="text-sm text-[#888888]">Connected with</p>
+            <p className="font-medium text-[#ffffff] mt-1">
               {ensName || formatAddress(address)}
             </p>
             {chain && (
               <div className="flex items-center gap-2 mt-2">
                 <div className={`w-2 h-2 rounded-full ${
-                  chain.id === 10 ? 'bg-red-500' :
-                  chain.id === 8453 ? 'bg-markee' :
-                  chain.id === 42161 ? 'bg-markee-400' :
-                  chain.id === 1 ? 'bg-purple-500' :
-                  'bg-gray-400'
+                  chain.id === 10 ? 'bg-[#E06C75]' :
+                  chain.id === 8453 ? 'bg-[#61AFEF]' :
+                  chain.id === 42161 ? 'bg-[#C678DD]' :
+                  chain.id === 1 ? 'bg-[#E5C07B]' :
+                  'bg-[#888888]'
                 }`} />
-                <p className="text-sm text-gray-600 dark:text-gray-300">{chain.name}</p>
+                <p className="text-sm text-[#ABB2BF]">{chain.name}</p>
               </div>
             )}
           </div>
@@ -76,7 +77,7 @@ export function ConnectButton() {
                 disconnect()
                 setIsOpen(false)
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#E06C75] hover:bg-[#E06C75]/20 rounded-md transition-colors"
             >
               <Power size={16} />
               Disconnect
