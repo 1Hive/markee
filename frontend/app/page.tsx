@@ -104,18 +104,18 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020106]">
+    <div className="min-h-screen bg-[#060A2A]">
       {/* Header */}
-      <header className="bg-[#0f1115] border-b border-[#888888]/20">
+      <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center">
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/how-it-works" className="text-[#ABB2BF] hover:text-[#C678DD]">How it Works</Link>
-              <Link href="/ecosystem" className="text-[#ABB2BF] hover:text-[#C678DD]">Ecosystem</Link>
-              <Link href="/owners" className="text-[#ABB2BF] hover:text-[#C678DD]">Owners</Link>
+              <Link href="/how-it-works" className="text-[#B8B6D9] hover:text-[#F897FE]">How it Works</Link>
+              <Link href="/ecosystem" className="text-[#B8B6D9] hover:text-[#F897FE]">Ecosystem</Link>
+              <Link href="/owners" className="text-[#B8B6D9] hover:text-[#F897FE]">Owners</Link>
             </nav>
           </div>
           <ConnectButton />
@@ -123,7 +123,7 @@ export default function Home() {
       </header>
 
 {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-<section className="bg-[#0f1115] py-12 border-b border-[#888888]/20">
+<section className="bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
       {isLoadingFixed ? (
@@ -132,7 +132,7 @@ export default function Home() {
           {[1, 2, 3].map((i) => (
             <div key={i} className="readerboard-card animate-pulse">
               <div className="readerboard-inner">
-                <div className="h-16 bg-[#888888]/20 rounded mx-8"></div>
+                <div className="h-16 bg-[#8A8FBF]/20 rounded mx-8"></div>
               </div>
             </div>
           ))}
@@ -143,7 +143,7 @@ export default function Home() {
           <button
             key={index}
             onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#C678DD]/20 hover:-translate-y-1"
+            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#F897FE]/20 hover:-translate-y-1"
           >
             {/* Readerboard inner area with grooves */}
             <div className="readerboard-inner">
@@ -155,7 +155,7 @@ export default function Home() {
 
             {/* Hover price indicator */}
             <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
-              <div className="bg-[#C678DD] text-[#020106] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
+              <div className="bg-[#F897FE] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
                 {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function Home() {
 <style jsx>{`
   .readerboard-card {
     position: relative;
-    background: #C678DD;
+    background: #F897FE;
     border-radius: 4px;
     padding: 8px;
     box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -183,10 +183,10 @@ export default function Home() {
     background: 
       repeating-linear-gradient(
         0deg,
-        #0f1115 0px,
-        #0f1115 28px,
-        #020106 28px,
-        #020106 30px
+        #0A0F3D 0px,
+        #0A0F3D 28px,
+        #060A2A 28px,
+        #060A2A 30px
       );
     border-radius: 2px;
     display: flex;
@@ -202,7 +202,7 @@ export default function Home() {
     font-weight: 600;
     line-height: 1.1;
     letter-spacing: -0.5px;
-    color: #ffffff;
+    color: #EDEEFF;
     text-align: center;
     word-wrap: break-word;
     max-width: 100%;
@@ -210,7 +210,7 @@ export default function Home() {
   }
 
   .group:hover .readerboard-text {
-    color: #C678DD;
+    color: #F897FE;
     transform: scale(1.02);
   }
 
@@ -226,9 +226,9 @@ export default function Home() {
 `}</style>
 
 {/* Integration Partners - Coming Soon */}
-<section className="bg-[#0f1115] py-12 border-b border-[#888888]/20">
+<section className="bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20">
   <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-    <h2 className="text-2xl font-bold text-[#ffffff] mb-8 text-center">Coming Soon to...</h2>
+    <h2 className="text-2xl font-bold text-[#EDEEFF] mb-8 text-center">Coming Soon to...</h2>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center">
       <PartnerLogo src="/partners/gardens.png" alt="Gardens" />
       <PartnerLogo src="/partners/juicebox.png" alt="Juicebox" />
@@ -238,7 +238,7 @@ export default function Home() {
     <div className="text-center mt-8">
       <Link 
         href="/ecosystem"
-        className="inline-block bg-[#61AFEF] text-[#020106] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#C678DD] transition-colors"
+        className="inline-block bg-[#7C9CFF] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE] transition-colors"
       >
         Explore our Ecosystem
       </Link>
@@ -247,12 +247,12 @@ export default function Home() {
 </section>
 
 {/* Leaderboard */}
-<section className="bg-[#020106] py-16">
+<section className="bg-[#060A2A] py-16">
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="text-center mb-8">
-      <h3 className="text-3xl font-bold text-[#ffffff] mb-6">Markee Leaderboard 🏅</h3>
+      <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Markee Leaderboard 🏅</h3>
 
-       <p className="text-lg text-[#888888] mb-6">
+       <p className="text-lg text-[#8A8FBF] mb-6">
         Top Messages by Total Funds Added.
       </p>
 
@@ -260,13 +260,13 @@ export default function Home() {
       <div className="flex gap-4 justify-center mb-8">
         <button 
           onClick={handleCreateNew}
-          className="bg-[#C678DD] text-[#020106] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#61AFEF] transition-colors"
+          className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
         >
           Buy a Message
         </button>
         <Link 
           href="/how-it-works"
-          className="bg-[#0f1115] text-[#C678DD] border-2 border-[#C678DD] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#C678DD]/10 transition-colors"
+          className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
         >
           How it Works
         </Link>
@@ -277,13 +277,13 @@ export default function Home() {
       {/* Status indicator */}
       <div className="flex items-center gap-3 ml-auto">
         {(isFetchingFresh || reactionsLoading) && (
-          <div className="flex items-center gap-2 text-sm text-[#888888]">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#C678DD]"></div>
+          <div className="flex items-center gap-2 text-sm text-[#8A8FBF]">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F897FE]"></div>
             <span>Updating...</span>
           </div>
         )}
         {lastUpdated && !isLoading && (
-          <div className="text-sm text-[#888888]">
+          <div className="text-sm text-[#8A8FBF]">
             Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
           </div>
         )}
@@ -292,7 +292,7 @@ export default function Home() {
 
     {/* Error display for reactions */}
     {reactionsError && (
-      <div className="mb-4 p-4 bg-[#E06C75]/20 border border-[#E06C75] rounded-lg text-[#E5C07B] max-w-2xl mx-auto">
+      <div className="mb-4 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg text-[#8BC8FF] max-w-2xl mx-auto">
         <p className="text-sm">{reactionsError}</p>
       </div>
     )}
@@ -305,18 +305,18 @@ export default function Home() {
 
     {error && (
       <div className="text-center py-12">
-        <div className="bg-[#E06C75]/20 border border-[#E06C75] rounded-lg p-6 max-w-lg mx-auto">
-          <p className="text-[#E5C07B] font-medium mb-2">Error loading Markees</p>
-          <p className="text-[#888888] text-sm">{error.message}</p>
+        <div className="bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg p-6 max-w-lg mx-auto">
+          <p className="text-[#8BC8FF] font-medium mb-2">Error loading Markees</p>
+          <p className="text-[#8A8FBF] text-sm">{error.message}</p>
         </div>
       </div>
     )}
 
     {!isLoading && !error && markees.length === 0 && (
       <div className="text-center py-12">
-        <div className="bg-[#0f1115] rounded-lg p-8 max-w-lg mx-auto border border-[#888888]/20">
+        <div className="bg-[#0A0F3D] rounded-lg p-8 max-w-lg mx-auto border border-[#8A8FBF]/20">
           <div className="text-6xl mb-4">🪧</div>
-          <p className="text-[#888888] text-lg">No Markees yet. Be the first!</p>
+          <p className="text-[#8A8FBF] text-lg">No Markees yet. Be the first!</p>
         </div>
       </div>
     )}
@@ -388,8 +388,8 @@ export default function Home() {
 
         {/* #27+ - List View */}
         {markees.length > 26 && (
-          <div className="bg-[#0f1115] rounded-lg shadow-sm p-6 border border-[#888888]/20">
-            <h4 className="text-lg font-semibold text-[#ffffff] mb-4">More Investors</h4>
+          <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-6 border border-[#8A8FBF]/20">
+            <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Investors</h4>
             <div className="space-y-2">
               {markees.slice(26).map((markee, index) => (
                 <MarkeeCard 
@@ -413,7 +413,7 @@ export default function Home() {
 </section>
 
       {/* Footer */}
-      <footer className="bg-[#0f1115] text-[#ffffff] py-4 border-t border-[#888888]/20">
+      <footer className="bg-[#0A0F3D] text-[#EDEEFF] py-4 border-t border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center">
             <div className="flex gap-6 mb-4">
@@ -422,7 +422,7 @@ export default function Home() {
                 href="https://x.com/markee_xyz" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#C678DD] transition-colors"
+                className="hover:text-[#F897FE] transition-colors"
                 aria-label="X (Twitter)"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -435,7 +435,7 @@ export default function Home() {
                 href="https://discord.gg/UhhRDzwwkM" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#C678DD] transition-colors"
+                className="hover:text-[#F897FE] transition-colors"
                 aria-label="Discord"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -448,7 +448,7 @@ export default function Home() {
                 href="https://t.me/+pRiD0TURr5o5ZmUx" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#C678DD] transition-colors"
+                className="hover:text-[#F897FE] transition-colors"
                 aria-label="Telegram"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -461,7 +461,7 @@ export default function Home() {
                 href="https://warpcast.com/markee" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#C678DD] transition-colors"
+                className="hover:text-[#F897FE] transition-colors"
                 aria-label="Farcaster"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -470,7 +470,7 @@ export default function Home() {
               </a>
             </div>
             
-            <div className="text-sm text-[#888888]">
+            <div className="text-sm text-[#8A8FBF]">
               © 2025 Markee
             </div>
           </div>
