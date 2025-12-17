@@ -169,7 +169,7 @@ export default function Home() {
 <style jsx>{`
   .readerboard-card {
     position: relative;
-    background: #E06C75;
+    background: #C678DD;
     border-radius: 4px;
     padding: 8px;
     box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -188,7 +188,6 @@ export default function Home() {
         #020106 28px,
         #020106 30px
       );
-    border: 4px solid #888888;
     border-radius: 2px;
     display: flex;
     align-items: center;
@@ -200,10 +199,10 @@ export default function Home() {
   .readerboard-text {
     font-family: Impact, 'Arial Black', 'Bebas Neue', sans-serif;
     font-size: clamp(18px, 3vw, 28px);
-    font-weight: 900;
+    font-weight: 600;
     line-height: 1.1;
     letter-spacing: -0.5px;
-    color: #E5C07B;
+    color: #ffffff;
     text-align: center;
     word-wrap: break-word;
     max-width: 100%;
