@@ -11,28 +11,32 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        // New dark mode theme colors
+        // Dark mode backgrounds
         'dark-bg': '#020106',
         'dark-bg-secondary': '#0f1115',
-        'accent-orange': '#a93400',
-        'accent-yellow': '#f2ff26',
-        'accent-green': '#94ff94',
-        'accent-blue': '#0d75ff',
-        'text-primary': '#ffffff',
+        // VS Code theme colors
+        'accent-purple': '#C678DD',
+        'accent-blue': '#61AFEF',
+        'accent-red': '#E06C75',
+        'accent-peach': '#E5C07B',
+        'accent-cyan': '#56B6C2',
+        // Text colors
+        'text-primary': '#ABB2BF',
         'text-secondary': '#888888',
-        // Legacy markee colors (can be phased out)
+        'text-white': '#ffffff',
+        // Legacy markee colors (for backward compatibility)
         markee: {
-          DEFAULT: '#94ff94',
-          50: '#f0fff0',
-          100: '#e0ffe0',
-          200: '#c1ffc1',
-          300: '#94ff94',
-          400: '#7aff7a',
-          500: '#5fff5f',
-          600: '#45e045',
-          700: '#2eb82e',
-          800: '#1f8f1f',
-          900: '#146614',
+          DEFAULT: '#C678DD',
+          50: '#f5f3ff',
+          100: '#ede9fe',
+          200: '#ddd6fe',
+          300: '#C678DD',
+          400: '#a855f7',
+          500: '#9333ea',
+          600: '#7e22ce',
+          700: '#6b21a8',
+          800: '#581c87',
+          900: '#3b0764',
         },
       },
       fontFamily: {
