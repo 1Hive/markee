@@ -38,11 +38,11 @@ const ERC20_ABI = [
 
 function getChainColor(chainId: number): string {
   switch (chainId) {
-    case 10: return 'bg-red-500'
-    case 8453: return 'bg-markee'
-    case 42161: return 'bg-markee-400'
-    case 1: return 'bg-purple-500'
-    default: return 'bg-gray-400'
+    case 10: return 'bg-[#E06C75]'
+    case 8453: return 'bg-[#61AFEF]'
+    case 42161: return 'bg-[#C678DD]'
+    case 1: return 'bg-[#E5C07B]'
+    default: return 'bg-[#888888]'
   }
 }
 
@@ -123,13 +123,13 @@ function EmojiReactions({
               disabled={!hasMinBalance}
               className={`flex items-center gap-0.5 px-2 py-1 rounded-full ${buttonSize} transition-all ${
                 userHasThisReaction 
-                  ? 'bg-markee-100 border-2 border-markee-400' 
-                  : 'bg-gray-100 hover:bg-gray-200 border border-gray-300'
+                  ? 'bg-[#C678DD]/20 border-2 border-[#C678DD]' 
+                  : 'bg-[#0f1115] hover:bg-[#888888]/20 border border-[#888888]/30'
               } ${hasMinBalance ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed opacity-50'}`}
               title={hasMinBalance ? `${count} reaction${count > 1 ? 's' : ''}` : 'Need 100 MARKEE to react'}
             >
               <span>{emoji}</span>
-              <span className="text-[10px] font-medium text-gray-700">{count}</span>
+              <span className="text-[10px] font-medium text-[#ABB2BF]">{count}</span>
             </button>
           )
         })}
@@ -139,7 +139,7 @@ function EmojiReactions({
           <div className="relative">
             <button
               onClick={() => setShowAllEmojis(!showAllEmojis)}
-              className={`flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-300 ${buttonSize} transition-all hover:scale-105`}
+              className={`flex items-center justify-center w-7 h-7 rounded-full bg-[#0f1115] hover:bg-[#888888]/20 border border-[#888888]/30 ${buttonSize} transition-all hover:scale-105`}
               title="More reactions"
             >
               ➕
@@ -147,7 +147,7 @@ function EmojiReactions({
 
             {/* All emojis picker */}
             {showAllEmojis && (
-              <div className="absolute top-full left-0 mt-2 p-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 flex gap-1 flex-wrap max-w-[200px]">
+              <div className="absolute top-full left-0 mt-2 p-2 bg-[#0f1115] border border-[#888888]/30 rounded-lg shadow-xl z-50 flex gap-1 flex-wrap max-w-[200px]">
                 {ALL_EMOJIS.map(emoji => (
                   <button
                     key={emoji}
@@ -155,7 +155,7 @@ function EmojiReactions({
                       onReact?.(markee, emoji)
                       setShowAllEmojis(false)
                     }}
-                    className="text-xl hover:scale-125 transition-transform p-1 hover:bg-gray-100 rounded"
+                    className="text-xl hover:scale-125 transition-transform p-1 hover:bg-[#888888]/20 rounded"
                   >
                     {emoji}
                   </button>
@@ -191,7 +191,7 @@ function HoverEmojiBar({
 
   return (
     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-      <div className="flex gap-1 p-1.5 bg-white border border-gray-200 rounded-lg shadow-lg">
+      <div className="flex gap-1 p-1.5 bg-[#0f1115] border border-[#888888]/30 rounded-lg shadow-lg">
         {QUICK_EMOJIS.map(emoji => (
           <button
             key={emoji}
@@ -199,7 +199,7 @@ function HoverEmojiBar({
               e.stopPropagation()
               onReact?.(markee, emoji)
             }}
-            className="text-lg hover:scale-125 transition-transform p-1 hover:bg-gray-100 rounded"
+            className="text-lg hover:scale-125 transition-transform p-1 hover:bg-[#888888]/20 rounded"
             title={`React with ${emoji}`}
           >
             {emoji}
@@ -232,7 +232,7 @@ function MarkeeStats({
   const chainName = getChainName(chainId)
 
   return (
-    <div className={`flex items-center justify-between ${textSize} text-gray-600`}>
+    <div className={`flex items-center justify-between ${textSize} text-[#888888]`}>
       <div className="flex items-center gap-3">
         {/* Medal and Rank */}
         {medal ? (
@@ -240,16 +240,16 @@ function MarkeeStats({
             <span className={size === 'hero' ? 'text-2xl' : size === 'large' ? 'text-xl' : 'text-base'}>{medal}</span>
           </div>
         ) : rank <= 26 ? (
-          <span className="font-bold text-gray-400">#{rank}</span>
+          <span className="font-bold text-[#888888]">#{rank}</span>
         ) : null}
 
         {/* ETH Amount */}
-        <span className="font-bold text-markee">{formatEth(ethAmount)} ETH</span>
+        <span className="font-bold text-[#61AFEF]">{formatEth(ethAmount)} ETH</span>
 
         {/* Chain indicator */}
         <div className="flex items-center gap-1">
           <div className={`w-2 h-2 rounded-full ${chainColor}`} />
-          <span className="text-gray-500">{chainName}</span>
+          <span className="text-[#888888]">{chainName}</span>
         </div>
       </div>
 
@@ -258,7 +258,7 @@ function MarkeeStats({
         <div className="flex items-center gap-1 group relative">
           <Eye size={size === 'hero' ? 14 : 12} className="opacity-60" />
           <span>{formatNumber(totalViews)}</span>
-          <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+          <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-[#0f1115] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
             {totalViews.toLocaleString()} all-time views
           </div>
         </div>
@@ -301,13 +301,13 @@ export function MarkeeCard({
   // List view (compact, single line)
   if (size === 'list') {
     return (
-      <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50">
+      <div className="flex items-center justify-between py-2 border-b border-[#888888]/20 last:border-0 hover:bg-[#0f1115]">
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <p className="font-mono text-sm text-gray-900 truncate flex-1">
+          <p className="font-mono text-sm text-[#ABB2BF] truncate flex-1">
             {markee.message}
           </p>
-          <span className="text-xs text-gray-500 italic">
-            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
+          <span className="text-xs text-[#888888] italic">
+            — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
               {hasCustomName ? markee.name : formatAddress(markee.owner)}
             </span>
           </span>
@@ -329,19 +329,19 @@ export function MarkeeCard({
   // Hero view (rank #1)
   if (size === 'hero') {
     return (
-      <div className="relative bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-xl shadow-lg p-8 mb-6 border-4 border-yellow-400 group">
+      <div className="relative bg-gradient-to-r from-[#C678DD]/20 to-[#61AFEF]/20 rounded-xl shadow-lg p-8 mb-6 border-4 border-[#C678DD] group">
         {/* Discord-style hover emoji bar */}
         <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
 
         {/* Message is the star */}
-        <div className="font-mono text-3xl font-bold text-gray-900 mb-6 message-text select-none">
+        <div className="font-mono text-3xl font-bold text-[#ffffff] mb-6 message-text select-none">
           {markee.message}
         </div>
 
         {/* Author */}
         <div className="mb-4">
-          <p className="text-base text-gray-600 italic">
-            — <span className={hasCustomName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+          <p className="text-base text-[#888888] italic">
+            — <span className={hasCustomName ? 'text-[#ABB2BF] font-medium' : 'text-[#888888]'}>
               {hasCustomName ? markee.name : formatAddress(markee.owner)}
             </span>
           </p>
@@ -360,7 +360,7 @@ export function MarkeeCard({
         </div>
 
         {/* Stats and Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-yellow-200">
+        <div className="flex items-center justify-between pt-4 border-t border-[#888888]/30">
           <MarkeeStats 
             messageViews={messageViews}
             totalViews={totalViews}
@@ -374,20 +374,20 @@ export function MarkeeCard({
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
-                className="text-sm px-3 py-1 hover:scale-110 transition group relative"
+                className="text-sm px-3 py-1 hover:scale-110 transition group relative text-[#E5C07B]"
               >
                 ✏️ Edit
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#0f1115] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
                   Change Message
                 </div>
               </button>
             )}
             <button 
               onClick={() => onAddFunds?.(markee)}
-              className="text-sm px-3 py-1 hover:scale-110 transition group relative flex items-center gap-1"
+              className="text-sm px-3 py-1 hover:scale-110 transition group relative flex items-center gap-1 text-[#61AFEF]"
             >
-              <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+              + Add
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#0f1115] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
                 Add Funds
               </div>
             </button>
@@ -400,7 +400,7 @@ export function MarkeeCard({
   // Large view (ranks 2-3)
   if (size === 'large') {
     return (
-      <div className="relative bg-white rounded-lg shadow-md p-6 border-2 border-gray-200 h-full flex flex-col group">
+      <div className="relative bg-[#0f1115] rounded-lg shadow-md p-6 border-2 border-[#888888]/30 h-full flex flex-col group">
         {/* Discord-style hover emoji bar */}
         <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
 
@@ -409,34 +409,34 @@ export function MarkeeCard({
           {isOwner && (
             <button 
               onClick={() => onEditMessage?.(markee)}
-              className="text-xs px-2 py-1 hover:scale-110 transition group relative"
+              className="text-xs px-2 py-1 hover:scale-110 transition group relative text-[#E5C07B]"
             >
               ✏️
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
                 Change Message
               </div>
             </button>
           )}
           <button 
             onClick={() => onAddFunds?.(markee)}
-            className="text-xs px-2 py-1 hover:scale-110 transition group relative flex items-center justify-center"
+            className="text-xs px-2 py-1 hover:scale-110 transition group relative flex items-center justify-center text-[#61AFEF]"
           >
-            <Image src="/green-plus.png" alt="Add Funds" width={14} height={14} />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+            +
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
               Add Funds
             </div>
           </button>
         </div>
 
         {/* Message */}
-        <div className="font-mono text-xl font-bold text-gray-900 mb-3 line-clamp-3 message-text flex-grow select-none">
+        <div className="font-mono text-xl font-bold text-[#ffffff] mb-3 line-clamp-3 message-text flex-grow select-none">
           {markee.message}
         </div>
 
         {/* Author */}
         <div className="mb-3">
-          <p className="text-sm text-gray-600 italic">
-            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
+          <p className="text-sm text-[#888888] italic">
+            — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
               {hasCustomName ? markee.name : formatAddress(markee.owner)}
             </span>
           </p>
@@ -455,7 +455,7 @@ export function MarkeeCard({
         </div>
 
         {/* Stats at bottom */}
-        <div className="pt-3 border-t border-gray-100">
+        <div className="pt-3 border-t border-[#888888]/20">
           <MarkeeStats 
             messageViews={messageViews}
             totalViews={totalViews}
@@ -472,7 +472,7 @@ export function MarkeeCard({
   // Medium view (ranks 4-26)
   if (size === 'medium') {
     return (
-      <div className="relative bg-white rounded-lg shadow-sm p-4 border border-gray-200 h-full flex flex-col group">
+      <div className="relative bg-[#0f1115] rounded-lg shadow-sm p-4 border border-[#888888]/30 h-full flex flex-col group">
         {/* Discord-style hover emoji bar */}
         <HoverEmojiBar markee={markee} onReact={onReact} hasMinBalance={hasMinBalance} />
 
@@ -481,34 +481,34 @@ export function MarkeeCard({
           {isOwner && (
             <button 
               onClick={() => onEditMessage?.(markee)}
-              className="hover:scale-110 transition group relative"
+              className="hover:scale-110 transition group relative text-[#E5C07B]"
             >
               ✏️
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
                 Change Message
               </div>
             </button>
           )}
           <button 
             onClick={() => onAddFunds?.(markee)}
-            className="hover:scale-110 transition group relative"
+            className="hover:scale-110 transition group relative text-[#61AFEF]"
           >
-            <Image src="/green-plus.png" alt="Add Funds" width={16} height={16} />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+            +
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#020106] text-[#ABB2BF] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#888888]/30">
               Add Funds
             </div>
           </button>
         </div>
 
         {/* Message */}
-        <div className="font-mono text-sm font-semibold text-gray-900 mb-2 line-clamp-2 message-text flex-grow select-none">
+        <div className="font-mono text-sm font-semibold text-[#ffffff] mb-2 line-clamp-2 message-text flex-grow select-none">
           {markee.message}
         </div>
 
         {/* Author */}
         <div className="mb-2">
-          <p className="text-xs text-gray-600 italic">
-            — <span className={hasCustomName ? 'text-gray-900' : 'text-gray-400'}>
+          <p className="text-xs text-[#888888] italic">
+            — <span className={hasCustomName ? 'text-[#ABB2BF]' : 'text-[#888888]'}>
               {hasCustomName ? markee.name : formatAddress(markee.owner)}
             </span>
           </p>
@@ -527,7 +527,7 @@ export function MarkeeCard({
         </div>
 
         {/* Stats at bottom */}
-        <div className="pt-2 border-t border-gray-100">
+        <div className="pt-2 border-t border-[#888888]/20">
           <MarkeeStats 
             messageViews={messageViews}
             totalViews={totalViews}
