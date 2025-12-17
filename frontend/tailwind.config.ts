@@ -11,36 +11,56 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        // Dark mode backgrounds
-        'dark-bg': '#020106',
-        'dark-bg-secondary': '#0f1115',
-        // VS Code theme colors
-        'accent-purple': '#C678DD',
-        'accent-blue': '#61AFEF',
-        'accent-red': '#E06C75',
-        'accent-peach': '#E5C07B',
-        'accent-cyan': '#56B6C2',
-        // Text colors
-        'text-primary': '#ABB2BF',
-        'text-secondary': '#888888',
-        'text-white': '#ffffff',
-        // Legacy markee colors (for backward compatibility)
+        
+        // Core Backgrounds - Deep Space
+        'midnight-navy': '#060A2A',
+        'deep-space': '#0A0F3D',
+        'cosmic-indigo': '#0F1B6B',
+        
+        // Primary Gradients - Space Glow
+        'electric-blue': '#172090',
+        'royal-blue': '#30342C',
+        'nebula-violet': '#4B3ACC',
+        'galactic-purple': '#6A4AE3',
+        
+        // Accent & UI Highlights
+        'soft-pink': '#F897FE',
+        'lavender-accent': '#935AF0',
+        'periwinkle-blue': '#483ACC',
+        'cool-sky-blue': '#7C9CFF',
+        
+        // Planet / Decorative Accents
+        'peach-orb': '#FF8E8E',
+        'coral-blush': '#FF7A90',
+        'icy-blue': '#8BC8FF',
+        'amethyst': '#7B6AF4',
+        
+        // Text & Subtle UI
+        'soft-white': '#EDEEFF',
+        'lavender-gray': '#B8B6D9',
+        'cool-slate': '#8A8FBF',
+        
+        // Legacy markee colors (backwards compatibility)
         markee: {
-          DEFAULT: '#C678DD',
-          50: '#f5f3ff',
-          100: '#ede9fe',
-          200: '#ddd6fe',
-          300: '#C678DD',
-          400: '#a855f7',
-          500: '#9333ea',
-          600: '#7e22ce',
-          700: '#6b21a8',
-          800: '#581c87',
-          900: '#3b0764',
+          DEFAULT: '#F897FE',
+          50: '#fef5ff',
+          100: '#fce8ff',
+          200: '#f9d5ff',
+          300: '#F897FE',
+          400: '#e975f7',
+          500: '#d950ed',
+          600: '#c130d4',
+          700: '#a020ad',
+          800: '#82208c',
+          900: '#6b1d71',
         },
       },
       fontFamily: {
         barlow: ['Barlow', 'system-ui', 'sans-serif'],
+      },
+      backgroundImage: {
+        'space-gradient': 'linear-gradient(135deg, #0A0F3D, #172090, #4B3ACC)',
+        'nebula-gradient': 'linear-gradient(135deg, #4B3ACC, #6A4AE3, #F897FE)',
       },
     },
   },
