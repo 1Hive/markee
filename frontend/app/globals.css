@@ -8,15 +8,17 @@
   --foreground: #ffffff;
   --background-secondary: #0f1115;
   
-  /* Theme Colors */
-  --accent-orange: #a93400;
-  --accent-yellow: #f2ff26;
-  --accent-green: #94ff94;
-  --accent-blue: #0d75ff;
+  /* Theme Colors - VS Code Inspired */
+  --accent-purple: #C678DD;
+  --accent-blue: #61AFEF;
+  --accent-red: #E06C75;
+  --accent-peach: #E5C07B;
+  --accent-cyan: #56B6C2;
   
   /* Text Colors */
-  --text-primary: #ffffff;
+  --text-primary: #ABB2BF;
   --text-secondary: #888888;
+  --text-white: #ffffff;
   
   /* Border */
   --border-color: rgba(136, 136, 136, 0.2);
@@ -54,16 +56,16 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-yellow);
+  background: var(--accent-purple);
 }
 
 /* Selection color */
 ::selection {
-  background: var(--accent-yellow);
+  background: var(--accent-purple);
   color: var(--background);
 }
 
 ::-moz-selection {
-  background: var(--accent-yellow);
+  background: var(--accent-purple);
   color: var(--background);
 }
