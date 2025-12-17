@@ -113,9 +113,9 @@ export default function Home() {
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/how-it-works" className="text-[#888888] hover:text-[#ffffff]">How it Works</Link>
-              <Link href="/ecosystem" className="text-[#888888] hover:text-[#ffffff]">Ecosystem</Link>
-              <Link href="/owners" className="text-[#888888] hover:text-[#ffffff]">Owners</Link>
+              <Link href="/how-it-works" className="text-[#ABB2BF] hover:text-[#C678DD]">How it Works</Link>
+              <Link href="/ecosystem" className="text-[#ABB2BF] hover:text-[#C678DD]">Ecosystem</Link>
+              <Link href="/owners" className="text-[#ABB2BF] hover:text-[#C678DD]">Owners</Link>
             </nav>
           </div>
           <ConnectButton />
@@ -143,7 +143,7 @@ export default function Home() {
           <button
             key={index}
             onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#f2ff26]/20 hover:-translate-y-1"
+            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#C678DD]/20 hover:-translate-y-1"
           >
             {/* Readerboard inner area with grooves */}
             <div className="readerboard-inner">
@@ -155,7 +155,7 @@ export default function Home() {
 
             {/* Hover price indicator */}
             <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
-              <div className="bg-[#f2ff26] text-[#020106] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
+              <div className="bg-[#C678DD] text-[#020106] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
                 {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function Home() {
 <style jsx>{`
   .readerboard-card {
     position: relative;
-    background: #a93400;
+    background: #E06C75;
     border-radius: 4px;
     padding: 8px;
     box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -203,7 +203,7 @@ export default function Home() {
     font-weight: 900;
     line-height: 1.1;
     letter-spacing: -0.5px;
-    color: #f2ff26;
+    color: #E5C07B;
     text-align: center;
     word-wrap: break-word;
     max-width: 100%;
@@ -211,7 +211,7 @@ export default function Home() {
   }
 
   .group:hover .readerboard-text {
-    color: #94ff94;
+    color: #C678DD;
     transform: scale(1.02);
   }
 
@@ -239,7 +239,7 @@ export default function Home() {
     <div className="text-center mt-8">
       <Link 
         href="/ecosystem"
-        className="inline-block bg-[#94ff94] text-[#020106] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#f2ff26] transition-colors"
+        className="inline-block bg-[#61AFEF] text-[#020106] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#C678DD] transition-colors"
       >
         Explore our Ecosystem
       </Link>
@@ -261,13 +261,13 @@ export default function Home() {
       <div className="flex gap-4 justify-center mb-8">
         <button 
           onClick={handleCreateNew}
-          className="bg-[#f2ff26] text-[#020106] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#94ff94] transition-colors"
+          className="bg-[#C678DD] text-[#020106] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#61AFEF] transition-colors"
         >
           Buy a Message
         </button>
         <Link 
           href="/how-it-works"
-          className="bg-[#0f1115] text-[#f2ff26] border-2 border-[#f2ff26] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#f2ff26]/10 transition-colors"
+          className="bg-[#0f1115] text-[#C678DD] border-2 border-[#C678DD] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#C678DD]/10 transition-colors"
         >
           How it Works
         </Link>
@@ -279,7 +279,7 @@ export default function Home() {
       <div className="flex items-center gap-3 ml-auto">
         {(isFetchingFresh || reactionsLoading) && (
           <div className="flex items-center gap-2 text-sm text-[#888888]">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#f2ff26]"></div>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#C678DD]"></div>
             <span>Updating...</span>
           </div>
         )}
@@ -293,7 +293,7 @@ export default function Home() {
 
     {/* Error display for reactions */}
     {reactionsError && (
-      <div className="mb-4 p-4 bg-[#a93400]/20 border border-[#a93400] rounded-lg text-[#f2ff26] max-w-2xl mx-auto">
+      <div className="mb-4 p-4 bg-[#E06C75]/20 border border-[#E06C75] rounded-lg text-[#E5C07B] max-w-2xl mx-auto">
         <p className="text-sm">{reactionsError}</p>
       </div>
     )}
@@ -306,8 +306,8 @@ export default function Home() {
 
     {error && (
       <div className="text-center py-12">
-        <div className="bg-[#a93400]/20 border border-[#a93400] rounded-lg p-6 max-w-lg mx-auto">
-          <p className="text-[#f2ff26] font-medium mb-2">Error loading Markees</p>
+        <div className="bg-[#E06C75]/20 border border-[#E06C75] rounded-lg p-6 max-w-lg mx-auto">
+          <p className="text-[#E5C07B] font-medium mb-2">Error loading Markees</p>
           <p className="text-[#888888] text-sm">{error.message}</p>
         </div>
       </div>
@@ -423,7 +423,7 @@ export default function Home() {
                 href="https://x.com/markee_xyz" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#f2ff26] transition-colors"
+                className="hover:text-[#C678DD] transition-colors"
                 aria-label="X (Twitter)"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -436,7 +436,7 @@ export default function Home() {
                 href="https://discord.gg/UhhRDzwwkM" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#f2ff26] transition-colors"
+                className="hover:text-[#C678DD] transition-colors"
                 aria-label="Discord"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -449,7 +449,7 @@ export default function Home() {
                 href="https://t.me/+pRiD0TURr5o5ZmUx" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#f2ff26] transition-colors"
+                className="hover:text-[#C678DD] transition-colors"
                 aria-label="Telegram"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -462,7 +462,7 @@ export default function Home() {
                 href="https://warpcast.com/markee" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-[#f2ff26] transition-colors"
+                className="hover:text-[#C678DD] transition-colors"
                 aria-label="Farcaster"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
