@@ -197,7 +197,7 @@ export default function Home() {
   }
 
   .readerboard-text {
-    font-family: Barlow, Georgia, 'Times New Roman', serif;
+    font-family: var(--font-jetbrains-mono), 'Courier New', Consolas, monospace;
     font-size: clamp(18px, 3vw, 28px);
     font-weight: 600;
     line-height: 1.1;
