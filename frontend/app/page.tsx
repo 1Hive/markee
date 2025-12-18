@@ -143,7 +143,7 @@ export default function Home() {
           <button
             key={index}
             onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#F897FE]/20 hover:-translate-y-1"
+            className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
           >
             {/* Readerboard inner area with grooves */}
             <div className="readerboard-inner">
@@ -155,7 +155,7 @@ export default function Home() {
 
             {/* Hover price indicator */}
             <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
-              <div className="bg-[#F897FE] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
+              <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
                 {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function Home() {
 <style jsx>{`
   .readerboard-card {
     position: relative;
-    background: #F897FE;
+    background: #EDEEFF;
     border-radius: 4px;
     padding: 4px;
     box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -210,7 +210,7 @@ export default function Home() {
   }
 
   .group:hover .readerboard-text {
-    color: #F897FE;
+    color: #7B6AF4;
     transform: scale(1.02);
   }
 
