@@ -57,6 +57,7 @@ const config: Config = {
       },
       fontFamily: {
         'manrope': ['Manrope', 'system-ui', 'sans-serif'],
+        'jetbrains': ['var(--font-jetbrains-mono)', 'Courier New', 'Consolas', 'monospace'],
       },
       backgroundImage: {
         'space-gradient': 'linear-gradient(135deg, #0A0F3D, #172090, #4B3ACC)',
