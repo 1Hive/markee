@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { Barlow, JetBrains_Mono } from 'next/font/google'
+import { General_Sans, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Web3Provider } from '@/components/providers/Web3Provider'
 
-const barlow = Barlow({ 
+const generalSans = General_Sans({ 
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
-  variable: '--font-barlow',
+  variable: '--font-general-sans',
 })
 
 const jetbrainsMono = JetBrains_Mono({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${barlow.className} ${jetbrainsMono.variable}`}>
+      <body className={`${generalSans.className} ${jetbrainsMono.variable}`}>
         <Web3Provider>
           {children}
         </Web3Provider>
