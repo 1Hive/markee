@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Barlow, Source_Serif_4 } from 'next/font/google'
+import { Barlow, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Web3Provider } from '@/components/providers/Web3Provider'
 
@@ -9,10 +9,10 @@ const barlow = Barlow({
   variable: '--font-barlow',
 })
 
-const sourceSerif = Source_Serif_4({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  weight: ['400', '600', '700'],
-  variable: '--font-source-serif',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-jetbrains-mono',
 })
 
 export const metadata: Metadata = {
@@ -27,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${barlow.className} ${sourceSerif.variable}`}>
+      <body className={`${barlow.className} ${jetbrainsMono.variable}`}>
         <Web3Provider>
           {children}
         </Web3Provider>
