@@ -303,7 +303,7 @@ export function MarkeeCard({
     return (
       <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <p className="font-mono text-sm text-[#B8B6D9] truncate flex-1">
+          <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
             {markee.message}
           </p>
           <span className="text-xs text-[#8A8FBF] italic">
@@ -336,7 +336,7 @@ export function MarkeeCard({
         {/* Message and Author - Bordered Section */}
         <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
           {/* Message is the star */}
-          <div className="font-mono text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
+          <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
             {markee.message}
           </div>
 
@@ -434,7 +434,7 @@ export function MarkeeCard({
           </div>
 
           {/* Message */}
-          <div className="font-mono text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
+          <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
             {markee.message}
           </div>
 
@@ -509,7 +509,7 @@ export function MarkeeCard({
           </div>
 
           {/* Message */}
-          <div className="font-mono text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
+          <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
             {markee.message}
           </div>
 
