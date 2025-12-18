@@ -171,7 +171,7 @@ export default function Home() {
     position: relative;
     background: #F897FE;
     border-radius: 4px;
-    padding: 8px;
+    padding: 4px;
     box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
     aspect-ratio: 2 / 1;
   }
@@ -197,7 +197,7 @@ export default function Home() {
   }
 
   .readerboard-text {
-    font-family: Impact, 'Arial Black', 'Bebas Neue', sans-serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: clamp(18px, 3vw, 28px);
     font-weight: 600;
     line-height: 1.1;
