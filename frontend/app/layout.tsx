@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { General_Sans, JetBrains_Mono } from 'next/font/google'
+import { Manrope, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Web3Provider } from '@/components/providers/Web3Provider'
 
-const generalSans = General_Sans({ 
+const manrope = Manrope({ 
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
-  variable: '--font-general-sans',
+  variable: '--font-manrope',
 })
 
 const jetbrainsMono = JetBrains_Mono({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${generalSans.className} ${jetbrainsMono.variable}`}>
+      <body className={`${manrope.className} ${jetbrainsMono.variable}`}>
         <Web3Provider>
           {children}
         </Web3Provider>
