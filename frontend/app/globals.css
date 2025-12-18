@@ -39,7 +39,7 @@
 body {
   color: var(--text-primary);
   background: var(--background);
-  font-family: 'Barlow', system-ui, sans-serif;
+  font-family: 'General Sans', system-ui, sans-serif;
 }
 
 @layer utilities {
