@@ -56,7 +56,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        barlow: ['Barlow', 'system-ui', 'sans-serif'],
+        'general-sans': ['General Sans', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
         'space-gradient': 'linear-gradient(135deg, #0A0F3D, #172090, #4B3ACC)',
