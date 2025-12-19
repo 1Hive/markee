@@ -1,4 +1,3 @@
-// FixedPriceModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -9,14 +8,14 @@ import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
-interface FixedMarkeeModalProps {
+interface FixedPriceModalProps {
   isOpen: boolean
   onClose: () => void
   fixedMarkee: FixedMarkee | null
   onSuccess?: () => void
 }
 
-export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedMarkeeModalProps) {
+export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
   const { isConnected, chain } = useAccount()
   const { connectors, connect } = useConnect()
   const [newMessage, setNewMessage] = useState('')
