@@ -342,6 +342,6 @@ export const FixedPriceStrategyABI = [
   }
 ] as const
 
-// Legacy export for backward compatibility - remove after migration
+// Legacy exports for backward compatibility during migration
 export const InvestorStrategyABI = TopDawgStrategyABI
 export const FixedStrategyABI = FixedPriceStrategyABI
