@@ -3,8 +3,10 @@ import {
   MarkeeCreated,
   FundsAddedToMarkee,
   MessageUpdated,
-  NameUpdated
+  NameUpdated,
+  InstanceNameUpdated
 } from "../generated/TopDawgStrategy/TopDawgStrategy"
+import { TopDawgStrategy as TopDawgStrategyContract } from "../generated/TopDawgStrategy/TopDawgStrategy"
 import { Markee as MarkeeContract } from "../generated/TopDawgStrategy/Markee"
 import { Markee as MarkeeTemplate } from "../generated/templates"
 import {
@@ -42,8 +44,34 @@ function loadOrCreateTopDawgStrategy(address: Address): TopDawgStrategy {
     strategy.maxNameLength = BigInt.fromI32(0)
     strategy.totalMarkeesCreated = BigInt.fromI32(0)
     strategy.totalFundsRaised = BigInt.fromI32(0)
+    strategy.totalInstanceFunds = BigInt.fromI32(0)
+    strategy.instanceName = ""
     strategy.createdAt = BigInt.fromI32(0)
     strategy.createdAtBlock = BigInt.fromI32(0)
+    
+    // Try to read instanceName from contract
+    let contract = TopDawgStrategyContract.bind(address)
+    let instanceNameResult = contract.try_instanceName()
+    if (!instanceNameResult.reverted) {
+      strategy.instanceName = instanceNameResult.value
+    }
+    
+    // Try to read other contract values
+    let minimumPriceResult = contract.try_minimumPrice()
+    if (!minimumPriceResult.reverted) {
+      strategy.minimumPrice = minimumPriceResult.value
+    }
+    
+    let maxMessageLengthResult = contract.try_maxMessageLength()
+    if (!maxMessageLengthResult.reverted) {
+      strategy.maxMessageLength = maxMessageLengthResult.value
+    }
+    
+    let maxNameLengthResult = contract.try_maxNameLength()
+    if (!maxNameLengthResult.reverted) {
+      strategy.maxNameLength = maxNameLengthResult.value
+    }
+    
     strategy.save()
   }
   return strategy
@@ -99,6 +127,7 @@ export function handleMarkeeCreated(event: MarkeeCreated): void {
   let strategy = loadOrCreateTopDawgStrategy(event.address)
   strategy.totalMarkeesCreated = strategy.totalMarkeesCreated.plus(BigInt.fromI32(1))
   strategy.totalFundsRaised = strategy.totalFundsRaised.plus(event.params.amount)
+  strategy.totalInstanceFunds = strategy.totalInstanceFunds.plus(event.params.amount)
   
   // Set timestamps on first creation
   if (strategy.createdAt.equals(BigInt.fromI32(0))) {
@@ -114,15 +143,19 @@ export function handleMarkeeCreated(event: MarkeeCreated): void {
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   stats.save()
 
-  log.info("Markee created successfully: {}", [markee.id])
+  log.info("Markee created successfully: {} in instance '{}'", [
+    markee.id, 
+    strategy.instanceName
+  ])
 }
 
 export function handleFundsAddedToMarkee(event: FundsAddedToMarkee): void {
-  log.info("FundsAddedToMarkee: markeeAddress={}, addedBy={}, amount={}, newTotal={}", [
+  log.info("FundsAddedToMarkee: markeeAddress={}, addedBy={}, amount={}, newMarkeeTotal={}, newInstanceTotal={}", [
     event.params.markeeAddress.toHexString(),
     event.params.addedBy.toHexString(),
     event.params.amount.toString(),
-    event.params.newTotal.toString()
+    event.params.newMarkeeTotal.toString(),
+    event.params.newInstanceTotal.toString()
   ])
 
   let markee = Markee.load(event.params.markeeAddress.toHexString())
@@ -131,7 +164,7 @@ export function handleFundsAddedToMarkee(event: FundsAddedToMarkee): void {
     return
   }
 
-  markee.totalFundsAdded = event.params.newTotal
+  markee.totalFundsAdded = event.params.newMarkeeTotal
   markee.updatedAt = event.block.timestamp
   markee.updatedAtBlock = event.block.number
   markee.fundsAddedCount = markee.fundsAddedCount.plus(BigInt.fromI32(1))
@@ -143,20 +176,27 @@ export function handleFundsAddedToMarkee(event: FundsAddedToMarkee): void {
   fundsAdded.markee = markee.id
   fundsAdded.addedBy = event.params.addedBy
   fundsAdded.amount = event.params.amount
-  fundsAdded.newMarkeeTotal = event.params.newTotal
+  fundsAdded.newMarkeeTotal = event.params.newMarkeeTotal
   fundsAdded.timestamp = event.block.timestamp
   fundsAdded.blockNumber = event.block.number
   fundsAdded.transactionHash = event.transaction.hash
   fundsAdded.save()
 
+  // Update strategy totals - use newInstanceTotal from event
   let strategy = loadOrCreateTopDawgStrategy(event.address)
   strategy.totalFundsRaised = strategy.totalFundsRaised.plus(event.params.amount)
+  strategy.totalInstanceFunds = event.params.newInstanceTotal // Use the event param!
   strategy.save()
 
   let stats = loadOrCreateGlobalStats()
   stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   stats.save()
+
+  log.info("Funds added - Markee total: {}, Instance total: {}", [
+    event.params.newMarkeeTotal.toString(),
+    event.params.newInstanceTotal.toString()
+  ])
 }
 
 export function handleMessageUpdated(event: MessageUpdated): void {
@@ -229,4 +269,20 @@ export function handleNameUpdated(event: NameUpdated): void {
   let stats = loadOrCreateGlobalStats()
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   stats.save()
+}
+
+export function handleInstanceNameUpdated(event: InstanceNameUpdated): void {
+  log.info("InstanceNameUpdated: oldName='{}', newName='{}'", [
+    event.params.oldName,
+    event.params.newName
+  ])
+
+  let strategy = loadOrCreateTopDawgStrategy(event.address)
+  strategy.instanceName = event.params.newName
+  strategy.save()
+
+  log.info("Instance name updated for strategy {}: '{}'", [
+    strategy.id,
+    strategy.instanceName
+  ])
 }
