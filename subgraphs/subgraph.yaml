@@ -35,7 +35,7 @@ dataSources:
           handler: handleNameUpdated
         - event: InstanceNameUpdated(string,string)
           handler: handleInstanceNameUpdated
-      file: ./src/top-dawg-strategy.ts
+      file: ./src/topdawg-strategy.ts
 
   # FixedPriceStrategy 1 - THIS IS A SIGN.
   - kind: ethereum
@@ -60,7 +60,7 @@ dataSources:
       eventHandlers:
         - event: MessageChanged(indexed address,string,string,uint256)
           handler: handleFixedPriceMessageChanged
-      file: ./src/fixed-price-strategy.ts
+      file: ./src/fixedprice-strategy.ts
 
   # FixedPriceStrategy 2 - ANYONE CAN PAY TO CHANGE.
   - kind: ethereum
@@ -85,7 +85,7 @@ dataSources:
       eventHandlers:
         - event: MessageChanged(indexed address,string,string,uint256)
           handler: handleFixedPriceMessageChanged
-      file: ./src/fixed-price-strategy.ts
+      file: ./src/fixedprice-strategy.ts
 
   # FixedPriceStrategy 3 - THAT FUNDS THE INTERNET.
   - kind: ethereum
@@ -110,7 +110,7 @@ dataSources:
       eventHandlers:
         - event: MessageChanged(indexed address,string,string,uint256)
           handler: handleFixedPriceMessageChanged
-      file: ./src/fixed-price-strategy.ts
+      file: ./src/fixedprice-strategy.ts
 
 templates:
   # Template for dynamically created Markee contracts from TopDawg
