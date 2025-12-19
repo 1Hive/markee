@@ -12,6 +12,11 @@
 				"type": "uint256"
 			},
 			{
+				"internalType": "string",
+				"name": "_instanceName",
+				"type": "string"
+			},
+			{
 				"internalType": "address",
 				"name": "_adminAddress",
 				"type": "address"
@@ -78,11 +83,36 @@
 			{
 				"indexed": false,
 				"internalType": "uint256",
-				"name": "newTotal",
+				"name": "newMarkeeTotal",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "newInstanceTotal",
 				"type": "uint256"
 			}
 		],
 		"name": "FundsAddedToMarkee",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "oldName",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "newName",
+				"type": "string"
+			}
+		],
+		"name": "InstanceNameUpdated",
 		"type": "event"
 	},
 	{
@@ -342,6 +372,19 @@
 		"type": "function"
 	},
 	{
+		"inputs": [],
+		"name": "instanceName",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
 		"inputs": [
 			{
 				"internalType": "address",
@@ -441,6 +484,19 @@
 	{
 		"inputs": [
 			{
+				"internalType": "string",
+				"name": "_newName",
+				"type": "string"
+			}
+		],
+		"name": "setInstanceName",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
 				"internalType": "uint256",
 				"name": "_newMaxLength",
 				"type": "uint256"
@@ -475,6 +531,19 @@
 		"name": "setMinimumPrice",
 		"outputs": [],
 		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "totalInstanceFunds",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
 		"type": "function"
 	},
 	{
