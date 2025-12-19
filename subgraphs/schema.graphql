@@ -1,35 +1,71 @@
-type Markee @entity {
+type Markee @entity(immutable: false) {
   id: ID!
   address: Bytes!
   owner: Bytes!
-  pricingStrategy: Bytes!
   message: String!
   name: String!
   totalFundsAdded: BigInt!
+  pricingStrategy: Bytes!
   createdAt: BigInt!
-  updatedAt: BigInt!
   createdAtBlock: BigInt!
+  updatedAt: BigInt!
   updatedAtBlock: BigInt!
-  strategy: TopDawgStrategy
+  fundsAddedCount: BigInt!
+  messageUpdateCount: BigInt!
+  nameUpdateCount: BigInt!
+  strategy: TopDawgStrategy  # Link to strategy
+  fundsAddedEvents: [FundsAdded!]! @derivedFrom(field: "markee")
+  messageUpdates: [MessageUpdate!]! @derivedFrom(field: "markee")
+  nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
 }
 
-type TopDawgStrategy @entity {
+type FundsAdded @entity(immutable: true) {
+  id: ID!
+  markee: Markee!
+  addedBy: Bytes!
+  amount: BigInt!
+  newMarkeeTotal: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type MessageUpdate @entity(immutable: true) {
+  id: ID!
+  markee: Markee!
+  updatedBy: Bytes!
+  oldMessage: String!
+  newMessage: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type NameUpdate @entity(immutable: true) {
+  id: ID!
+  markee: Markee!
+  updatedBy: Bytes!
+  oldName: String!
+  newName: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type TopDawgStrategy @entity(immutable: false) {
   id: ID!
   address: Bytes!
-  instanceName: String!
-  revNetTerminal: Bytes!
-  revNetProjectId: BigInt!
-  adminAddress: Bytes!
   minimumPrice: BigInt!
   maxMessageLength: BigInt!
   maxNameLength: BigInt!
-  totalInstanceFunds: BigInt!
+  totalMarkeesCreated: BigInt!
+  totalFundsRaised: BigInt!
   markees: [Markee!]! @derivedFrom(field: "strategy")
   createdAt: BigInt!
   createdAtBlock: BigInt!
 }
 
-type FixedPriceStrategy @entity {
+type FixedPriceStrategy @entity(immutable: false) {
   id: ID!
   address: Bytes!
   markeeAddress: Bytes!
@@ -43,41 +79,30 @@ type FixedPriceStrategy @entity {
   currentName: String!
   totalRevenue: BigInt!
   messageChangeCount: BigInt!
+  messageChanges: [FixedPriceMessageChange!]! @derivedFrom(field: "strategy")
   createdAt: BigInt!
   createdAtBlock: BigInt!
 }
 
-type MessageChange @entity {
-  id: ID!
-  markee: Markee!
-  changedBy: Bytes!
-  newMessage: String!
-  newName: String
-  timestamp: BigInt!
-  blockNumber: BigInt!
-  transactionHash: Bytes!
-}
-
-type FundsAdded @entity {
-  id: ID!
-  markee: Markee!
-  addedBy: Bytes!
-  amount: BigInt!
-  newMarkeeTotal: BigInt!
-  newInstanceTotal: BigInt!
-  timestamp: BigInt!
-  blockNumber: BigInt!
-  transactionHash: Bytes!
-}
-
-type FixedPriceMessageChange @entity {
+type FixedPriceMessageChange @entity(immutable: true) {
   id: ID!
   strategy: FixedPriceStrategy!
   changedBy: Bytes!
+  oldMessage: String!
   newMessage: String!
-  newName: String
+  oldName: String!
+  newName: String!
   pricePaid: BigInt!
   timestamp: BigInt!
   blockNumber: BigInt!
   transactionHash: Bytes!
+}
+
+type GlobalStats @entity(immutable: false) {
+  id: ID!
+  totalMarkees: BigInt!
+  totalFundsRaised: BigInt!
+  totalTransactions: BigInt!
+  totalFixedPriceRevenue: BigInt!
+  totalFixedPriceChanges: BigInt!
 }
