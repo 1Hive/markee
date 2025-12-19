@@ -1,11 +1,12 @@
+// FixedPriceModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useConnect } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { FixedStrategyABI } from '@/lib/contracts/abis'
-import { optimism } from 'wagmi/chains'
+import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 interface FixedMarkeeModalProps {
@@ -19,6 +20,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
   const { isConnected, chain } = useAccount()
   const { connectors, connect } = useConnect()
   const [newMessage, setNewMessage] = useState('')
+  const [newName, setNewName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
@@ -28,6 +30,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
   useEffect(() => {
     if (isOpen && fixedMarkee) {
       setNewMessage('')
+      setNewName('')
       setError(null)
       reset()
     }
@@ -51,8 +54,8 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
       return
     }
 
-    if (chain.id !== optimism.id) {
-      setError('Please switch to Optimism network')
+    if (chain.id !== CANONICAL_CHAIN.id) {
+      setError(`Please switch to ${CANONICAL_CHAIN.name} network`)
       return
     }
 
@@ -71,11 +74,11 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
     try {
       writeContract({
         address: fixedMarkee.strategyAddress as `0x${string}`,
-        abi: FixedStrategyABI,
+        abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
-        args: [newMessage],
+        args: [newMessage, newName],
         value: fixedMarkee.price,
-        chainId: optimism.id,
+        chainId: CANONICAL_CHAIN.id,
       })
     } catch (err: any) {
       setError(err.message || 'Transaction failed')
@@ -84,7 +87,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
 
   if (!isOpen || !fixedMarkee) return null
 
-  const isWrongNetwork = chain && chain.id !== optimism.id
+  const isWrongNetwork = chain && chain.id !== CANONICAL_CHAIN.id
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -120,7 +123,7 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
               <p className="text-gray-600 mb-4">
-                Please switch to Optimism network to change this message
+                Please switch to {CANONICAL_CHAIN.name} network to change this message
               </p>
             </div>
           ) : (
@@ -171,6 +174,22 @@ export function FixedMarkeeModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fi
                   placeholder="Enter your new message..."
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                   rows={3}
+                  disabled={isPending || isConfirming}
+                />
+              </div>
+
+              {/* Name Input */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Display Name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Take credit for your masterpiece..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                  maxLength={50}
                   disabled={isPending || isConfirming}
                 />
               </div>
