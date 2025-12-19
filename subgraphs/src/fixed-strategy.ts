@@ -1,6 +1,13 @@
-import { BigInt, log } from "@graphprotocol/graph-ts"
-import { MessageChanged } from "../generated/FixedStrategy1/FixedStrategy"
-import { Markee, GlobalStats } from "../generated/schema"
+import { BigInt, log, Address } from "@graphprotocol/graph-ts"
+import { MessageChanged } from "../generated/FixedPriceStrategy1/FixedPriceStrategy"
+import { 
+  FixedPriceStrategy, 
+  FixedPriceMessageChange,
+  GlobalStats 
+} from "../generated/schema"
+
+// Import the contract to read values
+import { FixedPriceStrategy as FixedPriceStrategyContract } from "../generated/FixedPriceStrategy1/FixedPriceStrategy"
 
 // Helper function to load or create GlobalStats
 function loadOrCreateGlobalStats(): GlobalStats {
@@ -10,61 +17,128 @@ function loadOrCreateGlobalStats(): GlobalStats {
     stats.totalMarkees = BigInt.fromI32(0)
     stats.totalFundsRaised = BigInt.fromI32(0)
     stats.totalTransactions = BigInt.fromI32(0)
+    stats.totalFixedPriceRevenue = BigInt.fromI32(0)
+    stats.totalFixedPriceChanges = BigInt.fromI32(0)
     stats.save()
   }
   return stats
 }
 
-export function handleFixedMessageChanged(event: MessageChanged): void {
-  log.info("Fixed MessageChanged: changedBy={}, message={}", [
+export function handleFixedPriceMessageChanged(event: MessageChanged): void {
+  log.info("FixedPrice MessageChanged: changedBy={}, message={}, name={}, price={}", [
     event.params.changedBy.toHexString(),
-    event.params.newMessage
+    event.params.newMessage,
+    event.params.name,
+    event.params.pricePaid.toString()
   ])
 
-  // The Markee address is the contract that emitted this event
-  // For FixedStrategy, the strategy contract itself is at event.address
-  // We need to get the markeeAddress from the contract
-  // For now, we'll use the strategy address as the ID
+  // Load or create the FixedPriceStrategy entity
+  let strategyId = event.address.toHexString()
+  let strategy = FixedPriceStrategy.load(strategyId)
   
-  let markeeId = event.address.toHexString()
-  let markee = Markee.load(markeeId)
-  
-  if (markee == null) {
-    // First time seeing this Fixed Markee
-    markee = new Markee(markeeId)
-    markee.address = event.address
-    markee.owner = event.params.changedBy
-    markee.message = event.params.newMessage
-    markee.name = event.params.name
-    markee.totalFundsAdded = event.params.pricePaid
-    markee.pricingStrategy = event.address
-    markee.chainId = BigInt.fromI32(10) // Optimism
-    markee.createdAt = event.block.timestamp
-    markee.createdAtBlock = event.block.number
-    markee.updatedAt = event.block.timestamp
-    markee.fundsAddedCount = BigInt.fromI32(1)
-    markee.messageUpdateCount = BigInt.fromI32(0)
+  if (strategy == null) {
+    // First time seeing this FixedPriceStrategy
+    strategy = new FixedPriceStrategy(strategyId)
+    strategy.address = event.address
+    strategy.totalRevenue = BigInt.fromI32(0)
+    strategy.messageChangeCount = BigInt.fromI32(0)
+    strategy.currentMessage = ""
+    strategy.currentName = ""
+    strategy.createdAt = event.block.timestamp
+    strategy.createdAtBlock = event.block.number
     
-    // Update global stats
-    let stats = loadOrCreateGlobalStats()
-    stats.totalMarkees = stats.totalMarkees.plus(BigInt.fromI32(1))
-    stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.pricePaid)
-    stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
-    stats.save()
-  } else {
-    // Update existing Fixed Markee
-    markee.message = event.params.newMessage
-    markee.name = event.params.name
-    markee.totalFundsAdded = markee.totalFundsAdded.plus(event.params.pricePaid)
-    markee.updatedAt = event.block.timestamp
-    markee.messageUpdateCount = markee.messageUpdateCount.plus(BigInt.fromI32(1))
+    // Read contract values
+    let contract = FixedPriceStrategyContract.bind(event.address)
     
-    // Update global stats
-    let stats = loadOrCreateGlobalStats()
-    stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.pricePaid)
-    stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
-    stats.save()
+    let markeeAddressResult = contract.try_markeeAddress()
+    if (!markeeAddressResult.reverted) {
+      strategy.markeeAddress = markeeAddressResult.value
+    } else {
+      log.warning("Failed to read markeeAddress for strategy {}", [strategyId])
+      strategy.markeeAddress = Address.zero()
+    }
+    
+    let priceResult = contract.try_price()
+    if (!priceResult.reverted) {
+      strategy.price = priceResult.value
+    } else {
+      log.warning("Failed to read price for strategy {}", [strategyId])
+      strategy.price = BigInt.fromI32(0)
+    }
+    
+    let maxMessageLengthResult = contract.try_maxMessageLength()
+    if (!maxMessageLengthResult.reverted) {
+      strategy.maxMessageLength = maxMessageLengthResult.value
+    } else {
+      strategy.maxMessageLength = BigInt.fromI32(0)
+    }
+    
+    let maxNameLengthResult = contract.try_maxNameLength()
+    if (!maxNameLengthResult.reverted) {
+      strategy.maxNameLength = maxNameLengthResult.value
+    } else {
+      strategy.maxNameLength = BigInt.fromI32(0)
+    }
+    
+    let ownerResult = contract.try_owner()
+    if (!ownerResult.reverted) {
+      strategy.owner = ownerResult.value
+    } else {
+      strategy.owner = Address.zero()
+    }
+    
+    let revNetTerminalResult = contract.try_revNetTerminal()
+    if (!revNetTerminalResult.reverted) {
+      strategy.revNetTerminal = revNetTerminalResult.value
+    } else {
+      strategy.revNetTerminal = Address.zero()
+    }
+    
+    let revNetProjectIdResult = contract.try_revNetProjectId()
+    if (!revNetProjectIdResult.reverted) {
+      strategy.revNetProjectId = revNetProjectIdResult.value
+    } else {
+      strategy.revNetProjectId = BigInt.fromI32(0)
+    }
   }
-  
-  markee.save()
+
+  // Store old values for the change event
+  let oldMessage = strategy.currentMessage
+  let oldName = strategy.currentName
+
+  // Update strategy with new values
+  strategy.currentMessage = event.params.newMessage
+  strategy.currentName = event.params.name
+  strategy.totalRevenue = strategy.totalRevenue.plus(event.params.pricePaid)
+  strategy.messageChangeCount = strategy.messageChangeCount.plus(BigInt.fromI32(1))
+  strategy.save()
+
+  // Create FixedPriceMessageChange event
+  let changeId = event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  let messageChange = new FixedPriceMessageChange(changeId)
+  messageChange.strategy = strategy.id
+  messageChange.changedBy = event.params.changedBy
+  messageChange.oldMessage = oldMessage
+  messageChange.newMessage = event.params.newMessage
+  messageChange.oldName = oldName
+  messageChange.newName = event.params.name
+  messageChange.pricePaid = event.params.pricePaid
+  messageChange.timestamp = event.block.timestamp
+  messageChange.blockNumber = event.block.number
+  messageChange.transactionHash = event.transaction.hash
+  messageChange.save()
+
+  // Update global stats
+  let stats = loadOrCreateGlobalStats()
+  stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.pricePaid)
+  stats.totalFixedPriceRevenue = stats.totalFixedPriceRevenue.plus(event.params.pricePaid)
+  stats.totalFixedPriceChanges = stats.totalFixedPriceChanges.plus(BigInt.fromI32(1))
+  stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
+  stats.save()
+
+  log.info("FixedPrice strategy {} updated: totalRevenue={}, changeCount={}", [
+    strategyId,
+    strategy.totalRevenue.toString(),
+    strategy.messageChangeCount.toString()
+  ])
 }
