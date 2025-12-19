@@ -13,7 +13,7 @@ type Markee @entity(immutable: false) {
   fundsAddedCount: BigInt!
   messageUpdateCount: BigInt!
   nameUpdateCount: BigInt!
-  strategy: TopDawgStrategy  # Link to strategy
+  strategy: TopDawgStrategy
   fundsAddedEvents: [FundsAdded!]! @derivedFrom(field: "markee")
   messageUpdates: [MessageUpdate!]! @derivedFrom(field: "markee")
   nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
@@ -55,11 +55,13 @@ type NameUpdate @entity(immutable: true) {
 type TopDawgStrategy @entity(immutable: false) {
   id: ID!
   address: Bytes!
+  instanceName: String!
   minimumPrice: BigInt!
   maxMessageLength: BigInt!
   maxNameLength: BigInt!
   totalMarkeesCreated: BigInt!
   totalFundsRaised: BigInt!
+  totalInstanceFunds: BigInt!
   markees: [Markee!]! @derivedFrom(field: "strategy")
   createdAt: BigInt!
   createdAtBlock: BigInt!
