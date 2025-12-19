@@ -9,8 +9,8 @@ import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { useReactions } from '@/hooks/useReactions'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
-import { InvestmentModal } from '@/components/modals/InvestmentModal'
-import { FixedMarkeeModal } from '@/components/modals/FixedMarkeeModal'
+import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 
 import { formatDistanceToNow } from 'date-fns'
@@ -415,7 +415,7 @@ export default function Home() {
               {/* #27+ - List View */}
               {markees.length > 26 && (
                 <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-6 border border-[#8A8FBF]/20">
-                  <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Investors</h4>
+                  <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
                   <div className="space-y-2">
                     {markees.slice(26).map((markee, index) => (
                       <MarkeeCard 
@@ -503,8 +503,8 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Investment Modal */}
-      <InvestmentModal 
+      {/* Top Dawg Modal */}
+      <TopDawgModal 
         isOpen={isModalOpen}
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
@@ -512,8 +512,8 @@ export default function Home() {
         onSuccess={debouncedRefetch}
       />
 
-      {/* Fixed Markee Modal */}
-      <FixedMarkeeModal 
+      {/* Fixed Price Modal */}
+      <FixedPriceModal 
         isOpen={isFixedModalOpen}
         onClose={handleFixedModalClose}
         fixedMarkee={selectedFixedMarkee}
