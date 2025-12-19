@@ -1,22 +1,18 @@
 {
   "name": "markee-subgraph",
-  "version": "0.1.0",
-  "description": "The Graph subgraph for Markee protocol",
+  "version": "1.0.0",
+  "description": "The Graph subgraph for Markee protocol on Base (canonical chain)",
   "repository": "https://github.com/1Hive/markee",
   "author": "Markee Team",
   "license": "GPL-3.0",
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
-    "deploy:optimism": "graph deploy --studio markee-optimism",
-    "deploy:base": "graph deploy --studio markee-base",
-    "deploy:arbitrum": "graph deploy --studio markee-arbitrum",
-    "deploy:mainnet": "graph deploy --studio markee-mainnet",
+    "deploy": "graph deploy --studio markee-base",
     "test": "graph test",
     "create-local": "graph create --node http://localhost:8020/ markee",
     "remove-local": "graph remove --node http://localhost:8020/ markee",
-    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 markee",
-    "convert-abis": "node convert-abis.js"
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 markee"
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "^0.56.0",
