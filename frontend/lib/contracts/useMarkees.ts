@@ -1,178 +1,102 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { request, gql } from 'graphql-request'
-import type { Markee } from '@/types'
+import { useReadContract } from 'wagmi'
+import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
-// Primary endpoint: The Graph Network (production)
-const NETWORK_SUBGRAPH_URL = process.env.NEXT_PUBLIC_GRAPH_API_KEY
-  ? `https://gateway-arbitrum.network.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/3kUc3txg9GPt6MvdKFZPYzwU5GZoXvtWyoMwLRsXreXm`
-  : null
-
-// Fallback endpoint: The Graph Studio (development)
-const STUDIO_SUBGRAPH_URL =
-  'https://api.studio.thegraph.com/query/40814/markee-optimism/version/latest'
-
-const CACHE_KEY = 'markees_cache'
-const CACHE_DURATION = 1000 * 60 * 10 // 10 minutes
-
-interface CacheData {
-  markees: Markee[]
-  timestamp: number
+export type FixedMarkee = {
+  name: string
+  strategyAddress: string
+  message: string | null
+  price: string | null  // Changed from bigint to string for JSON serialization
+  chainId: number
 }
 
-// GraphQL response type
-interface MarkeeSubgraph {
-  markees: Array<{
-    id: string
-    address: string
-    owner: string
-    message: string
-    name?: string
-    totalFundsAdded: string
-    pricingStrategy: string
-    chainId: string
-    createdAt?: string
-    createdAtBlock?: string
-    updatedAt?: string
-    fundsAddedCount?: string
-    messageUpdateCount?: string
-  }>
-}
+export function useFixedMarkees() {
+  // Get all FixedPrice strategies from canonical chain (Base)
+  const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
+  
+  // Call all hooks at the top level (not in a loop)
+  // Strategy 1
+  const { data: message1 } = useReadContract({
+    address: fixedStrategies[0]?.address as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'markeeAddress',
+    chainId: CANONICAL_CHAIN_ID,
+  })
 
-export function useMarkees() {
-  const [markees, setMarkees] = useState<Markee[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isFetchingFresh, setIsFetchingFresh] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const hasFetchedRef = useRef(false)
+  const { data: price1 } = useReadContract({
+    address: fixedStrategies[0]?.address as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'price',
+    chainId: CANONICAL_CHAIN_ID,
+  })
 
-  const fetchMarkees = useCallback(async (showFetchingIndicator = true) => {
-    try {
-      // Add query counter for monitoring
-      const queryCount = parseInt(localStorage.getItem('markees_query_count') || '0') + 1
-      localStorage.setItem('markees_query_count', queryCount.toString())
-      
-      console.log('[Markees] Query #' + queryCount + ' at', new Date().toISOString())
-      console.log('[Markees] Using cache:', showFetchingIndicator && markees.length > 0 ? 'background refresh' : 'initial load')
-      
-      if (showFetchingIndicator && markees.length > 0) setIsFetchingFresh(true)
-      else setIsLoading(true)
+  // Strategy 2
+  const { data: message2 } = useReadContract({
+    address: fixedStrategies[1]?.address as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'markeeAddress',
+    chainId: CANONICAL_CHAIN_ID,
+  })
 
-      const query = gql`
-        query GetMarkees {
-          markees(first: 100, orderBy: totalFundsAdded, orderDirection: desc) {
-            id
-            address
-            owner
-            message
-            name
-            totalFundsAdded
-            pricingStrategy
-            chainId
-            createdAt
-            createdAtBlock
-            updatedAt
-            fundsAddedCount
-            messageUpdateCount
-          }
-        }
-      `
+  const { data: price2 } = useReadContract({
+    address: fixedStrategies[1]?.address as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'price',
+    chainId: CANONICAL_CHAIN_ID,
+  })
 
-      const headers = {
-        'Content-Type': 'application/json',
-      }
+  // Strategy 3
+  const { data: message3 } = useReadContract({
+    address: fixedStrategies[2]?.address as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'markeeAddress',
+    chainId: CANONICAL_CHAIN_ID,
+  })
 
-      let data: MarkeeSubgraph | null = null
-      let usedEndpoint = ''
+  const { data: price3 } = useReadContract({
+    address: fixedStrategies[2]?.address as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'price',
+    chainId: CANONICAL_CHAIN_ID,
+  })
 
-      // Try Network endpoint first (production)
-      if (NETWORK_SUBGRAPH_URL) {
-        try {
-          console.log('[Markees] Trying Network endpoint...')
-          data = await request<MarkeeSubgraph>(NETWORK_SUBGRAPH_URL, query, {}, headers)
-          usedEndpoint = 'Network'
-          console.log('[Markees] ✓ Network endpoint succeeded')
-        } catch (networkError: any) {
-          console.warn('[Markees] Network endpoint failed:', networkError.message)
-          console.log('[Markees] Falling back to Studio endpoint...')
-        }
-      }
+  // Build markees array - convert BigInt to string for serialization
+  const markees: FixedMarkee[] = []
 
-      // Fallback to Studio endpoint if Network failed or not configured
-      if (!data) {
-        try {
-          // Add Studio authorization header
-          const studioHeaders = {
-            ...headers,
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_GRAPH_TOKEN}`,
-          }
-          data = await request<MarkeeSubgraph>(STUDIO_SUBGRAPH_URL, query, {}, studioHeaders)
-          usedEndpoint = 'Studio'
-          console.log('[Markees] ✓ Studio endpoint succeeded')
-        } catch (studioError: any) {
-          console.error('[Markees] Studio endpoint also failed:', studioError.message)
-          throw new Error('Both Network and Studio endpoints failed')
-        }
-      }
+  if (fixedStrategies[0]) {
+    markees.push({
+      name: fixedStrategies[0].name,
+      strategyAddress: fixedStrategies[0].address,
+      message: message1 as string | null,
+      price: price1 ? price1.toString() : null,  // Convert BigInt to string
+      chainId: CANONICAL_CHAIN_ID,
+    })
+  }
 
-      const allMarkees: Markee[] = data.markees.map((m) => ({
-        address: m.address,
-        owner: m.owner,
-        message: m.message,
-        name: m.name,
-        totalFundsAdded: BigInt(m.totalFundsAdded),
-        pricingStrategy: m.pricingStrategy,
-        chainId: Number(m.chainId),
-      }))
+  if (fixedStrategies[1]) {
+    markees.push({
+      name: fixedStrategies[1].name,
+      strategyAddress: fixedStrategies[1].address,
+      message: message2 as string | null,
+      price: price2 ? price2.toString() : null,  // Convert BigInt to string
+      chainId: CANONICAL_CHAIN_ID,
+    })
+  }
 
-      console.log(`[Markees] Successfully fetched ${allMarkees.length} markees from ${usedEndpoint}`)
-      setMarkees(allMarkees)
-      setError(null)
-      const now = Date.now()
-      setLastUpdated(new Date(now))
+  if (fixedStrategies[2]) {
+    markees.push({
+      name: fixedStrategies[2].name,
+      strategyAddress: fixedStrategies[2].address,
+      message: message3 as string | null,
+      price: price3 ? price3.toString() : null,  // Convert BigInt to string
+      chainId: CANONICAL_CHAIN_ID,
+    })
+  }
 
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ markees: allMarkees, timestamp: now }))
-      } catch (err) {
-        console.error('[Markees] Error saving cache:', err)
-      }
-    } catch (err) {
-      console.error('[Markees] Error fetching markees:', err)
-      setError(err as Error)
-    } finally {
-      setIsLoading(false)
-      setIsFetchingFresh(false)
-    }
-  }, [markees.length])
-
-  useEffect(() => {
-    if (hasFetchedRef.current) return
-    hasFetchedRef.current = true
-
-    try {
-      const cached = localStorage.getItem(CACHE_KEY)
-      if (cached) {
-        const { markees: cachedMarkees, timestamp }: CacheData = JSON.parse(cached)
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          console.log('[Markees] Using cached data from', new Date(timestamp).toISOString())
-          setMarkees(cachedMarkees)
-          setLastUpdated(new Date(timestamp))
-          setIsLoading(false)
-          return
-        } else {
-          console.log('[Markees] Cache expired, fetching fresh data')
-        }
-      }
-    } catch (err) {
-      console.error('[Markees] Error reading cache:', err)
-    }
-
-    fetchMarkees(false)
-  }, [fetchMarkees])
-
-  const refetch = useCallback(() => fetchMarkees(true), [fetchMarkees])
-
-  return { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch }
+  return {
+    markees,
+    isLoading: !message1 && !message2 && !message3,
+  }
 }
