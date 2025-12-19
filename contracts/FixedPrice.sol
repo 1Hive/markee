@@ -4,10 +4,10 @@ pragma solidity ^0.8.23;
 import "./Markee.sol";
 import "./Interfaces.sol";
 
-/// @title FixedStrategy
+/// @title FixedPrice
 /// @notice A pricing strategy where anyone can pay a fixed price to change the message
-/// @dev Typically deployed once per Markee for custom use cases
-contract FixedStrategy {
+/// @dev Deploys and manages a Markee contract with fixed-price message updates
+contract FixedPrice {
     // Constants
     address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
     
@@ -33,7 +33,7 @@ contract FixedStrategy {
     event PricingStrategyChanged(address indexed newStrategy);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     
-    /// @notice Creates a new FixedStrategy and its associated Markee
+    /// @notice Creates a new FixedPrice and its associated Markee
     /// @param _revNetTerminal Address of the Juicebox terminal for RevNet payments
     /// @param _revNetProjectId The RevNet project ID for Markee
     /// @param _initialMessage The initial message for the Markee
@@ -109,13 +109,28 @@ contract FixedStrategy {
             revNetProjectId,
             NATIVE_TOKEN,
             msg.value,
-            msg.sender,           // payer receives tABC tokens
+            msg.sender,           // payer receives MARKEE tokens
             0,                    // minReturnedTokens
             "",                   // memo
             ""                    // metadata
         );
         
         emit MessageChanged(msg.sender, _newMessage, _name, msg.value);
+    }
+    
+    /// @notice updateMessage for cross-chain payments
+    function updateMessage(string calldata _newMessage, string calldata _name) 
+        external 
+    {
+        require(msg.sender == owner, "Only owner");
+        require(bytes(_newMessage).length <= maxMessageLength, "Message exceeds maximum length");
+        require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+        
+        Markee markee = Markee(markeeAddress);
+        markee.setMessage(_newMessage);
+        markee.setName(_name);
+        
+        emit MessageChanged(owner, _newMessage, _name, 0);
     }
     
     /// @notice Allows the owner to update the fixed price
@@ -166,7 +181,7 @@ contract FixedStrategy {
         emit PricingStrategyChanged(_newStrategy);
     }
     
-    /// @notice Allows the owner to transfer ownership of the FixedStrategy
+    /// @notice Allows the owner to transfer ownership of the FixedPrice
     /// @param _newOwner The new owner address
     function transferOwnership(address _newOwner) external {
         require(msg.sender == owner, "Only owner can transfer ownership");
