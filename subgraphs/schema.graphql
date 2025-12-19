@@ -1,68 +1,83 @@
-type Markee @entity(immutable: false) {
+type Markee @entity {
   id: ID!
   address: Bytes!
   owner: Bytes!
+  pricingStrategy: Bytes!
   message: String!
   name: String!
   totalFundsAdded: BigInt!
-  pricingStrategy: Bytes!
-  chainId: BigInt!
   createdAt: BigInt!
-  createdAtBlock: BigInt!
   updatedAt: BigInt!
-  fundsAddedCount: BigInt!
-  messageUpdateCount: BigInt!
-  fundsAddedEvents: [FundsAdded!]! @derivedFrom(field: "markee")
-  messageUpdates: [MessageUpdate!]! @derivedFrom(field: "markee")
-  nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+  strategy: TopDawgStrategy
 }
 
-type FundsAdded @entity(immutable: true) {
+type TopDawgStrategy @entity {
+  id: ID!
+  address: Bytes!
+  instanceName: String!
+  revNetTerminal: Bytes!
+  revNetProjectId: BigInt!
+  adminAddress: Bytes!
+  minimumPrice: BigInt!
+  maxMessageLength: BigInt!
+  maxNameLength: BigInt!
+  totalInstanceFunds: BigInt!
+  markees: [Markee!]! @derivedFrom(field: "strategy")
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+}
+
+type FixedPriceStrategy @entity {
+  id: ID!
+  address: Bytes!
+  markeeAddress: Bytes!
+  price: BigInt!
+  maxMessageLength: BigInt!
+  maxNameLength: BigInt!
+  revNetTerminal: Bytes!
+  revNetProjectId: BigInt!
+  owner: Bytes!
+  currentMessage: String!
+  currentName: String!
+  totalRevenue: BigInt!
+  messageChangeCount: BigInt!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+}
+
+type MessageChange @entity {
+  id: ID!
+  markee: Markee!
+  changedBy: Bytes!
+  newMessage: String!
+  newName: String
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type FundsAdded @entity {
   id: ID!
   markee: Markee!
   addedBy: Bytes!
   amount: BigInt!
-  newTotal: BigInt!
+  newMarkeeTotal: BigInt!
+  newInstanceTotal: BigInt!
   timestamp: BigInt!
   blockNumber: BigInt!
   transactionHash: Bytes!
 }
 
-type MessageUpdate @entity(immutable: true) {
+type FixedPriceMessageChange @entity {
   id: ID!
-  markee: Markee!
-  updatedBy: Bytes!
-  oldMessage: String!
+  strategy: FixedPriceStrategy!
+  changedBy: Bytes!
   newMessage: String!
+  newName: String
+  pricePaid: BigInt!
   timestamp: BigInt!
   blockNumber: BigInt!
   transactionHash: Bytes!
-}
-
-type NameUpdate @entity(immutable: true) {
-  id: ID!
-  markee: Markee!
-  updatedBy: Bytes!
-  oldName: String!
-  newName: String!
-  timestamp: BigInt!
-  blockNumber: BigInt!
-  transactionHash: Bytes!
-}
-
-type InvestorStrategy @entity(immutable: false) {
-  id: ID!
-  address: Bytes!
-  minimumPrice: BigInt!
-  maxMessageLength: BigInt!
-  maxNameLength: BigInt!
-  totalMarkeesCreated: BigInt!
-  totalFundsRaised: BigInt!
-}
-
-type GlobalStats @entity(immutable: false) {
-  id: ID!
-  totalMarkees: BigInt!
-  totalFundsRaised: BigInt!
-  totalTransactions: BigInt!
 }
