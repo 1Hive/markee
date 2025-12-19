@@ -4,20 +4,25 @@ pragma solidity ^0.8.23;
 import "./Markee.sol";
 import "./Interfaces.sol";
 
-/// @title InvestorStrategy
-/// @notice A pricing strategy where paying creates a new Markee owned by the payer
-/// @dev Owned by admin multisig who can change pricing strategies for any Markee using this contract
-contract InvestorStrategy {
+/// @title TopDawgStrategy
+/// @notice A pricing strategy where payers can choose their price when buying a Markee message, and the message with the most funds added is the top dawg.
+/// @dev Each Top Dawg deployment creates an independent leaderboard with its own admin and settings
+/// @dev All instances deployed on Base (canonical chain)
+contract TopDawgStrategy {
     // Constants
     address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
     
     // Configuration
     address public immutable revNetTerminal;
     uint256 public immutable revNetProjectId;
+    string public instanceName;  // Identifies this specific instance (e.g., "Markee Top Dawg", "Gardens Top Dawg")
     address public adminAddress;
     uint256 public minimumPrice;
     uint256 public maxMessageLength;
     uint256 public maxNameLength;
+    
+    // Total funds that have flowed through this strategy instance
+    uint256 public totalInstanceFunds;
     
     // Mapping to track which Markees are using this strategy
     mapping(address => bool) public isMarkeeUsingThisStrategy;
@@ -44,7 +49,8 @@ contract InvestorStrategy {
         address indexed markeeAddress,
         address indexed addedBy,
         uint256 amount,
-        uint256 newTotal
+        uint256 newMarkeeTotal,
+        uint256 newInstanceTotal
     );
     event PricingStrategyChangedForMarkee(
         address indexed markeeAddress,
@@ -56,17 +62,20 @@ contract InvestorStrategy {
     event MinimumPriceUpdated(uint256 oldPrice, uint256 newPrice);
     event MaxMessageLengthUpdated(uint256 oldLength, uint256 newLength);
     event MaxNameLengthUpdated(uint256 oldLength, uint256 newLength);
+    event InstanceNameUpdated(string oldName, string newName);
     
-    /// @notice Creates a new InvestorStrategy
+    /// @notice Creates a new TopDawgStrategy
     /// @param _revNetTerminal Address of the Juicebox terminal for RevNet payments
     /// @param _revNetProjectId The RevNet project ID for Markee
-    /// @param _adminAddress Address of the admin
+    /// @param _instanceName Name identifying this specific instance (e.g., "Markee Top Dawg", "Gardens Top Dawg")
+    /// @param _adminAddress Address of the admin (typically a multisig)
     /// @param _minimumPrice The minimum price to create a Markee
     /// @param _maxMessageLength The maximum message length
     /// @param _maxNameLength The maximum name length
     constructor(
         address _revNetTerminal,
         uint256 _revNetProjectId,
+        string memory _instanceName,
         address _adminAddress,
         uint256 _minimumPrice,
         uint256 _maxMessageLength,
@@ -74,15 +83,18 @@ contract InvestorStrategy {
     ) {
         require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
         require(_adminAddress != address(0), "Admin address cannot be zero address");
+        require(bytes(_instanceName).length > 0, "Instance name cannot be empty");
         require(_maxMessageLength > 0, "Maximum message length must be greater than zero");
         require(_maxNameLength > 0, "Maximum name length must be greater than zero");
         
         revNetTerminal = _revNetTerminal;
         revNetProjectId = _revNetProjectId;
+        instanceName = _instanceName;
         adminAddress = _adminAddress;
         minimumPrice = _minimumPrice;
         maxMessageLength = _maxMessageLength;
         maxNameLength = _maxNameLength;
+        totalInstanceFunds = 0;
     }
     
     /// @notice Modifier to restrict functions to admin only
@@ -123,12 +135,15 @@ contract InvestorStrategy {
         // Track that this Markee is using this strategy
         isMarkeeUsingThisStrategy[markeeAddress] = true;
         
+        // Update total instance funds
+        totalInstanceFunds += msg.value;
+        
         // Forward payment to RevNet (tokens go to payer)
         IJBMultiTerminal(revNetTerminal).pay{value: msg.value}(
             revNetProjectId,
             NATIVE_TOKEN,
             msg.value,
-            msg.sender,           // payer receives tABC tokens
+            msg.sender,           // payer receives MARKEE tokens
             0,                    // minReturnedTokens
             "",                   // memo
             ""                    // metadata
@@ -203,18 +218,27 @@ contract InvestorStrategy {
         // Update the Markee's total
         markee.addFunds(msg.value);
         
+        // Update total instance funds
+        totalInstanceFunds += msg.value;
+        
         // Forward payment to RevNet (tokens go to payer)
         IJBMultiTerminal(revNetTerminal).pay{value: msg.value}(
             revNetProjectId,
             NATIVE_TOKEN,
             msg.value,
-            msg.sender,           // payer receives tABC tokens
+            msg.sender,           // payer receives MARKEE tokens
             0,                    // minReturnedTokens
             "",                   // memo
             ""                    // metadata
         );
         
-        emit FundsAddedToMarkee(_markeeAddress, msg.sender, msg.value, markee.totalFundsAdded());
+        emit FundsAddedToMarkee(
+            _markeeAddress, 
+            msg.sender, 
+            msg.value, 
+            markee.totalFundsAdded(),
+            totalInstanceFunds
+        );
     }
     
     /// @notice Allows admin to change a Markee's pricing strategy
@@ -259,6 +283,15 @@ contract InvestorStrategy {
         
         // Transfer ownership
         markee.transferOwnership(_newOwner);
+    }
+    
+    /// @notice Allows admin to update the instance name
+    /// @param _newName The new instance name
+    function setInstanceName(string calldata _newName) external onlyAdmin {
+        require(bytes(_newName).length > 0, "Instance name cannot be empty");
+        string memory oldName = instanceName;
+        instanceName = _newName;
+        emit InstanceNameUpdated(oldName, _newName);
     }
     
     /// @notice Allows admin to update the admin address
