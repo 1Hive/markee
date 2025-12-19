@@ -232,7 +232,7 @@ export default function Home() {
 {/* Explore our Ecosystem - Updated Section */}
 <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
   <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-    <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Explore our Ecosystem</h2>
+    <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
     <p className="text-center text-[#8A8FBF] mb-12 text-lg">
       Markee is coming soon to a platform near you...
     </p>
@@ -262,7 +262,7 @@ export default function Home() {
     
     <div className="text-center">
       <a 
-        href="mailto:hello@markee.xyz?subject=Platform%20Integration%20Waitlist"
+        href="/ecosystem"
         className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
       >
         Join the waitlist
