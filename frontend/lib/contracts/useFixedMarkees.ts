@@ -1,102 +1,53 @@
 'use client'
 
-import { useReadContract } from 'wagmi'
-import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
-import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { useState, useEffect } from 'react'
+import { useQuery, gql } from '@apollo/client'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
-export type FixedMarkee = {
-  name: string
-  strategyAddress: string
-  message: string | null
-  price: bigint | null
-  chainId: number
-}
+const FIXED_MARKEES_QUERY = gql`
+  query GetFixedPriceStrategies {
+    fixedPriceStrategies(
+      first: 3
+      orderBy: createdAt
+      orderDirection: asc
+    ) {
+      id
+      address
+      currentMessage
+      currentName
+      price
+      totalRevenue
+      messageChangeCount
+    }
+  }
+`
+
+export type { FixedMarkee }
 
 export function useFixedMarkees() {
-  // Get all FixedPrice strategies from canonical chain (Base)
-  const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
-  
-  // Call all hooks at the top level (not in a loop)
-  // Strategy 1
-  const { data: message1 } = useReadContract({
-    address: fixedStrategies[0]?.address as `0x${string}` | undefined,
-    abi: FixedPriceStrategyABI,
-    functionName: 'markeeAddress',
-    chainId: CANONICAL_CHAIN_ID,
+  const [markees, setMarkees] = useState<FixedMarkee[]>([])
+
+  const { data, loading } = useQuery(FIXED_MARKEES_QUERY, {
+    pollInterval: 30000, // Poll every 30 seconds
   })
 
-  const { data: price1 } = useReadContract({
-    address: fixedStrategies[0]?.address as `0x${string}` | undefined,
-    abi: FixedPriceStrategyABI,
-    functionName: 'price',
-    chainId: CANONICAL_CHAIN_ID,
-  })
-
-  // Strategy 2
-  const { data: message2 } = useReadContract({
-    address: fixedStrategies[1]?.address as `0x${string}` | undefined,
-    abi: FixedPriceStrategyABI,
-    functionName: 'markeeAddress',
-    chainId: CANONICAL_CHAIN_ID,
-  })
-
-  const { data: price2 } = useReadContract({
-    address: fixedStrategies[1]?.address as `0x${string}` | undefined,
-    abi: FixedPriceStrategyABI,
-    functionName: 'price',
-    chainId: CANONICAL_CHAIN_ID,
-  })
-
-  // Strategy 3
-  const { data: message3 } = useReadContract({
-    address: fixedStrategies[2]?.address as `0x${string}` | undefined,
-    abi: FixedPriceStrategyABI,
-    functionName: 'markeeAddress',
-    chainId: CANONICAL_CHAIN_ID,
-  })
-
-  const { data: price3 } = useReadContract({
-    address: fixedStrategies[2]?.address as `0x${string}` | undefined,
-    abi: FixedPriceStrategyABI,
-    functionName: 'price',
-    chainId: CANONICAL_CHAIN_ID,
-  })
-
-  // Build markees array
-  const markees: FixedMarkee[] = []
-
-  if (fixedStrategies[0]) {
-    markees.push({
-      name: fixedStrategies[0].name,
-      strategyAddress: fixedStrategies[0].address,
-      message: message1 as string | null,
-      price: price1 as bigint | null,
-      chainId: CANONICAL_CHAIN_ID,
-    })
-  }
-
-  if (fixedStrategies[1]) {
-    markees.push({
-      name: fixedStrategies[1].name,
-      strategyAddress: fixedStrategies[1].address,
-      message: message2 as string | null,
-      price: price2 as bigint | null,
-      chainId: CANONICAL_CHAIN_ID,
-    })
-  }
-
-  if (fixedStrategies[2]) {
-    markees.push({
-      name: fixedStrategies[2].name,
-      strategyAddress: fixedStrategies[2].address,
-      message: message3 as string | null,
-      price: price3 as bigint | null,
-      chainId: CANONICAL_CHAIN_ID,
-    })
-  }
+  useEffect(() => {
+    if (data?.fixedPriceStrategies) {
+      const transformed: FixedMarkee[] = data.fixedPriceStrategies.map((s: any) => ({
+        name: s.currentName || 'Loading...',
+        strategyAddress: s.address,
+        message: s.currentMessage || '',
+        price: s.price, // Already a string from GraphQL
+        chainId: CANONICAL_CHAIN_ID,
+      }))
+      
+      setMarkees(transformed)
+    }
+  }, [data])
 
   return {
     markees,
-    isLoading: !message1 && !message2 && !message3,
+    isLoading: loading,
   }
 }
