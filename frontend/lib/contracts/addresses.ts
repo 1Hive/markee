@@ -84,5 +84,9 @@ export function getAllStrategyAddresses(): string[] {
   ].filter(addr => addr !== '')
 }
 
+// Subgraph endpoints
+export const SUBGRAPH_URLS = {
+  [base.id]: 'https://api.studio.thegraph.com/query/40814/markee-base/version/latest',
+}
 // Type exports
 export type SupportedChainId = keyof typeof REVNET_CONFIG
