@@ -1,10 +1,11 @@
 // Contract ABIs for Markee platform
 
-export const InvestorStrategyABI = [
+export const TopDawgStrategyABI = [
   {
     inputs: [
       { internalType: "address", name: "_revNetTerminal", type: "address" },
       { internalType: "uint256", name: "_revNetProjectId", type: "uint256" },
+      { internalType: "string", name: "_instanceName", type: "string" },
       { internalType: "address", name: "_adminAddress", type: "address" },
       { internalType: "uint256", name: "_minimumPrice", type: "uint256" },
       { internalType: "uint256", name: "_maxMessageLength", type: "uint256" },
@@ -31,7 +32,8 @@ export const InvestorStrategyABI = [
       { indexed: true, internalType: "address", name: "markeeAddress", type: "address" },
       { indexed: true, internalType: "address", name: "addedBy", type: "address" },
       { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
-      { indexed: false, internalType: "uint256", name: "newTotal", type: "uint256" }
+      { indexed: false, internalType: "uint256", name: "newMarkeeTotal", type: "uint256" },
+      { indexed: false, internalType: "uint256", name: "newInstanceTotal", type: "uint256" }
     ],
     name: "FundsAddedToMarkee",
     type: "event"
@@ -57,9 +59,32 @@ export const InvestorStrategyABI = [
     type: "event"
   },
   {
+    anonymous: false,
+    inputs: [
+      { indexed: false, internalType: "string", name: "oldName", type: "string" },
+      { indexed: false, internalType: "string", name: "newName", type: "string" }
+    ],
+    name: "InstanceNameUpdated",
+    type: "event"
+  },
+  {
     inputs: [],
     name: "NATIVE_TOKEN",
     outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "instanceName",
+    outputs: [{ internalType: "string", name: "", type: "string" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "totalInstanceFunds",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
     stateMutability: "view",
     type: "function"
   },
@@ -96,6 +121,13 @@ export const InvestorStrategyABI = [
       { internalType: "string", name: "_newName", type: "string" }
     ],
     name: "updateName",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ internalType: "string", name: "_newName", type: "string" }],
+    name: "setInstanceName",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function"
@@ -228,14 +260,16 @@ export const MarkeeABI = [
   }
 ] as const
 
-export const FixedStrategyABI = [
+export const FixedPriceStrategyABI = [
   {
     inputs: [
       { internalType: "address", name: "_revNetTerminal", type: "address" },
       { internalType: "uint256", name: "_revNetProjectId", type: "uint256" },
       { internalType: "string", name: "_initialMessage", type: "string" },
+      { internalType: "string", name: "_initialName", type: "string" },
       { internalType: "uint256", name: "_price", type: "uint256" },
-      { internalType: "uint256", name: "_maxMessageLength", type: "uint256" }
+      { internalType: "uint256", name: "_maxMessageLength", type: "uint256" },
+      { internalType: "uint256", name: "_maxNameLength", type: "uint256" }
     ],
     stateMutability: "nonpayable",
     type: "constructor"
@@ -245,16 +279,30 @@ export const FixedStrategyABI = [
     inputs: [
       { indexed: true, internalType: "address", name: "changedBy", type: "address" },
       { indexed: false, internalType: "string", name: "newMessage", type: "string" },
+      { indexed: false, internalType: "string", name: "name", type: "string" },
       { indexed: false, internalType: "uint256", name: "pricePaid", type: "uint256" }
     ],
     name: "MessageChanged",
     type: "event"
   },
   {
-    inputs: [{ internalType: "string", name: "_newMessage", type: "string" }],
+    inputs: [
+      { internalType: "string", name: "_newMessage", type: "string" },
+      { internalType: "string", name: "_name", type: "string" }
+    ],
     name: "changeMessage",
     outputs: [],
     stateMutability: "payable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { internalType: "string", name: "_newMessage", type: "string" },
+      { internalType: "string", name: "_name", type: "string" }
+    ],
+    name: "updateMessage",
+    outputs: [],
+    stateMutability: "nonpayable",
     type: "function"
   },
   {
@@ -273,9 +321,27 @@ export const FixedStrategyABI = [
   },
   {
     inputs: [],
+    name: "maxMessageLength",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "maxNameLength",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
     name: "owner",
     outputs: [{ internalType: "address", name: "", type: "address" }],
     stateMutability: "view",
     type: "function"
   }
 ] as const
+
+// Legacy export for backward compatibility - remove after migration
+export const InvestorStrategyABI = TopDawgStrategyABI
+export const FixedStrategyABI = FixedPriceStrategyABI
