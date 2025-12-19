@@ -1,0 +1,139 @@
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  # TopDawgStrategy - DirectToRevnet Leaderboard
+  - kind: ethereum
+    name: TopDawgStrategy
+    network: base
+    source:
+      address: "0x7ffb9Ae52D0FF837796A362B9C975c3C8A3226dd"
+      abi: TopDawgStrategy
+      startBlock: 39696661
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Markee
+        - TopDawgStrategy
+        - FundsAdded
+        - MessageChange
+      abis:
+        - name: TopDawgStrategy
+          file: ./abis/TopDawgStrategy.json
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MarkeeCreated(indexed address,indexed address,string,string,uint256)
+          handler: handleMarkeeCreated
+        - event: FundsAddedToMarkee(indexed address,indexed address,uint256,uint256,uint256)
+          handler: handleFundsAddedToMarkee
+        - event: MessageUpdated(indexed address,indexed address,string)
+          handler: handleMessageUpdated
+        - event: NameUpdated(indexed address,indexed address,string)
+          handler: handleNameUpdated
+        - event: InstanceNameUpdated(string,string)
+          handler: handleInstanceNameUpdated
+      file: ./src/top-dawg-strategy.ts
+
+  # FixedPriceStrategy 1 - THIS IS A SIGN.
+  - kind: ethereum
+    name: FixedPriceStrategy1
+    network: base
+    source:
+      address: "0xeC91B23E2C8ea47a9FDd10CD773bF011454f353F"
+      abi: FixedPriceStrategy
+      startBlock: 39696661
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - FixedPriceStrategy
+        - FixedPriceMessageChange
+      abis:
+        - name: FixedPriceStrategy
+          file: ./abis/FixedPriceStrategy.json
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MessageChanged(indexed address,string,string,uint256)
+          handler: handleFixedPriceMessageChanged
+      file: ./src/fixed-price-strategy.ts
+
+  # FixedPriceStrategy 2 - ANYONE CAN PAY TO CHANGE.
+  - kind: ethereum
+    name: FixedPriceStrategy2
+    network: base
+    source:
+      address: "0x7cAe7862650B238A24b50e0e96Bb96D15f167ECF"
+      abi: FixedPriceStrategy
+      startBlock: 39696661
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - FixedPriceStrategy
+        - FixedPriceMessageChange
+      abis:
+        - name: FixedPriceStrategy
+          file: ./abis/FixedPriceStrategy.json
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MessageChanged(indexed address,string,string,uint256)
+          handler: handleFixedPriceMessageChanged
+      file: ./src/fixed-price-strategy.ts
+
+  # FixedPriceStrategy 3 - THAT FUNDS THE INTERNET.
+  - kind: ethereum
+    name: FixedPriceStrategy3
+    network: base
+    source:
+      address: "0x94c76DeFa6662Ed313378494dF507a74774AE490"
+      abi: FixedPriceStrategy
+      startBlock: 39696661
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - FixedPriceStrategy
+        - FixedPriceMessageChange
+      abis:
+        - name: FixedPriceStrategy
+          file: ./abis/FixedPriceStrategy.json
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MessageChanged(indexed address,string,string,uint256)
+          handler: handleFixedPriceMessageChanged
+      file: ./src/fixed-price-strategy.ts
+
+templates:
+  # Template for dynamically created Markee contracts from TopDawg
+  - kind: ethereum/contract
+    name: Markee
+    network: base
+    source:
+      abi: Markee
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Markee
+        - MessageChange
+      abis:
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MessageChanged(string,indexed address)
+          handler: handleMessageChanged
+        - event: NameChanged(string,indexed address)
+          handler: handleNameChanged
+        - event: FundsAdded(uint256,uint256,indexed address)
+          handler: handleFundsAdded
+      file: ./src/markee.ts
