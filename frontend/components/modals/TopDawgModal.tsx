@@ -1,14 +1,15 @@
+// TopDawgModal.tsx (renamed from InvestmentModal.tsx)
 'use client'
 
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useConnect } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { InvestorStrategyABI } from '@/lib/contracts/abis'
-import { CONTRACTS } from '@/lib/contracts/addresses'
+import { TopDawgStrategyABI } from '@/lib/contracts/abis'
+import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
-interface InvestmentModalProps {
+interface TopDawgModalProps {
   isOpen: boolean
   onClose: () => void
   userMarkee?: Markee | null
@@ -18,7 +19,7 @@ interface InvestmentModalProps {
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSuccess }: InvestmentModalProps) {
+export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSuccess }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { connectors, connect } = useConnect()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -30,29 +31,29 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
   const { writeContract, data: hash, isPending, isError, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  // Get strategy address for current chain
-  const strategyAddress = chain?.id ? CONTRACTS[chain.id as keyof typeof CONTRACTS]?.investorStrategy : undefined
+  // Get strategy address for canonical chain (Base)
+  const strategyAddress = CONTRACTS[CANONICAL_CHAIN.id]?.topDawgStrategies[0]?.address
 
   // Read minimum price and max message length
   const { data: minimumPrice } = useReadContract({
-    address: strategyAddress,
-    abi: InvestorStrategyABI,
+    address: strategyAddress as `0x${string}` | undefined,
+    abi: TopDawgStrategyABI,
     functionName: 'minimumPrice',
-    chainId: chain?.id,
+    chainId: CANONICAL_CHAIN.id,
   })
 
   const { data: maxMessageLength } = useReadContract({
-    address: strategyAddress,
-    abi: InvestorStrategyABI,
+    address: strategyAddress as `0x${string}` | undefined,
+    abi: TopDawgStrategyABI,
     functionName: 'maxMessageLength',
-    chainId: chain?.id,
+    chainId: CANONICAL_CHAIN.id,
   })
 
   const { data: maxNameLength } = useReadContract({
-    address: strategyAddress,
-    abi: InvestorStrategyABI,
+    address: strategyAddress as `0x${string}` | undefined,
+    abi: TopDawgStrategyABI,
     functionName: 'maxNameLength',
-    chainId: chain?.id,
+    chainId: CANONICAL_CHAIN.id,
   })
 
   // Set default tab based on initialMode or whether user has a Markee
@@ -72,6 +73,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
       setMessage('')
     }
     setAmount('')
+    setName('')
     setError(null)
   }, [userMarkee, initialMode, isOpen])
 
@@ -81,19 +83,24 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
       setTimeout(() => {
         setMessage('')
         setAmount('')
+        setName('')
         setError(null)
         if (onSuccess) {
           onSuccess()
         }
         onClose()
       }, 2000)
-
     }
   }, [isSuccess, onClose, onSuccess])
 
   const handleCreateMarkee = async () => {
     if (!strategyAddress || !chain) {
-      setError('Please connect to a supported network')
+      setError(`Please connect to ${CANONICAL_CHAIN.name}`)
+      return
+    }
+
+    if (chain.id !== CANONICAL_CHAIN.id) {
+      setError(`Please switch to ${CANONICAL_CHAIN.name} network`)
       return
     }
 
@@ -111,7 +118,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
     const minPrice = minimumPrice || BigInt(0)
 
     if (amountWei < minPrice) {
-      setError(`Minimum investment is ${formatEther(minPrice)} ETH`)
+      setError(`Minimum payment is ${formatEther(minPrice)} ETH`)
       return
     }
 
@@ -124,12 +131,12 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
     try {
       writeContract({
-        address: strategyAddress,
-        abi: InvestorStrategyABI,
+        address: strategyAddress as `0x${string}`,
+        abi: TopDawgStrategyABI,
         functionName: 'createMarkee',
         args: [message, name],
         value: amountWei,
-        chainId: chain.id,
+        chainId: CANONICAL_CHAIN.id,
       })
     } catch (err: any) {
       setError(err.message || 'Transaction failed')
@@ -142,6 +149,11 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
       return
     }
 
+    if (chain.id !== CANONICAL_CHAIN.id) {
+      setError(`Please switch to ${CANONICAL_CHAIN.name} network`)
+      return
+    }
+
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter an amount')
       return
@@ -151,12 +163,12 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
     try {
       writeContract({
-        address: strategyAddress,
-        abi: InvestorStrategyABI,
+        address: strategyAddress as `0x${string}`,
+        abi: TopDawgStrategyABI,
         functionName: 'addFunds',
         args: [userMarkee.address as `0x${string}`],
         value: parseEther(amount),
-        chainId: chain.id,
+        chainId: CANONICAL_CHAIN.id,
       })
     } catch (err: any) {
       setError(err.message || 'Transaction failed')
@@ -166,6 +178,11 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
   const handleUpdateMessage = async () => {
     if (!strategyAddress || !chain || !userMarkee) {
       setError('Please connect wallet and ensure you have a Markee')
+      return
+    }
+
+    if (chain.id !== CANONICAL_CHAIN.id) {
+      setError(`Please switch to ${CANONICAL_CHAIN.name} network`)
       return
     }
 
@@ -183,11 +200,11 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
     try {
       writeContract({
-        address: strategyAddress,
-        abi: InvestorStrategyABI,
+        address: strategyAddress as `0x${string}`,
+        abi: TopDawgStrategyABI,
         functionName: 'updateMessage',
         args: [userMarkee.address as `0x${string}`, message],
-        chainId: chain.id,
+        chainId: CANONICAL_CHAIN.id,
       })
     } catch (err: any) {
       setError(err.message || 'Transaction failed')
@@ -198,6 +215,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
 
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
+  const isWrongNetwork = chain && chain.id !== CANONICAL_CHAIN.id
 
   // Determine modal title
   const getModalTitle = () => {
@@ -269,7 +287,14 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
               <p className="text-gray-600 mb-4">
-                Markee is not yet deployed on {chain?.name}. Please switch to Optimism.
+                Top Dawg is not yet deployed. Check back soon!
+              </p>
+            </div>
+          ) : isWrongNetwork ? (
+            <div className="text-center py-8">
+              <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
+              <p className="text-gray-600 mb-4">
+                Please switch to {CANONICAL_CHAIN.name} network
               </p>
             </div>
           ) : (
@@ -307,7 +332,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Take credit for your masterpiece..."
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-                      maxLength={32}
+                      maxLength={maxNameLength ? Number(maxNameLength) : 32}
                       disabled={isPending || isConfirming}
                     />
                     {maxNameLength && (
