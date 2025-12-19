@@ -59,7 +59,7 @@ export default function Home() {
 
   const handleReact = useCallback(async (markee: Markee, emoji: string) => {
     if (!address) return
-    await addReaction(markee.address, emoji)
+    await addReaction(markee.address, emoji, markee.chainId)
   }, [address, addReaction])
 
   const handleChangeFixedMarkee = useCallback((fixedMarkee: FixedMarkee) => {
