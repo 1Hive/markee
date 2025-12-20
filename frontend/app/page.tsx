@@ -16,7 +16,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatDistanceToNow } from 'date-fns'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
-import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
+import type { kee } from '@/lib/contracts/usekees'
 
 function PartnerCard({ logo, name, description }: { logo: string; name: string; description: string }) {
   return (
@@ -161,7 +161,7 @@ export default function Home() {
                   {/* Hover price indicator */}
                   <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
                     <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                      {fixedMarkee.price ? `${formatEther(fixedMarkee.price)} ETH to change` : 'Loading...'}
+                      {fixedMarkee.price ? `${formatEther(BigInt(fixedMarkee.price))} ETH to change` : 'Loading...'}
                     </div>
                   </div>
                 </button>
