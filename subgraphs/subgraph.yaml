@@ -18,7 +18,7 @@ dataSources:
         - Markee
         - TopDawgStrategy
         - FundsAdded
-        - MessageChange
+        - MessageUpdate
       abis:
         - name: TopDawgStrategy
           file: ./abis/TopDawgStrategy.json
@@ -51,15 +51,15 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - FixedPriceStrategy
-        - FixedPriceMessageChange
+        - FixedPriceMessageUpdate
       abis:
         - name: FixedPriceStrategy
           file: ./abis/FixedPriceStrategy.json
         - name: Markee
           file: ./abis/Markee.json
       eventHandlers:
-        - event: MessageChanged(indexed address,string,string,uint256)
-          handler: handleFixedPriceMessageChanged
+        - event: MessageUpdated(indexed address,string,string,uint256)
+          handler: handleFixedPriceMessageUpdated
       file: ./src/fixed-strategy.ts
 
   # FixedPriceStrategy 2 - ANYONE CAN PAY TO CHANGE.
@@ -76,15 +76,15 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - FixedPriceStrategy
-        - FixedPriceMessageChange
+        - FixedPriceMessageUpdate
       abis:
         - name: FixedPriceStrategy
           file: ./abis/FixedPriceStrategy.json
         - name: Markee
           file: ./abis/Markee.json
       eventHandlers:
-        - event: MessageChanged(indexed address,string,string,uint256)
-          handler: handleFixedPriceMessageChanged
+        - event: MessageUpdated(indexed address,string,string,uint256)
+          handler: handleFixedPriceMessageUpdated
       file: ./src/fixed-strategy.ts
 
   # FixedPriceStrategy 3 - THAT FUNDS THE INTERNET.
@@ -101,15 +101,15 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - FixedPriceStrategy
-        - FixedPriceMessageChange
+        - FixedPriceMessageUpdate
       abis:
         - name: FixedPriceStrategy
           file: ./abis/FixedPriceStrategy.json
         - name: Markee
           file: ./abis/Markee.json
       eventHandlers:
-        - event: MessageChanged(indexed address,string,string,uint256)
-          handler: handleFixedPriceMessageChanged
+        - event: MessageUpdated(indexed address,string,string,uint256)
+          handler: handleFixedPriceMessageUpdated
       file: ./src/fixed-strategy.ts
 
 templates:
@@ -125,13 +125,13 @@ templates:
       language: wasm/assemblyscript
       entities:
         - Markee
-        - MessageChange
+        - MessageUpdate
       abis:
         - name: Markee
           file: ./abis/Markee.json
       eventHandlers:
-        - event: MessageChanged(string,indexed address)
-          handler: handleMessageChanged
+        - event: MessageUpdated(string,indexed address)
+          handler: handleMessageUpdated
         - event: NameChanged(string,indexed address)
           handler: handleNameChanged
         - event: FundsAdded(uint256,uint256,indexed address)
