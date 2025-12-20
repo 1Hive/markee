@@ -16,7 +16,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatDistanceToNow } from 'date-fns'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
-import type { kee } from '@/lib/contracts/usekees'
+import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 function PartnerCard({ logo, name, description }: { logo: string; name: string; description: string }) {
   return (
