@@ -1,26 +1,22 @@
 'use client'
 
-import { WagmiConfig } from 'wagmi'
+import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ApolloProvider } from '@apollo/client'
+import { apolloClient } from '@/lib/apollo-client'
 import { config } from '@/lib/config/wagmi'
-import { ReactNode } from 'react'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
-    },
-  },
-})
+import { ReactNode, useState } from 'react'
 
 export function Web3Provider({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient())
+  
   return (
-    <WagmiConfig config={config}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    </WagmiConfig>
+    <ApolloProvider client={apolloClient}>
+      <WagmiProvider config={config}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </WagmiProvider>
+    </ApolloProvider>
   )
 }
