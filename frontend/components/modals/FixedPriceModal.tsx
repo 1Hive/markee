@@ -5,24 +5,19 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { parseEther } from 'viem'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 interface FixedPriceModalProps {
   isOpen: boolean
   onClose: () => void
-  strategyAddress: string
-  currentMessage: string
-  currentName: string
-  price: string
+  fixedMarkee: FixedMarkee | null
   onSuccess?: () => void
 }
 
 export function FixedPriceModal({
   isOpen,
   onClose,
-  strategyAddress,
-  currentMessage,
-  currentName,
-  price,
+  fixedMarkee,
   onSuccess
 }: FixedPriceModalProps) {
   const { address, chain } = useAccount()
@@ -40,7 +35,7 @@ export function FixedPriceModal({
     }, 3000)
   }
 
-  if (!isOpen) return null
+  if (!isOpen || !fixedMarkee) return null
 
   // Check if user is on Base
   if (chain?.id !== CANONICAL_CHAIN.id) {
@@ -58,15 +53,15 @@ export function FixedPriceModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!address) return
+    if (!address || !fixedMarkee.price) return
 
     try {
       writeContract({
-        address: strategyAddress as `0x${string}`,
+        address: fixedMarkee.strategyAddress as `0x${string}`,
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
         args: [message, name],
-        value: parseEther(price),
+        value: parseEther(fixedMarkee.price),
       })
     } catch (error) {
       console.error('Transaction error:', error)
@@ -76,15 +71,13 @@ export function FixedPriceModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg p-6 max-w-md w-full">
-        <h3 className="text-xl font-bold mb-4 text-gray-900">Change Message</h3>
+        <h3 className="text-xl font-bold mb-4 text-gray-900">Change Message: {fixedMarkee.name}</h3>
         
         <div className="mb-4 p-3 bg-gray-50 rounded-md">
           <p className="text-sm text-gray-600 mb-1">Current Message:</p>
-          <p className="text-gray-900 font-medium">{currentMessage || 'No message yet'}</p>
-          <p className="text-sm text-gray-600 mt-2 mb-1">Current Name:</p>
-          <p className="text-gray-900 font-medium">{currentName || 'Anonymous'}</p>
+          <p className="text-gray-900 font-medium">{fixedMarkee.message || 'No message yet'}</p>
           <p className="text-sm text-gray-600 mt-2 mb-1">Price:</p>
-          <p className="text-gray-900 font-bold">{price} ETH</p>
+          <p className="text-gray-900 font-bold">{fixedMarkee.price} ETH</p>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -124,7 +117,7 @@ export function FixedPriceModal({
               disabled={isPending || isConfirming}
               className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isPending ? 'Confirming...' : isConfirming ? 'Processing...' : isSuccess ? 'Success!' : `Pay ${price} ETH`}
+              {isPending ? 'Confirming...' : isConfirming ? 'Processing...' : isSuccess ? 'Success!' : `Pay ${fixedMarkee.price} ETH`}
             </button>
             <button
               type="button"
