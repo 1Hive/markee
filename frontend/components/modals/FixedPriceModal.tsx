@@ -1,254 +1,141 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useConnect } from 'wagmi'
-import { parseEther, formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { parseEther } from 'viem'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
-import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 interface FixedPriceModalProps {
   isOpen: boolean
   onClose: () => void
-  fixedMarkee: FixedMarkee | null
+  strategyAddress: string
+  currentMessage: string
+  currentName: string
+  price: string
   onSuccess?: () => void
 }
 
-export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
-  const { isConnected, chain } = useAccount()
-  const { connectors, connect } = useConnect()
-  const [newMessage, setNewMessage] = useState('')
-  const [newName, setNewName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+export function FixedPriceModal({
+  isOpen,
+  onClose,
+  strategyAddress,
+  currentMessage,
+  currentName,
+  price,
+  onSuccess
+}: FixedPriceModalProps) {
+  const { address, chain } = useAccount()
+  const [message, setMessage] = useState('')
+  const [name, setName] = useState('')
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  // Reset state when modal opens with new fixedMarkee
-  useEffect(() => {
-    if (isOpen && fixedMarkee) {
-      setNewMessage('')
-      setNewName('')
-      setError(null)
-      reset()
-    }
-  }, [isOpen, fixedMarkee, reset])
+  // Call success callback when transaction confirms
+  if (isSuccess && onSuccess) {
+    setTimeout(() => {
+      onSuccess()
+      onClose()
+    }, 3000)
+  }
 
-  // Close modal and trigger refresh after success
-  useEffect(() => {
-    if (isSuccess) {
-      setTimeout(() => {
-        if (onSuccess) {
-          onSuccess()
-        }
-        onClose()
-      }, 2000)
-    }
-  }, [isSuccess, onClose, onSuccess])
+  if (!isOpen) return null
 
-  const handleChangeMessage = async () => {
-    if (!fixedMarkee || !chain) {
-      setError('Please connect your wallet')
-      return
-    }
+  // Check if user is on Base
+  if (chain?.id !== CANONICAL_CHAIN.id) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 max-w-md">
+          <h3 className="text-xl font-bold mb-4 text-gray-900">Wrong Network</h3>
+          <p className="mb-4 text-gray-700">Please switch to {CANONICAL_CHAIN.name} to use this feature.</p>
+          <button onClick={onClose} className="btn-primary w-full">Close</button>
+        </div>
+      </div>
+    )
+  }
 
-    if (chain.id !== CANONICAL_CHAIN.id) {
-      setError(`Please switch to ${CANONICAL_CHAIN.name} network`)
-      return
-    }
-
-    if (!newMessage.trim()) {
-      setError('Please enter a message')
-      return
-    }
-
-    if (!fixedMarkee.price) {
-      setError('Unable to load price')
-      return
-    }
-
-    setError(null)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!address) return
 
     try {
       writeContract({
-        address: fixedMarkee.strategyAddress as `0x${string}`,
+        address: strategyAddress as `0x${string}`,
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
-        args: [newMessage, newName],
-        value: fixedMarkee.price,
-        chainId: CANONICAL_CHAIN.id,
+        args: [message, name],
+        value: parseEther(price),
       })
-    } catch (err: any) {
-      setError(err.message || 'Transaction failed')
+    } catch (error) {
+      console.error('Transaction error:', error)
     }
   }
 
-  if (!isOpen || !fixedMarkee) return null
-
-  const isWrongNetwork = chain && chain.id !== CANONICAL_CHAIN.id
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">
-            Change Message
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition"
-            disabled={isPending || isConfirming}
-          >
-            <X size={24} />
-          </button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <h3 className="text-xl font-bold mb-4 text-gray-900">Change Message</h3>
+        
+        <div className="mb-4 p-3 bg-gray-50 rounded-md">
+          <p className="text-sm text-gray-600 mb-1">Current Message:</p>
+          <p className="text-gray-900 font-medium">{currentMessage || 'No message yet'}</p>
+          <p className="text-sm text-gray-600 mt-2 mb-1">Current Name:</p>
+          <p className="text-gray-900 font-medium">{currentName || 'Anonymous'}</p>
+          <p className="text-sm text-gray-600 mt-2 mb-1">Price:</p>
+          <p className="text-gray-900 font-bold">{price} ETH</p>
         </div>
-
-        {/* Content */}
-        <div className="p-6">
-          {!isConnected ? (
-            <div className="text-center py-8">
-              <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
-              <p className="text-gray-600 mb-4">Please connect your wallet to continue</p>
-              <button
-                onClick={() => connect({ connector: connectors[0] })}
-                className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition mt-4"
-              >
-                Connect Wallet
-              </button>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">New Message</label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Your message"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              rows={3}
+              required
+            />
+          </div>
+          
+          {isSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-md p-3 text-green-800 text-sm">
+              ✓ Transaction confirmed! Refreshing data...
             </div>
-          ) : isWrongNetwork ? (
-            <div className="text-center py-8">
-              <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-              <p className="text-gray-600 mb-4">
-                Please switch to {CANONICAL_CHAIN.name} network to change this message
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Current Message */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Current Message
-                </label>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <p className="text-gray-900 font-mono">{fixedMarkee.message || 'Loading...'}</p>
-                </div>
-              </div>
-
-              {/* Price Info */}
-              <div className="mb-6 bg-markee-50 rounded-lg p-4 border border-markee-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-markee-900 font-medium">Price to Change Message</p>
-                  </div>
-                  <div className="text-2xl font-bold text-markee">
-                    {fixedMarkee.price ? formatEther(fixedMarkee.price) : '...'} ETH
-                  </div>
-                </div>
-              </div>
-
-              {/* Featured MARKEE Token Display */}
-              {fixedMarkee.price && (
-                <div className="mb-6 bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
-                  <div className="text-center">
-                    <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
-                    <p className="text-4xl font-bold text-markee mb-2">
-                      {(parseFloat(formatEther(fixedMarkee.price)) * 31000).toLocaleString()}
-                    </p>
-                    <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
-                  </div>
-                </div>
-              )}
-
-              {/* New Message Input */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  New Message
-                </label>
-                <textarea
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Enter your new message..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-                  rows={3}
-                  disabled={isPending || isConfirming}
-                />
-              </div>
-
-              {/* Name Input */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Display Name (optional)
-                </label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Take credit for your masterpiece..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-                  maxLength={50}
-                  disabled={isPending || isConfirming}
-                />
-              </div>
-
-              {/* Info Box */}
-              <div className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                <p className="text-sm text-gray-700">
-                  🪧 You thought you could afford to change the hero signs on this site?? HA! Keep dreaming. If you've got the ETH to change this, you'll get MARKEE tokens and become a member of the Markee Cooperative and agree to the Covenant.
-                </p>
-              </div>
-
-              {/* Error Message */}
-              {(error || isError) && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <p className="text-sm text-red-600">{error || writeError?.message}</p>
-                </div>
-              )}
-
-              {/* Success Message */}
-              {isSuccess && (
-                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
-                  <CheckCircle2 className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <p className="text-sm font-medium text-green-900">Message changed successfully!</p>
-                    <p className="text-xs text-green-700 mt-1">Refreshing...</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Button */}
-              <button
-                onClick={handleChangeMessage}
-                disabled={isPending || isConfirming || isSuccess || !newMessage.trim()}
-                className="w-full bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-              >
-                {isPending || isConfirming ? (
-                  <>
-                    <Loader2 className="animate-spin" size={20} />
-                    {isPending ? 'Confirm in wallet...' : 'Processing...'}
-                  </>
-                ) : isSuccess ? (
-                  <>
-                    <CheckCircle2 size={20} />
-                    Success!
-                  </>
-                ) : (
-                  <>
-                    Change Message
-                    {fixedMarkee.price && (
-                      <span className="text-sm opacity-90">
-                        ({formatEther(fixedMarkee.price)} ETH)
-                      </span>
-                    )}
-                  </>
-                )}
-              </button>
-            </>
           )}
-        </div>
+          
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={isPending || isConfirming}
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isPending ? 'Confirming...' : isConfirming ? 'Processing...' : isSuccess ? 'Success!' : `Pay ${price} ETH`}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending || isConfirming}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
