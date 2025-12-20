@@ -22,30 +22,31 @@ export function useFixedMarkees() {
   const fixedStrategies =
     CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
 
-  // ---- Build batched contract calls ----
-
+  // ---- batched contract calls ----
   const contracts = fixedStrategies.flatMap((strategy) => {
+    const markeeAddr = strategy.address as `0x${string}`
+
     return [
       {
-        address: strategy.markeeAddress as `0x${string}`,
+        address: markeeAddr,
         abi: MarkeeABI,
         functionName: 'message',
         chainId: CANONICAL_CHAIN_ID,
       },
       {
-        address: strategy.markeeAddress as `0x${string}`,
+        address: markeeAddr,
         abi: MarkeeABI,
         functionName: 'name',
         chainId: CANONICAL_CHAIN_ID,
       },
       {
-        address: strategy.markeeAddress as `0x${string}`,
+        address: markeeAddr,
         abi: MarkeeABI,
         functionName: 'totalFundsAdded',
         chainId: CANONICAL_CHAIN_ID,
       },
       {
-        address: strategy.address as `0x${string}`,
+        address: markeeAddr,
         abi: FixedPriceStrategyABI,
         functionName: 'price',
         chainId: CANONICAL_CHAIN_ID,
@@ -61,8 +62,9 @@ export function useFixedMarkees() {
   useEffect(() => {
     if (!data || fixedStrategies.length === 0) return
 
-    const result: FixedMarkee[] = fixedStrategies.map((strategy, index) => {
-      const base = index * 4
+    const result: FixedMarkee[] = fixedStrategies.map((strategy, i) => {
+      const base = i * 4
+      const markeeAddr = strategy.address
 
       const messageResult = data[base]
       const nameResult = data[base + 1]
@@ -70,8 +72,8 @@ export function useFixedMarkees() {
       const priceResult = data[base + 3]
 
       return {
-        markeeAddress: strategy.markeeAddress,
-        strategyAddress: strategy.address,
+        markeeAddress: markeeAddr,
+        strategyAddress: markeeAddr,
         name: (nameResult?.result as string) || '',
         message: (messageResult?.result as string) || '',
         totalFundsAdded: totalFundsResult?.result
