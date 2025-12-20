@@ -5,7 +5,7 @@ import "./Markee.sol";
 import "./Interfaces.sol";
 
 /// @title TopDawgStrategy
-/// @notice A pricing strategy where payers can choose their price when buying a Markee message, and the message with the most funds added is the top dawg.
+/// @notice A pricing strategy where buyers choose their price for a Markee message, and the message with the most funds added is the Top Dawg.
 /// @dev Each Top Dawg deployment creates an independent leaderboard with its own admin and settings
 /// @dev All instances deployed on Base (canonical chain)
 contract TopDawgStrategy {
@@ -198,7 +198,7 @@ contract TopDawgStrategy {
         emit NameUpdated(_markeeAddress, msg.sender, _newName);
     }
     
-    /// @notice Allows the Markee owner to add more funds to increase their leaderboard position
+    /// @notice Allows anyone to add funds to increase a Markee’s leaderboard position
     /// @param _markeeAddress The address of the Markee to add funds to
     function addFunds(address _markeeAddress) 
         external 
@@ -208,9 +208,6 @@ contract TopDawgStrategy {
         
         // Verify this Markee is using this strategy
         require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
-        
-        // Verify caller is the owner
-        require(msg.sender == markee.owner(), "Only Markee owner can add funds");
         
         // Verify non-zero amount
         require(msg.value > 0, "Must send ETH to add funds");
@@ -240,6 +237,7 @@ contract TopDawgStrategy {
             totalInstanceFunds
         );
     }
+
     
     /// @notice Allows admin to change a Markee's pricing strategy
     /// @param _markeeAddress The address of the Markee
