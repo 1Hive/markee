@@ -53,7 +53,7 @@ export const CONTRACTS = {
     topDawgStrategies: [
       {
         name: 'Markee Top Dawg',
-        address: '' as const,
+        address: '0x7ffb9Ae52D0FF837796A362B9C975c3C8A3226dd' as const,
       },
       {
         name: 'Gardens Top Dawg',
