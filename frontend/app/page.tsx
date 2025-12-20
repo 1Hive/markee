@@ -235,7 +235,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
           <p className="text-center text-[#8A8FBF] mb-12 text-lg">
-            Markee is coming soon to a platform near you...
+            Markee is coming soon to a digital platform near you...
           </p>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
@@ -266,7 +266,7 @@ export default function Home() {
               href="/ecosystem"
               className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
             >
-              Join the waitlist
+              Explore the Ecosystem
             </a>
           </div>
         </div>
@@ -276,10 +276,10 @@ export default function Home() {
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Markee Top Dawg 🏅</h3>
+            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Markee's Top Owners</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
-              Top Messages by Total Funds Added on {CANONICAL_CHAIN.name}.
+              Our platform is community-owned - join by buying a message or adding funds to a message below.
             </p>
 
             {/* CTA Buttons */}
