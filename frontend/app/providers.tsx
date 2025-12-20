@@ -2,13 +2,13 @@
 
 import { ApolloProvider } from '@apollo/client'
 import { apolloClient } from '@/lib/apollo-client'
-// ... other imports
+import { Web3Provider } from '@/lib/web3provider'
+import { ReactNode } from 'react'
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children }: { children: ReactNode }) {
   return (
     <ApolloProvider client={apolloClient}>
       <Web3Provider>
-        {/* ... other providers */}
         {children}
       </Web3Provider>
     </ApolloProvider>
