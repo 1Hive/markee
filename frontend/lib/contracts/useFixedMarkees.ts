@@ -2,17 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useReadContracts } from 'wagmi'
-import { MarkeeABI, FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatEther } from 'viem'
 
 export type FixedMarkee = {
-  markeeAddress: string
-  strategyAddress: string
   name: string
+  strategyAddress: string
   message: string
-  price: string | null
-  totalFundsAdded: string
+  price: string
+  owner: string
   chainId: number
 }
 
@@ -22,66 +21,54 @@ export function useFixedMarkees() {
   const fixedStrategies =
     CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
 
-  // ---- batched contract calls ----
-  const contracts = fixedStrategies.flatMap((strategy) => {
-    const markeeAddr = strategy.address as `0x${string}`
+  // ==== 4 reads per contract ====
+  const contracts = fixedStrategies.flatMap((strategy) => [
+    {
+      address: strategy.address,
+      abi: FixedPriceStrategyABI,
+      functionName: 'currentMessage',
+      chainId: CANONICAL_CHAIN_ID,
+    },
+    {
+      address: strategy.address,
+      abi: FixedPriceStrategyABI,
+      functionName: 'currentName',
+      chainId: CANONICAL_CHAIN_ID,
+    },
+    {
+      address: strategy.address,
+      abi: FixedPriceStrategyABI,
+      functionName: 'price',
+      chainId: CANONICAL_CHAIN_ID,
+    },
+    {
+      address: strategy.address,
+      abi: FixedPriceStrategyABI,
+      functionName: 'owner',
+      chainId: CANONICAL_CHAIN_ID,
+    },
+  ])
 
-    return [
-      {
-        address: markeeAddr,
-        abi: MarkeeABI,
-        functionName: 'message',
-        chainId: CANONICAL_CHAIN_ID,
-      },
-      {
-        address: markeeAddr,
-        abi: MarkeeABI,
-        functionName: 'name',
-        chainId: CANONICAL_CHAIN_ID,
-      },
-      {
-        address: markeeAddr,
-        abi: MarkeeABI,
-        functionName: 'totalFundsAdded',
-        chainId: CANONICAL_CHAIN_ID,
-      },
-      {
-        address: markeeAddr,
-        abi: FixedPriceStrategyABI,
-        functionName: 'price',
-        chainId: CANONICAL_CHAIN_ID,
-      },
-    ]
-  })
-
-  const { data, isLoading, refetch } = useReadContracts({
-    contracts,
-    allowFailure: true,
-  })
+  const { data, isLoading, refetch } = useReadContracts({ contracts })
 
   useEffect(() => {
-    if (!data || fixedStrategies.length === 0) return
+    if (!data || !fixedStrategies.length) return
 
     const result: FixedMarkee[] = fixedStrategies.map((strategy, i) => {
       const base = i * 4
-      const markeeAddr = strategy.address
-
       const messageResult = data[base]
       const nameResult = data[base + 1]
-      const totalFundsResult = data[base + 2]
-      const priceResult = data[base + 3]
+      const priceResult = data[base + 2]
+      const ownerResult = data[base + 3]
 
       return {
-        markeeAddress: markeeAddr,
-        strategyAddress: markeeAddr,
-        name: (nameResult?.result as string) || '',
+        name: strategy.name,
+        strategyAddress: strategy.address,
         message: (messageResult?.result as string) || '',
-        totalFundsAdded: totalFundsResult?.result
-          ? formatEther(totalFundsResult.result as bigint)
-          : '0',
         price: priceResult?.result
           ? formatEther(priceResult.result as bigint)
-          : null,
+          : '0',
+        owner: (ownerResult?.result as string) || '',
         chainId: CANONICAL_CHAIN_ID,
       }
     })
@@ -89,9 +76,5 @@ export function useFixedMarkees() {
     setMarkees(result)
   }, [data, fixedStrategies])
 
-  return {
-    markees,
-    isLoading,
-    refetch,
-  }
+  return { markees, isLoading, refetch }
 }
