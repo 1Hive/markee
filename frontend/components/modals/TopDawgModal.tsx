@@ -8,7 +8,7 @@ import { TopDawgStrategyABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
-interface InvestmentModalProps {
+interface TopDawgModalProps {
   isOpen: boolean
   onClose: () => void
   userMarkee?: Markee | null
@@ -18,7 +18,7 @@ interface InvestmentModalProps {
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSuccess }: InvestmentModalProps) {
+export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSuccess }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { connectors, connect } = useConnect()
   const { switchChain } = useSwitchChain()
@@ -114,7 +114,7 @@ export function InvestmentModal({ isOpen, onClose, userMarkee, initialMode, onSu
     const minPrice = minimumPrice || BigInt(0)
 
     if (amountWei < minPrice) {
-      setError(`Minimum investment is ${formatEther(minPrice)} ETH`)
+      setError(`Minimum TopDawg is ${formatEther(minPrice)} ETH`)
       return
     }
 
