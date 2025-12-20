@@ -242,7 +242,7 @@ export default function Home() {
             <PartnerCard 
               logo="/partners/gardens.png"
               name="Gardens"
-              description="Governance platform for DAOs"
+              description="Community Governance"
             />
             <PartnerCard 
               logo="/partners/juicebox.png"
@@ -257,7 +257,7 @@ export default function Home() {
             <PartnerCard 
               logo="/partners/breadcoop.png"
               name="Bread Cooperative"
-              description="Community-owned Collective"
+              description="Digital Co-op"
             />
           </div>
           
