@@ -114,7 +114,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     const minPrice = minimumPrice || BigInt(0)
 
     if (amountWei < minPrice) {
-      setError(`Minimum TopDawg is ${formatEther(minPrice)} ETH`)
+      setError(`Minimum payment is ${formatEther(minPrice)} ETH`)
       return
     }
 
@@ -140,8 +140,8 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
   }
 
   const handleAddFunds = async () => {
-    if (!strategyAddress || !isCorrectChain || !userMarkee) {
-      setError('Please connect wallet and ensure you have a Markee')
+    if (!strategyAddress || !isCorrectChain ) {
+      setError('Please connect wallet on Base Network')
       return
     }
 
@@ -168,7 +168,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
   const handleUpdateMessage = async () => {
     if (!strategyAddress || !isCorrectChain || !userMarkee) {
-      setError('Please connect wallet and ensure you have a Markee')
+      setError('Please connect wallet on Base Network. You can only update messages on Markees you bought')
       return
     }
 
