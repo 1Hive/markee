@@ -1,23 +1,24 @@
 import type { Metadata } from 'next'
 import { Manrope, JetBrains_Mono } from 'next/font/google'
-import './globals.css'
 import { Web3Provider } from '@/components/providers/Web3Provider'
+import './globals.css'
 
-const manrope = Manrope({ 
+const manrope = Manrope({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
   variable: '--font-manrope',
 })
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-jetbrains-mono',
+  variable: '--font-jetbrains',
 })
 
 export const metadata: Metadata = {
-  title: 'Markee - Digital Real Estate',
-  description: 'Markee is a sign anyone can pay to edit that funds websites, daos, communities, open source, and more',
+  title: 'Markee - Community-First Digital Marketing Protocol',
+  description: 'A sign anyone can pay to edit that funds communities',
+  icons: {
+    icon: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({
@@ -26,8 +27,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={`${manrope.className} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${manrope.variable} ${jetbrainsMono.variable}`}>
+      <body className="bg-[#0a0e27] text-white antialiased">
         <Web3Provider>
           {children}
         </Web3Provider>
