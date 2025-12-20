@@ -3,7 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useQuery, gql } from '@apollo/client'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
+
+export type FixedMarkee = {
+  name: string
+  strategyAddress: string
+  message: string | null
+  price: string | null
+  chainId: number
+}
 
 const FIXED_MARKEES_QUERY = gql`
   query GetFixedPriceStrategies {
@@ -22,8 +29,6 @@ const FIXED_MARKEES_QUERY = gql`
     }
   }
 `
-
-export type { FixedMarkee }
 
 export function useFixedMarkees() {
   const [markees, setMarkees] = useState<FixedMarkee[]>([])
