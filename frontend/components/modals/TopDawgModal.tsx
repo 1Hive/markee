@@ -140,8 +140,8 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
   }
 
   const handleAddFunds = async () => {
-    if (!strategyAddress || !isCorrectChain ) {
-      setError('Please connect wallet on Base Network')
+    if (!strategyAddress || !isCorrectChain || !userMarkee) {
+      setError('Please connect wallet and ensure you have a Markee')
       return
     }
 
@@ -168,7 +168,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
   const handleUpdateMessage = async () => {
     if (!strategyAddress || !isCorrectChain || !userMarkee) {
-      setError('Please connect wallet on Base Network. You can only update messages on Markees you bought')
+      setError('Please connect wallet and ensure you have a Markee')
       return
     }
 
