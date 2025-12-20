@@ -14,8 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Markee - Community-First Digital Marketing Protocol',
-  description: 'A sign anyone can pay to edit that funds communities',
+  title: 'Markee - a sign anyone can pay to edit.',
+  description: 'open source digital real estate - for sale or lease on a website near you 🪧',
   icons: {
     icon: '/favicon.ico',
   },
