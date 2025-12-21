@@ -38,15 +38,15 @@ export const CONTRACTS = {
   [base.id]: {
     fixedPriceStrategies: [
       {
-        name: 'THIS IS A SIGN.',
+        name: 'Left hero message',
         address: '0x93587701457335f7e36539600d4105EfEB977910' as const,
       },
       {
-        name: 'ANYONE CAN PAY TO CHANGE.',
+        name: 'Middle hero message',
         address: '0xdFEF454F2C5e37573Ce1F7F73332Bc1F8F6b549D' as const,
       },
       {
-        name: 'THAT FUNDS THE INTERNET.',
+        name: 'Right hero message',
         address: '0x810cd857C1Af9A44D26bbD0857eB8377E0ae099E' as const,
       },
     ],
