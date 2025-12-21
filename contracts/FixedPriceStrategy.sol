@@ -78,7 +78,7 @@ contract FixedPrice {
     
     /// @notice Allows anyone to pay the fixed price to change the message
     /// @param _newMessage The new message to set
-    /// @param _name The name of the person changing the message
+    /// @param _name The name of the person changing the message (optional - can be empty string)
     function changeMessage(string calldata _newMessage, string calldata _name) 
         external 
         payable 
@@ -89,8 +89,10 @@ contract FixedPrice {
         // Check message length
         require(bytes(_newMessage).length <= maxMessageLength, "Message exceeds maximum length");
         
-        // Check name length
-        require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+        // Check name length only if name is provided (allow empty string)
+        if (bytes(_name).length > 0) {
+            require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+        }
         
         // Get reference to the Markee
         Markee markee = Markee(markeeAddress);
@@ -124,7 +126,11 @@ contract FixedPrice {
     {
         require(msg.sender == owner, "Only owner");
         require(bytes(_newMessage).length <= maxMessageLength, "Message exceeds maximum length");
-        require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+        
+        // Check name length only if name is provided (allow empty string)
+        if (bytes(_name).length > 0) {
+            require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+        }
         
         Markee markee = Markee(markeeAddress);
         markee.setMessage(_newMessage);
