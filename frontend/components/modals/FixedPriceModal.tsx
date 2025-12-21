@@ -30,7 +30,6 @@ export function FixedPriceModal({
   const { connectors, connect } = useConnect()
 
   const [newMessage, setNewMessage] = useState('')
-  const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const {
@@ -48,7 +47,6 @@ export function FixedPriceModal({
   useEffect(() => {
     if (isOpen && fixedMarkee) {
       setNewMessage('')
-      setName('')
       setError(null)
       reset()
     }
@@ -80,11 +78,6 @@ export function FixedPriceModal({
       return
     }
 
-    if (!name.trim()) {
-      setError('Please enter your name')
-      return
-    }
-
     if (!fixedMarkee.price) {
       setError('Unable to load price')
       return
@@ -97,7 +90,7 @@ export function FixedPriceModal({
         address: fixedMarkee.strategyAddress as `0x${string}`,
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
-        args: [newMessage, name],
+        args: [newMessage, ''], // Empty string for name
         value: parseEther(fixedMarkee.price),
         chainId: CANONICAL_CHAIN.id,
       })
@@ -110,6 +103,7 @@ export function FixedPriceModal({
 
   const isWrongNetwork = chain && chain.id !== CANONICAL_CHAIN.id
   const priceDisplay = fixedMarkee.price ? `${fixedMarkee.price} ETH` : '...'
+  const markeeTokens = fixedMarkee.price ? parseFloat(fixedMarkee.price) * 62000 : 0
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -139,7 +133,7 @@ export function FixedPriceModal({
               <p className="text-gray-600 mb-4">Please connect your wallet to continue</p>
               <button
                 onClick={() => connect({ connector: connectors[0] })}
-                className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition mt-4"
+                className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
               >
                 Connect Wallet
               </button>
@@ -165,31 +159,6 @@ export function FixedPriceModal({
                 </div>
               </div>
 
-              {/* Price Info */}
-              <div className="mb-6 bg-markee-50 rounded-lg p-4 border border-markee-200">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-markee-900 font-medium">Price to Change Message</p>
-                  <p className="text-2xl font-bold text-markee">
-                    {priceDisplay}
-                  </p>
-                </div>
-              </div>
-
-              {/* Name Input */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Your Name
-                </label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg 
-                             focus:ring-2 focus:ring-markee-500 text-gray-900"
-                  disabled={isPending || isConfirming}
-                />
-              </div>
-
               {/* New Message Input */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -200,11 +169,40 @@ export function FixedPriceModal({
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Enter your new message..."
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg 
-                             focus:ring-2 focus:ring-markee-500 focus:border-transparent 
+                             focus:ring-2 focus:ring-[#F897FE] focus:border-transparent 
                              text-gray-900 placeholder-gray-400"
                   rows={3}
                   disabled={isPending || isConfirming}
                 />
+              </div>
+
+              {/* Featured MARKEE Token Display */}
+              {markeeTokens > 0 && (
+                <div className="mb-6 bg-gradient-to-r from-[#F897FE]/10 to-green-50 border-2 border-[#F897FE] rounded-xl p-6">
+                  <div className="text-center">
+                    <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
+                    <p className="text-4xl font-bold text-[#F897FE] mb-2">
+                      {markeeTokens.toLocaleString()}
+                    </p>
+                    <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Price Info */}
+              <div className="mb-6 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-700 font-medium">Price to Change Message</p>
+                  <p className="text-2xl font-bold text-[#F897FE]">
+                    {priceDisplay}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6">
+                <p className="text-sm text-gray-700">
+                  By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
+                </p>
               </div>
 
               {/* Error Message */}
@@ -229,9 +227,9 @@ export function FixedPriceModal({
               {/* Action */}
               <button
                 onClick={handleChangeMessage}
-                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || !name.trim()}
-                className="w-full bg-markee text-white px-6 py-3 rounded-lg font-semibold
-                           hover:bg-markee-600 disabled:bg-gray-400 disabled:cursor-not-allowed 
+                disabled={isPending || isConfirming || isSuccess || !newMessage.trim()}
+                className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold
+                           hover:bg-[#F897FE]/90 disabled:bg-gray-400 disabled:cursor-not-allowed 
                            transition flex items-center justify-center gap-2"
               >
                 {isPending || isConfirming ? (
