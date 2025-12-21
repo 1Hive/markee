@@ -38,15 +38,15 @@ export const CONTRACTS = {
   [base.id]: {
     fixedPriceStrategies: [
       {
-        name: 'Left hero message',
+        name: '(message 1 loading...)',
         address: '0x93587701457335f7e36539600d4105EfEB977910' as const,
       },
       {
-        name: 'Middle hero message',
+        name: '(message 2 loading...)',
         address: '0xdFEF454F2C5e37573Ce1F7F73332Bc1F8F6b549D' as const,
       },
       {
-        name: 'Right hero message',
+        name: '(message 3 loading...)',
         address: '0x810cd857C1Af9A44D26bbD0857eB8377E0ae099E' as const,
       },
     ],
