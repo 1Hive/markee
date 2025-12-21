@@ -211,16 +211,16 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">
+        <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
+          <h2 className="text-2xl font-bold text-[#EDEEFF]">
             {getModalTitle()}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition"
+            className="text-[#8A8FBF] hover:text-[#EDEEFF] transition"
             disabled={isPending || isConfirming}
           >
             <X size={24} />
@@ -229,14 +229,14 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
         {/* Tabs - only show if user is owner */}
         {userMarkee && isOwner && (
-          <div className="flex border-b border-gray-200">
+          <div className="flex border-b border-[#8A8FBF]/30">
             <button
               onClick={() => canSwitchTabs && setActiveTab('addFunds')}
               disabled={!canSwitchTabs}
               className={`flex-1 px-6 py-3 font-medium transition ${
                 activeTab === 'addFunds'
                   ? 'text-[#F897FE] border-b-2 border-[#F897FE]'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-[#8A8FBF] hover:text-[#EDEEFF]'
               } ${!canSwitchTabs ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Add Funds
@@ -247,7 +247,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               className={`flex-1 px-6 py-3 font-medium transition ${
                 activeTab === 'updateMessage'
                   ? 'text-[#F897FE] border-b-2 border-[#F897FE]'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-[#8A8FBF] hover:text-[#EDEEFF]'
               } ${!canSwitchTabs ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Update Message
@@ -260,7 +260,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
           {!isConnected ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
-              <p className="text-gray-600 mb-4">Please connect your wallet to continue</p>
+              <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
               <button
                 onClick={() => connect({ connector: connectors[0] })}
                 className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
@@ -271,7 +271,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
           ) : !isCorrectChain ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-              <p className="text-gray-600 mb-4">
+              <p className="text-[#B8B6D9] mb-4">
                 Please switch to {CANONICAL_CHAIN.name} to use Markee
               </p>
               <button
@@ -284,7 +284,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
           ) : !strategyAddress ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-              <p className="text-gray-600 mb-4">
+              <p className="text-[#B8B6D9] mb-4">
                 TopDawg strategy not configured. Please contact support.
               </p>
             </div>
@@ -294,27 +294,27 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               {activeTab === 'create' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Set Your First Message
                     </label>
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Tell us how you really feel..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
                     />
                     {maxMessageLength && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-[#8A8FBF] mt-1">
                         {message.length} / {maxMessageLength.toString()} characters
                       </p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Display Name (optional)
                     </label>
                     <input
@@ -322,19 +322,19 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Take credit for your masterpiece..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       maxLength={32}
                       disabled={isPending || isConfirming}
                     />
                     {maxNameLength && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-[#8A8FBF] mt-1">
                         {name.length} / {maxNameLength.toString()} characters
                       </p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Amount to Pay (ETH)
                     </label>
                     <input
@@ -344,11 +344,11 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       disabled={isPending || isConfirming}
                     />
                     {minimumPrice && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-[#8A8FBF] mt-1">
                         Minimum: {formatEther(minimumPrice)} ETH
                       </p>
                     )}
@@ -356,7 +356,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
                   {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
-                    <div className="bg-gradient-to-r from-[#F897FE]/10 to-green-50 border-2 border-[#F897FE] rounded-xl p-6">
+                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
                       <div className="text-center">
                         <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
                         <p className="text-4xl font-bold text-[#F897FE] mb-2">
@@ -367,8 +367,8 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                     </div>
                   )}
 
-                  <div className="bg-[#F897FE]/10 rounded-lg p-4">
-                    <p className="text-sm text-gray-700">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
+                    <p className="text-sm text-[#B8B6D9]">
                       By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
@@ -378,15 +378,15 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               {/* Add Funds */}
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1">Total Funds Added</p>
+                  <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30">
+                    <p className="text-sm text-[#8A8FBF] mb-1">Total Funds Added</p>
                     <p className="text-2xl font-bold text-[#F897FE]">
                       {formatEther(userMarkee.totalFundsAdded)} ETH
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Additional Amount (ETH)
                     </label>
                     <input
@@ -396,14 +396,14 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       disabled={isPending || isConfirming}
                     />
                   </div>
 
                   {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
-                    <div className="bg-gradient-to-r from-[#F897FE]/10 to-green-50 border-2 border-[#F897FE] rounded-xl p-6">
+                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
                       <div className="text-center">
                         <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
                         <p className="text-4xl font-bold text-[#F897FE] mb-2">
@@ -414,8 +414,8 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                     </div>
                   )}
 
-                  <div className="bg-[#F897FE]/10 rounded-lg p-4">
-                    <p className="text-sm text-gray-700">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
+                    <p className="text-sm text-[#B8B6D9]">
                       💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
                     </p>
                   </div>
@@ -427,37 +427,37 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                 <div className="space-y-4">
                   {/* Current Message */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Current Message
                     </label>
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <p className="text-gray-900 font-mono">{userMarkee.message || 'Loading...'}</p>
+                    <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30">
+                      <p className="text-[#EDEEFF] font-jetbrains">{userMarkee.message || 'Loading...'}</p>
                     </div>
                   </div>
 
                   {/* New Message */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       New Message
                     </label>
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your new message..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-3 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
                     />
                     {maxMessageLength && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-[#8A8FBF] mt-1">
                         {message.length} / {maxMessageLength.toString()} characters
                       </p>
                     )}
                   </div>
 
-                  <div className="bg-[#F897FE]/10 rounded-lg p-4">
-                    <p className="text-sm text-gray-700">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
+                    <p className="text-sm text-[#B8B6D9]">
                       💡 How it works: Anyone can add funds to this message and move it up the Leaderboard. Only the owner can change this message.
                     </p>
                   </div>
@@ -466,19 +466,19 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
               {/* Error Message */}
               {(error || isError) && (
-                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <p className="text-sm text-red-600">{error || writeError?.message}</p>
+                <div className="mt-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" size={20} />
+                  <p className="text-sm text-red-300">{error || writeError?.message}</p>
                 </div>
               )}
 
               {/* Success Message */}
               {isSuccess && (
-                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
-                  <CheckCircle2 className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
+                <div className="mt-4 p-4 bg-green-900/20 border border-green-500/50 rounded-lg flex items-start gap-2">
+                  <CheckCircle2 className="text-green-400 flex-shrink-0 mt-0.5" size={20} />
                   <div>
-                    <p className="text-sm font-medium text-green-900">Transaction successful!</p>
-                    <p className="text-xs text-green-700 mt-1">Refreshing leaderboard...</p>
+                    <p className="text-sm font-medium text-green-300">Transaction successful!</p>
+                    <p className="text-xs text-green-400 mt-1">Refreshing leaderboard...</p>
                   </div>
                 </div>
               )}
@@ -492,7 +492,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                     else handleUpdateMessage()
                   }}
                   disabled={isPending || isConfirming || isSuccess}
-                  className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                  className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
                 >
                   {isPending || isConfirming ? (
                     <>
