@@ -415,7 +415,7 @@ function Footer() {
             </a>
           </div>
           <div className="text-sm text-gray-400">
-            © 2025 Markee
+            © 2026 Markee
           </div>
         </div>
       </div>
