@@ -7,9 +7,9 @@ dataSources:
     name: TopDawgStrategy
     network: base
     source:
-      address: "0x7ffb9Ae52D0FF837796A362B9C975c3C8A3226dd"
+      address: "0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a"
       abi: TopDawgStrategy
-      startBlock: 39696661
+      startBlock: 39753461
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -39,14 +39,14 @@ dataSources:
           handler: handleInstanceNameUpdated
       file: ./src/topdawg-strategy.ts
 
-  # FixedPriceStrategy 1 - THIS IS A SIGN.
+  # FixedPriceStrategy 1 - hero message #1.
   - kind: ethereum
     name: FixedPriceStrategy1
     network: base
     source:
-      address: "0xeC91B23E2C8ea47a9FDd10CD773bF011454f353F"
+      address: "0x35BBbF93395501678bAAd5898B73ab0778f5d303"
       abi: FixedPriceStrategy
-      startBlock: 39696661
+      startBlock: 39753461
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -65,14 +65,14 @@ dataSources:
           handler: handleFixedPriceMessageChanged
       file: ./src/fixed-strategy.ts
 
-  # FixedPriceStrategy 2 - ANYONE CAN PAY TO CHANGE.
+  # FixedPriceStrategy 2 - hero message #2.
   - kind: ethereum
     name: FixedPriceStrategy2
     network: base
     source:
-      address: "0x7cAe7862650B238A24b50e0e96Bb96D15f167ECF"
+      address: "0x279ecAd5167bfa400b2C2bab32668ed6B88a49Dd"
       abi: FixedPriceStrategy
-      startBlock: 39696661
+      startBlock: 39753461
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -91,14 +91,14 @@ dataSources:
           handler: handleFixedPriceMessageChanged
       file: ./src/fixed-strategy.ts
 
-  # FixedPriceStrategy 3 - THAT FUNDS THE INTERNET.
+  # FixedPriceStrategy 3 - hero message #3.
   - kind: ethereum
     name: FixedPriceStrategy3
     network: base
     source:
-      address: "0x94c76DeFa6662Ed313378494dF507a74774AE490"
+      address: "0x4ceAadA2108526A94c3382D3AEE36B8888bCA335"
       abi: FixedPriceStrategy
-      startBlock: 39696661
+      startBlock: 39753461
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
