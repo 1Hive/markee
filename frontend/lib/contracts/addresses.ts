@@ -43,11 +43,11 @@ export const CONTRACTS = {
       },
       {
         name: 'ANYONE CAN PAY TO CHANGE.',
-        address: '0x7cAe7862650B238A24b50e0e96Bb96D15f167ECF' as const,
+        address: '0xdFEF454F2C5e37573Ce1F7F73332Bc1F8F6b549D' as const,
       },
       {
         name: 'THAT FUNDS THE INTERNET.',
-        address: '0x46a767dd3BB16f19F685d388959FDeb18A04001A' as const,
+        address: '0x810cd857C1Af9A44D26bbD0857eB8377E0ae099E' as const,
       },
     ],
     topDawgStrategies: [
