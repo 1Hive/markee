@@ -276,7 +276,7 @@ export default function Home() {
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Top Owners</h3>
+            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Own a Message. Own the Network.</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
               Our platform is community-owned. Buy a message or add funds to a message below to join Markee's digital cooperative.
