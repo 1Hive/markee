@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useReadContracts } from 'wagmi'
-import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { FixedPriceStrategyABI, MarkeeABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatEther } from 'viem'
 
@@ -17,22 +17,17 @@ export type FixedMarkee = {
 
 export function useFixedMarkees() {
   const [markees, setMarkees] = useState<FixedMarkee[]>([])
+  const [markeeAddresses, setMarkeeAddresses] = useState<string[]>([])
 
   const fixedStrategies =
     CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
 
-  // ==== 4 reads per contract ====
-  const contracts = fixedStrategies.flatMap((strategy) => [
+  // Step 1: Read strategy data including markeeAddress
+  const strategyContracts = fixedStrategies.flatMap((strategy) => [
     {
       address: strategy.address,
       abi: FixedPriceStrategyABI,
-      functionName: 'currentMessage',
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: strategy.address,
-      abi: FixedPriceStrategyABI,
-      functionName: 'currentName',
+      functionName: 'markeeAddress',
       chainId: CANONICAL_CHAIN_ID,
     },
     {
@@ -49,21 +44,67 @@ export function useFixedMarkees() {
     },
   ])
 
-  const { data, isLoading, refetch } = useReadContracts({ contracts })
+  const { data: strategyData, isLoading: isLoadingStrategy, refetch: refetchStrategy } = useReadContracts({ 
+    contracts: strategyContracts,
+    query: {
+      refetchInterval: 10000, // Poll every 10 seconds
+    }
+  })
 
+  // Extract markee addresses from strategy data
   useEffect(() => {
-    if (!data || !fixedStrategies.length) return
+    if (!strategyData || !fixedStrategies.length) return
 
-    const result: FixedMarkee[] = fixedStrategies.map((strategy, i) => {
-      const base = i * 4
-      const messageResult = data[base]
-      const nameResult = data[base + 1]
-      const priceResult = data[base + 2]
-      const ownerResult = data[base + 3]
+    const addresses = fixedStrategies.map((_, i) => {
+      const base = i * 3
+      const markeeAddressResult = strategyData[base]
+      return (markeeAddressResult?.result as string) || null
+    }).filter(Boolean) as string[]
+
+    setMarkeeAddresses(addresses)
+  }, [strategyData, fixedStrategies])
+
+  // Step 2: Read message and name from Markee contracts
+  const markeeContracts = markeeAddresses.flatMap((address) => [
+    {
+      address: address as `0x${string}`,
+      abi: MarkeeABI,
+      functionName: 'message',
+      chainId: CANONICAL_CHAIN_ID,
+    },
+    {
+      address: address as `0x${string}`,
+      abi: MarkeeABI,
+      functionName: 'name',
+      chainId: CANONICAL_CHAIN_ID,
+    },
+  ])
+
+  const { data: markeeData, isLoading: isLoadingMarkee } = useReadContracts({ 
+    contracts: markeeContracts,
+    query: {
+      enabled: markeeAddresses.length > 0,
+      refetchInterval: 10000, // Poll every 10 seconds
+    }
+  })
+
+  // Combine all data
+  useEffect(() => {
+    if (!strategyData || !markeeData || !fixedStrategies.length) return
+
+    const result: FixedMarkee[] = fixedStrategies.map((strategyConfig, i) => {
+      const strategyBase = i * 3
+      const markeeBase = i * 2
+
+      const priceResult = strategyData[strategyBase + 1]
+      const ownerResult = strategyData[strategyBase + 2]
+      
+      const messageResult = markeeData[markeeBase]
+      const nameResult = markeeData[markeeBase + 1]
 
       return {
-        name: strategy.name,
-        strategyAddress: strategy.address,
+        name: strategyConfig.name,
+        strategyAddress: strategyConfig.address,
         message: (messageResult?.result as string) || '',
         price: priceResult?.result
           ? formatEther(priceResult.result as bigint)
@@ -74,7 +115,12 @@ export function useFixedMarkees() {
     })
 
     setMarkees(result)
-  }, [data, fixedStrategies])
+  }, [strategyData, markeeData, fixedStrategies])
+
+  const isLoading = isLoadingStrategy || isLoadingMarkee
+  const refetch = () => {
+    refetchStrategy()
+  }
 
   return { markees, isLoading, refetch }
 }
