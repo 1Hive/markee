@@ -153,9 +153,9 @@ export default function Home() {
                   {/* Readerboard inner area with grooves */}
                   <div className="readerboard-inner">
                     {/* Message text */}
-                    <div className="readerboard-text">
-                      {(fixedMarkee.message || fixedMarkee.name).toUpperCase()}
-                    </div>
+                     <div className="readerboard-text">
+                      {fixedMarkee.message || fixedMarkee.name}
+                     </div>
                   </div>
 
                   {/* Hover price indicator */}
