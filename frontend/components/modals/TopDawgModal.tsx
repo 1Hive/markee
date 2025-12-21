@@ -360,7 +360,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       <div className="text-center">
                         <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
                         <p className="text-4xl font-bold text-markee mb-2">
-                          {(parseFloat(amount) * 31000).toLocaleString()}
+                          {(parseFloat(amount) * 62000).toLocaleString()}
                         </p>
                         <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
                       </div>
