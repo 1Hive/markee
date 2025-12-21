@@ -247,7 +247,7 @@ export default function Home() {
             <PartnerCard 
               logo="/partners/juicebox.png"
               name="Juicebox"
-              description="Crowdfunding protocol"
+              description="Crowdfunding Protocol"
             />
             <PartnerCard 
               logo="/partners/revnets.png"
