@@ -235,7 +235,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               disabled={!canSwitchTabs}
               className={`flex-1 px-6 py-3 font-medium transition ${
                 activeTab === 'addFunds'
-                  ? 'text-markee border-b-2 border-markee'
+                  ? 'text-[#F897FE] border-b-2 border-[#F897FE]'
                   : 'text-gray-600 hover:text-gray-900'
               } ${!canSwitchTabs ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -246,7 +246,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               disabled={!canSwitchTabs}
               className={`flex-1 px-6 py-3 font-medium transition ${
                 activeTab === 'updateMessage'
-                  ? 'text-markee border-b-2 border-markee'
+                  ? 'text-[#F897FE] border-b-2 border-[#F897FE]'
                   : 'text-gray-600 hover:text-gray-900'
               } ${!canSwitchTabs ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -263,7 +263,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               <p className="text-gray-600 mb-4">Please connect your wallet to continue</p>
               <button
                 onClick={() => connect({ connector: connectors[0] })}
-                className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition mt-4"
+                className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
               >
                 Connect Wallet
               </button>
@@ -276,7 +276,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               </p>
               <button
                 onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
-                className="bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 transition mt-4"
+                className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
               >
                 Switch to {CANONICAL_CHAIN.name}
               </button>
@@ -301,7 +301,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Tell us how you really feel..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
@@ -322,7 +322,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Take credit for your masterpiece..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
                       maxLength={32}
                       disabled={isPending || isConfirming}
                     />
@@ -344,7 +344,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
                       disabled={isPending || isConfirming}
                     />
                     {minimumPrice && (
@@ -356,19 +356,19 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
                   {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
-                    <div className="bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
+                    <div className="bg-gradient-to-r from-[#F897FE]/10 to-green-50 border-2 border-[#F897FE] rounded-xl p-6">
                       <div className="text-center">
-                        <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
-                        <p className="text-4xl font-bold text-markee mb-2">
+                        <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
+                        <p className="text-4xl font-bold text-[#F897FE] mb-2">
                           {(parseFloat(amount) * 62000).toLocaleString()}
                         </p>
-                        <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
+                        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
                       </div>
                     </div>
                   )}
 
-                  <div className="bg-markee-50 rounded-lg p-4">
-                    <p className="text-sm text-markee-900">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4">
+                    <p className="text-sm text-gray-700">
                       By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
@@ -380,7 +380,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm text-gray-600 mb-1">Total Funds Added</p>
-                    <p className="text-2xl font-bold text-markee">
+                    <p className="text-2xl font-bold text-[#F897FE]">
                       {formatEther(userMarkee.totalFundsAdded)} ETH
                     </p>
                   </div>
@@ -396,26 +396,26 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       placeholder="0.01"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
                       disabled={isPending || isConfirming}
                     />
                   </div>
 
                   {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
-                    <div className="bg-gradient-to-r from-markee-50 to-green-50 border-2 border-markee rounded-xl p-6">
+                    <div className="bg-gradient-to-r from-[#F897FE]/10 to-green-50 border-2 border-[#F897FE] rounded-xl p-6">
                       <div className="text-center">
-                        <p className="text-sm text-markee-700 font-medium mb-2">You'll receive</p>
-                        <p className="text-4xl font-bold text-markee mb-2">
-                          {(parseFloat(amount) * 31000).toLocaleString()}
+                        <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
+                        <p className="text-4xl font-bold text-[#F897FE] mb-2">
+                          {(parseFloat(amount) * 62000).toLocaleString()}
                         </p>
-                        <p className="text-xl font-semibold text-markee-700">MARKEE tokens</p>
+                        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
                       </div>
                     </div>
                   )}
 
-                  <div className="bg-markee-50 rounded-lg p-4">
-                    <p className="text-sm text-markee-900">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4">
+                    <p className="text-sm text-gray-700">
                       💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
                     </p>
                   </div>
@@ -444,7 +444,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Enter your new message..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-markee-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-gray-900 placeholder-gray-400"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
                       disabled={isPending || isConfirming}
@@ -456,8 +456,8 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                     )}
                   </div>
 
-                  <div className="bg-markee-50 rounded-lg p-4">
-                    <p className="text-sm text-markee-900">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4">
+                    <p className="text-sm text-gray-700">
                       💡 How it works: Anyone can add funds to this message and move it up the Leaderboard. Only the owner can change this message.
                     </p>
                   </div>
@@ -492,7 +492,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                     else handleUpdateMessage()
                   }}
                   disabled={isPending || isConfirming || isSuccess}
-                  className="w-full bg-markee text-white px-6 py-3 rounded-lg font-semibold hover:bg-markee-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                  className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
                 >
                   {isPending || isConfirming ? (
                     <>
