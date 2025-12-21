@@ -497,7 +497,7 @@ export default function Home() {
             </div>
 
             <div className="text-sm text-[#8A8FBF]">
-              © 2025 Markee
+              © 2026 Markee
             </div>
           </div>
         </div>
