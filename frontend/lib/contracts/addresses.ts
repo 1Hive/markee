@@ -39,7 +39,7 @@ export const CONTRACTS = {
     fixedPriceStrategies: [
       {
         name: 'THIS IS A SIGN.',
-        address: '0xeC91B23E2C8ea47a9FDd10CD773bF011454f353F' as const,
+        address: '0x93587701457335f7e36539600d4105EfEB977910' as const,
       },
       {
         name: 'ANYONE CAN PAY TO CHANGE.',
