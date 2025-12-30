@@ -51,7 +51,7 @@ export default function EcosystemPage() {
             ) : cooperative ? (
               <PartnerMarkeeCard
                 partner={cooperative.partner}
-                winningMarkee={cooperative.winningMarkee}
+                winningMarkee={cooperative.winningMarkee ?? undefined}
                 totalFunds={cooperative.totalFunds}
                 markeeCount={cooperative.markeeCount}
               />
@@ -89,7 +89,7 @@ export default function EcosystemPage() {
                   <PartnerMarkeeCard
                     key={partner.slug}
                     partner={partner}
-                    winningMarkee={winningMarkee}
+                    winningMarkee={winningMarkee ?? undefined}
                     totalFunds={totalFunds}
                     markeeCount={markeeCount}
                   />
