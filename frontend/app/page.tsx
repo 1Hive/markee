@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAccount } from 'wagmi'
+import { Menu, X } from 'lucide-react'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
@@ -44,6 +45,7 @@ export default function Home() {
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
   const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
@@ -111,19 +113,66 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#060A2A]">
       {/* Header */}
-      <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center">
-              <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
-            </Link>
-            <nav className="flex gap-6">
-              <Link href="/how-it-works" className="text-[#B8B6D9] hover:text-[#F897FE]">How it Works</Link>
-              <Link href="/ecosystem" className="text-[#B8B6D9] hover:text-[#F897FE]">Ecosystem</Link>
-              <Link href="/owners" className="text-[#B8B6D9] hover:text-[#F897FE]">Owners</Link>
-            </nav>
+      <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20 relative z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-8">
+              <Link href="/" className="flex items-center">
+                <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
+              </Link>
+              {/* Desktop Navigation */}
+              <nav className="hidden md:flex gap-6">
+                <Link href="/how-it-works" className="text-[#B8B6D9] hover:text-[#F897FE]">How it Works</Link>
+                <Link href="/ecosystem" className="text-[#B8B6D9] hover:text-[#F897FE]">Ecosystem</Link>
+                <Link href="/owners" className="text-[#B8B6D9] hover:text-[#F897FE]">Owners</Link>
+              </nav>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="hidden md:block">
+                <ConnectButton />
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden text-[#B8B6D9] hover:text-[#F897FE] p-2"
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
+            </div>
           </div>
-          <ConnectButton />
+
+          {/* Mobile Navigation */}
+          {mobileMenuOpen && (
+            <div className="md:hidden mt-4 pb-4 border-t border-[#8A8FBF]/20 pt-4">
+              <nav className="flex flex-col gap-4">
+                <Link 
+                  href="/how-it-works" 
+                  className="text-[#B8B6D9] hover:text-[#F897FE] py-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  How it Works
+                </Link>
+                <Link 
+                  href="/ecosystem" 
+                  className="text-[#B8B6D9] hover:text-[#F897FE] py-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Ecosystem
+                </Link>
+                <Link 
+                  href="/owners" 
+                  className="text-[#B8B6D9] hover:text-[#F897FE] py-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Owners
+                </Link>
+                <div className="pt-2 border-t border-[#8A8FBF]/20">
+                  <ConnectButton />
+                </div>
+              </nav>
+            </div>
+          )}
         </div>
       </header>
 
