@@ -29,226 +29,182 @@ function PartnerCard({ logo, name, description }: { logo: string; name: string; 
   )
 }
 
-/**
- * CosmicHeroBackground
- * - Canvas stars + subtle “floating letters” in multiple layers
- * - Mouse/scroll parallax (very gentle)
- * - Dim / non-distracting by design
- *
- * This component is intended to sit as an absolutely-positioned background *inside* the hero section.
- */
-function CosmicHeroBackground({
-  density = 1,
-}: {
-  density?: number
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rafRef = useRef<number | null>(null)
+type FloatingGlyph = {
+  id: string
+  ch: string
+  xPct: number
+  yPct: number
+  sizePx: number
+  opacity: number
+  blurPx: number
+  driftSec: number
+  driftPx: number
+  rotateDeg: number
+  layer: 1 | 2 | 3
+}
 
-  const pointerRef = useRef({ x: 0, y: 0 }) // [-0.5..0.5] normalized
-  const scrollRef = useRef(0) // 0..1 of viewport scroll
-  const reduceMotion = useMemo(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
+function CosmicHeroBackground() {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  // deterministic-ish layout (no Math.random() every render)
+  const glyphs = useMemo<FloatingGlyph[]>(() => {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const pick = (i: number) => letters[(i * 7 + 11) % letters.length]
+
+    const make = (i: number): FloatingGlyph => {
+      // simple deterministic “hash” from i
+      const a = (i * 73) % 101
+      const b = (i * 37) % 97
+      const c = (i * 19) % 89
+
+      const layer = (i % 3) + 1 as 1 | 2 | 3
+      const xPct = (a / 100) * 100
+      const yPct = (b / 100) * 100
+
+      const sizePx =
+        layer === 1 ? 44 + (c % 18) : layer === 2 ? 28 + (c % 14) : 18 + (c % 10)
+
+      // Keep dim: opacity in ~0.04–0.11 range
+      const opacity =
+        layer === 1 ? 0.08 + ((c % 10) / 10) * 0.03 : layer === 2 ? 0.06 + ((c % 10) / 10) * 0.03 : 0.04 + ((c % 10) / 10) * 0.03
+
+      const blurPx = layer === 1 ? 1.5 : layer === 2 ? 1.0 : 0.5
+      const driftSec = layer === 1 ? 22 + (a % 8) : layer === 2 ? 28 + (a % 10) : 34 + (a % 12)
+      const driftPx = layer === 1 ? 26 : layer === 2 ? 18 : 12
+      const rotateDeg = (a * 3.6) % 360
+
+      return {
+        id: `g-${i}`,
+        ch: pick(i),
+        xPct,
+        yPct,
+        sizePx,
+        opacity,
+        blurPx,
+        driftSec,
+        driftPx,
+        rotateDeg,
+        layer,
+      }
+    }
+
+    // 22 glyphs is enough to “feel” present but not noisy
+    return Array.from({ length: 22 }, (_, i) => make(i))
   }, [])
 
-  const letters = useMemo(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), [])
-
-  // Pre-generate “particles” once (stable) — kept in a ref so we don’t reinit on rerenders.
-  const starsRef = useRef<
-    Array<{ x: number; y: number; r: number; a: number; layer: 0 | 1 | 2; tw: number }>
-  >([])
-  const glyphsRef = useRef<
-    Array<{
-      x: number
-      y: number
-      s: number
-      a: number
-      ch: string
-      layer: 0 | 1 | 2
-      drift: number
-      rot: number
-      rotV: number
-    }>
-  >([])
-
-  const initScene = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d', { alpha: true })
-    if (!ctx) return
-
-    // Size canvas to device pixels
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const parent = canvas.parentElement
-    const w = parent?.clientWidth ?? window.innerWidth
-    const h = parent?.clientHeight ?? 520
-
-    canvas.width = Math.floor(w * dpr)
-    canvas.height = Math.floor(h * dpr)
-    canvas.style.width = `${w}px`
-    canvas.style.height = `${h}px`
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    // Build particles relative to size
-    const starCount = Math.floor((w * h * 0.00012) * density) // tuned: subtle
-    const glyphCount = Math.floor((w * h * 0.00003) * density) // fewer letters than stars
-
-    starsRef.current = Array.from({ length: starCount }).map(() => {
-      const layer = (Math.random() < 0.6 ? 0 : Math.random() < 0.7 ? 1 : 2) as 0 | 1 | 2
-      const rBase = layer === 0 ? 0.8 : layer === 1 ? 1.2 : 1.7
-      return {
-        x: Math.random() * w,
-        y: Math.random() * h,
-        r: rBase + Math.random() * 0.9,
-        a: 0.06 + Math.random() * 0.12, // dim
-        layer,
-        tw: Math.random() * 0.8 + 0.2, // twinkle factor
-      }
-    })
-
-    glyphsRef.current = Array.from({ length: glyphCount }).map(() => {
-      const layer = (Math.random() < 0.55 ? 0 : Math.random() < 0.7 ? 1 : 2) as 0 | 1 | 2
-      const size = (layer === 0 ? 10 : layer === 1 ? 14 : 18) + Math.random() * 8
-      const alpha = (layer === 0 ? 0.04 : layer === 1 ? 0.06 : 0.08) + Math.random() * 0.03 // very dim
-      return {
-        x: Math.random() * w,
-        y: Math.random() * h,
-        s: size,
-        a: alpha,
-        ch: letters[Math.floor(Math.random() * letters.length)]!,
-        layer,
-        drift: (Math.random() - 0.5) * 0.18, // slow vertical drift
-        rot: (Math.random() - 0.5) * 0.25,
-        rotV: (Math.random() - 0.5) * 0.003,
-      }
-    })
-  }, [density, letters])
-
   useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const onResize = () => initScene()
-    window.addEventListener('resize', onResize)
+    const el = rootRef.current
+    if (!el) return
 
     const onMove = (e: PointerEvent) => {
-      const w = window.innerWidth || 1
-      const h = window.innerHeight || 1
-      pointerRef.current.x = e.clientX / w - 0.5
-      pointerRef.current.y = e.clientY / h - 0.5
+      const rect = el.getBoundingClientRect()
+      const cx = rect.left + rect.width / 2
+      const cy = rect.top + rect.height / 2
+      const dx = (e.clientX - cx) / Math.max(1, rect.width / 2)
+      const dy = (e.clientY - cy) / Math.max(1, rect.height / 2)
+
+      // clamp-ish
+      const px = Math.max(-1, Math.min(1, dx))
+      const py = Math.max(-1, Math.min(1, dy))
+
+      el.style.setProperty('--mx', px.toFixed(3))
+      el.style.setProperty('--my', py.toFixed(3))
     }
-    window.addEventListener('pointermove', onMove, { passive: true })
 
     const onScroll = () => {
+      // parallax scroll factor for subtle vertical drift
       const y = window.scrollY || 0
-      const vh = window.innerHeight || 1
-      scrollRef.current = Math.max(0, Math.min(1, y / vh))
+      el.style.setProperty('--sy', (y / 800).toFixed(3))
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
 
-    initScene()
+    window.addEventListener('pointermove', onMove, { passive: true })
+    window.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
 
-    const tick = (t: number) => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext('2d', { alpha: true })
-      if (!ctx) return
-
-      const parent = canvas.parentElement
-      const w = parent?.clientWidth ?? window.innerWidth
-      const h = parent?.clientHeight ?? 520
-
-      ctx.clearRect(0, 0, w, h)
-
-      // Background wash (keep it subtle; use your palette)
-      const g = ctx.createLinearGradient(0, 0, w, h)
-      g.addColorStop(0, 'rgba(10, 15, 61, 0.92)') // deep-space
-      g.addColorStop(0.55, 'rgba(23, 32, 144, 0.55)') // electric-blue (dimmed)
-      g.addColorStop(1, 'rgba(6, 10, 42, 0.95)') // midnight-navy
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, w, h)
-
-      // Parallax offsets (very gentle)
-      const px = pointerRef.current.x
-      const py = pointerRef.current.y
-      const sp = scrollRef.current
-
-      const layerOffset = (layer: 0 | 1 | 2) => {
-        const strength = layer === 0 ? 6 : layer === 1 ? 10 : 16
-        const scrollStrength = layer === 0 ? 8 : layer === 1 ? 14 : 22
-        return {
-          ox: px * strength,
-          oy: py * strength + sp * scrollStrength,
-        }
-      }
-
-      // Stars
-      for (const s of starsRef.current) {
-        const { ox, oy } = layerOffset(s.layer)
-        const tw = reduceMotion ? 1 : 0.65 + 0.35 * Math.sin(t * 0.001 * s.tw + s.x * 0.02)
-        ctx.globalAlpha = s.a * tw
-        ctx.beginPath()
-        ctx.arc(s.x + ox, s.y + oy, s.r, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(237, 238, 255, 1)' // soft-white
-        ctx.fill()
-      }
-
-      // Letters (dim; mild drift)
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      for (const gl of glyphsRef.current) {
-        const { ox, oy } = layerOffset(gl.layer)
-
-        if (!reduceMotion) {
-          gl.y += gl.drift
-          gl.rot += gl.rotV
-          if (gl.y < -40) gl.y = h + 40
-          if (gl.y > h + 40) gl.y = -40
-        }
-
-        ctx.save()
-        ctx.translate(gl.x + ox, gl.y + oy)
-        ctx.rotate(gl.rot)
-        ctx.globalAlpha = gl.a
-
-        // Use a slightly tinted “ink” so it matches the site
-        ctx.fillStyle = 'rgba(184, 182, 217, 1)' // lavender-gray
-        ctx.font = `${gl.s}px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
-        ctx.fillText(gl.ch, 0, 0)
-        ctx.restore()
-      }
-
-      // Vignette / dim overlay (keeps content readable)
-      const v = ctx.createRadialGradient(w * 0.5, h * 0.35, Math.min(w, h) * 0.15, w * 0.5, h * 0.5, Math.max(w, h) * 0.75)
-      v.addColorStop(0, 'rgba(6, 10, 42, 0)')
-      v.addColorStop(1, 'rgba(6, 10, 42, 0.55)')
-      ctx.globalAlpha = 1
-      ctx.fillStyle = v
-      ctx.fillRect(0, 0, w, h)
-
-      rafRef.current = requestAnimationFrame(tick)
-    }
-
-    rafRef.current = requestAnimationFrame(tick)
-
     return () => {
-      window.removeEventListener('resize', onResize)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('scroll', onScroll)
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [initScene, reduceMotion])
+  }, [])
 
   return (
-    <div className="absolute inset-0 -z-10 overflow-hidden rounded-none">
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full"
-        aria-hidden="true"
-      />
-      {/* Extra dimmer layer so it never competes with the UI */}
-      <div className="pointer-events-none absolute inset-0 bg-[#060A2A]/30" />
+    <div
+      ref={rootRef}
+      aria-hidden="true"
+      className="absolute inset-0 overflow-hidden pointer-events-none"
+      style={{
+        // defaults if no mouse yet
+        // @ts-expect-error CSS vars
+        '--mx': '0',
+        '--my': '0',
+        '--sy': '0',
+      }}
+    >
+      {/* Base deep-space gradient */}
+      <div className="absolute inset-0 bg-[radial-gradient(1200px_700px_at_20%_15%,rgba(123,106,244,0.22),transparent_55%),radial-gradient(900px_600px_at_80%_25%,rgba(248,151,254,0.14),transparent_60%),linear-gradient(135deg,#060A2A,#0A0F3D_40%,#060A2A)]" />
+
+      {/* Star specks */}
+      <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(rgba(237,238,255,0.85)_1px,transparent_1px)] [background-size:36px_36px]" />
+      <div className="absolute inset-0 opacity-[0.12] [background-image:radial-gradient(rgba(124,156,255,0.75)_1px,transparent_1px)] [background-size:62px_62px]" />
+
+      {/* Soft vignette to keep attention centered */}
+      <div className="absolute inset-0 bg-[radial-gradient(closest-side_at_50%_40%,transparent_0%,rgba(6,10,42,0.65)_70%,rgba(6,10,42,0.9)_100%)]" />
+
+      {/* Floating letters */}
+      <div className="absolute inset-0">
+        {glyphs.map((g) => {
+          const depth = g.layer === 1 ? 18 : g.layer === 2 ? 10 : 6
+          const scrollDepth = g.layer === 1 ? 10 : g.layer === 2 ? 6 : 3
+
+          return (
+            <div
+              key={g.id}
+              className="absolute select-none font-jetbrains"
+              style={{
+                left: `${g.xPct}%`,
+                top: `${g.yPct}%`,
+                transform: `
+                  translate(-50%, -50%)
+                  translate(calc(var(--mx) * ${depth}px), calc(var(--my) * ${depth}px))
+                  translate(0, calc(var(--sy) * ${scrollDepth * -1}px))
+                  rotate(${g.rotateDeg}deg)
+                `,
+                filter: `blur(${g.blurPx}px)`,
+                opacity: g.opacity,
+                fontSize: `${g.sizePx}px`,
+                letterSpacing: '-0.06em',
+                color: 'rgba(237,238,255,0.95)',
+                textShadow: '0 0 14px rgba(123,106,244,0.25)',
+                animation: `floatDrift ${g.driftSec}s ease-in-out infinite alternate`,
+                // @ts-expect-error custom property
+                '--drift': `${g.driftPx}px`,
+              }}
+            >
+              {g.ch}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Extra subtle haze to glue layers */}
+      <div className="absolute inset-0 opacity-[0.20] bg-[radial-gradient(700px_420px_at_50%_30%,rgba(124,156,255,0.08),transparent_70%)]" />
+
+      <style jsx>{`
+        @keyframes floatDrift {
+          from {
+            transform: translate(-50%, -50%)
+              translate(calc(var(--mx) * 0px), calc(var(--my) * 0px))
+              translate(0, calc(var(--sy) * 0px))
+              rotate(0deg);
+          }
+          to {
+            transform: translate(-50%, -50%)
+              translate(calc(var(--mx) * 0px), calc(var(--my) * 0px))
+              translate(var(--drift), calc(var(--drift) * -0.35))
+              rotate(2deg);
+          }
+        }
+      `}</style>
     </div>
   )
 }
@@ -270,12 +226,8 @@ export default function Home() {
 
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
-    // Clear any pending refetch
-    if (refetchTimeout) {
-      clearTimeout(refetchTimeout)
-    }
+    if (refetchTimeout) clearTimeout(refetchTimeout)
 
-    // Schedule new refetch after 3 seconds
     const timeout = setTimeout(() => {
       console.log('[Markees] Refetching after transaction success')
       refetch()
@@ -312,7 +264,6 @@ export default function Home() {
       await addReaction(markee.address, emoji, markee.chainId)
     } catch (err) {
       console.error('Failed to add reaction:', err)
-      // Error is already handled in the hook
     }
   }
 
@@ -336,14 +287,14 @@ export default function Home() {
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      <section className="relative bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20 overflow-hidden">
-        {/* Cosmic background (hero-only) */}
+      {/* IMPORTANT: removed opaque bg so the cosmic background is actually visible */}
+      <section className="relative overflow-hidden py-12 border-b border-[#8A8FBF]/20">
         <CosmicHeroBackground />
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Content needs to be above the background */}
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {isLoadingFixed ? (
-              // Loading state
               <>
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="readerboard-card animate-pulse">
@@ -354,20 +305,16 @@ export default function Home() {
                 ))}
               </>
             ) : (
-              // Real data - Readerboard styled (all from Base - canonical chain)
               fixedMarkees.map((fixedMarkee, index) => (
                 <button
                   key={index}
                   onClick={() => handleFixedMarkeeClick(fixedMarkee)}
                   className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
                 >
-                  {/* Readerboard inner area with grooves */}
                   <div className="readerboard-inner">
-                    {/* Message text */}
                     <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
                   </div>
 
-                  {/* Hover price indicator */}
                   <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100">
                     <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
                       {fixedMarkee.price ? `${fixedMarkee.price} ETH to change` : 'Loading...'}
@@ -394,13 +341,7 @@ export default function Home() {
           position: relative;
           width: 100%;
           height: 100%;
-          background: repeating-linear-gradient(
-            0deg,
-            #0a0f3d 0px,
-            #0a0f3d 28px,
-            #060a2a 28px,
-            #060a2a 30px
-          );
+          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
           border-radius: 2px;
           display: flex;
           align-items: center;
@@ -469,11 +410,9 @@ export default function Home() {
             <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
-              Our platform is community-owned. Buy a message or add funds to a message below to join Markee&apos;s digital
-              cooperative.
+              Our platform is community-owned. Buy a message or add funds to a message below to join Markee&apos;s digital cooperative.
             </p>
 
-            {/* CTA Buttons */}
             <div className="flex gap-4 justify-center mb-8">
               <button
                 onClick={handleCreateNew}
@@ -491,7 +430,6 @@ export default function Home() {
           </div>
 
           <div className="flex items-center justify-between mb-8">
-            {/* Status indicator */}
             <div className="flex items-center gap-3 ml-auto">
               {(isFetchingFresh || reactionsLoading) && (
                 <div className="flex items-center gap-2 text-sm text-[#8A8FBF]">
@@ -500,14 +438,11 @@ export default function Home() {
                 </div>
               )}
               {lastUpdated && !isLoading && (
-                <div className="text-sm text-[#8A8FBF]">
-                  Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
-                </div>
+                <div className="text-sm text-[#8A8FBF]">Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</div>
               )}
             </div>
           </div>
 
-          {/* Error display for reactions */}
           {reactionsError && (
             <div className="mb-4 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg text-[#8BC8FF] max-w-2xl mx-auto">
               <p className="text-sm">{reactionsError}</p>
@@ -540,7 +475,6 @@ export default function Home() {
 
           {markees.length > 0 && (
             <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
-              {/* #1 Spot - Full Width */}
               {markees[0] && (
                 <MarkeeCard
                   markee={markees[0]}
@@ -554,7 +488,6 @@ export default function Home() {
                 />
               )}
 
-              {/* #2 and #3 - Two Column */}
               {markees.length > 1 && (
                 <div className="grid grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
@@ -584,7 +517,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* #4-26 - Grid */}
               {markees.length > 3 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   {markees.slice(3, 26).map((markee, index) => (
@@ -603,7 +535,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* #27+ - List View */}
               {markees.length > 26 && (
                 <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-6 border border-[#8A8FBF]/20">
                   <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
@@ -631,7 +562,6 @@ export default function Home() {
 
       <Footer />
 
-      {/* Top Dawg Modal */}
       <TopDawgModal
         isOpen={isModalOpen}
         onClose={handleModalClose}
@@ -640,7 +570,6 @@ export default function Home() {
         onSuccess={debouncedRefetch}
       />
 
-      {/* Fixed Price Modal */}
       <FixedPriceModal
         isOpen={isFixedModalOpen}
         onClose={handleFixedModalClose}
