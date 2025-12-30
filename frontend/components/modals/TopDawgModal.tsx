@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useConnect, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { TopDawgStrategyABI } from '@/lib/contracts/abis'
+import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
@@ -14,11 +14,12 @@ interface TopDawgModalProps {
   userMarkee?: Markee | null
   initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onSuccess?: () => void
+  strategyAddress?: `0x${string}` // Optional: for partner strategies
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSuccess }: TopDawgModalProps) {
+export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSuccess, strategyAddress: customStrategyAddress }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { connectors, connect } = useConnect()
   const { switchChain } = useSwitchChain()
@@ -31,30 +32,33 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
   const { writeContract, data: hash, isPending, isError, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  // Get TopDawg strategy address from Base (canonical chain)
-  const strategyAddress = CONTRACTS[CANONICAL_CHAIN.id]?.topDawgStrategies?.[0]?.address
+  // Get strategy address - use custom one if provided, otherwise default TopDawg
+  const strategyAddress = customStrategyAddress || CONTRACTS[CANONICAL_CHAIN.id]?.topDawgStrategies?.[0]?.address
+
+  // Use the appropriate ABI based on whether it's a partner strategy
+  const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
 
   // Check if user is on the correct chain
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
-  // Read minimum price and max message length from TopDawg strategy
+  // Read minimum price and max message length from strategy
   const { data: minimumPrice } = useReadContract({
     address: strategyAddress,
-    abi: TopDawgStrategyABI,
+    abi: strategyABI,
     functionName: 'minimumPrice',
     chainId: CANONICAL_CHAIN.id,
   })
 
   const { data: maxMessageLength } = useReadContract({
     address: strategyAddress,
-    abi: TopDawgStrategyABI,
+    abi: strategyABI,
     functionName: 'maxMessageLength',
     chainId: CANONICAL_CHAIN.id,
   })
 
   const { data: maxNameLength } = useReadContract({
     address: strategyAddress,
-    abi: TopDawgStrategyABI,
+    abi: strategyABI,
     functionName: 'maxNameLength',
     chainId: CANONICAL_CHAIN.id,
   })
@@ -128,7 +132,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     try {
       writeContract({
         address: strategyAddress,
-        abi: TopDawgStrategyABI,
+        abi: strategyABI,
         functionName: 'createMarkee',
         args: [message, name],
         value: amountWei,
@@ -155,7 +159,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     try {
       writeContract({
         address: strategyAddress,
-        abi: TopDawgStrategyABI,
+        abi: strategyABI,
         functionName: 'addFunds',
         args: [userMarkee.address as `0x${string}`],
         value: parseEther(amount),
@@ -187,7 +191,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     try {
       writeContract({
         address: strategyAddress,
-        abi: TopDawgStrategyABI,
+        abi: strategyABI,
         functionName: 'updateMessage',
         args: [userMarkee.address as `0x${string}`, message],
         chainId: CANONICAL_CHAIN.id,
