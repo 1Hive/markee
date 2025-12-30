@@ -17,7 +17,7 @@ import {
   NameUpdate,
   GlobalStats
 } from "../generated/schema"
-import { Markee as MarkeeContract } from "../generated/TopDawgPartnerStrategyGardens/Markee"
+import { TopDawgPartnerStrategy as PartnerStrategyContract } from "../generated/TopDawgPartnerStrategyGardens/TopDawgPartnerStrategy"
 
 export function handlePartnerMarkeeCreated(event: MarkeeCreatedEvent): void {
   let strategy = TopDawgPartnerStrategy.load(event.address.toHex())
@@ -26,32 +26,16 @@ export function handlePartnerMarkeeCreated(event: MarkeeCreatedEvent): void {
     strategy = new TopDawgPartnerStrategy(event.address.toHex())
     strategy.address = event.address
     
-    // Initialize contract to read state
-    let contract = MarkeeContract.bind(event.params.markeeAddress)
+    // Bind to the TopDawgPartnerStrategy contract to read configuration
+    let contract = PartnerStrategyContract.bind(event.address)
     
-    // Try to read instance name
-    let instanceNameResult = contract.try_instanceName()
-    strategy.instanceName = instanceNameResult.reverted ? "" : instanceNameResult.value
-    
-    // Try to read beneficiary address
-    let beneficiaryResult = contract.try_beneficiaryAddress()
-    strategy.beneficiaryAddress = beneficiaryResult.reverted ? Bytes.empty() : beneficiaryResult.value
-    
-    // Try to read percent to beneficiary
-    let percentResult = contract.try_percentToBeneficiary()
-    strategy.percentToBeneficiary = percentResult.reverted ? BigInt.fromI32(0) : percentResult.value
-    
-    // Try to read minimum price
-    let minPriceResult = contract.try_minimumPrice()
-    strategy.minimumPrice = minPriceResult.reverted ? BigInt.fromI32(0) : minPriceResult.value
-    
-    // Try to read max message length
-    let maxMsgResult = contract.try_maxMessageLength()
-    strategy.maxMessageLength = maxMsgResult.reverted ? BigInt.fromI32(280) : maxMsgResult.value
-    
-    // Try to read max name length
-    let maxNameResult = contract.try_maxNameLength()
-    strategy.maxNameLength = maxNameResult.reverted ? BigInt.fromI32(32) : maxNameResult.value
+    // Read strategy configuration
+    strategy.instanceName = contract.instanceName()
+    strategy.beneficiaryAddress = contract.beneficiaryAddress()
+    strategy.percentToBeneficiary = contract.percentToBeneficiary()
+    strategy.minimumPrice = contract.minimumPrice()
+    strategy.maxMessageLength = contract.maxMessageLength()
+    strategy.maxNameLength = contract.maxNameLength()
     
     strategy.totalMarkeesCreated = BigInt.fromI32(0)
     strategy.totalFundsRaised = BigInt.fromI32(0)
