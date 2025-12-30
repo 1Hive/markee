@@ -140,6 +140,6 @@ type GlobalStats @entity(immutable: false) {
   totalTransactions: BigInt!
   totalFixedPriceRevenue: BigInt!
   totalFixedPriceChanges: BigInt!
-  totalPartnerFunds: BigInt!
-  totalPartnerBeneficiaryFunds: BigInt!
+  totalPartnerFunds: BigInt
+  totalPartnerBeneficiaryFunds: BigInt
 }
