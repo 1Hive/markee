@@ -261,7 +261,7 @@ export function FixedPriceModal({
 
               <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
                 <p className="text-sm text-[#B8B6D9]">
-                  By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
+                  lol you thought you could afford to change the hero Markee?! This is PRIME digital real estate. If you do decide to change this message, please read the Markee Cooperative's Covenant first. By buying you agree to its terms.
                 </p>
               </div>
 
