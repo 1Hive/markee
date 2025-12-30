@@ -8,10 +8,11 @@ export const PARTNERS = [
   {
     slug: 'markee-cooperative',
     name: 'Markee Cooperative',
+    description: 'The original Markee leaderboard - 100% of funds go to the cooperative RevNet',
+    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a', // ← Change this
     logo: '/markee-logo.png',
-    description: 'Funds are paid directly into the Cooperative\'s RevNet.',
-    strategyAddress: '0x5FD3E4C54e41E2948db9D1E1EA1DeF39883D6Fb7', // TopDawgStrategy
-    isCooperative: true
+    fundingSplit: '100% to Cooperative RevNet',
+    percentToBeneficiary: 0
   },
   {
     slug: 'gardens',
