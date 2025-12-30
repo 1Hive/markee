@@ -8,28 +8,24 @@ export const PARTNERS = [
   {
     slug: 'markee-cooperative',
     name: 'Markee Cooperative',
-    description: 'The original Markee leaderboard - 100% of funds go to the cooperative RevNet',
-    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a', // ← Change this
+    description: 'Our home message for markee.xyz - 100% of funds go into the Markee Cooperative RevNet',
+    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a', // TopDawgStrategy
     logo: '/markee-logo.png',
-    fundingSplit: '100% to Cooperative RevNet',
-    percentToBeneficiary: 0
+    fundingSplit: '100% to Markee Cooperative',
+    percentToBeneficiary: 0,
+    isCooperative: true // Uses TopDawgStrategy, not TopDawgPartnerStrategy
   },
   {
     slug: 'gardens',
     name: 'Gardens',
-    logo: '/partners/gardens.png',
-    description: 'Support Gardens platform development and community governance tools.',
+    description: 'Community governance platform built on conviction voting',
     strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE', // TopDawgPartnerStrategy
+    logo: '/partners/gardens.png',
+    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    percentToBeneficiary: 6800,
     isCooperative: false
   }
 ] as const
-
-interface PartnerData {
-  partner: typeof PARTNERS[number]
-  winningMarkee?: Markee
-  totalFunds: bigint
-  markeeCount: number
-}
 
 const MARKEE_ABI = [
   parseAbiItem('function message() view returns (string)'),
@@ -38,14 +34,19 @@ const MARKEE_ABI = [
   parseAbiItem('function totalFundsAdded() view returns (uint256)')
 ] as const
 
+interface PartnerData {
+  partner: typeof PARTNERS[number]
+  winningMarkee: Markee | null
+  totalFunds: bigint
+  markeeCount: bigint
+}
+
 export function usePartnerMarkees() {
   const [partnerData, setPartnerData] = useState<PartnerData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    let isMounted = true
-
     async function fetchPartnerData() {
       try {
         setIsLoading(true)
@@ -59,7 +60,7 @@ export function usePartnerMarkees() {
         const results = await Promise.all(
           PARTNERS.map(async (partner) => {
             try {
-              // Get MarkeeCreated events from strategy
+              // Get MarkeeCreated events for this partner
               const events = await client.getLogs({
                 address: partner.strategyAddress as `0x${string}`,
                 event: parseAbiItem('event MarkeeCreated(address indexed markeeAddress, address indexed owner, uint256 initialAmount, string message)'),
@@ -70,9 +71,9 @@ export function usePartnerMarkees() {
               if (events.length === 0) {
                 return {
                   partner,
-                  winningMarkee: undefined,
-                  totalFunds: 0n,
-                  markeeCount: 0
+                  winningMarkee: null,
+                  totalFunds: BigInt(0),
+                  markeeCount: BigInt(0)
                 }
               }
 
@@ -97,7 +98,7 @@ export function usePartnerMarkees() {
                         address: markeeAddress,
                         abi: MARKEE_ABI,
                         functionName: 'name'
-                      }).catch(() => ''), // Name might not exist
+                      }).catch(() => ''),
                       client.readContract({
                         address: markeeAddress,
                         abi: MARKEE_ABI,
@@ -105,16 +106,16 @@ export function usePartnerMarkees() {
                       })
                     ])
 
-                      return {
-                        address: markeeAddress,
-                        message: message as string,
-                        owner: owner as string,
-                        name: name as string,
-                        totalFundsAdded: totalFundsAdded as bigint,
-                        pricingStrategy: partner.strategyAddress,  // ← Add this
-                        strategyAddress: partner.strategyAddress,
-                        chainId: base.id
-                      } as Markee
+                    return {
+                      address: markeeAddress,
+                      message: message as string,
+                      owner: owner as string,
+                      name: name as string,
+                      totalFundsAdded: totalFundsAdded as bigint,
+                      pricingStrategy: partner.strategyAddress,
+                      strategyAddress: partner.strategyAddress,
+                      chainId: base.id
+                    } as Markee
                   } catch (err) {
                     console.error(`Error fetching markee ${markeeAddress}:`, err)
                     return null
@@ -122,58 +123,48 @@ export function usePartnerMarkees() {
                 })
               )
 
-              // Filter out failed fetches and sort by totalFundsAdded
+              // Filter nulls and sort by funds
               const validMarkees = markees.filter((m): m is Markee => m !== null)
               validMarkees.sort((a, b) => Number(b.totalFundsAdded - a.totalFundsAdded))
 
-              // Calculate total funds
-              const totalFunds = validMarkees.reduce((sum, m) => sum + m.totalFundsAdded, 0n)
+              // Calculate totals
+              const totalFunds = validMarkees.reduce((sum, m) => sum + m.totalFundsAdded, BigInt(0))
 
               return {
                 partner,
-                winningMarkee: validMarkees[0],
+                winningMarkee: validMarkees[0] || null,
                 totalFunds,
-                markeeCount: validMarkees.length
+                markeeCount: BigInt(validMarkees.length)
               }
             } catch (err) {
               console.error(`Error fetching data for ${partner.name}:`, err)
               return {
                 partner,
-                winningMarkee: undefined,
-                totalFunds: 0n,
-                markeeCount: 0
+                winningMarkee: null,
+                totalFunds: BigInt(0),
+                markeeCount: BigInt(0)
               }
             }
           })
         )
 
-        if (isMounted) {
-          // Sort by total funds raised (descending), but keep Cooperative at top
-          const sorted = results.sort((a, b) => {
-            if (a.partner.isCooperative) return -1
-            if (b.partner.isCooperative) return 1
-            return Number(b.totalFunds - a.totalFunds)
-          })
+        // Sort: Cooperative first, then by total funds raised
+        results.sort((a, b) => {
+          if (a.partner.isCooperative) return -1
+          if (b.partner.isCooperative) return 1
+          return Number(b.totalFunds - a.totalFunds)
+        })
 
-          setPartnerData(sorted)
-        }
+        setPartnerData(results)
       } catch (err) {
         console.error('Error fetching partner data:', err)
-        if (isMounted) {
-          setError(err instanceof Error ? err : new Error('Failed to fetch partner data'))
-        }
+        setError(err instanceof Error ? err : new Error('Failed to fetch partner data'))
       } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
+        setIsLoading(false)
       }
     }
 
     fetchPartnerData()
-
-    return () => {
-      isMounted = false
-    }
   }, [])
 
   return { partnerData, isLoading, error }
