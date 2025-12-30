@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -12,6 +12,7 @@ import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
+import { HeroBackground } from '@/components/background/HeroBackground'
 
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
@@ -25,240 +26,6 @@ function PartnerCard({ logo, name, description }: { logo: string; name: string; 
         <h3 className="font-bold text-[#EDEEFF] mb-2">{name}</h3>
         <p className="text-sm text-[#8A8FBF]">{description}</p>
       </div>
-    </div>
-  )
-}
-
-/**
- * Cosmic hero background (canvas) with floating capital letters.
- * - Dim opacity so it’s not distracting.
- * - Slight parallax based on mouse + scroll.
- * - If canvas fails, fallback to an opaque gradient background.
- */
-function CosmicHeroBackground() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rafRef = useRef<number | null>(null)
-
-  const [canvasFailed, setCanvasFailed] = useState(false)
-
-  // Parallax state (kept in refs to avoid rerenders)
-  const parallaxRef = useRef({ mx: 0, my: 0, sy: 0 })
-
-  const letters = useMemo(() => {
-    // Mostly capital letters + a few symbols that look nice in mono
-    const pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    const extras = '△◻︎◆◇✶✷✸'
-    return (pool + pool + pool + extras).split('')
-  }, [])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      setCanvasFailed(true)
-      return
-    }
-
-    // Device pixel ratio scaling
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
-
-    const resize = () => {
-      const parent = canvas.parentElement
-      if (!parent) return
-
-      const { width, height } = parent.getBoundingClientRect()
-
-      canvas.width = Math.floor(width * dpr)
-      canvas.height = Math.floor(height * dpr)
-      canvas.style.width = `${width}px`
-      canvas.style.height = `${height}px`
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    }
-
-    resize()
-
-    const onResize = () => resize()
-    window.addEventListener('resize', onResize)
-
-    const onMouseMove = (e: MouseEvent) => {
-      const parent = canvas.parentElement
-      if (!parent) return
-      const r = parent.getBoundingClientRect()
-      const nx = ((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1
-      const ny = ((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1
-      parallaxRef.current.mx = nx
-      parallaxRef.current.my = ny
-    }
-
-    const onScroll = () => {
-      // small normalized scroll effect
-      const y = window.scrollY || 0
-      parallaxRef.current.sy = Math.max(-1, Math.min(1, y / 900))
-    }
-
-    window.addEventListener('mousemove', onMouseMove, { passive: true })
-    window.addEventListener('scroll', onScroll, { passive: true })
-
-    // Particles
-    const parent = canvas.parentElement
-    const bounds = parent?.getBoundingClientRect()
-    const baseW = bounds?.width ?? 1200
-    const baseH = bounds?.height ?? 360
-
-    const starCount = Math.round((baseW * baseH) / 22000) + 40
-    const letterCount = Math.round((baseW * baseH) / 30000) + 18
-
-    const rand = (min: number, max: number) => min + Math.random() * (max - min)
-
-    type Star = { x: number; y: number; r: number; a: number; tw: number }
-    type Glyph = { x: number; y: number; s: number; vy: number; vx: number; ch: string; rot: number; vr: number; a: number }
-
-    const stars: Star[] = Array.from({ length: starCount }).map(() => ({
-      x: rand(0, baseW),
-      y: rand(0, baseH),
-      r: rand(0.6, 1.7),
-      a: rand(0.08, 0.22), // dim
-      tw: rand(0.002, 0.01),
-    }))
-
-    const glyphs: Glyph[] = Array.from({ length: letterCount }).map(() => ({
-      x: rand(0, baseW),
-      y: rand(0, baseH),
-      s: rand(10, 18),
-      vy: rand(0.04, 0.12),
-      vx: rand(-0.03, 0.03),
-      ch: letters[Math.floor(Math.random() * letters.length)],
-      rot: rand(-0.4, 0.4),
-      vr: rand(-0.002, 0.002),
-      a: rand(0.05, 0.12), // very dim
-    }))
-
-    let t = 0
-
-    const draw = () => {
-      const parentNow = canvas.parentElement
-      if (!parentNow) return
-
-      const { width, height } = parentNow.getBoundingClientRect()
-      if (width <= 0 || height <= 0) return
-
-      // Clear
-      ctx.clearRect(0, 0, width, height)
-
-      // Base background: a couple soft nebula blobs (very subtle)
-      const g1 = ctx.createRadialGradient(width * 0.25, height * 0.3, 20, width * 0.25, height * 0.3, Math.max(width, height) * 0.7)
-      g1.addColorStop(0, 'rgba(75, 58, 204, 0.10)') // nebula-violet
-      g1.addColorStop(1, 'rgba(6, 10, 42, 0.00)') // midnight-navy
-      ctx.fillStyle = g1
-      ctx.fillRect(0, 0, width, height)
-
-      const g2 = ctx.createRadialGradient(width * 0.75, height * 0.55, 20, width * 0.75, height * 0.55, Math.max(width, height) * 0.8)
-      g2.addColorStop(0, 'rgba(248, 151, 254, 0.06)') // soft-pink
-      g2.addColorStop(1, 'rgba(10, 15, 61, 0.00)') // deep-space
-      ctx.fillStyle = g2
-      ctx.fillRect(0, 0, width, height)
-
-      // Parallax offsets
-      const { mx, my, sy } = parallaxRef.current
-      const pxStars = mx * 10
-      const pyStars = my * 8 + sy * 10
-      const pxGlyphs = mx * 18
-      const pyGlyphs = my * 14 + sy * 18
-
-      // Stars (twinkle)
-      t += 1
-      for (const s of stars) {
-        const tw = 0.5 + 0.5 * Math.sin(t * s.tw)
-        ctx.globalAlpha = s.a * (0.7 + 0.6 * tw)
-        ctx.beginPath()
-        ctx.arc(s.x + pxStars, s.y + pyStars, s.r, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(237, 238, 255, 1)' // soft-white
-        ctx.fill()
-      }
-
-      // Glyphs
-      ctx.font = `600 14px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-
-      for (const g of glyphs) {
-        // drift upward and wrap
-        g.y -= g.vy
-        g.x += g.vx
-        g.rot += g.vr
-
-        if (g.y < -40) g.y = height + 40
-        if (g.x < -40) g.x = width + 40
-        if (g.x > width + 40) g.x = -40
-
-        const x = g.x + pxGlyphs
-        const y = g.y + pyGlyphs
-
-        ctx.save()
-        ctx.translate(x, y)
-        ctx.rotate(g.rot)
-
-        ctx.globalAlpha = g.a
-
-        // Slight glow-like effect: draw twice
-        ctx.fillStyle = 'rgba(124, 156, 255, 1)' // cool-sky-blue
-        ctx.fillText(g.ch, 0, 0)
-
-        ctx.globalAlpha = g.a * 0.6
-        ctx.fillStyle = 'rgba(147, 90, 240, 1)' // lavender-accent
-        ctx.fillText(g.ch, 1, 1)
-
-        ctx.restore()
-      }
-
-      // reset alpha
-      ctx.globalAlpha = 1
-
-      rafRef.current = requestAnimationFrame(draw)
-    }
-
-    try {
-      rafRef.current = requestAnimationFrame(draw)
-    } catch {
-      setCanvasFailed(true)
-    }
-
-    return () => {
-      window.removeEventListener('resize', onResize)
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('scroll', onScroll)
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    }
-  }, [letters])
-
-  return (
-    <div className="absolute inset-0 pointer-events-none">
-      {/* Fallback background if canvas fails */}
-      <div
-        className={[
-          'absolute inset-0',
-          'bg-[#0A0F3D]',
-          // subtle depth even without canvas
-          '[background-image:radial-gradient(900px_500px_at_20%_25%,rgba(75,58,204,0.22),transparent_55%),radial-gradient(900px_600px_at_80%_55%,rgba(248,151,254,0.12),transparent_60%),linear-gradient(180deg,#060A2A_0%,#0A0F3D_70%,#060A2A_100%)]',
-        ].join(' ')}
-        style={{ opacity: canvasFailed ? 1 : 0 }}
-      />
-
-      {/* Canvas layer */}
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        className="absolute inset-0 h-full w-full"
-        style={{
-          opacity: canvasFailed ? 0 : 0.55, // dim overall
-        }}
-      />
-
-      {/* Scrim to keep hero content readable regardless */}
-      <div className="absolute inset-0 bg-[#0A0F3D]/55" />
     </div>
   )
 }
@@ -277,6 +44,9 @@ export default function Home() {
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
   const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
+
+  // Background fallback: if the animated/canvas bg fails to mount, keep the opaque bg.
+  const [heroBgOk, setHeroBgOk] = useState(true)
 
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
@@ -341,11 +111,26 @@ export default function Home() {
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      <section className="relative overflow-hidden py-12 border-b border-[#8A8FBF]/20">
-        {/* Cosmic background ONLY for hero */}
-        <CosmicHeroBackground />
+      <section
+        className={`relative py-12 border-b border-[#8A8FBF]/20 overflow-hidden ${
+          heroBgOk ? 'bg-transparent' : 'bg-[#0A0F3D]'
+        }`}
+      >
+        {/* Background layer */}
+        <div className="absolute inset-0 z-0 pointer-events-none">
+          {heroBgOk && (
+            <HeroBackground
+              className="w-full h-full"
+              onReady={() => setHeroBgOk(true)}
+              onError={() => setHeroBgOk(false)}
+            />
+          )}
 
-        {/* Content above background */}
+          {/* Subtle dark overlay so cards remain readable */}
+          <div className="absolute inset-0 bg-[#0A0F3D]/70" />
+        </div>
+
+        {/* Foreground content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {isLoadingFixed ? (
@@ -384,7 +169,7 @@ export default function Home() {
       <style jsx>{`
         .readerboard-card {
           position: relative;
-          background: #EDEEFF;
+          background: #edeeff;
           border-radius: 4px;
           padding: 4px;
           box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -395,13 +180,7 @@ export default function Home() {
           position: relative;
           width: 100%;
           height: 100%;
-          background: repeating-linear-gradient(
-            0deg,
-            #0A0F3D 0px,
-            #0A0F3D 28px,
-            #060A2A 28px,
-            #060A2A 30px
-          );
+          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
           border-radius: 2px;
           display: flex;
           align-items: center;
@@ -416,7 +195,7 @@ export default function Home() {
           font-weight: 600;
           line-height: 1.1;
           letter-spacing: -0.5px;
-          color: #EDEEFF;
+          color: #edeeff;
           text-align: center;
           word-wrap: break-word;
           max-width: 100%;
@@ -424,7 +203,7 @@ export default function Home() {
         }
 
         .group:hover .readerboard-text {
-          color: #7B6AF4;
+          color: #7b6af4;
           transform: scale(1.02);
         }
 
@@ -470,7 +249,7 @@ export default function Home() {
             <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
-              Our platform is community-owned. Buy a message or add funds to a message below to join Markee&apos;s digital cooperative.
+              Our platform is community-owned. Buy a message or add funds to a message below to join Markee's digital cooperative.
             </p>
 
             <div className="flex gap-4 justify-center mb-8">
