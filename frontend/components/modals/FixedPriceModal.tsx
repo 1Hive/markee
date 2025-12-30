@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { 
   useAccount, 
   useBalance,
+  useReadContract,
   useWriteContract, 
   useWaitForTransactionReceipt, 
   useConnect 
@@ -34,6 +35,17 @@ export function FixedPriceModal({
   const { data: balanceData } = useBalance({
     address: address,
     chainId: CANONICAL_CHAIN.id,
+  })
+
+  // Read maxMessageLength from contract
+  const { data: maxMessageLength } = useReadContract({
+    address: fixedMarkee?.strategyAddress as `0x${string}`,
+    abi: FixedPriceStrategyABI,
+    functionName: 'maxMessageLength',
+    chainId: CANONICAL_CHAIN.id,
+    query: {
+      enabled: !!fixedMarkee?.strategyAddress,
+    },
   })
 
   const [newMessage, setNewMessage] = useState('')
@@ -89,7 +101,7 @@ export function FixedPriceModal({
     
     if (balanceData.value < totalNeeded) {
       const shortfall = totalNeeded - balanceData.value
-      return `You need more ETH to complete this transaction.`
+      return `You don't have enough ETH to complete this transaction.`
     }
     
     return null
@@ -113,6 +125,12 @@ export function FixedPriceModal({
 
     if (!fixedMarkee.price) {
       setError('Unable to load price')
+      return
+    }
+
+    // Check message length
+    if (maxMessageLength && newMessage.length > Number(maxMessageLength)) {
+      setError(`Message exceeds maximum length of ${maxMessageLength} characters`)
       return
     }
 
@@ -145,6 +163,10 @@ export function FixedPriceModal({
   const markeeTokens = fixedMarkee.price ? parseFloat(fixedMarkee.price) * 62000 : 0
   const insufficientBalance = !canAffordMessage()
   const balanceWarning = getInsufficientBalanceMessage()
+  
+  const currentLength = newMessage.length
+  const maxLength = maxMessageLength ? Number(maxMessageLength) : null
+  const isOverLimit = maxLength && currentLength > maxLength
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -202,16 +224,24 @@ export function FixedPriceModal({
 
               {/* New Message Input */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
-                  New Message
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-[#B8B6D9]">
+                    New Message
+                  </label>
+                  {maxLength && (
+                    <span className={`text-xs ${isOverLimit ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
+                      {currentLength}/{maxLength}
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Enter your new message..."
-                  className="w-full px-4 py-3 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg 
+                  className={`w-full px-4 py-3 bg-[#0A0F3D]/50 border rounded-lg 
                              focus:ring-2 focus:ring-[#F897FE] focus:border-transparent 
-                             text-[#EDEEFF] placeholder-[#8A8FBF]"
+                             text-[#EDEEFF] placeholder-[#8A8FBF]
+                             ${isOverLimit ? 'border-red-500/50' : 'border-[#8A8FBF]/30'}`}
                   rows={3}
                   disabled={isPending || isConfirming}
                 />
@@ -261,7 +291,7 @@ export function FixedPriceModal({
 
               <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
                 <p className="text-sm text-[#B8B6D9]">
-                  lol you thought you could afford to change the hero Markee?! This is PRIME digital real estate. If you do decide to change this message, please read the Markee Cooperative's Covenant first. By buying you agree to its terms.
+                  This is PRIME digital real estate. Only change this message if you're holding some really big bags. If you do decide to change this message, please read the Markee Cooperative's Covenant first - by buying you agree to its terms.
                 </p>
               </div>
 
@@ -287,7 +317,7 @@ export function FixedPriceModal({
               {/* Action */}
               <button
                 onClick={handleChangeMessage}
-                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance}
+                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit}
                 className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold
                            hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:cursor-not-allowed 
                            transition flex items-center justify-center gap-2"
@@ -304,6 +334,8 @@ export function FixedPriceModal({
                   </>
                 ) : insufficientBalance ? (
                   'Insufficient Balance'
+                ) : isOverLimit ? (
+                  'Message Too Long'
                 ) : (
                   <>
                     Change Message ({priceDisplay})
