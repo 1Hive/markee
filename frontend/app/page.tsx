@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -25,6 +25,230 @@ function PartnerCard({ logo, name, description }: { logo: string; name: string; 
         <h3 className="font-bold text-[#EDEEFF] mb-2">{name}</h3>
         <p className="text-sm text-[#8A8FBF]">{description}</p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * CosmicHeroBackground
+ * - Canvas stars + subtle “floating letters” in multiple layers
+ * - Mouse/scroll parallax (very gentle)
+ * - Dim / non-distracting by design
+ *
+ * This component is intended to sit as an absolutely-positioned background *inside* the hero section.
+ */
+function CosmicHeroBackground({
+  density = 1,
+}: {
+  density?: number
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const rafRef = useRef<number | null>(null)
+
+  const pointerRef = useRef({ x: 0, y: 0 }) // [-0.5..0.5] normalized
+  const scrollRef = useRef(0) // 0..1 of viewport scroll
+  const reduceMotion = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
+  }, [])
+
+  const letters = useMemo(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), [])
+
+  // Pre-generate “particles” once (stable) — kept in a ref so we don’t reinit on rerenders.
+  const starsRef = useRef<
+    Array<{ x: number; y: number; r: number; a: number; layer: 0 | 1 | 2; tw: number }>
+  >([])
+  const glyphsRef = useRef<
+    Array<{
+      x: number
+      y: number
+      s: number
+      a: number
+      ch: string
+      layer: 0 | 1 | 2
+      drift: number
+      rot: number
+      rotV: number
+    }>
+  >([])
+
+  const initScene = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d', { alpha: true })
+    if (!ctx) return
+
+    // Size canvas to device pixels
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const parent = canvas.parentElement
+    const w = parent?.clientWidth ?? window.innerWidth
+    const h = parent?.clientHeight ?? 520
+
+    canvas.width = Math.floor(w * dpr)
+    canvas.height = Math.floor(h * dpr)
+    canvas.style.width = `${w}px`
+    canvas.style.height = `${h}px`
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    // Build particles relative to size
+    const starCount = Math.floor((w * h * 0.00012) * density) // tuned: subtle
+    const glyphCount = Math.floor((w * h * 0.00003) * density) // fewer letters than stars
+
+    starsRef.current = Array.from({ length: starCount }).map(() => {
+      const layer = (Math.random() < 0.6 ? 0 : Math.random() < 0.7 ? 1 : 2) as 0 | 1 | 2
+      const rBase = layer === 0 ? 0.8 : layer === 1 ? 1.2 : 1.7
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: rBase + Math.random() * 0.9,
+        a: 0.06 + Math.random() * 0.12, // dim
+        layer,
+        tw: Math.random() * 0.8 + 0.2, // twinkle factor
+      }
+    })
+
+    glyphsRef.current = Array.from({ length: glyphCount }).map(() => {
+      const layer = (Math.random() < 0.55 ? 0 : Math.random() < 0.7 ? 1 : 2) as 0 | 1 | 2
+      const size = (layer === 0 ? 10 : layer === 1 ? 14 : 18) + Math.random() * 8
+      const alpha = (layer === 0 ? 0.04 : layer === 1 ? 0.06 : 0.08) + Math.random() * 0.03 // very dim
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        s: size,
+        a: alpha,
+        ch: letters[Math.floor(Math.random() * letters.length)]!,
+        layer,
+        drift: (Math.random() - 0.5) * 0.18, // slow vertical drift
+        rot: (Math.random() - 0.5) * 0.25,
+        rotV: (Math.random() - 0.5) * 0.003,
+      }
+    })
+  }, [density, letters])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const onResize = () => initScene()
+    window.addEventListener('resize', onResize)
+
+    const onMove = (e: PointerEvent) => {
+      const w = window.innerWidth || 1
+      const h = window.innerHeight || 1
+      pointerRef.current.x = e.clientX / w - 0.5
+      pointerRef.current.y = e.clientY / h - 0.5
+    }
+    window.addEventListener('pointermove', onMove, { passive: true })
+
+    const onScroll = () => {
+      const y = window.scrollY || 0
+      const vh = window.innerHeight || 1
+      scrollRef.current = Math.max(0, Math.min(1, y / vh))
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    initScene()
+    onScroll()
+
+    const tick = (t: number) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d', { alpha: true })
+      if (!ctx) return
+
+      const parent = canvas.parentElement
+      const w = parent?.clientWidth ?? window.innerWidth
+      const h = parent?.clientHeight ?? 520
+
+      ctx.clearRect(0, 0, w, h)
+
+      // Background wash (keep it subtle; use your palette)
+      const g = ctx.createLinearGradient(0, 0, w, h)
+      g.addColorStop(0, 'rgba(10, 15, 61, 0.92)') // deep-space
+      g.addColorStop(0.55, 'rgba(23, 32, 144, 0.55)') // electric-blue (dimmed)
+      g.addColorStop(1, 'rgba(6, 10, 42, 0.95)') // midnight-navy
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, w, h)
+
+      // Parallax offsets (very gentle)
+      const px = pointerRef.current.x
+      const py = pointerRef.current.y
+      const sp = scrollRef.current
+
+      const layerOffset = (layer: 0 | 1 | 2) => {
+        const strength = layer === 0 ? 6 : layer === 1 ? 10 : 16
+        const scrollStrength = layer === 0 ? 8 : layer === 1 ? 14 : 22
+        return {
+          ox: px * strength,
+          oy: py * strength + sp * scrollStrength,
+        }
+      }
+
+      // Stars
+      for (const s of starsRef.current) {
+        const { ox, oy } = layerOffset(s.layer)
+        const tw = reduceMotion ? 1 : 0.65 + 0.35 * Math.sin(t * 0.001 * s.tw + s.x * 0.02)
+        ctx.globalAlpha = s.a * tw
+        ctx.beginPath()
+        ctx.arc(s.x + ox, s.y + oy, s.r, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(237, 238, 255, 1)' // soft-white
+        ctx.fill()
+      }
+
+      // Letters (dim; mild drift)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      for (const gl of glyphsRef.current) {
+        const { ox, oy } = layerOffset(gl.layer)
+
+        if (!reduceMotion) {
+          gl.y += gl.drift
+          gl.rot += gl.rotV
+          if (gl.y < -40) gl.y = h + 40
+          if (gl.y > h + 40) gl.y = -40
+        }
+
+        ctx.save()
+        ctx.translate(gl.x + ox, gl.y + oy)
+        ctx.rotate(gl.rot)
+        ctx.globalAlpha = gl.a
+
+        // Use a slightly tinted “ink” so it matches the site
+        ctx.fillStyle = 'rgba(184, 182, 217, 1)' // lavender-gray
+        ctx.font = `${gl.s}px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
+        ctx.fillText(gl.ch, 0, 0)
+        ctx.restore()
+      }
+
+      // Vignette / dim overlay (keeps content readable)
+      const v = ctx.createRadialGradient(w * 0.5, h * 0.35, Math.min(w, h) * 0.15, w * 0.5, h * 0.5, Math.max(w, h) * 0.75)
+      v.addColorStop(0, 'rgba(6, 10, 42, 0)')
+      v.addColorStop(1, 'rgba(6, 10, 42, 0.55)')
+      ctx.globalAlpha = 1
+      ctx.fillStyle = v
+      ctx.fillRect(0, 0, w, h)
+
+      rafRef.current = requestAnimationFrame(tick)
+    }
+
+    rafRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('scroll', onScroll)
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [initScene, reduceMotion])
+
+  return (
+    <div className="absolute inset-0 -z-10 overflow-hidden rounded-none">
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full"
+        aria-hidden="true"
+      />
+      {/* Extra dimmer layer so it never competes with the UI */}
+      <div className="pointer-events-none absolute inset-0 bg-[#060A2A]/30" />
     </div>
   )
 }
@@ -112,8 +336,11 @@ export default function Home() {
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      <section className="bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="relative bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20 overflow-hidden">
+        {/* Cosmic background (hero-only) */}
+        <CosmicHeroBackground />
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {isLoadingFixed ? (
               // Loading state
@@ -137,9 +364,7 @@ export default function Home() {
                   {/* Readerboard inner area with grooves */}
                   <div className="readerboard-inner">
                     {/* Message text */}
-                     <div className="readerboard-text">
-                      {fixedMarkee.message || fixedMarkee.name}
-                     </div>
+                    <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
                   </div>
 
                   {/* Hover price indicator */}
@@ -158,7 +383,7 @@ export default function Home() {
       <style jsx>{`
         .readerboard-card {
           position: relative;
-          background: #EDEEFF;
+          background: #edeeff;
           border-radius: 4px;
           padding: 4px;
           box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -169,14 +394,13 @@ export default function Home() {
           position: relative;
           width: 100%;
           height: 100%;
-          background: 
-            repeating-linear-gradient(
-              0deg,
-              #0A0F3D 0px,
-              #0A0F3D 28px,
-              #060A2A 28px,
-              #060A2A 30px
-            );
+          background: repeating-linear-gradient(
+            0deg,
+            #0a0f3d 0px,
+            #0a0f3d 28px,
+            #060a2a 28px,
+            #060a2a 30px
+          );
           border-radius: 2px;
           display: flex;
           align-items: center;
@@ -191,7 +415,7 @@ export default function Home() {
           font-weight: 600;
           line-height: 1.1;
           letter-spacing: -0.5px;
-          color: #EDEEFF;
+          color: #edeeff;
           text-align: center;
           word-wrap: break-word;
           max-width: 100%;
@@ -199,7 +423,7 @@ export default function Home() {
         }
 
         .group:hover .readerboard-text {
-          color: #7B6AF4;
+          color: #7b6af4;
           transform: scale(1.02);
         }
 
@@ -207,7 +431,7 @@ export default function Home() {
           .readerboard-card {
             aspect-ratio: 5 / 3;
           }
-          
+
           .readerboard-text {
             font-size: 20px;
           }
@@ -218,35 +442,17 @@ export default function Home() {
       <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
-          <p className="text-center text-[#8A8FBF] mb-12 text-lg">
-            Markee is coming soon to a digital platform near you...
-          </p>
-          
+          <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a digital platform near you...</p>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-            <PartnerCard 
-              logo="/partners/gardens.png"
-              name="Gardens"
-              description="Community Governance"
-            />
-            <PartnerCard 
-              logo="/partners/juicebox.png"
-              name="Juicebox"
-              description="Crowdfunding Protocol"
-            />
-            <PartnerCard 
-              logo="/partners/revnets.png"
-              name="RevNets"
-              description="Tokenized Revenues"
-            />
-            <PartnerCard 
-              logo="/partners/breadcoop.png"
-              name="Bread Cooperative"
-              description="Digital Co-op"
-            />
+            <PartnerCard logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
+            <PartnerCard logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
+            <PartnerCard logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
+            <PartnerCard logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
           </div>
-          
+
           <div className="text-center">
-            <a 
+            <a
               href="/ecosystem"
               className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
             >
@@ -263,18 +469,19 @@ export default function Home() {
             <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
-              Our platform is community-owned. Buy a message or add funds to a message below to join Markee's digital cooperative.
+              Our platform is community-owned. Buy a message or add funds to a message below to join Markee&apos;s digital
+              cooperative.
             </p>
 
             {/* CTA Buttons */}
             <div className="flex gap-4 justify-center mb-8">
-              <button 
+              <button
                 onClick={handleCreateNew}
                 className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
               >
                 Buy a Message
               </button>
-              <Link 
+              <Link
                 href="/how-it-works"
                 className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
               >
@@ -335,9 +542,9 @@ export default function Home() {
             <div className={isFetchingFresh ? 'opacity-90 transition-opacity' : ''}>
               {/* #1 Spot - Full Width */}
               {markees[0] && (
-                <MarkeeCard 
-                  markee={markees[0]} 
-                  rank={1} 
+                <MarkeeCard
+                  markee={markees[0]}
+                  rank={1}
                   size="hero"
                   userAddress={address}
                   onEditMessage={handleEditMessage}
@@ -351,9 +558,9 @@ export default function Home() {
               {markees.length > 1 && (
                 <div className="grid grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
-                    <MarkeeCard 
-                      markee={markees[1]} 
-                      rank={2} 
+                    <MarkeeCard
+                      markee={markees[1]}
+                      rank={2}
                       size="large"
                       userAddress={address}
                       onEditMessage={handleEditMessage}
@@ -363,9 +570,9 @@ export default function Home() {
                     />
                   )}
                   {markees[2] && (
-                    <MarkeeCard 
-                      markee={markees[2]} 
-                      rank={3} 
+                    <MarkeeCard
+                      markee={markees[2]}
+                      rank={3}
                       size="large"
                       userAddress={address}
                       onEditMessage={handleEditMessage}
@@ -381,10 +588,10 @@ export default function Home() {
               {markees.length > 3 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   {markees.slice(3, 26).map((markee, index) => (
-                    <MarkeeCard 
-                      key={markee.address} 
-                      markee={markee} 
-                      rank={index + 4} 
+                    <MarkeeCard
+                      key={markee.address}
+                      markee={markee}
+                      rank={index + 4}
                       size="medium"
                       userAddress={address}
                       onEditMessage={handleEditMessage}
@@ -402,10 +609,10 @@ export default function Home() {
                   <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
                   <div className="space-y-2">
                     {markees.slice(26).map((markee, index) => (
-                      <MarkeeCard 
-                        key={markee.address} 
-                        markee={markee} 
-                        rank={index + 27} 
+                      <MarkeeCard
+                        key={markee.address}
+                        markee={markee}
+                        rank={index + 27}
                         size="list"
                         userAddress={address}
                         onEditMessage={handleEditMessage}
@@ -425,7 +632,7 @@ export default function Home() {
       <Footer />
 
       {/* Top Dawg Modal */}
-      <TopDawgModal 
+      <TopDawgModal
         isOpen={isModalOpen}
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
@@ -434,7 +641,7 @@ export default function Home() {
       />
 
       {/* Fixed Price Modal */}
-      <FixedPriceModal 
+      <FixedPriceModal
         isOpen={isFixedModalOpen}
         onClose={handleFixedModalClose}
         fixedMarkee={selectedFixedMarkee}
