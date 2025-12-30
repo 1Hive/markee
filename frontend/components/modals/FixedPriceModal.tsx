@@ -222,6 +222,24 @@ export function FixedPriceModal({
                 </div>
               </div>
 
+              {/* Price Info */}
+              <div className="mb-6 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-[#B8B6D9] font-medium">Price to Change Message</p>
+                  <p className="text-2xl font-bold text-[#F897FE]">
+                    {priceDisplay}
+                  </p>
+                </div>
+                {balanceData && (
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
+                    <p className="text-xs text-[#B8B6D9]">Your Balance</p>
+                    <p className="text-sm font-medium text-[#EDEEFF]">
+                      {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* New Message Input */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
@@ -260,22 +278,10 @@ export function FixedPriceModal({
                 </div>
               )}
 
-              {/* Price Info */}
-              <div className="mb-6 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-[#B8B6D9] font-medium">Price to Change Message</p>
-                  <p className="text-2xl font-bold text-[#F897FE]">
-                    {priceDisplay}
-                  </p>
-                </div>
-                {balanceData && (
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
-                    <p className="text-xs text-[#B8B6D9]">Your Balance</p>
-                    <p className="text-sm font-medium text-[#EDEEFF]">
-                      {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
-                    </p>
-                  </div>
-                )}
+              <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
+                <p className="text-sm text-[#B8B6D9]">
+                  This is PRIME digital real estate... for big bag holders only. If you decide to change this message, read the Markee Cooperative Covenant first. By buying you agree to its terms.
+                </p>
               </div>
 
               {/* Insufficient Balance Warning */}
@@ -289,11 +295,15 @@ export function FixedPriceModal({
                 </div>
               )}
 
-              <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
-                <p className="text-sm text-[#B8B6D9]">
-                  This is PRIME digital real estate. Only change this message if you're holding some really big bags. If you do decide to change this message, please read the Markee Cooperative's Covenant first - by buying you agree to its terms.
-                </p>
-              </div>
+              {/* Message Too Long Warning */}
+              {isOverLimit && !error && !isError && (
+                <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <p className="text-sm font-medium text-yellow-300">Message Too Long</p>
+                  </div>
+                </div>
+              )}
 
               {/* Error Message */}
               {(error || isError) && (
@@ -332,10 +342,6 @@ export function FixedPriceModal({
                     <CheckCircle2 size={20} />
                     Success!
                   </>
-                ) : insufficientBalance ? (
-                  'Insufficient Balance'
-                ) : isOverLimit ? (
-                  'Message Too Long'
                 ) : (
                   <>
                     Change Message ({priceDisplay})
