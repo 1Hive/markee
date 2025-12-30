@@ -96,16 +96,16 @@ export default function PartnerPage() {
               })
             ])
 
-              return {
-                address: markeeAddress,
-                message: message as string,
-                owner: owner as string,
-                name: name as string,
-                totalFundsAdded: totalFundsAdded as bigint,
-                pricingStrategy: partner.strategyAddress,  // ← Add this
-                strategyAddress: partner.strategyAddress,
-                chainId: base.id
-              } as Markee
+            return {
+              address: markeeAddress,
+              message: message as string,
+              owner: owner as string,
+              name: name as string,
+              totalFundsAdded: totalFundsAdded as bigint,
+              pricingStrategy: partner.strategyAddress,
+              strategyAddress: partner.strategyAddress,
+              chainId: base.id
+            } as Markee
           } catch (err) {
             console.error(`Error fetching markee ${markeeAddress}:`, err)
             return null
@@ -341,14 +341,14 @@ export default function PartnerPage() {
 
       <Footer />
 
-      {/* Modal */}
+      {/* Modal - conditionally pass strategyAddress */}
       <TopDawgModal 
         isOpen={isModalOpen}
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
         initialMode={modalMode}
         onSuccess={handleTransactionSuccess}
-        strategyAddress={partner.strategyAddress as `0x${string}`}
+        strategyAddress={partner.isCooperative ? undefined : partner.strategyAddress as `0x${string}`}
       />
     </div>
   )
