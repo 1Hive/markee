@@ -29,182 +29,236 @@ function PartnerCard({ logo, name, description }: { logo: string; name: string; 
   )
 }
 
-type FloatingGlyph = {
-  id: string
-  ch: string
-  xPct: number
-  yPct: number
-  sizePx: number
-  opacity: number
-  blurPx: number
-  driftSec: number
-  driftPx: number
-  rotateDeg: number
-  layer: 1 | 2 | 3
-}
-
+/**
+ * Cosmic hero background (canvas) with floating capital letters.
+ * - Dim opacity so it’s not distracting.
+ * - Slight parallax based on mouse + scroll.
+ * - If canvas fails, fallback to an opaque gradient background.
+ */
 function CosmicHeroBackground() {
-  const rootRef = useRef<HTMLDivElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const rafRef = useRef<number | null>(null)
 
-  // deterministic-ish layout (no Math.random() every render)
-  const glyphs = useMemo<FloatingGlyph[]>(() => {
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    const pick = (i: number) => letters[(i * 7 + 11) % letters.length]
+  const [canvasFailed, setCanvasFailed] = useState(false)
 
-    const make = (i: number): FloatingGlyph => {
-      // simple deterministic “hash” from i
-      const a = (i * 73) % 101
-      const b = (i * 37) % 97
-      const c = (i * 19) % 89
+  // Parallax state (kept in refs to avoid rerenders)
+  const parallaxRef = useRef({ mx: 0, my: 0, sy: 0 })
 
-      const layer = (i % 3) + 1 as 1 | 2 | 3
-      const xPct = (a / 100) * 100
-      const yPct = (b / 100) * 100
-
-      const sizePx =
-        layer === 1 ? 44 + (c % 18) : layer === 2 ? 28 + (c % 14) : 18 + (c % 10)
-
-      // Keep dim: opacity in ~0.04–0.11 range
-      const opacity =
-        layer === 1 ? 0.08 + ((c % 10) / 10) * 0.03 : layer === 2 ? 0.06 + ((c % 10) / 10) * 0.03 : 0.04 + ((c % 10) / 10) * 0.03
-
-      const blurPx = layer === 1 ? 1.5 : layer === 2 ? 1.0 : 0.5
-      const driftSec = layer === 1 ? 22 + (a % 8) : layer === 2 ? 28 + (a % 10) : 34 + (a % 12)
-      const driftPx = layer === 1 ? 26 : layer === 2 ? 18 : 12
-      const rotateDeg = (a * 3.6) % 360
-
-      return {
-        id: `g-${i}`,
-        ch: pick(i),
-        xPct,
-        yPct,
-        sizePx,
-        opacity,
-        blurPx,
-        driftSec,
-        driftPx,
-        rotateDeg,
-        layer,
-      }
-    }
-
-    // 22 glyphs is enough to “feel” present but not noisy
-    return Array.from({ length: 22 }, (_, i) => make(i))
+  const letters = useMemo(() => {
+    // Mostly capital letters + a few symbols that look nice in mono
+    const pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const extras = '△◻︎◆◇✶✷✸'
+    return (pool + pool + pool + extras).split('')
   }, [])
 
   useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-    const onMove = (e: PointerEvent) => {
-      const rect = el.getBoundingClientRect()
-      const cx = rect.left + rect.width / 2
-      const cy = rect.top + rect.height / 2
-      const dx = (e.clientX - cx) / Math.max(1, rect.width / 2)
-      const dy = (e.clientY - cy) / Math.max(1, rect.height / 2)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      setCanvasFailed(true)
+      return
+    }
 
-      // clamp-ish
-      const px = Math.max(-1, Math.min(1, dx))
-      const py = Math.max(-1, Math.min(1, dy))
+    // Device pixel ratio scaling
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
 
-      el.style.setProperty('--mx', px.toFixed(3))
-      el.style.setProperty('--my', py.toFixed(3))
+    const resize = () => {
+      const parent = canvas.parentElement
+      if (!parent) return
+
+      const { width, height } = parent.getBoundingClientRect()
+
+      canvas.width = Math.floor(width * dpr)
+      canvas.height = Math.floor(height * dpr)
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+
+    resize()
+
+    const onResize = () => resize()
+    window.addEventListener('resize', onResize)
+
+    const onMouseMove = (e: MouseEvent) => {
+      const parent = canvas.parentElement
+      if (!parent) return
+      const r = parent.getBoundingClientRect()
+      const nx = ((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1
+      const ny = ((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1
+      parallaxRef.current.mx = nx
+      parallaxRef.current.my = ny
     }
 
     const onScroll = () => {
-      // parallax scroll factor for subtle vertical drift
+      // small normalized scroll effect
       const y = window.scrollY || 0
-      el.style.setProperty('--sy', (y / 800).toFixed(3))
+      parallaxRef.current.sy = Math.max(-1, Math.min(1, y / 900))
     }
 
-    window.addEventListener('pointermove', onMove, { passive: true })
+    window.addEventListener('mousemove', onMouseMove, { passive: true })
     window.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
+
+    // Particles
+    const parent = canvas.parentElement
+    const bounds = parent?.getBoundingClientRect()
+    const baseW = bounds?.width ?? 1200
+    const baseH = bounds?.height ?? 360
+
+    const starCount = Math.round((baseW * baseH) / 22000) + 40
+    const letterCount = Math.round((baseW * baseH) / 30000) + 18
+
+    const rand = (min: number, max: number) => min + Math.random() * (max - min)
+
+    type Star = { x: number; y: number; r: number; a: number; tw: number }
+    type Glyph = { x: number; y: number; s: number; vy: number; vx: number; ch: string; rot: number; vr: number; a: number }
+
+    const stars: Star[] = Array.from({ length: starCount }).map(() => ({
+      x: rand(0, baseW),
+      y: rand(0, baseH),
+      r: rand(0.6, 1.7),
+      a: rand(0.08, 0.22), // dim
+      tw: rand(0.002, 0.01),
+    }))
+
+    const glyphs: Glyph[] = Array.from({ length: letterCount }).map(() => ({
+      x: rand(0, baseW),
+      y: rand(0, baseH),
+      s: rand(10, 18),
+      vy: rand(0.04, 0.12),
+      vx: rand(-0.03, 0.03),
+      ch: letters[Math.floor(Math.random() * letters.length)],
+      rot: rand(-0.4, 0.4),
+      vr: rand(-0.002, 0.002),
+      a: rand(0.05, 0.12), // very dim
+    }))
+
+    let t = 0
+
+    const draw = () => {
+      const parentNow = canvas.parentElement
+      if (!parentNow) return
+
+      const { width, height } = parentNow.getBoundingClientRect()
+      if (width <= 0 || height <= 0) return
+
+      // Clear
+      ctx.clearRect(0, 0, width, height)
+
+      // Base background: a couple soft nebula blobs (very subtle)
+      const g1 = ctx.createRadialGradient(width * 0.25, height * 0.3, 20, width * 0.25, height * 0.3, Math.max(width, height) * 0.7)
+      g1.addColorStop(0, 'rgba(75, 58, 204, 0.10)') // nebula-violet
+      g1.addColorStop(1, 'rgba(6, 10, 42, 0.00)') // midnight-navy
+      ctx.fillStyle = g1
+      ctx.fillRect(0, 0, width, height)
+
+      const g2 = ctx.createRadialGradient(width * 0.75, height * 0.55, 20, width * 0.75, height * 0.55, Math.max(width, height) * 0.8)
+      g2.addColorStop(0, 'rgba(248, 151, 254, 0.06)') // soft-pink
+      g2.addColorStop(1, 'rgba(10, 15, 61, 0.00)') // deep-space
+      ctx.fillStyle = g2
+      ctx.fillRect(0, 0, width, height)
+
+      // Parallax offsets
+      const { mx, my, sy } = parallaxRef.current
+      const pxStars = mx * 10
+      const pyStars = my * 8 + sy * 10
+      const pxGlyphs = mx * 18
+      const pyGlyphs = my * 14 + sy * 18
+
+      // Stars (twinkle)
+      t += 1
+      for (const s of stars) {
+        const tw = 0.5 + 0.5 * Math.sin(t * s.tw)
+        ctx.globalAlpha = s.a * (0.7 + 0.6 * tw)
+        ctx.beginPath()
+        ctx.arc(s.x + pxStars, s.y + pyStars, s.r, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(237, 238, 255, 1)' // soft-white
+        ctx.fill()
+      }
+
+      // Glyphs
+      ctx.font = `600 14px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      for (const g of glyphs) {
+        // drift upward and wrap
+        g.y -= g.vy
+        g.x += g.vx
+        g.rot += g.vr
+
+        if (g.y < -40) g.y = height + 40
+        if (g.x < -40) g.x = width + 40
+        if (g.x > width + 40) g.x = -40
+
+        const x = g.x + pxGlyphs
+        const y = g.y + pyGlyphs
+
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.rotate(g.rot)
+
+        ctx.globalAlpha = g.a
+
+        // Slight glow-like effect: draw twice
+        ctx.fillStyle = 'rgba(124, 156, 255, 1)' // cool-sky-blue
+        ctx.fillText(g.ch, 0, 0)
+
+        ctx.globalAlpha = g.a * 0.6
+        ctx.fillStyle = 'rgba(147, 90, 240, 1)' // lavender-accent
+        ctx.fillText(g.ch, 1, 1)
+
+        ctx.restore()
+      }
+
+      // reset alpha
+      ctx.globalAlpha = 1
+
+      rafRef.current = requestAnimationFrame(draw)
+    }
+
+    try {
+      rafRef.current = requestAnimationFrame(draw)
+    } catch {
+      setCanvasFailed(true)
+    }
 
     return () => {
-      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('scroll', onScroll)
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [])
+  }, [letters])
 
   return (
-    <div
-      ref={rootRef}
-      aria-hidden="true"
-      className="absolute inset-0 overflow-hidden pointer-events-none"
-      style={{
-        // defaults if no mouse yet
-        // @ts-expect-error CSS vars
-        '--mx': '0',
-        '--my': '0',
-        '--sy': '0',
-      }}
-    >
-      {/* Base deep-space gradient */}
-      <div className="absolute inset-0 bg-[radial-gradient(1200px_700px_at_20%_15%,rgba(123,106,244,0.22),transparent_55%),radial-gradient(900px_600px_at_80%_25%,rgba(248,151,254,0.14),transparent_60%),linear-gradient(135deg,#060A2A,#0A0F3D_40%,#060A2A)]" />
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Fallback background if canvas fails */}
+      <div
+        className={[
+          'absolute inset-0',
+          'bg-[#0A0F3D]',
+          // subtle depth even without canvas
+          '[background-image:radial-gradient(900px_500px_at_20%_25%,rgba(75,58,204,0.22),transparent_55%),radial-gradient(900px_600px_at_80%_55%,rgba(248,151,254,0.12),transparent_60%),linear-gradient(180deg,#060A2A_0%,#0A0F3D_70%,#060A2A_100%)]',
+        ].join(' ')}
+        style={{ opacity: canvasFailed ? 1 : 0 }}
+      />
 
-      {/* Star specks */}
-      <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(rgba(237,238,255,0.85)_1px,transparent_1px)] [background-size:36px_36px]" />
-      <div className="absolute inset-0 opacity-[0.12] [background-image:radial-gradient(rgba(124,156,255,0.75)_1px,transparent_1px)] [background-size:62px_62px]" />
+      {/* Canvas layer */}
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full"
+        style={{
+          opacity: canvasFailed ? 0 : 0.55, // dim overall
+        }}
+      />
 
-      {/* Soft vignette to keep attention centered */}
-      <div className="absolute inset-0 bg-[radial-gradient(closest-side_at_50%_40%,transparent_0%,rgba(6,10,42,0.65)_70%,rgba(6,10,42,0.9)_100%)]" />
-
-      {/* Floating letters */}
-      <div className="absolute inset-0">
-        {glyphs.map((g) => {
-          const depth = g.layer === 1 ? 18 : g.layer === 2 ? 10 : 6
-          const scrollDepth = g.layer === 1 ? 10 : g.layer === 2 ? 6 : 3
-
-          return (
-            <div
-              key={g.id}
-              className="absolute select-none font-jetbrains"
-              style={{
-                left: `${g.xPct}%`,
-                top: `${g.yPct}%`,
-                transform: `
-                  translate(-50%, -50%)
-                  translate(calc(var(--mx) * ${depth}px), calc(var(--my) * ${depth}px))
-                  translate(0, calc(var(--sy) * ${scrollDepth * -1}px))
-                  rotate(${g.rotateDeg}deg)
-                `,
-                filter: `blur(${g.blurPx}px)`,
-                opacity: g.opacity,
-                fontSize: `${g.sizePx}px`,
-                letterSpacing: '-0.06em',
-                color: 'rgba(237,238,255,0.95)',
-                textShadow: '0 0 14px rgba(123,106,244,0.25)',
-                animation: `floatDrift ${g.driftSec}s ease-in-out infinite alternate`,
-                // @ts-expect-error custom property
-                '--drift': `${g.driftPx}px`,
-              }}
-            >
-              {g.ch}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Extra subtle haze to glue layers */}
-      <div className="absolute inset-0 opacity-[0.20] bg-[radial-gradient(700px_420px_at_50%_30%,rgba(124,156,255,0.08),transparent_70%)]" />
-
-      <style jsx>{`
-        @keyframes floatDrift {
-          from {
-            transform: translate(-50%, -50%)
-              translate(calc(var(--mx) * 0px), calc(var(--my) * 0px))
-              translate(0, calc(var(--sy) * 0px))
-              rotate(0deg);
-          }
-          to {
-            transform: translate(-50%, -50%)
-              translate(calc(var(--mx) * 0px), calc(var(--my) * 0px))
-              translate(var(--drift), calc(var(--drift) * -0.35))
-              rotate(2deg);
-          }
-        }
-      `}</style>
+      {/* Scrim to keep hero content readable regardless */}
+      <div className="absolute inset-0 bg-[#0A0F3D]/55" />
     </div>
   )
 }
@@ -287,11 +341,11 @@ export default function Home() {
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      {/* IMPORTANT: removed opaque bg so the cosmic background is actually visible */}
       <section className="relative overflow-hidden py-12 border-b border-[#8A8FBF]/20">
+        {/* Cosmic background ONLY for hero */}
         <CosmicHeroBackground />
 
-        {/* Content needs to be above the background */}
+        {/* Content above background */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {isLoadingFixed ? (
@@ -330,7 +384,7 @@ export default function Home() {
       <style jsx>{`
         .readerboard-card {
           position: relative;
-          background: #edeeff;
+          background: #EDEEFF;
           border-radius: 4px;
           padding: 4px;
           box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
@@ -341,7 +395,13 @@ export default function Home() {
           position: relative;
           width: 100%;
           height: 100%;
-          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
+          background: repeating-linear-gradient(
+            0deg,
+            #0A0F3D 0px,
+            #0A0F3D 28px,
+            #060A2A 28px,
+            #060A2A 30px
+          );
           border-radius: 2px;
           display: flex;
           align-items: center;
@@ -356,7 +416,7 @@ export default function Home() {
           font-weight: 600;
           line-height: 1.1;
           letter-spacing: -0.5px;
-          color: #edeeff;
+          color: #EDEEFF;
           text-align: center;
           word-wrap: break-word;
           max-width: 100%;
@@ -364,7 +424,7 @@ export default function Home() {
         }
 
         .group:hover .readerboard-text {
-          color: #7b6af4;
+          color: #7B6AF4;
           transform: scale(1.02);
         }
 
