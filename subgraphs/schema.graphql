@@ -14,6 +14,7 @@ type Markee @entity(immutable: false) {
   messageUpdateCount: BigInt!
   nameUpdateCount: BigInt!
   strategy: TopDawgStrategy
+  partnerStrategy: TopDawgPartnerStrategy
   fundsAddedEvents: [FundsAdded!]! @derivedFrom(field: "markee")
   messageUpdates: [MessageUpdate!]! @derivedFrom(field: "markee")
   nameUpdates: [NameUpdate!]! @derivedFrom(field: "markee")
@@ -24,6 +25,19 @@ type FundsAdded @entity(immutable: true) {
   markee: Markee!
   addedBy: Bytes!
   amount: BigInt!
+  newMarkeeTotal: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type PartnerFundsAdded @entity(immutable: true) {
+  id: ID!
+  markee: Markee!
+  addedBy: Bytes!
+  amount: BigInt!
+  beneficiaryAmount: BigInt!
+  revNetAmount: BigInt!
   newMarkeeTotal: BigInt!
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -63,6 +77,25 @@ type TopDawgStrategy @entity(immutable: false) {
   totalFundsRaised: BigInt!
   totalInstanceFunds: BigInt!
   markees: [Markee!]! @derivedFrom(field: "strategy")
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+}
+
+type TopDawgPartnerStrategy @entity(immutable: false) {
+  id: ID!
+  address: Bytes!
+  instanceName: String!
+  beneficiaryAddress: Bytes!
+  percentToBeneficiary: BigInt!
+  minimumPrice: BigInt!
+  maxMessageLength: BigInt!
+  maxNameLength: BigInt!
+  totalMarkeesCreated: BigInt!
+  totalFundsRaised: BigInt!
+  totalBeneficiaryFunds: BigInt!
+  totalRevNetFunds: BigInt!
+  totalInstanceFunds: BigInt!
+  markees: [Markee!]! @derivedFrom(field: "partnerStrategy")
   createdAt: BigInt!
   createdAtBlock: BigInt!
 }
@@ -107,4 +140,6 @@ type GlobalStats @entity(immutable: false) {
   totalTransactions: BigInt!
   totalFixedPriceRevenue: BigInt!
   totalFixedPriceChanges: BigInt!
+  totalPartnerFunds: BigInt!
+  totalPartnerBeneficiaryFunds: BigInt!
 }
