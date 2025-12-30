@@ -57,7 +57,7 @@ export const CONTRACTS = {
       },
       {
         name: 'Gardens Top Dawg',
-        address: '' as const,
+        address: '0x346419315740F085Ba14cA7239D82105a9a2BDBE' as const,
       },
       {
         name: 'Juicebox Top Dawg',
