@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { 
   useAccount, 
+  useBalance,
   useWriteContract, 
   useWaitForTransactionReceipt, 
   useConnect 
@@ -26,8 +27,14 @@ export function FixedPriceModal({
   fixedMarkee,
   onSuccess
 }: FixedPriceModalProps) {
-  const { isConnected, chain } = useAccount()
+  const { isConnected, chain, address } = useAccount()
   const { connectors, connect } = useConnect()
+
+  // Get user's ETH balance
+  const { data: balanceData } = useBalance({
+    address: address,
+    chainId: CANONICAL_CHAIN.id,
+  })
 
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +69,32 @@ export function FixedPriceModal({
     }
   }, [isSuccess, onClose, onSuccess])
 
+  // Check if user can afford the message change
+  const canAffordMessage = () => {
+    if (!fixedMarkee?.price || !balanceData) return false
+    
+    const priceWei = parseEther(fixedMarkee.price)
+    const estimatedGas = parseEther('0.001') // Rough estimate for gas
+    const totalNeeded = priceWei + estimatedGas
+    
+    return balanceData.value >= totalNeeded
+  }
+
+  const getInsufficientBalanceMessage = () => {
+    if (!fixedMarkee?.price || !balanceData) return null
+    
+    const priceWei = parseEther(fixedMarkee.price)
+    const estimatedGas = parseEther('0.001')
+    const totalNeeded = priceWei + estimatedGas
+    
+    if (balanceData.value < totalNeeded) {
+      const shortfall = totalNeeded - balanceData.value
+      return `Insufficient balance: need ${formatEther(totalNeeded)} ETH (${fixedMarkee.price} ETH + ~0.001 ETH gas), have ${formatEther(balanceData.value)} ETH. Short ${formatEther(shortfall)} ETH.`
+    }
+    
+    return null
+  }
+
   const handleChangeMessage = async () => {
     if (!fixedMarkee || !chain) {
       setError('Please connect your wallet')
@@ -80,6 +113,12 @@ export function FixedPriceModal({
 
     if (!fixedMarkee.price) {
       setError('Unable to load price')
+      return
+    }
+
+    // Check balance before attempting transaction
+    if (!canAffordMessage()) {
+      setError(getInsufficientBalanceMessage() || 'Insufficient balance')
       return
     }
 
@@ -104,6 +143,8 @@ export function FixedPriceModal({
   const isWrongNetwork = chain && chain.id !== CANONICAL_CHAIN.id
   const priceDisplay = fixedMarkee.price ? `${fixedMarkee.price} ETH` : '...'
   const markeeTokens = fixedMarkee.price ? parseFloat(fixedMarkee.price) * 62000 : 0
+  const insufficientBalance = !canAffordMessage()
+  const balanceWarning = getInsufficientBalanceMessage()
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -197,7 +238,26 @@ export function FixedPriceModal({
                     {priceDisplay}
                   </p>
                 </div>
+                {balanceData && (
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
+                    <p className="text-xs text-[#B8B6D9]">Your Balance</p>
+                    <p className="text-sm font-medium text-[#EDEEFF]">
+                      {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+                    </p>
+                  </div>
+                )}
               </div>
+
+              {/* Insufficient Balance Warning */}
+              {insufficientBalance && balanceWarning && !error && !isError && (
+                <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
+                    <p className="text-xs text-yellow-400">{balanceWarning}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
                 <p className="text-sm text-[#B8B6D9]">
@@ -227,7 +287,7 @@ export function FixedPriceModal({
               {/* Action */}
               <button
                 onClick={handleChangeMessage}
-                disabled={isPending || isConfirming || isSuccess || !newMessage.trim()}
+                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance}
                 className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold
                            hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:cursor-not-allowed 
                            transition flex items-center justify-center gap-2"
@@ -242,6 +302,8 @@ export function FixedPriceModal({
                     <CheckCircle2 size={20} />
                     Success!
                   </>
+                ) : insufficientBalance ? (
+                  'Insufficient Balance'
                 ) : (
                   <>
                     Change Message ({priceDisplay})
