@@ -104,15 +104,16 @@ export function usePartnerMarkees() {
                       })
                     ])
 
-                    return {
-                      address: markeeAddress,
-                      message: message as string,
-                      owner: owner as string,
-                      name: name as string,
-                      totalFundsAdded: totalFundsAdded as bigint,
-                      strategyAddress: partner.strategyAddress,
-                      chainId: base.id
-                    } as Markee
+                      return {
+                        address: markeeAddress,
+                        message: message as string,
+                        owner: owner as string,
+                        name: name as string,
+                        totalFundsAdded: totalFundsAdded as bigint,
+                        pricingStrategy: partner.strategyAddress,  // ← Add this
+                        strategyAddress: partner.strategyAddress,
+                        chainId: base.id
+                      } as Markee
                   } catch (err) {
                     console.error(`Error fetching markee ${markeeAddress}:`, err)
                     return null
