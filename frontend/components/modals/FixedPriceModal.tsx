@@ -166,7 +166,7 @@ export function FixedPriceModal({
   
   const currentLength = newMessage.length
   const maxLength = maxMessageLength ? Number(maxMessageLength) : null
-  const isOverLimit = maxLength && currentLength > maxLength
+  const isOverLimit = !!(maxLength && currentLength > maxLength)
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
