@@ -5,18 +5,18 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 
 export default function Ecosystem() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#060A2A]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center">
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/how-it-works" className="text-gray-600 hover:text-gray-900">How it Works</Link>
-              <Link href="/ecosystem" className="text-markee font-medium">Ecosystem</Link>
-              <Link href="/owners" className="text-gray-600 hover:text-gray-900">Owners</Link>
+              <Link href="/how-it-works" className="text-[#B8B6D9] hover:text-[#F897FE]">How it Works</Link>
+              <Link href="/ecosystem" className="text-[#F897FE] font-medium">Ecosystem</Link>
+              <Link href="/owners" className="text-[#B8B6D9] hover:text-[#F897FE]">Owners</Link>
             </nav>
           </div>
           <ConnectButton />
@@ -24,58 +24,58 @@ export default function Ecosystem() {
       </header>
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-markee-50 to-green-50 py-16 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-[#172090] to-[#4B3ACC] py-16 border-b border-[#8A8FBF]/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">Markee Ecosystem</h1>
-          <p className="text-xl text-gray-700 mb-8">
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Markee Ecosystem</h1>
+          <p className="text-xl text-[#B8B6D9] mb-8">
             A growing network of platforms and communities using Markee to monetize their digital real estate for their users and themselves.
           </p>
         </div>
       </section>
 
       {/* Active Markees */}
-      <section className="py-16 bg-white border-b border-gray-200">
+      <section className="py-16 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">Live Markees</h2>
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Live Markees</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
             {/* Markee Home */}
             <Link href="/" className="group">
-              <div className="bg-white rounded-lg shadow-md border-2 border-markee-200 hover:border-markee-400 hover:shadow-lg transition-all p-6">
+              <div className="bg-[#060A2A] rounded-lg shadow-md border-2 border-[#F897FE]/30 hover:border-[#F897FE] hover:shadow-lg hover:shadow-[#F897FE]/20 transition-all p-6">
                 <div className="flex items-center gap-4 mb-4">
                   <img src="/markee-logo.png" alt="Markee" className="h-12 w-auto" />
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900 group-hover:text-markee transition-colors">Markee Home</h3>
-                    <p className="text-sm text-gray-600">markee.xyz</p>
+                    <h3 className="text-xl font-bold text-[#EDEEFF] group-hover:text-[#F897FE] transition-colors">Markee Home</h3>
+                    <p className="text-sm text-[#8A8FBF]">markee.xyz</p>
                   </div>
                 </div>
-                <p className="text-gray-700 mb-4">
+                <p className="text-[#B8B6D9] mb-4">
                   The home leaderboard where early believers invest directly into the Cooperative's RevNet. All funds flow 100% to the RevNet.
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-markee">View Leaderboard →</span>
-                  <span className="text-xs text-gray-500">Leaderboard Strategy</span>
+                  <span className="text-sm font-semibold text-[#F897FE]">View Leaderboard →</span>
+                  <span className="text-xs text-[#8A8FBF]">Leaderboard Strategy</span>
                 </div>
               </div>
             </Link>
 
             {/* Fixed Price Demo */}
-            <div className="bg-white rounded-lg shadow-md border-2 border-green-200 p-6">
+            <div className="bg-[#060A2A] rounded-lg shadow-md border-2 border-[#7C9CFF]/30 hover:border-[#7C9CFF] hover:shadow-lg hover:shadow-[#7C9CFF]/20 transition-all p-6">
               <div className="flex items-center gap-4 mb-4">
-                <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center text-2xl">
+                <div className="h-12 w-12 bg-[#7C9CFF]/20 rounded-lg flex items-center justify-center text-2xl">
                   🪧
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Fixed Price Messages</h3>
-                  <p className="text-sm text-gray-600">markee.xyz</p>
+                  <h3 className="text-xl font-bold text-[#EDEEFF]">Fixed Price Messages</h3>
+                  <p className="text-sm text-[#8A8FBF]">markee.xyz</p>
                 </div>
               </div>
-              <p className="text-gray-700 mb-4">
+              <p className="text-[#B8B6D9] mb-4">
                 Simple, set-price messages anyone can update. Perfect for community announcements and rotating content.
               </p>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-green-600">See on Homepage →</span>
-                <span className="text-xs text-gray-500">Fixed Strategy</span>
+                <span className="text-sm font-semibold text-[#7C9CFF]">See on Homepage →</span>
+                <span className="text-xs text-[#8A8FBF]">Fixed Strategy</span>
               </div>
             </div>
           </div>
@@ -83,10 +83,10 @@ export default function Ecosystem() {
       </section>
 
       {/* Coming Soon Integrations */}
-      <section className="py-16 bg-gray-50 border-b border-gray-200">
+      <section className="py-16 bg-[#060A2A] border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4 text-center">Platform Integrations</h2>
-          <p className="text-center text-gray-600 mb-12 max-w-3xl mx-auto">
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Platform Integrations</h2>
+          <p className="text-center text-[#8A8FBF] mb-12 max-w-3xl mx-auto">
             We're working with leading web3 platforms to bring Markee to their communities. These integrations will enable seamless revenue sharing and community funding.
           </p>
 
@@ -117,28 +117,28 @@ export default function Ecosystem() {
             />
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-8 max-w-3xl mx-auto">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">What's Coming with Platform Integrations</h3>
-            <ul className="space-y-3 text-gray-700">
+          <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 max-w-3xl mx-auto border border-[#8A8FBF]/20">
+            <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">What's Coming with Platform Integrations</h3>
+            <ul className="space-y-3 text-[#B8B6D9]">
               <li className="flex items-start gap-3">
-                <span className="text-markee font-bold mt-1">✓</span>
-                <span><strong>Native Integration:</strong> Markees embedded directly in platform UI</span>
+                <span className="text-[#F897FE] font-bold mt-1">✓</span>
+                <span><strong className="text-[#EDEEFF]">Native Integration:</strong> Markees embedded directly in platform UI</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-markee font-bold mt-1">✓</span>
-                <span><strong>Custom Revenue Splits:</strong> Platforms set their own community funding ratios</span>
+                <span className="text-[#F897FE] font-bold mt-1">✓</span>
+                <span><strong className="text-[#EDEEFF]">Custom Revenue Splits:</strong> Platforms set their own community funding ratios</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-markee font-bold mt-1">✓</span>
-                <span><strong>Automated Tokenomics:</strong> RevNet handles all payments and token distribution</span>
+                <span className="text-[#F897FE] font-bold mt-1">✓</span>
+                <span><strong className="text-[#EDEEFF]">Automated Tokenomics:</strong> RevNet handles all payments and token distribution</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-markee font-bold mt-1">✓</span>
-                <span><strong>Community Governance:</strong> Token holders vote on cooperative decisions</span>
+                <span className="text-[#F897FE] font-bold mt-1">✓</span>
+                <span><strong className="text-[#EDEEFF]">Community Governance:</strong> Token holders vote on cooperative decisions</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-markee font-bold mt-1">✓</span>
-                <span><strong>Cross-Platform Visibility:</strong> Messages visible across the entire Markee ecosystem</span>
+                <span className="text-[#F897FE] font-bold mt-1">✓</span>
+                <span><strong className="text-[#EDEEFF]">Cross-Platform Visibility:</strong> Messages visible across the entire Markee ecosystem</span>
               </li>
             </ul>
           </div>
@@ -146,39 +146,39 @@ export default function Ecosystem() {
       </section>
 
       {/* Add Your Platform CTA */}
-      <section className="py-16 bg-gradient-to-br from-markee-50 to-green-50">
+      <section className="py-16 bg-gradient-to-br from-[#172090] to-[#4B3ACC]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-xl shadow-lg p-8 md:p-12 text-center">
+          <div className="bg-[#0A0F3D] rounded-xl shadow-lg border border-[#8A8FBF]/20 p-8 md:p-12 text-center">
             <div className="text-5xl mb-6">🚀</div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Want Markee on Your Platform?</h2>
-            <p className="text-lg text-gray-700 mb-8 max-w-2xl mx-auto">
+            <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4">Want Markee on Your Platform?</h2>
+            <p className="text-lg text-[#B8B6D9] mb-8 max-w-2xl mx-auto">
               Join our waitlist to integrate Markee into your platform or community. Get early access, technical support, and help shape the future of open-source digital marketing.
             </p>
             
             <div className="space-y-4 mb-8">
-              <div className="flex items-center justify-center gap-3 text-gray-700">
-                <span className="text-markee">✓</span>
+              <div className="flex items-center justify-center gap-3 text-[#B8B6D9]">
+                <span className="text-[#F897FE]">✓</span>
                 <span>Priority integration support</span>
               </div>
-              <div className="flex items-center justify-center gap-3 text-gray-700">
-                <span className="text-markee">✓</span>
+              <div className="flex items-center justify-center gap-3 text-[#B8B6D9]">
+                <span className="text-[#F897FE]">✓</span>
                 <span>Custom revenue sharing options</span>
               </div>
-              <div className="flex items-center justify-center gap-3 text-gray-700">
-                <span className="text-markee">✓</span>
+              <div className="flex items-center justify-center gap-3 text-[#B8B6D9]">
+                <span className="text-[#F897FE]">✓</span>
                 <span>Technical documentation and APIs</span>
               </div>
             </div>
 
             <a 
               href="mailto:hello@markee.xyz?subject=Platform%20Integration%20Waitlist"
-              className="inline-block bg-markee text-white px-8 py-4 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors mb-4"
+              className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors mb-4"
             >
               Join the Waitlist
             </a>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-[#8A8FBF]">
               Or email us directly at{' '}
-              <a href="mailto:hello@markee.xyz" className="text-markee hover:underline font-semibold">
+              <a href="mailto:hello@markee.xyz" className="text-[#F897FE] hover:underline font-semibold">
                 hello@markee.xyz
               </a>
             </p>
@@ -194,12 +194,12 @@ export default function Ecosystem() {
 
 function PartnerCard({ logo, name, status, description }: { logo: string; name: string; status: string; description: string }) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+    <div className="bg-[#0A0F3D] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group">
       <div className="flex flex-col items-center text-center">
-        <img src={logo} alt={name} className="h-16 object-contain mb-4" />
-        <h3 className="font-bold text-gray-900 mb-1">{name}</h3>
-        <p className="text-xs text-gray-600 mb-2">{description}</p>
-        <span className="text-xs font-semibold text-markee bg-markee-50 px-3 py-1 rounded-full">
+        <img src={logo} alt={name} className="h-16 object-contain mb-4 group-hover:scale-110 transition-transform" />
+        <h3 className="font-bold text-[#EDEEFF] mb-1">{name}</h3>
+        <p className="text-xs text-[#8A8FBF] mb-2">{description}</p>
+        <span className="text-xs font-semibold text-[#F897FE] bg-[#F897FE]/10 px-3 py-1 rounded-full">
           {status}
         </span>
       </div>
@@ -209,7 +209,7 @@ function PartnerCard({ logo, name, status, description }: { logo: string; name: 
 
 function Footer() {
   return (
-    <footer className="bg-gray-900 text-white py-8">
+    <footer className="bg-[#0A0F3D] text-[#EDEEFF] py-8 border-t border-[#8A8FBF]/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center">
           <div className="flex gap-6 mb-4">
@@ -217,7 +217,7 @@ function Footer() {
               href="https://x.com/markee_xyz" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="X (Twitter)"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -228,7 +228,7 @@ function Footer() {
               href="https://discord.gg/UhhRDzwwkM" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="Discord"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -239,7 +239,7 @@ function Footer() {
               href="https://t.me/+pRiD0TURr5o5ZmUx" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="Telegram"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -250,7 +250,7 @@ function Footer() {
               href="https://warpcast.com/markee" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="Farcaster"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -258,7 +258,7 @@ function Footer() {
               </svg>
             </a>
           </div>
-          <div className="text-sm text-gray-400">
+          <div className="text-sm text-[#8A8FBF]">
             © 2026 Markee
           </div>
         </div>
