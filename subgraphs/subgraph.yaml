@@ -2,7 +2,7 @@ specVersion: 0.0.5
 schema:
   file: ./schema.graphql
 dataSources:
-  # TopDawgStrategy - DirectToRevnet Leaderboard (Cooperative)
+  # TopDawgStrategy - Markee Cooperative home message for markee.xyz
   - kind: ethereum
     name: TopDawgStrategy
     network: base
