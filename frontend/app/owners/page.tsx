@@ -11,35 +11,35 @@ const PHASES = [
     rate: 50000, 
     endDate: new Date('2025-12-21T00:00:00Z'),
     label: 'Phase 0',
-    color: 'bg-markee'
+    color: 'bg-[#F897FE]'
   },
   { 
     phase: 1, 
     rate: 30000, 
     endDate: new Date('2026-03-21T00:00:00Z'),
     label: 'Phase 1',
-    color: 'bg-markee-600'
+    color: 'bg-[#935AF0]'
   },
   { 
     phase: 2, 
     rate: 24000, 
     endDate: new Date('2026-06-21T00:00:00Z'),
     label: 'Phase 2',
-    color: 'bg-markee-700'
+    color: 'bg-[#7B6AF4]'
   },
   { 
     phase: 3, 
     rate: 20000, 
     endDate: new Date('2026-09-21T00:00:00Z'),
     label: 'Phase 3',
-    color: 'bg-markee-800'
+    color: 'bg-[#6A4AE3]'
   },
   { 
     phase: 4, 
     rate: 17000, 
     endDate: new Date('2026-12-21T00:00:00Z'),
     label: 'Phase 4',
-    color: 'bg-markee-900'
+    color: 'bg-[#4B3ACC]'
   },
 ]
 
@@ -55,18 +55,18 @@ function getCurrentPhase() {
 
 export default function Owners() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#060A2A]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center">
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
             </Link>
             <nav className="flex gap-6">
-              <Link href="/how-it-works" className="text-gray-600 hover:text-gray-900">How it Works</Link>
-              <Link href="/ecosystem" className="text-gray-600 hover:text-gray-900">Ecosystem</Link>
-              <Link href="/owners" className="text-markee font-medium">Owners</Link>
+              <Link href="/how-it-works" className="text-[#B8B6D9] hover:text-[#F897FE]">How it Works</Link>
+              <Link href="/ecosystem" className="text-[#B8B6D9] hover:text-[#F897FE]">Ecosystem</Link>
+              <Link href="/owners" className="text-[#F897FE] font-medium">Owners</Link>
             </nav>
           </div>
           <ConnectButton />
@@ -74,17 +74,17 @@ export default function Owners() {
       </header>
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-markee-50 to-green-50 py-16 border-b border-gray-200">
+      <section className="bg-gradient-to-br from-[#172090] to-[#4B3ACC] py-16 border-b border-[#8A8FBF]/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">Ownership Structure</h1>
-          <p className="text-xl text-gray-700">
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Ownership Structure</h1>
+          <p className="text-xl text-[#B8B6D9]">
             Markee is owned by a Digital Cooperative powered by RevNets, permissionlessly shifting ownership from the founding team to the community as revenue is generated.
           </p>
         </div>
       </section>
 
       {/* Countdown and Phase Visualization */}
-      <section className="bg-white py-12 border-b border-gray-200">
+      <section className="bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <CountdownTimer />
           <PhaseVisualization />
@@ -92,31 +92,31 @@ export default function Owners() {
       </section>
 
       {/* Ownership Model */}
-      <section className="py-16 bg-gray-50 border-b border-gray-200">
+      <section className="py-16 bg-[#060A2A] border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">Two-Entity Structure</h2>
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Two-Entity Structure</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
             {/* LLC */}
-            <div className="bg-white rounded-lg shadow-md p-8 border-l-4 border-blue-600">
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Markee LLC</h3>
-              <p className="text-sm text-gray-600 mb-4">Wyoming Series LLC</p>
+            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border-l-4 border-[#7C9CFF]">
+              <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Markee LLC</h3>
+              <p className="text-sm text-[#8A8FBF] mb-4">Wyoming Series LLC</p>
               
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Ownership</h4>
-                  <p className="text-gray-700">Owned by the founders</p>
+                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Ownership</h4>
+                  <p className="text-[#B8B6D9]">Owned by the founders</p>
                 </div>
                 
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Token Allocation</h4>
-                  <p className="text-gray-700">One-time allocation of 50M MARKEE tokens at launch</p>
-                  <p className="text-sm text-gray-600 mt-1">No further RevNet allocations</p>
+                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Token Allocation</h4>
+                  <p className="text-[#B8B6D9]">One-time allocation of 50M MARKEE tokens at launch</p>
+                  <p className="text-sm text-[#8A8FBF] mt-1">No further RevNet allocations</p>
                 </div>
                 
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Role</h4>
-                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Role</h4>
+                  <ul className="list-disc pl-5 space-y-1 text-[#B8B6D9]">
                     <li>Operates the platform</li>
                     <li>Maintains infrastructure</li>
                     <li>Develops integrations</li>
@@ -126,25 +126,25 @@ export default function Owners() {
             </div>
 
             {/* Cooperative */}
-            <div className="bg-white rounded-lg shadow-md p-8 border-l-4 border-markee">
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Markee LCA</h3>
-              <p className="text-sm text-gray-600 mb-4">Colorado Limited Cooperative Association</p>
+            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border-l-4 border-[#F897FE]">
+              <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Markee LCA</h3>
+              <p className="text-sm text-[#8A8FBF] mb-4">Colorado Limited Cooperative Association</p>
               
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Ownership</h4>
-                  <p className="text-gray-700">Owned by MARKEE token holders</p>
+                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Ownership</h4>
+                  <p className="text-[#B8B6D9]">Owned by MARKEE token holders</p>
                 </div>
                 
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Token Allocation</h4>
-                  <p className="text-gray-700">Receives 32% of all future RevNet tokens from revenue</p>
-                  <p className="text-sm text-gray-600 mt-1">Ongoing allocation as revenue grows</p>
+                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Token Allocation</h4>
+                  <p className="text-[#B8B6D9]">Receives 32% of all future RevNet tokens from revenue</p>
+                  <p className="text-sm text-[#8A8FBF] mt-1">Ongoing allocation as revenue grows</p>
                 </div>
                 
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Governance</h4>
-                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Governance</h4>
+                  <ul className="list-disc pl-5 space-y-1 text-[#B8B6D9]">
                     <li>Board of Directors elected by token holders</li>
                     <li>Managed via Gardens with onchain covenant</li>
                     <li>Controls distribution settings</li>
@@ -154,9 +154,9 @@ export default function Owners() {
             </div>
           </div>
 
-          <div className="bg-markee-50 rounded-lg p-6 max-w-3xl mx-auto">
-            <h4 className="font-bold text-gray-900 mb-2">Progressive Ownership Shift</h4>
-            <p className="text-gray-700">
+          <div className="bg-[#F897FE]/10 rounded-lg p-6 max-w-3xl mx-auto border border-[#F897FE]/20">
+            <h4 className="font-bold text-[#EDEEFF] mb-2">Progressive Ownership Shift</h4>
+            <p className="text-[#B8B6D9]">
               As revenue grows and/or the LLC redeems tokens for operational expenses, ownership progressively shifts toward the cooperative and its token holders. This creates a path toward community ownership over time.
             </p>
           </div>
@@ -164,49 +164,49 @@ export default function Owners() {
       </section>
 
       {/* Reserve Rate Distribution */}
-      <section className="py-16 bg-white border-b border-gray-200">
+      <section className="py-16 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">Reserve Rate & Distribution</h2>
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Reserve Rate & Distribution</h2>
           
-          <div className="bg-white rounded-lg shadow-md p-8 border border-gray-200 mb-8">
+          <div className="bg-[#060A2A] rounded-lg shadow-md p-8 border border-[#8A8FBF]/20 mb-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-4">From Every Payment</h3>
+                <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">From Every Payment</h3>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded">
-                    <span className="font-semibold text-gray-900">Buyer/Platform</span>
-                    <span className="text-2xl font-bold text-blue-600">68%</span>
+                  <div className="flex items-center justify-between p-3 bg-[#7C9CFF]/10 rounded border border-[#7C9CFF]/20">
+                    <span className="font-semibold text-[#EDEEFF]">Buyer/Platform</span>
+                    <span className="text-2xl font-bold text-[#7C9CFF]">68%</span>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-markee-50 rounded">
-                    <span className="font-semibold text-gray-900">Cooperative</span>
-                    <span className="text-2xl font-bold text-markee">32%</span>
+                  <div className="flex items-center justify-between p-3 bg-[#F897FE]/10 rounded border border-[#F897FE]/20">
+                    <span className="font-semibold text-[#EDEEFF]">Cooperative</span>
+                    <span className="text-2xl font-bold text-[#F897FE]">32%</span>
                   </div>
                 </div>
               </div>
 
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Cooperative's 32% Goes To</h3>
+                <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">Cooperative's 32% Goes To</h3>
                 <div className="space-y-3">
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="font-semibold text-gray-900 mb-1">Platform Partners</div>
-                    <p className="text-sm text-gray-600">Share based on integration terms</p>
+                  <div className="p-3 bg-[#0A0F3D] rounded border border-[#8A8FBF]/20">
+                    <div className="font-semibold text-[#EDEEFF] mb-1">Platform Partners</div>
+                    <p className="text-sm text-[#8A8FBF]">Share based on integration terms</p>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="font-semibold text-gray-900 mb-1">Cooperative Members</div>
-                    <p className="text-sm text-gray-600">Token holders via patronage dividends</p>
+                  <div className="p-3 bg-[#0A0F3D] rounded border border-[#8A8FBF]/20">
+                    <div className="font-semibold text-[#EDEEFF] mb-1">Cooperative Members</div>
+                    <p className="text-sm text-[#8A8FBF]">Token holders via patronage dividends</p>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="font-semibold text-gray-900 mb-1">Markee Builders</div>
-                    <p className="text-sm text-gray-600">Development and operations</p>
+                  <div className="p-3 bg-[#0A0F3D] rounded border border-[#8A8FBF]/20">
+                    <div className="font-semibold text-[#EDEEFF] mb-1">Markee Builders</div>
+                    <p className="text-sm text-[#8A8FBF]">Development and operations</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-green-50 rounded-lg p-6 max-w-3xl mx-auto">
-            <h4 className="font-bold text-gray-900 mb-2">Governed by Token Holders</h4>
-            <p className="text-gray-700">
+          <div className="bg-[#7C9CFF]/10 rounded-lg p-6 max-w-3xl mx-auto border border-[#7C9CFF]/20">
+            <h4 className="font-bold text-[#EDEEFF] mb-2">Governed by Token Holders</h4>
+            <p className="text-[#B8B6D9]">
               The cooperative's Board of Directors (elected by MARKEE token holders) can adjust distribution settings through governance votes on Gardens. This ensures the community controls how cooperative reserves are allocated.
             </p>
           </div>
@@ -214,16 +214,16 @@ export default function Owners() {
       </section>
 
       {/* Charts Placeholder */}
-      <section className="py-16 bg-gray-50 border-b border-gray-200">
+      <section className="py-16 bg-[#060A2A] border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">Ownership Dynamics</h2>
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Ownership Dynamics</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Chart placeholder 1 */}
-            <div className="bg-white rounded-lg shadow-md p-8 border border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Price Ceiling vs Floor</h3>
-              <div className="aspect-video bg-gray-100 rounded flex items-center justify-center">
-                <div className="text-center text-gray-500">
+            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border border-[#8A8FBF]/20">
+              <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">Price Ceiling vs Floor</h3>
+              <div className="aspect-video bg-[#060A2A] rounded flex items-center justify-center border border-[#8A8FBF]/20">
+                <div className="text-center text-[#8A8FBF]">
                   <div className="text-4xl mb-2">📊</div>
                   <p>Chart Coming Soon</p>
                   <p className="text-sm mt-2">Showing price ceiling divergence<br />from floor price over time</p>
@@ -232,10 +232,10 @@ export default function Owners() {
             </div>
 
             {/* Chart placeholder 2 */}
-            <div className="bg-white rounded-lg shadow-md p-8 border border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">LLC vs Cooperative Ownership</h3>
-              <div className="aspect-video bg-gray-100 rounded flex items-center justify-center">
-                <div className="text-center text-gray-500">
+            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border border-[#8A8FBF]/20">
+              <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">LLC vs Cooperative Ownership</h3>
+              <div className="aspect-video bg-[#060A2A] rounded flex items-center justify-center border border-[#8A8FBF]/20">
+                <div className="text-center text-[#8A8FBF]">
                   <div className="text-4xl mb-2">📈</div>
                   <p>Chart Coming Soon</p>
                   <p className="text-sm mt-2">Showing ownership shift<br />from LLC to Cooperative</p>
@@ -247,17 +247,17 @@ export default function Owners() {
       </section>
 
       {/* RevNet Terms Link */}
-      <section className="py-12 bg-white">
+      <section className="py-12 bg-[#0A0F3D]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h3 className="text-2xl font-bold text-gray-900 mb-4">Full RevNet Terms</h3>
-          <p className="text-gray-700 mb-6">
+          <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Full RevNet Terms</h3>
+          <p className="text-[#B8B6D9] mb-6">
             View complete tokenomics, reserve rates, and governance parameters on-chain.
           </p>
           <a 
             href="https://app.revnet.eth.sucks/v5:op:52/terms" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="inline-block bg-markee text-white px-8 py-3 rounded-lg font-semibold hover:bg-markee-600 transition-colors"
+            className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
           >
             View on RevNets →
           </a>
@@ -298,26 +298,26 @@ function CountdownTimer() {
 
   return (
     <div className="text-center mb-8">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <h2 className="text-2xl font-bold text-[#EDEEFF] mb-2">
         Token Issuance Schedule
       </h2>
-      <p className="text-gray-600 mb-6">Next price increase in:</p>
+      <p className="text-[#8A8FBF] mb-6">Next price increase in:</p>
       <div className="flex justify-center gap-4 mb-8">
-        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-markee">{timeLeft.days}</div>
-          <div className="text-sm text-gray-600">Days</div>
+        <div className="bg-[#060A2A] rounded-lg shadow-md p-4 min-w-[80px] border border-[#8A8FBF]/20">
+          <div className="text-3xl font-bold text-[#F897FE]">{timeLeft.days}</div>
+          <div className="text-sm text-[#8A8FBF]">Days</div>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-markee">{timeLeft.hours}</div>
-          <div className="text-sm text-gray-600">Hours</div>
+        <div className="bg-[#060A2A] rounded-lg shadow-md p-4 min-w-[80px] border border-[#8A8FBF]/20">
+          <div className="text-3xl font-bold text-[#F897FE]">{timeLeft.hours}</div>
+          <div className="text-sm text-[#8A8FBF]">Hours</div>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-markee">{timeLeft.minutes}</div>
-          <div className="text-sm text-gray-600">Minutes</div>
+        <div className="bg-[#060A2A] rounded-lg shadow-md p-4 min-w-[80px] border border-[#8A8FBF]/20">
+          <div className="text-3xl font-bold text-[#F897FE]">{timeLeft.minutes}</div>
+          <div className="text-sm text-[#8A8FBF]">Minutes</div>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-4 min-w-[80px]">
-          <div className="text-3xl font-bold text-markee">{timeLeft.seconds}</div>
-          <div className="text-sm text-gray-600">Seconds</div>
+        <div className="bg-[#060A2A] rounded-lg shadow-md p-4 min-w-[80px] border border-[#8A8FBF]/20">
+          <div className="text-3xl font-bold text-[#F897FE]">{timeLeft.seconds}</div>
+          <div className="text-sm text-[#8A8FBF]">Seconds</div>
         </div>
       </div>
     </div>
@@ -330,14 +330,14 @@ function PhaseVisualization() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">MARKEE Token Issuance Phases</h3>
+      <div className="bg-[#060A2A] rounded-xl shadow-lg p-8 border border-[#8A8FBF]/20">
+        <h3 className="text-xl font-bold text-[#EDEEFF] mb-6 text-center">MARKEE Token Issuance Phases</h3>
 
         {/* Progress Bar */}
         <div className="relative mb-8">
-          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+          <div className="h-3 bg-[#0A0F3D] rounded-full overflow-hidden border border-[#8A8FBF]/20">
             <div 
-              className="h-full bg-gradient-to-r from-markee via-markee-600 to-markee-700 transition-all duration-1000"
+              className="h-full bg-gradient-to-r from-[#F897FE] via-[#935AF0] to-[#7B6AF4] transition-all duration-1000"
               style={{ 
                 width: `${((currentPhaseIndex + 1) / PHASES.length) * 100}%` 
               }}
@@ -357,15 +357,15 @@ function PhaseVisualization() {
                 key={phase.phase}
                 className={`relative rounded-lg p-4 border-2 transition-all ${
                   isCurrent
-                    ? 'border-markee bg-markee-50 shadow-lg scale-105'
+                    ? 'border-[#F897FE] bg-[#F897FE]/10 shadow-lg shadow-[#F897FE]/20 scale-105'
                     : isPast
-                    ? 'border-gray-300 bg-gray-100 opacity-60'
-                    : 'border-gray-300 bg-white opacity-50'
+                    ? 'border-[#8A8FBF]/30 bg-[#0A0F3D] opacity-60'
+                    : 'border-[#8A8FBF]/30 bg-[#0A0F3D] opacity-50'
                 }`}
               >
                 {isCurrent && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-markee text-white text-xs font-bold px-3 py-1 rounded-full">
+                    <span className="bg-[#F897FE] text-[#060A2A] text-xs font-bold px-3 py-1 rounded-full">
                       ACTIVE
                     </span>
                   </div>
@@ -375,17 +375,17 @@ function PhaseVisualization() {
 
                 <div className="text-center">
                   <div className={`text-sm font-semibold mb-1 ${
-                    isCurrent ? 'text-markee' : 'text-gray-600'
+                    isCurrent ? 'text-[#F897FE]' : 'text-[#8A8FBF]'
                   }`}>
                     {phase.label}
                   </div>
                   <div className={`text-2xl font-bold mb-1 ${
-                    isCurrent ? 'text-gray-900' : 'text-gray-500'
+                    isCurrent ? 'text-[#EDEEFF]' : 'text-[#8A8FBF]'
                   }`}>
                     {phase.rate.toLocaleString()}
                   </div>
-                  <div className="text-xs text-gray-500">MARKEE / ETH</div>
-                  <div className="text-xs text-gray-400 mt-2">
+                  <div className="text-xs text-[#8A8FBF]">MARKEE / ETH</div>
+                  <div className="text-xs text-[#8A8FBF] mt-2">
                     {isPast ? 'Ended' : isFuture ? 'Upcoming' : 'Ends'} {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                 </div>
@@ -397,11 +397,11 @@ function PhaseVisualization() {
         <div className="mt-6 text-center">
           <Link 
             href="/"
-            className="bg-markee text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-markee-600 transition-colors inline-block"
+            className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors inline-block"
           >
             Buy a Message to Join
           </Link>
-          <p className="text-sm text-gray-500 mt-2">
+          <p className="text-sm text-[#8A8FBF] mt-2">
             Phases are preset in the Cooperative's RevNet
           </p>
         </div>
@@ -412,7 +412,7 @@ function PhaseVisualization() {
 
 function Footer() {
   return (
-    <footer className="bg-gray-900 text-white py-8">
+    <footer className="bg-[#0A0F3D] text-[#EDEEFF] py-8 border-t border-[#8A8FBF]/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center">
           <div className="flex gap-6 mb-4">
@@ -420,7 +420,7 @@ function Footer() {
               href="https://x.com/markee_xyz" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="X (Twitter)"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -431,7 +431,7 @@ function Footer() {
               href="https://discord.gg/UhhRDzwwkM" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="Discord"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -442,7 +442,7 @@ function Footer() {
               href="https://t.me/+pRiD0TURr5o5ZmUx" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="Telegram"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -453,7 +453,7 @@ function Footer() {
               href="https://warpcast.com/markee" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="hover:text-markee transition-colors"
+              className="hover:text-[#F897FE] transition-colors"
               aria-label="Farcaster"
             >
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -461,7 +461,7 @@ function Footer() {
               </svg>
             </a>
           </div>
-          <div className="text-sm text-gray-400">
+          <div className="text-sm text-[#8A8FBF]">
             © 2026 Markee
           </div>
         </div>
