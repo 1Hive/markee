@@ -15,19 +15,19 @@ export const MARKEE_TOKEN = '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807' as cons
 // Users receive tokens on the chain they pay from
 export const REVNET_CONFIG = {
   [base.id]: {
-    projectId: 52,
+    projectId: 119,
     terminal: JB_TERMINAL,
   },
   [optimism.id]: {
-    projectId: 52,
+    projectId: 63,
     terminal: JB_TERMINAL,
   },
   [arbitrum.id]: {
-    projectId: 55,
+    projectId: 62,
     terminal: JB_TERMINAL,
   },
   [mainnet.id]: {
-    projectId: 33,
+    projectId: 56,
     terminal: JB_TERMINAL,
   },
 } as const
