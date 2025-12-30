@@ -89,7 +89,7 @@ export function FixedPriceModal({
     
     if (balanceData.value < totalNeeded) {
       const shortfall = totalNeeded - balanceData.value
-      return `Insufficient balance: need ${formatEther(totalNeeded)} ETH (${fixedMarkee.price} ETH + ~0.001 ETH gas), have ${formatEther(balanceData.value)} ETH. Short ${formatEther(shortfall)} ETH.`
+      return `You need more ETH to complete this transaction.`
     }
     
     return null
