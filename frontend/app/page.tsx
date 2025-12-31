@@ -103,9 +103,35 @@ export default function Home() {
     setSelectedFixedMarkee(null)
   }
 
+  
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" />
+
+{/* TEST SECTION - REMOVE AFTER TESTING */}
+<div style={{ 
+  position: 'relative', 
+  zIndex: 99999, 
+  background: 'red', 
+  padding: '20px',
+  margin: '20px'
+}}>
+  <div style={{ marginBottom: '10px' }}>
+    <a href="/how-it-works" style={{ color: 'white', fontSize: '24px', textDecoration: 'underline' }}>
+      TEST 1: Regular &lt;a&gt; tag to /how-it-works
+    </a>
+  </div>
+  <div style={{ marginBottom: '10px' }}>
+    <Link href="/how-it-works" style={{ color: 'yellow', fontSize: '24px', textDecoration: 'underline' }}>
+      TEST 2: Next.js Link to /how-it-works
+    </Link>
+  </div>
+  <div>
+    <button onClick={() => alert('CLICKED!')} style={{ color: 'lime', fontSize: '24px', cursor: 'pointer' }}>
+      TEST 3: onClick handler
+    </button>
+  </div>
+</div>
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
       <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
