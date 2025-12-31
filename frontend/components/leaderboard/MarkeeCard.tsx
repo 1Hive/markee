@@ -333,23 +333,15 @@ export function MarkeeCard({
 
         {/* Stats and Actions at bottom */}
         <div className="flex items-center justify-between pt-4 border-t border-[#8A8FBF]/30">
-          <MarkeeStats 
-            messageViews={messageViews}
-            totalViews={totalViews}
-            ethAmount={markee.totalFundsAdded}
-            rank={rank}
-            size={size}
-          />
-
-          <div className="flex gap-2">
-            {isOwner && (
-              <button 
-                onClick={() => onEditMessage?.(markee)}
-                className="text-xs px-3 py-1.5 bg-[#0A0F3D] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
-              >
-                Edit Message
-              </button>
-            )}
+          <div className="flex items-center gap-3">
+            <MarkeeStats 
+              messageViews={messageViews}
+              totalViews={totalViews}
+              ethAmount={markee.totalFundsAdded}
+              rank={rank}
+              size={size}
+            />
+            
             <button 
               onClick={() => onAddFunds?.(markee)}
               className="text-xs px-3 py-1.5 bg-[#0A0F3D] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
@@ -357,6 +349,15 @@ export function MarkeeCard({
               Add Funds
             </button>
           </div>
+
+          {isOwner && (
+            <button 
+              onClick={() => onEditMessage?.(markee)}
+              className="text-xs px-3 py-1.5 bg-[#0A0F3D] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
+            >
+              Edit Message
+            </button>
+          )}
         </div>
       </div>
     )
@@ -400,17 +401,24 @@ export function MarkeeCard({
 
         {/* Stats and Actions at bottom */}
         <div className="pt-3 border-t border-[#8A8FBF]/20">
-          <div className="mb-2">
-            <MarkeeStats 
-              messageViews={messageViews}
-              totalViews={totalViews}
-              ethAmount={markee.totalFundsAdded}
-              rank={rank}
-              size={size}
-            />
-          </div>
-          
-          <div className="flex gap-2 justify-end">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <MarkeeStats 
+                messageViews={messageViews}
+                totalViews={totalViews}
+                ethAmount={markee.totalFundsAdded}
+                rank={rank}
+                size={size}
+              />
+              
+              <button 
+                onClick={() => onAddFunds?.(markee)}
+                className="text-xs px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
+              >
+                Add Funds
+              </button>
+            </div>
+            
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
@@ -419,12 +427,6 @@ export function MarkeeCard({
                 Edit Message
               </button>
             )}
-            <button 
-              onClick={() => onAddFunds?.(markee)}
-              className="text-xs px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
-            >
-              Add Funds
-            </button>
           </div>
         </div>
       </div>
@@ -469,17 +471,24 @@ export function MarkeeCard({
 
         {/* Stats and Actions at bottom */}
         <div className="pt-2 border-t border-[#8A8FBF]/20">
-          <div className="mb-1.5">
-            <MarkeeStats 
-              messageViews={messageViews}
-              totalViews={totalViews}
-              ethAmount={markee.totalFundsAdded}
-              rank={rank}
-              size={size}
-            />
-          </div>
-          
-          <div className="flex gap-1.5 justify-end">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <MarkeeStats 
+                messageViews={messageViews}
+                totalViews={totalViews}
+                ethAmount={markee.totalFundsAdded}
+                rank={rank}
+                size={size}
+              />
+              
+              <button 
+                onClick={() => onAddFunds?.(markee)}
+                className="text-[10px] px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
+              >
+                Add Funds
+              </button>
+            </div>
+            
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
@@ -488,12 +497,6 @@ export function MarkeeCard({
                 Edit Message
               </button>
             )}
-            <button 
-              onClick={() => onAddFunds?.(markee)}
-              className="text-[10px] px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
-            >
-              Add Funds
-            </button>
           </div>
         </div>
       </div>
