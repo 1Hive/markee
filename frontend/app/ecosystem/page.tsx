@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { PartnerMarkeeCard } from '@/components/ecosystem/PartnerMarkeeCard'
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 
@@ -19,11 +20,11 @@ export default function EcosystemPage() {
 
       {/* Hero Section */}
       <section className="relative py-24 overflow-hidden">
-        {/* Background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0A0F3D] to-[#060A2A]" />
+        {/* Cosmic background */}
+        <HeroBackground />
         
         {/* Content */}
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-5xl md:text-6xl font-bold mb-6 text-[#EDEEFF]">
             Markee Ecosystem
           </h1>
@@ -31,10 +32,6 @@ export default function EcosystemPage() {
             Communities and platforms using Markee to fund their missions through digital message boards
           </p>
         </div>
-
-        {/* Decorative elements */}
-        <div className="absolute top-20 left-10 w-64 h-64 bg-[#F897FE] rounded-full filter blur-[128px] opacity-20" />
-        <div className="absolute bottom-20 right-10 w-64 h-64 bg-[#7C9CFF] rounded-full filter blur-[128px] opacity-20" />
       </section>
 
       {/* Partner Cards Section */}
