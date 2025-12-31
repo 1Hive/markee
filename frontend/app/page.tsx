@@ -112,9 +112,10 @@ export default function Home() {
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
       <section
-        className={`relative py-12 border-b border-[#8A8FBF]/20 overflow-hidden ${
-          heroBgOk ? 'bg-transparent' : 'bg-[#0A0F3D]'
-        }`}
+          className={`relative py-12 border-b border-[#8A8FBF]/20 overflow-hidden ${
+              heroBgOk ? 'bg-transparent' : 'bg-[#0A0F3D]'
+            }`}
+            style={{ marginTop: 0 }}
       >
         {/* Background layer */}
         <div className="absolute inset-0 z-0 pointer-events-none">
