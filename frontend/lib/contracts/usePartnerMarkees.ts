@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createPublicClient, http, parseAbiItem } from 'viem'
-import { base } from 'viem/chains'
+import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
 // Partner configuration
@@ -8,30 +7,23 @@ export const PARTNERS = [
   {
     slug: 'markee-cooperative',
     name: 'Markee Cooperative',
-    description: 'Our home message for markee.xyz - 100% of funds go into the Markee Cooperative RevNet',
-    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a', // TopDawgStrategy
+    description: 'The home message for markee.xyz - 100% of funds go into the Markee Cooperative RevNet',
+    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a',
     logo: '/markee-logo.png',
     fundingSplit: '100% to Markee Cooperative',
     percentToBeneficiary: 0,
-    isCooperative: true // Uses TopDawgStrategy, not TopDawgPartnerStrategy
+    isCooperative: true
   },
   {
     slug: 'gardens',
     name: 'Gardens',
     description: 'Community governance platform built on conviction voting',
-    strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE', // TopDawgPartnerStrategy
+    strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE',
     logo: '/partners/gardens.png',
     fundingSplit: '68% to Gardens / 32% to Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
   }
-] as const
-
-const MARKEE_ABI = [
-  parseAbiItem('function message() view returns (string)'),
-  parseAbiItem('function owner() view returns (address)'),
-  parseAbiItem('function name() view returns (string)'),
-  parseAbiItem('function totalFundsAdded() view returns (uint256)')
 ] as const
 
 interface PartnerData {
@@ -40,6 +32,50 @@ interface PartnerData {
   totalFunds: bigint
   markeeCount: bigint
 }
+
+const COOPERATIVE_QUERY = `
+  query GetCooperativeMarkees {
+    topDawgStrategy(id: "0x558eb41ec9cc90b86550617eef5f180ea60e0e3a") {
+      totalFundsRaised
+      totalMarkeesCreated
+      markees(
+        orderBy: totalFundsAdded
+        orderDirection: desc
+        first: 1
+      ) {
+        id
+        address
+        message
+        name
+        owner
+        totalFundsAdded
+        pricingStrategy
+      }
+    }
+  }
+`
+
+const PARTNER_QUERY = `
+  query GetPartnerMarkees($strategyId: ID!) {
+    topDawgPartnerStrategy(id: $strategyId) {
+      totalFundsRaised
+      totalMarkeesCreated
+      markees(
+        orderBy: totalFundsAdded
+        orderDirection: desc
+        first: 1
+      ) {
+        id
+        address
+        message
+        name
+        owner
+        totalFundsAdded
+        pricingStrategy
+      }
+    }
+  }
+`
 
 export function usePartnerMarkees() {
   const [partnerData, setPartnerData] = useState<PartnerData[]>([])
@@ -52,23 +88,40 @@ export function usePartnerMarkees() {
         setIsLoading(true)
         setError(null)
 
-        const client = createPublicClient({
-          chain: base,
-          transport: http()
-        })
+        const subgraphUrl = SUBGRAPH_URLS[CANONICAL_CHAIN_ID]
+        
+        if (!subgraphUrl) {
+          throw new Error('Subgraph URL not configured')
+        }
 
         const results = await Promise.all(
           PARTNERS.map(async (partner) => {
             try {
-              // Get MarkeeCreated events for this partner
-              const events = await client.getLogs({
-                address: partner.strategyAddress as `0x${string}`,
-                event: parseAbiItem('event MarkeeCreated(address indexed markeeAddress, address indexed owner, uint256 initialAmount, string message)'),
-                fromBlock: 'earliest',
-                toBlock: 'latest'
+              const query = partner.isCooperative ? COOPERATIVE_QUERY : PARTNER_QUERY
+              const variables = partner.isCooperative ? {} : { strategyId: partner.strategyAddress.toLowerCase() }
+
+              const response = await fetch(subgraphUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, variables })
               })
 
-              if (events.length === 0) {
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`)
+              }
+
+              const result = await response.json()
+
+              if (result.errors) {
+                console.error('GraphQL errors:', result.errors)
+                throw new Error(result.errors[0]?.message || 'GraphQL query failed')
+              }
+
+              const strategyData = partner.isCooperative 
+                ? result.data?.topDawgStrategy
+                : result.data?.topDawgPartnerStrategy
+
+              if (!strategyData) {
                 return {
                   partner,
                   winningMarkee: null,
@@ -77,64 +130,23 @@ export function usePartnerMarkees() {
                 }
               }
 
-              // Fetch details for each markee
-              const markees = await Promise.all(
-                events.map(async (event) => {
-                  const markeeAddress = event.args.markeeAddress as `0x${string}`
-                  
-                  try {
-                    const [message, owner, name, totalFundsAdded] = await Promise.all([
-                      client.readContract({
-                        address: markeeAddress,
-                        abi: MARKEE_ABI,
-                        functionName: 'message'
-                      }),
-                      client.readContract({
-                        address: markeeAddress,
-                        abi: MARKEE_ABI,
-                        functionName: 'owner'
-                      }),
-                      client.readContract({
-                        address: markeeAddress,
-                        abi: MARKEE_ABI,
-                        functionName: 'name'
-                      }).catch(() => ''),
-                      client.readContract({
-                        address: markeeAddress,
-                        abi: MARKEE_ABI,
-                        functionName: 'totalFundsAdded'
-                      })
-                    ])
-
-                    return {
-                      address: markeeAddress,
-                      message: message as string,
-                      owner: owner as string,
-                      name: name as string,
-                      totalFundsAdded: totalFundsAdded as bigint,
-                      pricingStrategy: partner.strategyAddress,
-                      strategyAddress: partner.strategyAddress,
-                      chainId: base.id
-                    } as Markee
-                  } catch (err) {
-                    console.error(`Error fetching markee ${markeeAddress}:`, err)
-                    return null
-                  }
-                })
-              )
-
-              // Filter nulls and sort by funds
-              const validMarkees = markees.filter((m): m is Markee => m !== null)
-              validMarkees.sort((a, b) => Number(b.totalFundsAdded - a.totalFundsAdded))
-
-              // Calculate totals
-              const totalFunds = validMarkees.reduce((sum, m) => sum + m.totalFundsAdded, BigInt(0))
+              const winningMarkeeData = strategyData.markees?.[0]
+              const winningMarkee = winningMarkeeData ? {
+                address: winningMarkeeData.address,
+                message: winningMarkeeData.message,
+                name: winningMarkeeData.name,
+                owner: winningMarkeeData.owner,
+                totalFundsAdded: BigInt(winningMarkeeData.totalFundsAdded),
+                pricingStrategy: winningMarkeeData.pricingStrategy,
+                strategyAddress: partner.strategyAddress,
+                chainId: CANONICAL_CHAIN_ID
+              } as Markee : null
 
               return {
                 partner,
-                winningMarkee: validMarkees[0] || null,
-                totalFunds,
-                markeeCount: BigInt(validMarkees.length)
+                winningMarkee,
+                totalFunds: BigInt(strategyData.totalFundsRaised || '0'),
+                markeeCount: BigInt(strategyData.totalMarkeesCreated || '0')
               }
             } catch (err) {
               console.error(`Error fetching data for ${partner.name}:`, err)
