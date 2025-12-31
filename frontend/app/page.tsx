@@ -12,7 +12,7 @@ import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
-import { HeroBackground } from '@/components/background/HeroBackground'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
