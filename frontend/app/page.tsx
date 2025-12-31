@@ -220,7 +220,7 @@ export default function Home() {
       <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
-          <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a digital platform near you...</p>
+          <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a website near you...</p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
             <PartnerCard logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
@@ -244,10 +244,10 @@ export default function Home() {
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h3>
+            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message.  Own the Network.</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
-              Our platform is community-owned. Buy a message or add funds to a message below to join Markee's digital cooperative.
+              Markee is a digital cooperative owned by its participants. Buy a message to join - and while you're at it, let people know what you have to say.
             </p>
 
             <div className="flex gap-4 justify-center mb-8">
