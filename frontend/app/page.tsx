@@ -51,17 +51,6 @@ export default function Home() {
     setMounted(true)
   }, [])
 
-  // Show loading spinner during SSR and initial client render
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-[#060A2A]">
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#F897FE]"></div>
-        </div>
-      </div>
-    )
-  }
-
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
     if (refetchTimeout) clearTimeout(refetchTimeout)
@@ -118,6 +107,17 @@ export default function Home() {
   const handleFixedModalClose = () => {
     setIsFixedModalOpen(false)
     setSelectedFixedMarkee(null)
+  }
+
+  // Show loading spinner during SSR and initial client render
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#060A2A]">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#F897FE]"></div>
+        </div>
+      </div>
+    )
   }
 
   
