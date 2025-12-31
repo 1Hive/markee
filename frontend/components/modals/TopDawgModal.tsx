@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useConnect, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useConnect, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -31,6 +31,12 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
   const { writeContract, data: hash, isPending, isError, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  // Get user's ETH balance
+  const { data: balanceData } = useBalance({
+    address: address,
+    chainId: CANONICAL_CHAIN.id,
+  })
 
   // Get strategy address - use custom one if provided, otherwise default TopDawg
   const strategyAddress = customStrategyAddress || CONTRACTS[CANONICAL_CHAIN.id]?.topDawgStrategies?.[0]?.address
@@ -62,6 +68,42 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     functionName: 'maxNameLength',
     chainId: CANONICAL_CHAIN.id,
   })
+
+  // Check if user can afford the transaction
+  const canAffordTransaction = () => {
+    if (!amount || !balanceData || parseFloat(amount) <= 0) return false
+    
+    try {
+      const amountWei = parseEther(amount)
+      const estimatedGas = parseEther('0.001') // Rough estimate for gas
+      const totalNeeded = amountWei + estimatedGas
+      
+      return balanceData.value >= totalNeeded
+    } catch {
+      return false
+    }
+  }
+
+  const getInsufficientBalanceMessage = () => {
+    if (!amount || !balanceData || parseFloat(amount) <= 0) return null
+    
+    try {
+      const amountWei = parseEther(amount)
+      const estimatedGas = parseEther('0.001')
+      const totalNeeded = amountWei + estimatedGas
+      
+      if (balanceData.value < totalNeeded) {
+        return `You don't have enough ETH to complete this transaction.`
+      }
+    } catch {
+      return 'Invalid amount entered'
+    }
+    
+    return null
+  }
+
+  const insufficientBalance = amount && parseFloat(amount) > 0 && !canAffordTransaction()
+  const balanceWarning = getInsufficientBalanceMessage()
 
   // Set default tab based on initialMode or whether user has a Markee
   useEffect(() => {
@@ -127,6 +169,12 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
       return
     }
 
+    // Check balance before attempting transaction
+    if (!canAffordTransaction()) {
+      setError(getInsufficientBalanceMessage() || 'Insufficient balance')
+      return
+    }
+
     setError(null)
 
     try {
@@ -151,6 +199,12 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter an amount')
+      return
+    }
+
+    // Check balance before attempting transaction
+    if (!canAffordTransaction()) {
+      setError(getInsufficientBalanceMessage() || 'Insufficient balance')
       return
     }
 
@@ -356,6 +410,11 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                         Minimum: {formatEther(minimumPrice)} ETH
                       </p>
                     )}
+                    {balanceData && (
+                      <p className="text-xs text-[#8A8FBF] mt-1">
+                        Your Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+                      </p>
+                    )}
                   </div>
 
                   {/* Featured MARKEE Token Display */}
@@ -376,6 +435,17 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
+
+                  {/* Insufficient Balance Warning */}
+                  {insufficientBalance && balanceWarning && !error && !isError && (
+                    <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
+                      <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
+                        <p className="text-xs text-yellow-400">{balanceWarning}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -403,6 +473,11 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       disabled={isPending || isConfirming}
                     />
+                    {balanceData && (
+                      <p className="text-xs text-[#8A8FBF] mt-1">
+                        Your Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+                      </p>
+                    )}
                   </div>
 
                   {/* Featured MARKEE Token Display */}
@@ -423,6 +498,17 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                       💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
                     </p>
                   </div>
+
+                  {/* Insufficient Balance Warning */}
+                  {insufficientBalance && balanceWarning && !error && !isError && (
+                    <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
+                      <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
+                        <p className="text-xs text-yellow-400">{balanceWarning}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -495,7 +581,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                     else if (activeTab === 'addFunds') handleAddFunds()
                     else handleUpdateMessage()
                   }}
-                  disabled={isPending || isConfirming || isSuccess}
+                  disabled={isPending || isConfirming || isSuccess || (activeTab !== 'updateMessage' && insufficientBalance)}
                   className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
                 >
                   {isPending || isConfirming ? (
