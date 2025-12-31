@@ -5,15 +5,20 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 
 export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="how-it-works" />
 
-      {/* What is Markee - Conceptual Opening */}
-      <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* What is Markee - Hero Section */}
+      <section className="relative py-24 overflow-hidden border-b border-[#8A8FBF]/20">
+        {/* Cosmic background */}
+        <HeroBackground />
+        
+        {/* Content */}
+        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-8">What is Markee?</h1>
           <div className="space-y-4 text-lg text-[#B8B6D9]">
             <p className="flex items-start gap-3">
