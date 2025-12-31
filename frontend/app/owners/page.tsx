@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 
 // Phase configuration
 const PHASES = [
@@ -60,8 +61,12 @@ export default function Owners() {
       <Header activePage="owners" />
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-[#172090] to-[#4B3ACC] py-16 border-b border-[#8A8FBF]/20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <section className="relative py-24 overflow-hidden border-b border-[#8A8FBF]/20">
+        {/* Cosmic background */}
+        <HeroBackground />
+        
+        {/* Content */}
+        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Ownership Structure</h1>
           <p className="text-xl text-[#B8B6D9]">
             Markee is owned by a Digital Cooperative powered by RevNets, permissionlessly shifting ownership from the founding team to the community as revenue is generated.
