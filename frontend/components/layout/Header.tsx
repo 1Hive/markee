@@ -13,7 +13,7 @@ export function Header({ activePage = 'home' }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
-    <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20 relative z-50">
+    <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20" style={{ position: 'relative', zIndex: 9999 }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-8">
