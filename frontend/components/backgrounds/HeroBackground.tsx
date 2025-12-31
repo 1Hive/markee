@@ -96,30 +96,29 @@ export function HeroBackground({
           position: absolute;
           color: #B8B6D9;
           text-shadow: 0 0 8px rgba(248, 151, 254, 0.3);
-          opacity: 0.05;
         }
 
-        /* Position and animate each letter uniquely */
-        .letter-1 { font-size: 24px; top: 15%; left: -5%; animation: float-rotate-1 80s infinite linear; animation-delay: -10s; }
-        .letter-2 { font-size: 18px; top: 25%; left: 105%; animation: float-rotate-2 95s infinite linear; animation-delay: -20s; }
-        .letter-3 { font-size: 22px; top: 45%; left: -5%; animation: float-rotate-3 110s infinite linear; animation-delay: -30s; }
-        .letter-4 { font-size: 20px; top: 60%; left: 105%; animation: float-rotate-4 88s infinite linear; animation-delay: -15s; }
-        .letter-5 { font-size: 26px; top: 75%; left: -5%; animation: float-rotate-5 120s infinite linear; animation-delay: -45s; }
-        .letter-6 { font-size: 16px; top: 10%; left: 105%; animation: float-rotate-6 105s infinite linear; animation-delay: -25s; }
-        .letter-7 { font-size: 21px; top: 35%; left: -5%; animation: float-rotate-7 92s infinite linear; animation-delay: -35s; }
-        .letter-8 { font-size: 19px; top: 50%; left: 105%; animation: float-rotate-8 98s infinite linear; animation-delay: -40s; }
-        .letter-9 { font-size: 23px; top: 68%; left: -5%; animation: float-rotate-9 115s infinite linear; animation-delay: -50s; }
-        .letter-10 { font-size: 17px; top: 82%; left: 105%; animation: float-rotate-10 85s infinite linear; animation-delay: -18s; }
-        .letter-11 { font-size: 25px; top: 20%; left: -5%; animation: float-rotate-11 100s infinite linear; animation-delay: -55s; }
-        .letter-12 { font-size: 20px; top: 42%; left: 105%; animation: float-rotate-12 93s infinite linear; animation-delay: -28s; }
-        .letter-13 { font-size: 18px; top: 55%; left: -5%; animation: float-rotate-13 107s infinite linear; animation-delay: -42s; }
-        .letter-14 { font-size: 22px; top: 12%; left: 105%; animation: float-rotate-14 96s infinite linear; animation-delay: -33s; }
-        .letter-15 { font-size: 19px; top: 72%; left: -5%; animation: float-rotate-15 89s infinite linear; animation-delay: -48s; }
-        .letter-16 { font-size: 24px; top: 38%; left: 105%; animation: float-rotate-16 112s infinite linear; animation-delay: -60s; }
-        .letter-17 { font-size: 21px; top: 65%; left: -5%; animation: float-rotate-17 91s infinite linear; animation-delay: -22s; }
-        .letter-18 { font-size: 16px; top: 28%; left: 105%; animation: float-rotate-18 103s infinite linear; animation-delay: -52s; }
-        .letter-19 { font-size: 20px; top: 85%; left: -5%; animation: float-rotate-19 94s infinite linear; animation-delay: -38s; }
-        .letter-20 { font-size: 23px; top: 48%; left: 105%; animation: float-rotate-20 108s infinite linear; animation-delay: -44s; }
+        /* Position and animate each letter uniquely with varying brightness */
+        .letter-1 { font-size: 24px; top: 15%; left: -5%; opacity: 0.12; animation: float-rotate-1 80s infinite linear; animation-delay: -10s; }
+        .letter-2 { font-size: 18px; top: 25%; left: 105%; opacity: 0.07; animation: float-rotate-2 95s infinite linear; animation-delay: -20s; }
+        .letter-3 { font-size: 22px; top: 45%; left: -5%; opacity: 0.15; animation: float-rotate-3 110s infinite linear; animation-delay: -30s; }
+        .letter-4 { font-size: 20px; top: 60%; left: 105%; opacity: 0.05; animation: float-rotate-4 88s infinite linear; animation-delay: -15s; }
+        .letter-5 { font-size: 26px; top: 75%; left: -5%; opacity: 0.10; animation: float-rotate-5 120s infinite linear; animation-delay: -45s; }
+        .letter-6 { font-size: 16px; top: 10%; left: 105%; opacity: 0.04; animation: float-rotate-6 105s infinite linear; animation-delay: -25s; }
+        .letter-7 { font-size: 21px; top: 35%; left: -5%; opacity: 0.13; animation: float-rotate-7 92s infinite linear; animation-delay: -35s; }
+        .letter-8 { font-size: 19px; top: 50%; left: 105%; opacity: 0.08; animation: float-rotate-8 98s infinite linear; animation-delay: -40s; }
+        .letter-9 { font-size: 23px; top: 68%; left: -5%; opacity: 0.11; animation: float-rotate-9 115s infinite linear; animation-delay: -50s; }
+        .letter-10 { font-size: 17px; top: 82%; left: 105%; opacity: 0.06; animation: float-rotate-10 85s infinite linear; animation-delay: -18s; }
+        .letter-11 { font-size: 25px; top: 20%; left: -5%; opacity: 0.14; animation: float-rotate-11 100s infinite linear; animation-delay: -55s; }
+        .letter-12 { font-size: 20px; top: 42%; left: 105%; opacity: 0.09; animation: float-rotate-12 93s infinite linear; animation-delay: -28s; }
+        .letter-13 { font-size: 18px; top: 55%; left: -5%; opacity: 0.03; animation: float-rotate-13 107s infinite linear; animation-delay: -42s; }
+        .letter-14 { font-size: 22px; top: 12%; left: 105%; opacity: 0.12; animation: float-rotate-14 96s infinite linear; animation-delay: -33s; }
+        .letter-15 { font-size: 19px; top: 72%; left: -5%; opacity: 0.07; animation: float-rotate-15 89s infinite linear; animation-delay: -48s; }
+        .letter-16 { font-size: 24px; top: 38%; left: 105%; opacity: 0.15; animation: float-rotate-16 112s infinite linear; animation-delay: -60s; }
+        .letter-17 { font-size: 21px; top: 65%; left: -5%; opacity: 0.05; animation: float-rotate-17 91s infinite linear; animation-delay: -22s; }
+        .letter-18 { font-size: 16px; top: 28%; left: 105%; opacity: 0.10; animation: float-rotate-18 103s infinite linear; animation-delay: -52s; }
+        .letter-19 { font-size: 20px; top: 85%; left: -5%; opacity: 0.08; animation: float-rotate-19 94s infinite linear; animation-delay: -38s; }
+        .letter-20 { font-size: 23px; top: 48%; left: 105%; opacity: 0.13; animation: float-rotate-20 108s infinite linear; animation-delay: -44s; }
 
         /* Keyframe animations - drift across screen with rotation */
         @keyframes float-rotate-1 {
