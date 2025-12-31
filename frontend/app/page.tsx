@@ -107,47 +107,6 @@ export default function Home() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" />
 
-      {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
-        {/* Background layer - absolutely positioned and non-interactive */}
-        <HeroBackground />
-          
-        {/* Foreground content */}
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {isLoadingFixed ? (
-              <>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="readerboard-card animate-pulse">
-                    <div className="readerboard-inner">
-                      <div className="h-16 bg-[#8A8FBF]/20 rounded mx-8"></div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : (
-              fixedMarkees.map((fixedMarkee, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-                  className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
-                >
-                  <div className="readerboard-inner">
-                    <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
-                  </div>
-
-                  <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
-                    <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                      {fixedMarkee.price ? `${fixedMarkee.price} ETH to change` : 'Loading...'}
-                    </div>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
-
       <style jsx>{`
         .readerboard-card {
           position: relative;
