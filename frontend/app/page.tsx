@@ -45,9 +45,6 @@ export default function Home() {
 
   const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
 
-  // Background fallback: if the animated/canvas bg fails to mount, keep the opaque bg.
-  const [heroBgOk, setHeroBgOk] = useState(true)
-
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
     if (refetchTimeout) clearTimeout(refetchTimeout)
@@ -111,22 +108,9 @@ export default function Home() {
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      <section
-          className={`relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden ${
-              heroBgOk ? 'bg-transparent' : 'bg-[#0A0F3D]'
-            }`}
-            style={{ marginTop: 0 }}
-      >
-        {/* Background layer */}
-        <div className="absolute inset-0 z-0 pointer-events-none">
-          {heroBgOk && (
-            <HeroBackground
-              className="w-full h-full"
-              onReady={() => setHeroBgOk(true)}
-              onError={() => setHeroBgOk(false)}
-            />
-          )}
-        </div>
+      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
+        {/* Background layer - absolutely positioned and non-interactive */}
+        <HeroBackground />
           
         {/* Foreground content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
