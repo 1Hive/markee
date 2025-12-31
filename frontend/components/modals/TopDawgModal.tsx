@@ -102,7 +102,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     return null
   }
 
-  const insufficientBalance = amount && parseFloat(amount) > 0 && !canAffordTransaction()
+  const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
   const balanceWarning = getInsufficientBalanceMessage()
 
   // Set default tab based on initialMode or whether user has a Markee
