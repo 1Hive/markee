@@ -60,6 +60,12 @@ export type FixedMarkee = {
 export function useFixedMarkees() {
   const [markees, setMarkees] = useState<FixedMarkee[]>([])
   const [markeeAddresses, setMarkeeAddresses] = useState<(string | null)[]>([])
+  
+  // Fix hydration: only enable queries after mount
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
 
@@ -92,6 +98,7 @@ export function useFixedMarkees() {
   } = useReadContracts({ 
     contracts: strategyContracts,
     query: {
+      enabled: mounted, // Only run after mount to avoid SSR hydration mismatch
       refetchInterval: 10000, // Poll every 10 seconds
     }
   })
@@ -133,7 +140,7 @@ export function useFixedMarkees() {
   } = useReadContracts({ 
     contracts: markeeContracts,
     query: {
-      enabled: validAddresses.length > 0,
+      enabled: mounted && validAddresses.length > 0, // Only run after mount
       refetchInterval: 10000, // Poll every 10 seconds
     }
   })
@@ -182,7 +189,7 @@ export function useFixedMarkees() {
     setMarkees(result)
   }, [strategyData, markeeData, fixedStrategies, validAddresses])
 
-  const isLoading = isLoadingStrategy || isLoadingMarkee
+  const isLoading = !mounted || isLoadingStrategy || isLoadingMarkee
   const refetch = () => {
     refetchStrategy()
   }
