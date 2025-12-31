@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef } from 'react'
 
-type Particle = {
+type Star = {
   x: number
   y: number
-  r: number
-  vx: number
-  vy: number
+  size: number
   alpha: number
+  twinkleSpeed: number
+  twinklePhase: number
   depth: number
 }
 
@@ -37,8 +37,8 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 export function HeroBackground({
   className = '',
-  starCount = 140,
-  letterCount = 26,
+  starCount = 120,
+  letterCount = 20,
   onReady,
   onError,
 }: {
@@ -51,8 +51,9 @@ export function HeroBackground({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const readyRef = useRef(false)
+  const timeRef = useRef(0)
 
-  // Smooth parallax state (mutable refs so we don't re-render)
+  // Smooth parallax state
   const mouseTarget = useRef({ x: 0, y: 0 })
   const mouseCurrent = useRef({ x: 0, y: 0 })
   const scrollY = useRef(0)
@@ -85,7 +86,7 @@ export function HeroBackground({
       let h = 0
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
-      const stars: Particle[] = []
+      const stars: Star[] = []
       const letters: Letter[] = []
 
       const resize = () => {
@@ -102,36 +103,37 @@ export function HeroBackground({
         canvas.style.height = `${h}px`
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-        // Re-seed on resize (keeps it clean)
+        // Initialize stars
         stars.length = 0
-        letters.length = 0
-
         for (let i = 0; i < starCount; i++) {
-          const depth = rand(0.15, 1.0) // smaller = farther
+          const depth = rand(0.2, 1.0)
           stars.push({
             x: rand(0, w),
             y: rand(0, h),
-            r: rand(0.4, 1.4) * (0.6 + depth),
-            vx: rand(-0.01, 0.01) * depth,
-            vy: rand(0.01, 0.05) * depth,
-            alpha: rand(0.06, 0.18) * (0.5 + depth),
+            size: rand(0.5, 2.0) * depth,
+            alpha: rand(0.2, 0.7) * depth,
+            twinkleSpeed: rand(0.0005, 0.002),
+            twinklePhase: rand(0, Math.PI * 2),
             depth,
           })
         }
 
+        // Initialize letters - gentle drift
+        letters.length = 0
         for (let i = 0; i < letterCount; i++) {
-          const depth = rand(0.25, 1.0) // letters tend to be closer
+          const depth = rand(0.3, 1.0)
           letters.push({
             x: rand(0, w),
             y: rand(0, h),
             ch: LETTERS[Math.floor(rand(0, LETTERS.length))],
-            size: rand(10, 22) * (0.7 + depth),
-            vx: rand(-0.04, 0.04) * depth,
-            vy: rand(-0.02, 0.06) * depth,
-            alpha: rand(0.04, 0.10) * (0.6 + depth), // DIM so it won't distract
+            size: rand(14, 28) * (0.6 + depth * 0.4),
+            // Very slow drift
+            vx: rand(-0.015, 0.015) * depth,
+            vy: rand(-0.008, 0.012) * depth,
+            alpha: rand(0.03, 0.08) * (0.7 + depth * 0.3),
             depth,
-            rot: rand(-Math.PI, Math.PI),
-            rotV: rand(-0.0012, 0.0012) * depth,
+            rot: rand(-Math.PI / 6, Math.PI / 6), // Start with less extreme rotation
+            rotV: rand(-0.0003, 0.0003) * depth, // Very slow rotation
           })
         }
       }
@@ -140,7 +142,7 @@ export function HeroBackground({
         const parent = canvas.parentElement
         if (!parent) return
         const rect = parent.getBoundingClientRect()
-        const mx = (e.clientX - rect.left) / rect.width // 0..1
+        const mx = (e.clientX - rect.left) / rect.width
         const my = (e.clientY - rect.top) / rect.height
         mouseTarget.current.x = (mx - 0.5) * 2
         mouseTarget.current.y = (my - 0.5) * 2
@@ -157,90 +159,113 @@ export function HeroBackground({
 
       const tick = () => {
         rafRef.current = requestAnimationFrame(tick)
+        timeRef.current += 1
 
-        // Ease parallax
-        const ease = prefersReducedMotion ? 0.05 : 0.08
+        // Gentle parallax easing
+        const ease = prefersReducedMotion ? 0.02 : 0.04
         mouseCurrent.current.x += (mouseTarget.current.x - mouseCurrent.current.x) * ease
         mouseCurrent.current.y += (mouseTarget.current.y - mouseCurrent.current.y) * ease
 
         // Clear
         ctx.clearRect(0, 0, w, h)
 
-        // Background gradient (deep space)
+        // Deep space gradient
         const g = ctx.createLinearGradient(0, 0, w, h)
         g.addColorStop(0, '#060A2A')
-        g.addColorStop(0.45, '#0A0F3D')
-        g.addColorStop(1, '#0F1B6B')
+        g.addColorStop(0.4, '#0A0F3D')
+        g.addColorStop(0.7, '#0F1454')
+        g.addColorStop(1, '#1A1766')
         ctx.fillStyle = g
         ctx.fillRect(0, 0, w, h)
 
-        // Subtle bloom / nebula haze
-        ctx.globalAlpha = 0.18
+        // Nebula glow - soft cosmic haze
+        ctx.globalAlpha = 0.15
         const g2 = ctx.createRadialGradient(
-          w * 0.65,
-          h * 0.35,
+          w * 0.7,
+          h * 0.3,
           0,
-          w * 0.65,
-          h * 0.35,
-          Math.max(w, h) * 0.8
+          w * 0.7,
+          h * 0.3,
+          Math.max(w, h) * 0.9
         )
-        g2.addColorStop(0, 'rgba(248,151,254,0.20)') // soft-pink
-        g2.addColorStop(0.55, 'rgba(123,106,244,0.10)') // amethyst-ish
+        g2.addColorStop(0, 'rgba(248,151,254,0.25)') // soft pink
+        g2.addColorStop(0.4, 'rgba(124,156,255,0.15)') // blue
+        g2.addColorStop(0.7, 'rgba(123,106,244,0.08)') // purple
         g2.addColorStop(1, 'rgba(0,0,0,0)')
         ctx.fillStyle = g2
         ctx.fillRect(0, 0, w, h)
+
+        // Secondary nebula
+        const g3 = ctx.createRadialGradient(
+          w * 0.2,
+          h * 0.7,
+          0,
+          w * 0.2,
+          h * 0.7,
+          Math.max(w, h) * 0.6
+        )
+        g3.addColorStop(0, 'rgba(124,156,255,0.12)')
+        g3.addColorStop(0.5, 'rgba(123,106,244,0.06)')
+        g3.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = g3
+        ctx.fillRect(0, 0, w, h)
         ctx.globalAlpha = 1
 
-        // Parallax offsets
         const px = mouseCurrent.current.x
         const py = mouseCurrent.current.y
         const s = scrollY.current
 
-        // Stars
-        for (const st of stars) {
-          st.y += st.vy * (prefersReducedMotion ? 0.6 : 1)
-          st.x += st.vx * (prefersReducedMotion ? 0.6 : 1)
+        // Stars - distant and mostly static with subtle twinkle
+        for (const star of stars) {
+          // Very subtle parallax movement
+          const ox = px * 4 * star.depth
+          const oy = py * 3 * star.depth + s * 0.005 * star.depth
 
-          if (st.y > h + 4) st.y = -4
-          if (st.x > w + 4) st.x = -4
-          if (st.x < -4) st.x = w + 4
+          // Twinkle effect
+          const twinkle = Math.sin(timeRef.current * star.twinkleSpeed + star.twinklePhase)
+          const alpha = star.alpha + twinkle * 0.15
 
-          const ox = px * 10 * st.depth
-          const oy = py * 6 * st.depth + s * 0.01 * st.depth
-
-          ctx.globalAlpha = st.alpha
+          ctx.globalAlpha = clamp(alpha, 0, 1)
           ctx.beginPath()
-          ctx.arc(st.x + ox, st.y + oy, st.r, 0, Math.PI * 2)
-          ctx.fillStyle = '#EDEEFF' // soft-white
+          ctx.arc(star.x + ox, star.y + oy, star.size, 0, Math.PI * 2)
+          ctx.fillStyle = '#EDEEFF'
           ctx.fill()
         }
+        ctx.globalAlpha = 1
 
-        // Letters (dim, slightly blurred vibe via shadow)
-        ctx.shadowColor = 'rgba(248,151,254,0.20)'
-        ctx.shadowBlur = 6
+        // Letters - slow cosmic drift with gentle glow
+        ctx.shadowColor = 'rgba(248,151,254,0.3)'
+        ctx.shadowBlur = 8
 
-        for (const L of letters) {
-          L.x += L.vx * (prefersReducedMotion ? 0.6 : 1)
-          L.y += L.vy * (prefersReducedMotion ? 0.6 : 1)
-          L.rot += L.rotV * (prefersReducedMotion ? 0.6 : 1)
+        for (const letter of letters) {
+          // Gentle drift motion
+          const motionScale = prefersReducedMotion ? 0.3 : 1
+          letter.x += letter.vx * motionScale
+          letter.y += letter.vy * motionScale
+          letter.rot += letter.rotV * motionScale
 
-          if (L.y > h + 40) L.y = -40
-          if (L.x > w + 40) L.x = -40
-          if (L.x < -40) L.x = w + 40
+          // Wrap around edges with padding
+          if (letter.y > h + 50) letter.y = -50
+          if (letter.y < -50) letter.y = h + 50
+          if (letter.x > w + 50) letter.x = -50
+          if (letter.x < -50) letter.x = w + 50
 
-          const ox = px * 18 * L.depth
-          const oy = py * 12 * L.depth + s * 0.02 * L.depth
+          // Parallax offset
+          const ox = px * 12 * letter.depth
+          const oy = py * 8 * letter.depth + s * 0.008 * letter.depth
 
           ctx.save()
-          ctx.translate(L.x + ox, L.y + oy)
-          ctx.rotate(L.rot)
+          ctx.translate(letter.x + ox, letter.y + oy)
+          ctx.rotate(letter.rot)
 
-          ctx.globalAlpha = clamp(L.alpha, 0, 0.12)
-          ctx.font = `${Math.floor(
-            L.size
-          )}px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
-          ctx.fillStyle = 'rgba(184,182,217,1)' // lavender-gray
-          ctx.fillText(L.ch, 0, 0)
+          ctx.globalAlpha = clamp(letter.alpha, 0, 0.12)
+          ctx.font = `600 ${Math.floor(
+            letter.size
+          )}px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace`
+          ctx.fillStyle = '#B8B6D9' // soft lavender
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(letter.ch, 0, 0)
 
           ctx.restore()
         }
@@ -252,7 +277,7 @@ export function HeroBackground({
       resize()
       window.addEventListener('resize', resize)
       window.addEventListener('scroll', onScroll, { passive: true })
-      window.addEventListener('mousemove', onMouseMove)
+      window.addEventListener('mousemove', onMouseMove, { passive: true })
       window.addEventListener('mouseleave', onMouseLeave)
 
       rafRef.current = requestAnimationFrame(tick)
@@ -272,7 +297,7 @@ export function HeroBackground({
   }, [letterCount, starCount, prefersReducedMotion, onReady, onError])
 
   return (
-    <div className={`absolute inset-0 -z-0 overflow-hidden pointer-events-none ${className}`}>
+    <div className={`absolute inset-0 overflow-hidden pointer-events-none ${className}`}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full pointer-events-none" aria-hidden="true" />
     </div>
   )
