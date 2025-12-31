@@ -45,11 +45,22 @@ export default function Home() {
 
   const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
 
-  // Fix hydration issue - only render time-sensitive content after mount
+  // Fix hydration issue - completely suppress SSR for this page
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Show loading spinner during SSR and initial client render
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#060A2A]">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#F897FE]"></div>
+        </div>
+      </div>
+    )
+  }
 
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
@@ -257,7 +268,7 @@ export default function Home() {
                   <span>Updating...</span>
                 </div>
               )}
-              {mounted && lastUpdated && !isLoading && (
+              {lastUpdated && !isLoading && (
                 <div className="text-sm text-[#8A8FBF]">Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</div>
               )}
             </div>
