@@ -25,11 +25,11 @@ export default function EcosystemPage() {
         
         {/* Content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-5xl md:text-6xl mb-6 text-[#EDEEFF]">
+          <h3 className="text-2xl md:text-3xl mb-6 text-[#EDEEFF]">
             Markee is coming soon to a site near you...
-          </h2>
+          </h3>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
-            Join the growing list of platforms integrating Markee to their site. And buy a message from your favorite one!
+            Join the growing list of platforms integrating Markee to their site.
           </p>
         </div>
       </section>
