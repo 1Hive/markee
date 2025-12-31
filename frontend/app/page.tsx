@@ -122,7 +122,7 @@ export default function Home() {
   
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="home" />
+      <Header activePage="home" useRegularLinks={true} />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
       <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
