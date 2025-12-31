@@ -375,20 +375,7 @@ export default function Home() {
 
       <Footer />
 
-      <TopDawgModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        userMarkee={selectedMarkee}
-        initialMode={modalMode}
-        onSuccess={debouncedRefetch}
-      />
 
-      <FixedPriceModal
-        isOpen={isFixedModalOpen}
-        onClose={handleFixedModalClose}
-        fixedMarkee={selectedFixedMarkee}
-        onSuccess={debouncedRefetch}
-      />
     </div>
   )
 }
