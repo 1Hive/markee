@@ -19,7 +19,7 @@ export default function HowItWorks() {
         
         {/* Content */}
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-8">What is Markee?</h1>
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">How it Works</h1>
           <div className="space-y-4 text-lg text-[#B8B6D9]">
             <p className="flex items-start gap-3">
               <span className="text-[#F897FE] font-bold">•</span>
