@@ -20,13 +20,13 @@ import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 function PartnerCard({ logo, name, description }: { logo: string; name: string; description: string }) {
   return (
-    <div className="bg-[#060A2A] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group">
+    <Link href="/ecosystem" className="bg-[#060A2A] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group block">
       <div className="flex flex-col items-center text-center">
         <img src={logo} alt={name} className="h-16 object-contain mb-4 group-hover:scale-110 transition-transform" />
         <h3 className="font-bold text-[#EDEEFF] mb-2">{name}</h3>
         <p className="text-sm text-[#8A8FBF]">{description}</p>
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -112,7 +112,7 @@ export default function Home() {
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
       <section
-          className={`relative py-12 border-b border-[#8A8FBF]/20 overflow-hidden ${
+          className={`relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden ${
               heroBgOk ? 'bg-transparent' : 'bg-[#0A0F3D]'
             }`}
             style={{ marginTop: 0 }}
@@ -222,20 +222,11 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
           <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a website near you...</p>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <PartnerCard logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
             <PartnerCard logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
             <PartnerCard logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
             <PartnerCard logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
-          </div>
-
-          <div className="text-center">
-            <a
-              href="/ecosystem"
-              className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
-            >
-              Explore the Ecosystem
-            </a>
           </div>
         </div>
       </section>
