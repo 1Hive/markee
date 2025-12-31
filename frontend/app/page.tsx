@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -44,6 +44,12 @@ export default function Home() {
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
   const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
+
+  // Fix hydration issue - only render time-sensitive content after mount
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
   const debouncedRefetch = useCallback(() => {
@@ -251,7 +257,7 @@ export default function Home() {
                   <span>Updating...</span>
                 </div>
               )}
-              {lastUpdated && !isLoading && (
+              {mounted && lastUpdated && !isLoading && (
                 <div className="text-sm text-[#8A8FBF]">Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</div>
               )}
             </div>
