@@ -45,7 +45,7 @@ export default function Home() {
 
   const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
 
-  // Fix hydration issue - only render time-sensitive content after mount
+  // Fix hydration issue - only render blockchain-dependent content after mount
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
@@ -121,19 +121,20 @@ export default function Home() {
           
         {/* Foreground content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {isLoadingFixed ? (
-              <>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="readerboard-card animate-pulse">
-                    <div className="readerboard-inner">
-                      <div className="h-16 bg-[#8A8FBF]/20 rounded mx-8"></div>
-                    </div>
+          {/* Only render blockchain data after mount to avoid hydration mismatch */}
+          {!mounted || isLoadingFixed ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="readerboard-card animate-pulse">
+                  <div className="readerboard-inner">
+                    <div className="h-16 bg-[#8A8FBF]/20 rounded mx-8"></div>
                   </div>
-                ))}
-              </>
-            ) : (
-              fixedMarkees.map((fixedMarkee, index) => (
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+              {fixedMarkees.map((fixedMarkee, index) => (
                 <button
                   key={index}
                   onClick={() => handleFixedMarkeeClick(fixedMarkee)}
@@ -149,9 +150,9 @@ export default function Home() {
                     </div>
                   </div>
                 </button>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
