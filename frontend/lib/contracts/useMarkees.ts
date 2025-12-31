@@ -8,6 +8,9 @@ import type { Markee } from '@/types'
 const MARKEES_QUERY = gql`
   query GetMarkees {
     markees(
+      where: { 
+        strategy_not: null
+      }
       first: 100
       orderBy: totalFundsAdded
       orderDirection: desc
