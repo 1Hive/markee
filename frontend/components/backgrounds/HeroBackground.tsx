@@ -112,7 +112,7 @@ export function HeroBackground({
             y: rand(0, h),
             size: rand(0.5, 2.0) * depth,
             alpha: rand(0.2, 0.7) * depth,
-            twinkleSpeed: rand(0.0005, 0.002),
+            twinkleSpeed: rand(0.0001, 0.0008), // SLOWER twinkle
             twinklePhase: rand(0, Math.PI * 2),
             depth,
           })
@@ -127,13 +127,13 @@ export function HeroBackground({
             y: rand(0, h),
             ch: LETTERS[Math.floor(rand(0, LETTERS.length))],
             size: rand(14, 28) * (0.6 + depth * 0.4),
-            // Very slow drift
-            vx: rand(-0.015, 0.015) * depth,
-            vy: rand(-0.008, 0.012) * depth,
+            // ULTRA slow drift - barely moving
+            vx: rand(-0.003, 0.003) * depth,
+            vy: rand(-0.002, 0.004) * depth,
             alpha: rand(0.03, 0.08) * (0.7 + depth * 0.3),
             depth,
-            rot: rand(-Math.PI / 6, Math.PI / 6), // Start with less extreme rotation
-            rotV: rand(-0.0003, 0.0003) * depth, // Very slow rotation
+            rot: rand(-Math.PI / 12, Math.PI / 12), // Even less rotation
+            rotV: rand(-0.0001, 0.0001) * depth, // ULTRA slow rotation
           })
         }
       }
@@ -178,8 +178,8 @@ export function HeroBackground({
         ctx.fillStyle = g
         ctx.fillRect(0, 0, w, h)
 
-        // Nebula glow - soft cosmic haze
-        ctx.globalAlpha = 0.15
+        // Nebula glow - soft cosmic haze (MORE VISIBLE)
+        ctx.globalAlpha = 0.35
         const g2 = ctx.createRadialGradient(
           w * 0.7,
           h * 0.3,
@@ -188,14 +188,14 @@ export function HeroBackground({
           h * 0.3,
           Math.max(w, h) * 0.9
         )
-        g2.addColorStop(0, 'rgba(248,151,254,0.25)') // soft pink
-        g2.addColorStop(0.4, 'rgba(124,156,255,0.15)') // blue
-        g2.addColorStop(0.7, 'rgba(123,106,244,0.08)') // purple
+        g2.addColorStop(0, 'rgba(248,151,254,0.45)') // soft pink - MORE VISIBLE
+        g2.addColorStop(0.4, 'rgba(124,156,255,0.30)') // blue - MORE VISIBLE
+        g2.addColorStop(0.7, 'rgba(123,106,244,0.18)') // purple - MORE VISIBLE
         g2.addColorStop(1, 'rgba(0,0,0,0)')
         ctx.fillStyle = g2
         ctx.fillRect(0, 0, w, h)
 
-        // Secondary nebula
+        // Secondary nebula (MORE VISIBLE)
         const g3 = ctx.createRadialGradient(
           w * 0.2,
           h * 0.7,
@@ -204,8 +204,8 @@ export function HeroBackground({
           h * 0.7,
           Math.max(w, h) * 0.6
         )
-        g3.addColorStop(0, 'rgba(124,156,255,0.12)')
-        g3.addColorStop(0.5, 'rgba(123,106,244,0.06)')
+        g3.addColorStop(0, 'rgba(124,156,255,0.25)')
+        g3.addColorStop(0.5, 'rgba(123,106,244,0.15)')
         g3.addColorStop(1, 'rgba(0,0,0,0)')
         ctx.fillStyle = g3
         ctx.fillRect(0, 0, w, h)
