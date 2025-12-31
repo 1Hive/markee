@@ -65,24 +65,6 @@ export function PartnerMarkeeCard({
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <div className="text-[#8A8FBF] text-xs mb-1">Total Raised</div>
-          <div className="text-[#EDEEFF] font-bold">
-            {formatEther(totalFunds)} ETH
-          </div>
-        </div>
-        {markeeCount !== undefined && (
-          <div>
-            <div className="text-[#8A8FBF] text-xs mb-1">Messages</div>
-            <div className="text-[#EDEEFF] font-bold">
-              {markeeCount.toString()}
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* CTAs */}
       <div className="flex gap-2">
         <Link
