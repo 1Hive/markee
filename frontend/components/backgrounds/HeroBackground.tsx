@@ -19,11 +19,11 @@ export function HeroBackground({
   return (
     <div className={`absolute inset-0 overflow-hidden pointer-events-none ${className}`}>
       {/* Base deep space gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#060A2A] via-[#0A0F3D] to-[#1A1766]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#060A2A] via-[#0A0F3D] to-[#1A1766] pointer-events-none" />
       
       {/* Nebula cloud 1 - Pink/Purple glow */}
       <div 
-        className="absolute w-[800px] h-[800px] rounded-full opacity-20 blur-[120px]"
+        className="absolute w-[800px] h-[800px] rounded-full opacity-20 blur-[120px] pointer-events-none"
         style={{
           background: 'radial-gradient(circle, rgba(248,151,254,0.6) 0%, rgba(123,106,244,0.3) 40%, transparent 70%)',
           top: '10%',
@@ -33,7 +33,7 @@ export function HeroBackground({
       
       {/* Nebula cloud 2 - Blue glow */}
       <div 
-        className="absolute w-[600px] h-[600px] rounded-full opacity-25 blur-[100px]"
+        className="absolute w-[600px] h-[600px] rounded-full opacity-25 blur-[100px] pointer-events-none"
         style={{
           background: 'radial-gradient(circle, rgba(124,156,255,0.5) 0%, rgba(123,106,244,0.25) 50%, transparent 70%)',
           bottom: '20%',
@@ -43,7 +43,7 @@ export function HeroBackground({
       
       {/* Subtle star field effect using CSS */}
       <div 
-        className="absolute inset-0 opacity-30"
+        className="absolute inset-0 opacity-30 pointer-events-none"
         style={{
           backgroundImage: `
             radial-gradient(2px 2px at 20% 30%, white, transparent),
@@ -61,27 +61,27 @@ export function HeroBackground({
       />
 
       {/* Floating letters - CSS animated */}
-      <div className="cosmic-letters">
-        <div className="letter letter-1">M</div>
-        <div className="letter letter-2">A</div>
-        <div className="letter letter-3">R</div>
-        <div className="letter letter-4">K</div>
-        <div className="letter letter-5">E</div>
-        <div className="letter letter-6">E</div>
-        <div className="letter letter-7">G</div>
-        <div className="letter letter-8">O</div>
-        <div className="letter letter-9">E</div>
-        <div className="letter letter-10">S</div>
-        <div className="letter letter-11">T</div>
-        <div className="letter letter-12">O</div>
-        <div className="letter letter-13">T</div>
-        <div className="letter letter-14">H</div>
-        <div className="letter letter-15">E</div>
-        <div className="letter letter-16">M</div>
-        <div className="letter letter-17">O</div>
-        <div className="letter letter-18">O</div>
-        <div className="letter letter-19">N</div>
-        <div className="letter letter-20">!</div>
+      <div className="cosmic-letters pointer-events-none">
+        <div className="letter letter-1 pointer-events-none">M</div>
+        <div className="letter letter-2 pointer-events-none">A</div>
+        <div className="letter letter-3 pointer-events-none">R</div>
+        <div className="letter letter-4 pointer-events-none">K</div>
+        <div className="letter letter-5 pointer-events-none">E</div>
+        <div className="letter letter-6 pointer-events-none">E</div>
+        <div className="letter letter-7 pointer-events-none">C</div>
+        <div className="letter letter-8 pointer-events-none">O</div>
+        <div className="letter letter-9 pointer-events-none">P</div>
+        <div className="letter letter-10 pointer-events-none">W</div>
+        <div className="letter letter-11 pointer-events-none">E</div>
+        <div className="letter letter-12 pointer-events-none">B</div>
+        <div className="letter letter-13 pointer-events-none">3</div>
+        <div className="letter letter-14 pointer-events-none">D</div>
+        <div className="letter letter-15 pointer-events-none">A</div>
+        <div className="letter letter-16 pointer-events-none">O</div>
+        <div className="letter letter-17 pointer-events-none">X</div>
+        <div className="letter letter-18 pointer-events-none">Y</div>
+        <div className="letter letter-19 pointer-events-none">Z</div>
+        <div className="letter letter-20 pointer-events-none">T</div>
       </div>
 
       <style jsx>{`
@@ -90,12 +90,14 @@ export function HeroBackground({
           inset: 0;
           font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
           font-weight: 600;
+          pointer-events: none;
         }
 
         .letter {
           position: absolute;
           color: #B8B6D9;
           text-shadow: 0 0 8px rgba(248, 151, 254, 0.3);
+          pointer-events: none;
         }
 
         /* Position and animate each letter uniquely with varying brightness */
