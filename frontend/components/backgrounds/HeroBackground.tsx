@@ -68,20 +68,20 @@ export function HeroBackground({
         <div className="letter letter-4">K</div>
         <div className="letter letter-5">E</div>
         <div className="letter letter-6">E</div>
-        <div className="letter letter-7">C</div>
+        <div className="letter letter-7">G</div>
         <div className="letter letter-8">O</div>
-        <div className="letter letter-9">P</div>
-        <div className="letter letter-10">W</div>
-        <div className="letter letter-11">E</div>
-        <div className="letter letter-12">B</div>
-        <div className="letter letter-13">3</div>
-        <div className="letter letter-14">D</div>
-        <div className="letter letter-15">A</div>
-        <div className="letter letter-16">O</div>
-        <div className="letter letter-17">X</div>
-        <div className="letter letter-18">Y</div>
-        <div className="letter letter-19">Z</div>
-        <div className="letter letter-20">T</div>
+        <div className="letter letter-9">E</div>
+        <div className="letter letter-10">S</div>
+        <div className="letter letter-11">T</div>
+        <div className="letter letter-12">O</div>
+        <div className="letter letter-13">T</div>
+        <div className="letter letter-14">H</div>
+        <div className="letter letter-15">E</div>
+        <div className="letter letter-16">M</div>
+        <div className="letter letter-17">O</div>
+        <div className="letter letter-18">O</div>
+        <div className="letter letter-19">N</div>
+        <div className="letter letter-20">!</div>
       </div>
 
       <style jsx>{`
