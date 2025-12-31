@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import Link from 'next/link'
 import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -20,13 +19,13 @@ import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 function PartnerCard({ logo, name, description }: { logo: string; name: string; description: string }) {
   return (
-    <Link href="/ecosystem" className="bg-[#060A2A] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group block">
+    <a href="/ecosystem" className="bg-[#060A2A] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group block">
       <div className="flex flex-col items-center text-center">
         <img src={logo} alt={name} className="h-16 object-contain mb-4 group-hover:scale-110 transition-transform" />
         <h3 className="font-bold text-[#EDEEFF] mb-2">{name}</h3>
         <p className="text-sm text-[#8A8FBF]">{description}</p>
       </div>
-    </Link>
+    </a>
   )
 }
 
@@ -251,12 +250,12 @@ export default function Home() {
               >
                 Buy a Message
               </button>
-              <Link
+              <a
                 href="/how-it-works"
                 className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
               >
                 How it Works
-              </Link>
+              </a>
             </div>
           </div>
 
