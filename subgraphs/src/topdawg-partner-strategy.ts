@@ -103,18 +103,16 @@ export function handlePartnerMarkeeCreated(event: MarkeeCreatedEvent): void {
   stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   
-  // Handle nullable partner fields
-  let currentPartnerFunds = stats.totalPartnerFunds
-  if (currentPartnerFunds == null) {
-    currentPartnerFunds = BigInt.fromI32(0)
+  // Handle nullable partner fields - use changetype to convert null to zero
+  if (stats.totalPartnerFunds === null) {
+    stats.totalPartnerFunds = BigInt.fromI32(0)
   }
-  stats.totalPartnerFunds = currentPartnerFunds.plus(event.params.amount)
+  stats.totalPartnerFunds = stats.totalPartnerFunds!.plus(event.params.amount)
   
-  let currentBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds
-  if (currentBeneficiaryFunds == null) {
-    currentBeneficiaryFunds = BigInt.fromI32(0)
+  if (stats.totalPartnerBeneficiaryFunds === null) {
+    stats.totalPartnerBeneficiaryFunds = BigInt.fromI32(0)
   }
-  stats.totalPartnerBeneficiaryFunds = currentBeneficiaryFunds.plus(event.params.beneficiaryAmount)
+  stats.totalPartnerBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds!.plus(event.params.beneficiaryAmount)
   
   stats.save()
 
@@ -175,18 +173,16 @@ export function handlePartnerFundsAddedToMarkee(event: FundsAddedToMarkeeEvent):
   stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
   
-  // Handle nullable partner fields
-  let currentPartnerFunds = stats.totalPartnerFunds
-  if (currentPartnerFunds == null) {
-    currentPartnerFunds = BigInt.fromI32(0)
+  // Handle nullable partner fields - use changetype to convert null to zero
+  if (stats.totalPartnerFunds === null) {
+    stats.totalPartnerFunds = BigInt.fromI32(0)
   }
-  stats.totalPartnerFunds = currentPartnerFunds.plus(event.params.amount)
+  stats.totalPartnerFunds = stats.totalPartnerFunds!.plus(event.params.amount)
   
-  let currentBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds
-  if (currentBeneficiaryFunds == null) {
-    currentBeneficiaryFunds = BigInt.fromI32(0)
+  if (stats.totalPartnerBeneficiaryFunds === null) {
+    stats.totalPartnerBeneficiaryFunds = BigInt.fromI32(0)
   }
-  stats.totalPartnerBeneficiaryFunds = currentBeneficiaryFunds.plus(event.params.beneficiaryAmount)
+  stats.totalPartnerBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds!.plus(event.params.beneficiaryAmount)
   
   stats.save()
 }
