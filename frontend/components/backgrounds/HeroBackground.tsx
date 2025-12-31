@@ -52,7 +52,7 @@ export function HeroBackground({
   const rafRef = useRef<number | null>(null)
   const readyRef = useRef(false)
 
-  // Smooth parallax state (mutable refs so we don’t re-render)
+  // Smooth parallax state (mutable refs so we don't re-render)
   const mouseTarget = useRef({ x: 0, y: 0 })
   const mouseCurrent = useRef({ x: 0, y: 0 })
   const scrollY = useRef(0)
@@ -128,7 +128,7 @@ export function HeroBackground({
             size: rand(10, 22) * (0.7 + depth),
             vx: rand(-0.04, 0.04) * depth,
             vy: rand(-0.02, 0.06) * depth,
-            alpha: rand(0.04, 0.10) * (0.6 + depth), // DIM so it won’t distract
+            alpha: rand(0.04, 0.10) * (0.6 + depth), // DIM so it won't distract
             depth,
             rot: rand(-Math.PI, Math.PI),
             rotV: rand(-0.0012, 0.0012) * depth,
@@ -272,8 +272,8 @@ export function HeroBackground({
   }, [letterCount, starCount, prefersReducedMotion, onReady, onError])
 
   return (
-    <div className={`absolute inset-0 -z-0 overflow-hidden ${className}`}>
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
+    <div className={`absolute inset-0 -z-0 overflow-hidden pointer-events-none ${className}`}>
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full pointer-events-none" aria-hidden="true" />
     </div>
   )
 }
