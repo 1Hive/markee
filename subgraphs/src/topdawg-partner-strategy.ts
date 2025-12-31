@@ -102,8 +102,20 @@ export function handlePartnerMarkeeCreated(event: MarkeeCreatedEvent): void {
   stats.totalMarkees = stats.totalMarkees.plus(BigInt.fromI32(1))
   stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
-  stats.totalPartnerFunds = stats.totalPartnerFunds.plus(event.params.amount)
-  stats.totalPartnerBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds.plus(event.params.beneficiaryAmount)
+  
+  // Handle nullable partner fields
+  let currentPartnerFunds = stats.totalPartnerFunds
+  if (currentPartnerFunds == null) {
+    currentPartnerFunds = BigInt.fromI32(0)
+  }
+  stats.totalPartnerFunds = currentPartnerFunds.plus(event.params.amount)
+  
+  let currentBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds
+  if (currentBeneficiaryFunds == null) {
+    currentBeneficiaryFunds = BigInt.fromI32(0)
+  }
+  stats.totalPartnerBeneficiaryFunds = currentBeneficiaryFunds.plus(event.params.beneficiaryAmount)
+  
   stats.save()
 
   // Start tracking this Markee contract
@@ -162,8 +174,20 @@ export function handlePartnerFundsAddedToMarkee(event: FundsAddedToMarkeeEvent):
   }
   stats.totalFundsRaised = stats.totalFundsRaised.plus(event.params.amount)
   stats.totalTransactions = stats.totalTransactions.plus(BigInt.fromI32(1))
-  stats.totalPartnerFunds = stats.totalPartnerFunds.plus(event.params.amount)
-  stats.totalPartnerBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds.plus(event.params.beneficiaryAmount)
+  
+  // Handle nullable partner fields
+  let currentPartnerFunds = stats.totalPartnerFunds
+  if (currentPartnerFunds == null) {
+    currentPartnerFunds = BigInt.fromI32(0)
+  }
+  stats.totalPartnerFunds = currentPartnerFunds.plus(event.params.amount)
+  
+  let currentBeneficiaryFunds = stats.totalPartnerBeneficiaryFunds
+  if (currentBeneficiaryFunds == null) {
+    currentBeneficiaryFunds = BigInt.fromI32(0)
+  }
+  stats.totalPartnerBeneficiaryFunds = currentBeneficiaryFunds.plus(event.params.beneficiaryAmount)
+  
   stats.save()
 }
 
