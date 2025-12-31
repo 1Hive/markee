@@ -274,8 +274,6 @@ export function HeroBackground({
   return (
     <div className={`absolute inset-0 -z-0 overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
-      {/* Optional dim overlay to keep content readable */}
-      <div className="absolute inset-0 bg-[#060A2A]/35" aria-hidden="true" />
     </div>
   )
 }
