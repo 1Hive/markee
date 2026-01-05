@@ -1,14 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-  useAccount, 
-  useBalance,
-  useReadContract,
-  useWriteContract, 
-  useWaitForTransactionReceipt, 
-  useConnect 
-} from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
@@ -30,8 +23,7 @@ export function FixedPriceModal({
   onSuccess
 }: FixedPriceModalProps) {
   const { isConnected, chain, address } = useAccount()
-  const { connectors, connect } = useConnect()
-
+  
   // Get user's ETH balance
   const { data: balanceData } = useBalance({
     address: address,
