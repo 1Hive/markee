@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useConnect, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -22,8 +22,6 @@ type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
 export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSuccess, strategyAddress: customStrategyAddress }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
-  const { connectors, connect } = useConnect()
-  const { switchChain } = useSwitchChain()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
   const [name, setName] = useState('')
