@@ -58,33 +58,16 @@ export function ConnectButton() {
               }
 
               return (
-                <div className="flex gap-2">
-                  <button
-                    onClick={openChainModal}
-                    type="button"
-                    className="bg-[#0A0F3D] text-[#EDEEFF] px-3 py-2 rounded-lg font-medium hover:bg-[#0A0F3D]/80 flex items-center gap-2 transition-colors border border-[#8A8FBF]/30"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${
-                      chain.id === 10 ? 'bg-[#FF8E8E]' :
-                      chain.id === 8453 ? 'bg-[#7C9CFF]' :
-                      chain.id === 42161 ? 'bg-[#F897FE]' :
-                      chain.id === 1 ? 'bg-[#8BC8FF]' :
-                      'bg-[#8A8FBF]'
-                    }`} />
-                    <span className="hidden sm:inline">{chain.name}</span>
-                  </button>
-
-                  <button
-                    onClick={openAccountModal}
-                    type="button"
-                    className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
-                  >
-                    <Wallet size={20} />
-                    <span className="hidden sm:inline">
-                      {account.displayName}
-                    </span>
-                  </button>
-                </div>
+                <button
+                  onClick={openAccountModal}
+                  type="button"
+                  className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
+                >
+                  <Wallet size={20} />
+                  <span className="hidden sm:inline">
+                    {account.displayName}
+                  </span>
+                </button>
               )
             })()}
           </div>
