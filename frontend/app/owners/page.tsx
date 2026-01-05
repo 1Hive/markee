@@ -10,36 +10,36 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 const PHASES = [
   { 
     phase: 0, 
-    rate: 50000, 
-    endDate: new Date('2025-12-21T00:00:00Z'),
-    label: 'Phase 0',
-    color: 'bg-[#F897FE]'
-  },
-  { 
-    phase: 1, 
-    rate: 30000, 
+    rate: 100000, 
     endDate: new Date('2026-03-21T00:00:00Z'),
     label: 'Phase 1',
     color: 'bg-[#935AF0]'
   },
   { 
-    phase: 2, 
-    rate: 24000, 
+    phase: 1, 
+    rate: 50000, 
     endDate: new Date('2026-06-21T00:00:00Z'),
     label: 'Phase 2',
     color: 'bg-[#7B6AF4]'
   },
   { 
-    phase: 3, 
-    rate: 20000, 
+    phase: 2, 
+    rate: 25000, 
     endDate: new Date('2026-09-21T00:00:00Z'),
     label: 'Phase 3',
     color: 'bg-[#6A4AE3]'
   },
   { 
-    phase: 4, 
-    rate: 17000, 
+    phase: 3, 
+    rate: 12500, 
     endDate: new Date('2026-12-21T00:00:00Z'),
+    label: 'Phase 4',
+    color: 'bg-[#4B3ACC]'
+  },
+  { 
+    phase: 4, 
+    rate: 6250, 
+    endDate: new Date('2027-03-21T00:00:00Z'),
     label: 'Phase 4',
     color: 'bg-[#4B3ACC]'
   },
