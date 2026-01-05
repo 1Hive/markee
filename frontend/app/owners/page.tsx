@@ -12,28 +12,28 @@ const PHASES = [
     phase: 0, 
     rate: 100000, 
     endDate: new Date('2026-03-21T00:00:00Z'),
-    label: 'Phase 1',
+    label: 'Phase 0',
     color: 'bg-[#935AF0]'
   },
   { 
     phase: 1, 
     rate: 50000, 
     endDate: new Date('2026-06-21T00:00:00Z'),
-    label: 'Phase 2',
+    label: 'Phase 1',
     color: 'bg-[#7B6AF4]'
   },
   { 
     phase: 2, 
     rate: 25000, 
     endDate: new Date('2026-09-21T00:00:00Z'),
-    label: 'Phase 3',
+    label: 'Phase 2',
     color: 'bg-[#6A4AE3]'
   },
   { 
     phase: 3, 
     rate: 12500, 
     endDate: new Date('2026-12-21T00:00:00Z'),
-    label: 'Phase 4',
+    label: 'Phase 3',
     color: 'bg-[#4B3ACC]'
   },
   { 
@@ -321,7 +321,7 @@ function PhaseVisualization() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="bg-[#060A2A] rounded-xl shadow-lg p-8 border border-[#8A8FBF]/20">
-        <h3 className="text-xl font-bold text-[#EDEEFF] mb-6 text-center">MARKEE Token Issuance Phases</h3>
+        <h3 className="text-xl font-bold text-[#EDEEFF] mb-6 text-center">MARKEE Token Issuance</h3>
 
         {/* Progress Bar */}
         <div className="relative mb-8">
