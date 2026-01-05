@@ -1,19 +1,9 @@
-import { http, createConfig } from 'wagmi'
+import { getDefaultConfig } from '@rainbow-me/rainbowkit'
 import { base } from 'wagmi/chains'
-import { injected, walletConnect } from 'wagmi/connectors'
 
-export const config = createConfig({
-  chains: [base], // ONLY Base!
-  connectors: [
-    injected(),
-    walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
-    }),
-  ],
-  transports: {
-    [base.id]: http(
-      process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org',
-      { batch: true, retryCount: 3, retryDelay: 1000 }
-    ),
-  },
+export const config = getDefaultConfig({
+  appName: 'Markee',
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
+  chains: [base], // ONLY Base as canonical chain
+  ssr: true,
 })
