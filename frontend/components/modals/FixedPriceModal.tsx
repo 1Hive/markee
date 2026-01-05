@@ -12,6 +12,7 @@ import {
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
@@ -189,26 +190,26 @@ export function FixedPriceModal({
         {/* Content */}
         <div className="p-6">
           
-          {/* Wallet State */}
-          {!isConnected ? (
-            <div className="text-center py-8">
-              <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
-              <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
-              <button
-                onClick={() => connect({ connector: connectors[0] })}
-                className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
-              >
-                Connect Wallet
-              </button>
-            </div>
-          ) : isWrongNetwork ? (
-            <div className="text-center py-8">
-              <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-              <p className="text-[#B8B6D9] mb-4">
-                Please switch to {CANONICAL_CHAIN.name} to continue
-              </p>
-            </div>
-          ) : (
+           {/* Wallet State */}
+              {!isConnected ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
+                  <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
+                  <div className="flex justify-center">
+                    <ConnectButton />
+                  </div>
+                </div>
+              ) : isWrongNetwork ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
+                  <p className="text-[#B8B6D9] mb-4">
+                    Please switch to {CANONICAL_CHAIN.name} to continue
+                  </p>
+                  <div className="flex justify-center">
+                    <ConnectButton />
+                  </div>
+                </div>
+              ) : (
             <>
               {/* Current Message */}
               <div className="mb-6">
