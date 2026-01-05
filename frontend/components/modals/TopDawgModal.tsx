@@ -6,6 +6,7 @@ import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { ConnectButton } from '@/components/wallet/ConnectButton'
 import type { Markee } from '@/types'
 
 interface TopDawgModalProps {
@@ -315,16 +316,13 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
 
         {/* Content */}
         <div className="p-6">
-          {!isConnected ? (
+        {!isConnected ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
-              <button
-                onClick={() => connect({ connector: connectors[0] })}
-                className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
-              >
-                Connect Wallet
-              </button>
+              <div className="flex justify-center">
+                <ConnectButton />
+              </div>
             </div>
           ) : !isCorrectChain ? (
             <div className="text-center py-8">
@@ -332,12 +330,9 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
               <p className="text-[#B8B6D9] mb-4">
                 Please switch to {CANONICAL_CHAIN.name} to use Markee
               </p>
-              <button
-                onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
-                className="bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 transition mt-4"
-              >
-                Switch to {CANONICAL_CHAIN.name}
-              </button>
+              <div className="flex justify-center">
+                <ConnectButton />
+              </div>
             </div>
           ) : !strategyAddress ? (
             <div className="text-center py-8">
