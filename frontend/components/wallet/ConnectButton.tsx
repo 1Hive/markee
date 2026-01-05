@@ -48,7 +48,7 @@ export function ConnectButton() {
                     type="button"
                     className="bg-[#FF8E8E] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#FF8E8E]/80 flex items-center gap-2 transition-colors"
                   >
-                    Wrong network
+                    Switch Network to Base
                   </button>
                 )
               }
