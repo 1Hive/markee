@@ -61,15 +61,15 @@ export const CONTRACTS = {
       },
       {
         name: 'Juicebox Top Dawg',
-        address: '' as const,
+        address: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2' as const,
       },
       {
         name: 'Revnets Top Dawg',
-        address: '' as const,
+        address: '0xe68CbEf87B710B379654Dfd3c0BEC8779bBCcEbB' as const,
       },
       {
         name: 'Bread Cooperative Top Dawg',
-        address: '' as const,
+        address: '0x05A40489965B355e0404c05134dA68626a5a927c' as const,
       },
     ],
   },
