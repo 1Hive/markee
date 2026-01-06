@@ -20,37 +20,37 @@ export const PARTNERS = [
     description: 'Community governance platform built on conviction voting',
     strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE',
     logo: '/partners/gardens.png',
-    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    fundingSplit: '68% to Gardens / 32% to Markee Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
   },
     {
     slug: 'bread-cooperative',
     name: 'Bread Cooperative',
-    description: '',
+    description: 'A collective of communities building worker-owned financial infrastructure',
     strategyAddress: '0x05A40489965B355e0404c05134dA68626a5a927c',
     logo: '/partners/breadcoop.png',
-    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    fundingSplit: '68% to Bread Cooperative / 32% to Markee Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
   },
     {
     slug: 'revnets',
     name: 'RevNets',
-    description: '',
+    description: 'Autonomous revenue-sharing networks with immutable tokenomics rules',
     strategyAddress: '0xe68CbEf87B710B379654Dfd3c0BEC8779bBCcEbB',
     logo: '/partners/revnets.png',
-    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    fundingSplit: '68% to RevNets / 32% to Markee Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
   },
     {
     slug: 'juicebox',
     name: 'Juicebox',
-    description: '',
+    description: 'Programmable fundraising protocol for community-owned treasury formation',
     strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
     logo: '/partners/juicebox.png',
-    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    fundingSplit: '68% to Juicebox / 32% to Markee Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
   }
