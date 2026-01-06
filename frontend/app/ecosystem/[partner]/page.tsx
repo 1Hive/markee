@@ -11,17 +11,54 @@ import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
-import { createPublicClient, http, parseAbiItem } from 'viem'
-import { base } from 'viem/chains'
+import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
 
-const MARKEE_ABI = [
-  parseAbiItem('function message() view returns (string)'),
-  parseAbiItem('function owner() view returns (address)'),
-  parseAbiItem('function name() view returns (string)'),
-  parseAbiItem('function totalFundsAdded() view returns (uint256)')
-] as const
+// GraphQL queries for fetching ALL markees from a partner strategy
+const COOPERATIVE_ALL_MARKEES_QUERY = `
+  query GetAllCooperativeMarkees {
+    topDawgStrategy(id: "0x558eb41ec9cc90b86550617eef5f180ea60e0e3a") {
+      totalFundsRaised
+      totalMarkeesCreated
+      markees(
+        orderBy: totalFundsAdded
+        orderDirection: desc
+        first: 1000
+      ) {
+        id
+        address
+        message
+        name
+        owner
+        totalFundsAdded
+        pricingStrategy
+      }
+    }
+  }
+`
+
+const PARTNER_ALL_MARKEES_QUERY = `
+  query GetAllPartnerMarkees($strategyId: ID!) {
+    topDawgPartnerStrategy(id: $strategyId) {
+      totalFundsRaised
+      totalMarkeesCreated
+      markees(
+        orderBy: totalFundsAdded
+        orderDirection: desc
+        first: 1000
+      ) {
+        id
+        address
+        message
+        name
+        owner
+        totalFundsAdded
+        pricingStrategy
+      }
+    }
+  }
+`
 
 export default function PartnerPage() {
   const params = useParams()
@@ -39,7 +76,7 @@ export default function PartnerPage() {
   // Find the partner
   const partner = PARTNERS.find(p => p.slug === params.partner)
 
-  // Fetch markees for this partner
+  // Fetch markees for this partner from subgraph
   const fetchMarkees = useCallback(async () => {
     if (!partner) return
 
@@ -47,77 +84,57 @@ export default function PartnerPage() {
       setIsLoading(true)
       setError(null)
 
-      const client = createPublicClient({
-        chain: base,
-        transport: http()
+      const subgraphUrl = SUBGRAPH_URLS[CANONICAL_CHAIN_ID]
+      
+      if (!subgraphUrl) {
+        throw new Error('Subgraph URL not configured')
+      }
+
+      // Choose query based on whether this is the cooperative or a partner
+      const query = partner.isCooperative ? COOPERATIVE_ALL_MARKEES_QUERY : PARTNER_ALL_MARKEES_QUERY
+      const variables = partner.isCooperative ? {} : { strategyId: partner.strategyAddress.toLowerCase() }
+
+      const response = await fetch(subgraphUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables })
       })
 
-      // Get MarkeeCreated events
-      const events = await client.getLogs({
-        address: partner.strategyAddress as `0x${string}`,
-        event: parseAbiItem('event MarkeeCreated(address indexed markeeAddress, address indexed owner, uint256 initialAmount, string message)'),
-        fromBlock: 'earliest',
-        toBlock: 'latest'
-      })
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
 
-      if (events.length === 0) {
+      const result = await response.json()
+
+      if (result.errors) {
+        console.error('GraphQL errors:', result.errors)
+        throw new Error(result.errors[0]?.message || 'GraphQL query failed')
+      }
+
+      const strategyData = partner.isCooperative 
+        ? result.data?.topDawgStrategy
+        : result.data?.topDawgPartnerStrategy
+
+      if (!strategyData || !strategyData.markees) {
         setMarkees([])
         setLastUpdated(new Date())
         setIsLoading(false)
         return
       }
 
-      // Fetch details for each markee
-      const markeeData = await Promise.all(
-        events.map(async (event) => {
-          const markeeAddress = event.args.markeeAddress as `0x${string}`
-          
-          try {
-            const [message, owner, name, totalFundsAdded] = await Promise.all([
-              client.readContract({
-                address: markeeAddress,
-                abi: MARKEE_ABI,
-                functionName: 'message'
-              }),
-              client.readContract({
-                address: markeeAddress,
-                abi: MARKEE_ABI,
-                functionName: 'owner'
-              }),
-              client.readContract({
-                address: markeeAddress,
-                abi: MARKEE_ABI,
-                functionName: 'name'
-              }).catch(() => ''),
-              client.readContract({
-                address: markeeAddress,
-                abi: MARKEE_ABI,
-                functionName: 'totalFundsAdded'
-              })
-            ])
+      // Transform subgraph data to Markee type
+      const transformedMarkees: Markee[] = strategyData.markees.map((m: any) => ({
+        address: m.address,
+        message: m.message,
+        name: m.name,
+        owner: m.owner,
+        totalFundsAdded: BigInt(m.totalFundsAdded),
+        pricingStrategy: m.pricingStrategy,
+        strategyAddress: partner.strategyAddress,
+        chainId: CANONICAL_CHAIN_ID
+      }))
 
-            return {
-              address: markeeAddress,
-              message: message as string,
-              owner: owner as string,
-              name: name as string,
-              totalFundsAdded: totalFundsAdded as bigint,
-              pricingStrategy: partner.strategyAddress,
-              strategyAddress: partner.strategyAddress,
-              chainId: base.id
-            } as Markee
-          } catch (err) {
-            console.error(`Error fetching markee ${markeeAddress}:`, err)
-            return null
-          }
-        })
-      )
-
-      // Filter and sort
-      const validMarkees = markeeData.filter((m): m is Markee => m !== null)
-      validMarkees.sort((a, b) => Number(b.totalFundsAdded - a.totalFundsAdded))
-
-      setMarkees(validMarkees)
+      setMarkees(transformedMarkees)
       setLastUpdated(new Date())
     } catch (err) {
       console.error('Error fetching markees:', err)
