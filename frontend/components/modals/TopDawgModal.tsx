@@ -346,7 +346,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
-                      Set Your First Message
+                      Your Message
                     </label>
                     <textarea
                       value={message}
