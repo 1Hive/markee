@@ -23,6 +23,36 @@ export const PARTNERS = [
     fundingSplit: '68% to Gardens / 32% to Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
+  },
+    {
+    slug: 'bread-cooperative',
+    name: 'Bread Cooperative',
+    description: '',
+    strategyAddress: '0x05A40489965B355e0404c05134dA68626a5a927c',
+    logo: '/partners/breadcoop.png',
+    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    percentToBeneficiary: 6800,
+    isCooperative: false
+  },
+    {
+    slug: 'revnets',
+    name: 'RevNets',
+    description: '',
+    strategyAddress: '0xe68CbEf87B710B379654Dfd3c0BEC8779bBCcEbB',
+    logo: '/partners/revnets.png',
+    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    percentToBeneficiary: 6800,
+    isCooperative: false
+  },
+    {
+    slug: 'juicebox',
+    name: 'Juicebox',
+    description: '',
+    strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
+    logo: '/partners/juicebox.png',
+    fundingSplit: '68% to Gardens / 32% to Cooperative',
+    percentToBeneficiary: 6800,
+    isCooperative: false
   }
 ] as const
 
