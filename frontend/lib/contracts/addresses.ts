@@ -81,12 +81,13 @@ export function getAllStrategyAddresses(): string[] {
   return [
     ...baseContracts.fixedPriceStrategies.map(s => s.address),
     ...baseContracts.topDawgStrategies.map(s => s.address),
-  ].filter(addr => addr !== '')
+  ]
 }
 
 // Subgraph endpoints
 export const SUBGRAPH_URLS = {
   [base.id]: `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`,
 }
+
 // Type exports
 export type SupportedChainId = keyof typeof REVNET_CONFIG
