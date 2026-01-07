@@ -29,7 +29,7 @@ export default function EcosystemPage() {
 
 
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
-            Join the growing list of sites integrating Markee to raise money
+            Join the growing list of sites integrating Markee for their users.
           </p>
         </div>
       </section>
