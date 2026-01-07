@@ -1,354 +1,1097 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ChevronDown, Zap, DollarSign, TrendingUp, Clock, Globe, Users, Sparkles, ArrowRight, Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 
 export default function HowItWorks() {
   return (
-    <div className="min-h-screen bg-[#060A2A]">
+    <div className="min-h-screen bg-midnight-navy">
       <Header activePage="how-it-works" />
 
-      {/* What is Markee - Hero Section */}
-      <section className="relative py-24 overflow-hidden border-b border-[#8A8FBF]/20">
-        {/* Cosmic background */}
-        <HeroBackground />
-        
-        {/* Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">How it Works</h1>
-          <div className="space-y-4 text-lg text-[#B8B6D9]">
-            <p className="flex items-start gap-3">
-              <span className="text-[#F897FE] font-bold">•</span>
-              <span>Markee is open source marketing: <strong className="text-[#EDEEFF]">a message anyone can pay to edit.</strong></span>
-            </p>
-            <p className="flex items-start gap-3">
-              <span className="text-[#F897FE] font-bold">•</span>
-              <span>It's owned by an open source organization: <strong className="text-[#EDEEFF]">a Digital Cooperative.</strong></span>
-            </p>
-            <p className="flex items-start gap-3">
-              <span className="text-[#F897FE] font-bold">•</span>
-              <span>And earns money through open source revenue generation: <strong className="text-[#EDEEFF]">RevNets on Ethereum.</strong></span>
-            </p>
-          </div>
-          
-          <div className="mt-8 flex gap-4">
-            <Link 
-              href="/owners"
-              className="inline-block bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-            >
-              Learn About Ownership
-            </Link>
-            <Link 
-              href="/ecosystem"
-              className="inline-block bg-[#060A2A] text-[#7C9CFF] border-2 border-[#7C9CFF] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF]/10 transition-colors"
-            >
-              View Ecosystem
-            </Link>
-          </div>
-        </div>
-      </section>
+      {/* Hero: Live Interactive Demo */}
+      <HeroDemo />
 
-      {/* Pricing Strategies */}
-      <section className="py-16 bg-[#060A2A] border-b border-[#8A8FBF]/20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8">Pricing Strategies</h2>
-          
-          <div className="space-y-6">
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-6 border-l-4 border-[#F897FE]">
-              <h3 className="text-xl font-bold text-[#EDEEFF] mb-3">Leaderboard Strategy</h3>
-              <p className="text-[#B8B6D9] mb-3">
-                Competitive bidding where the highest total investment displays their message. Each contribution adds to your total and moves you up the leaderboard.
-              </p>
-              <p className="text-sm text-[#8A8FBF]">
-                <strong className="text-[#B8B6D9]">Use case:</strong> Organizations and early believers investing in the cooperative's future
-              </p>
-            </div>
+      {/* How It Works - 3 Visual Steps */}
+      <ThreeStepFlow />
 
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-6 border-l-4 border-[#7C9CFF]">
-              <h3 className="text-xl font-bold text-[#EDEEFF] mb-3">Fixed Price Strategy</h3>
-              <p className="text-[#B8B6D9] mb-3">
-                Set price per message change. Pay once to update the message - simple and predictable pricing.
-              </p>
-              <p className="text-sm text-[#8A8FBF]">
-                <strong className="text-[#B8B6D9]">Use case:</strong> Platform integrations where communities set their own pricing
-              </p>
-            </div>
+      {/* Pricing Strategies - Visual Cards */}
+      <PricingStrategies />
 
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-6 border-l-4 border-[#7B6AF4] opacity-60">
-              <h3 className="text-xl font-bold text-[#EDEEFF] mb-3">Platform Integration Strategy <span className="text-sm font-normal text-[#8A8FBF]">(Coming Q2 2026)</span></h3>
-              <p className="text-[#B8B6D9] mb-3">
-                Seamlessly integrated into existing platforms with custom revenue sharing and community funding options.
-              </p>
-              <p className="text-sm text-[#8A8FBF]">
-                <strong className="text-[#B8B6D9]">Use case:</strong> DAOs, communities, and platforms monetizing their digital spaces
-              </p>
-            </div>
-          </div>
+      {/* Two Integration Paths */}
+      <IntegrationPaths />
 
-          <div className="mt-8 bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20">
-            <p className="text-[#B8B6D9]">
-              <strong className="text-[#EDEEFF]">Learn more:</strong> Check out our <Link href="https://revnet.eth.sucks/" target="_blank" className="text-[#F897FE] hover:underline font-semibold">RevNet documentation</Link> to understand how revenue flows through the ecosystem, or explore our <Link href="/ecosystem" className="text-[#F897FE] hover:underline font-semibold">Ecosystem page</Link> to see platform integrations.
-            </p>
-          </div>
-        </div>
-      </section>
+      {/* Network Effect Visualization */}
+      <NetworkEffect />
 
-      {/* Money Flow Diagrams */}
-      <section className="py-16 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-12 text-center">How Money Flows</h2>
-          <MoneyFlowDiagrams />
-        </div>
-      </section>
+      {/* Money Flow - Unified Diagram */}
+      <UnifiedMoneyFlow />
 
-      {/* FAQ Section */}
-      <section className="py-16 bg-[#060A2A]">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8">Frequently Asked Questions</h2>
-          <FAQAccordion />
-        </div>
-      </section>
+      {/* Visual Timeline */}
+      <VisualTimeline />
 
-      {/* CTA Footer */}
-      <section className="bg-[#F897FE] py-12">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-[#060A2A] mb-4">Ready to create your Markee?</h2>
-          <p className="text-[#060A2A] opacity-90 mb-8 text-lg">Buy a Message and become part of our cooperative</p>
-          <Link 
-            href="/"
-            className="inline-block bg-[#060A2A] text-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#0A0F3D] transition-colors"
-          >
-            Buy a Message
-          </Link>
-        </div>
-      </section>
+      {/* Condensed FAQ */}
+      <CondensedFAQ />
+
+      {/* Multi-CTA Footer */}
+      <MultiCTAFooter />
 
       <Footer />
     </div>
   )
 }
 
-function MoneyFlowDiagrams() {
-  const [activeTab, setActiveTab] = useState<'leaderboard' | 'website' | 'platform'>('leaderboard')
+// ============================================
+// HERO: LIVE INTERACTIVE DEMO
+// ============================================
+function HeroDemo() {
+  const [currentMessage, setCurrentMessage] = useState("Welcome to Markee!")
+  const [currentHolder, setCurrentHolder] = useState("Alice")
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [showTokenFlow, setShowTokenFlow] = useState(false)
+
+  const demoMessages = [
+    { holder: "Alice", message: "Welcome to Markee!", amount: "0.1 ETH" },
+    { holder: "Bob", message: "Building the future of web3!", amount: "0.15 ETH" },
+    { holder: "Carol", message: "Open source marketing FTW!", amount: "0.2 ETH" },
+  ]
+
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  const handleUpdate = () => {
+    if (isAnimating) return
+    
+    setIsAnimating(true)
+    setShowTokenFlow(true)
+    
+    const nextIndex = (currentIndex + 1) % demoMessages.length
+    
+    setTimeout(() => {
+      setCurrentMessage(demoMessages[nextIndex].message)
+      setCurrentHolder(demoMessages[nextIndex].holder)
+      setCurrentIndex(nextIndex)
+    }, 600)
+    
+    setTimeout(() => {
+      setIsAnimating(false)
+      setShowTokenFlow(false)
+    }, 2000)
+  }
 
   return (
-    <div>
-      <div className="flex gap-4 mb-8 justify-center">
-        <button
-          onClick={() => setActiveTab('leaderboard')}
-          className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-            activeTab === 'leaderboard' 
-              ? 'bg-[#F897FE] text-[#060A2A]' 
-              : 'bg-[#0A0F3D] text-[#B8B6D9] hover:bg-[#172090] border border-[#8A8FBF]/20'
-          }`}
-        >
-          Leaderboard Markee
-        </button>
-        <button
-          onClick={() => setActiveTab('website')}
-          className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-            activeTab === 'website' 
-              ? 'bg-[#F897FE] text-[#060A2A]' 
-              : 'bg-[#0A0F3D] text-[#B8B6D9] hover:bg-[#172090] border border-[#8A8FBF]/20'
-          }`}
-        >
-          Website Integrated Markees
-        </button>
-        <button
-          onClick={() => setActiveTab('platform')}
-          className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-            activeTab === 'platform' 
-              ? 'bg-[#F897FE] text-[#060A2A]' 
-              : 'bg-[#0A0F3D] text-[#B8B6D9] hover:bg-[#172090] border border-[#8A8FBF]/20'
-          }`}
-        >
-          Platform Integrated Markees
-        </button>
+    <section className="relative py-24 overflow-hidden border-b border-cool-slate/20">
+      <HeroBackground />
+      
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-soft-white mb-4">
+            A Sign Anyone Can Pay to Edit
+          </h1>
+          <p className="text-xl text-lavender-gray">
+            See it in action
+          </p>
+        </div>
+
+        {/* Interactive Demo */}
+        <div className="max-w-2xl mx-auto">
+          <div className="relative">
+            {/* Markee Message Board */}
+            <div className={`bg-deep-space border-2 border-soft-pink rounded-2xl p-8 transition-all duration-500 ${isAnimating ? 'scale-105 border-cool-sky-blue' : ''}`}>
+              <div className="text-center mb-6">
+                <div className="inline-block bg-midnight-navy px-4 py-2 rounded-lg mb-4">
+                  <span className="text-cool-slate text-sm">Current Holder</span>
+                  <div className="text-soft-pink font-bold text-lg">{currentHolder}</div>
+                </div>
+              </div>
+              
+              <div className={`text-3xl font-bold text-soft-white text-center mb-8 min-h-[80px] flex items-center justify-center transition-all duration-500 ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+                "{currentMessage}"
+              </div>
+
+              <button
+                onClick={handleUpdate}
+                disabled={isAnimating}
+                className="w-full bg-soft-pink text-midnight-navy px-8 py-4 rounded-xl font-bold text-lg hover:bg-cool-sky-blue transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Zap className="w-5 h-5" />
+                Pay to Update Message
+              </button>
+            </div>
+
+            {/* Token Flow Animation */}
+            {showTokenFlow && (
+              <div className="absolute -right-32 top-1/2 -translate-y-1/2 hidden lg:flex flex-col items-center gap-2 animate-pulse">
+                <ArrowRight className="w-8 h-8 text-soft-pink" />
+                <div className="bg-galactic-purple text-soft-white px-4 py-2 rounded-lg text-sm font-bold">
+                  ETH → RevNet
+                </div>
+                <div className="bg-amethyst text-soft-white px-4 py-2 rounded-lg text-sm font-bold">
+                  MARKEE Tokens →
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 text-center text-lavender-gray text-sm">
+            💡 This is a live demo. In production, updates are instant and on-chain.
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ============================================
+// THREE STEP FLOW
+// ============================================
+function ThreeStepFlow() {
+  return (
+    <section className="py-24 bg-midnight-navy border-b border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bold text-soft-white text-center mb-16">
+          How It Works
+        </h2>
+
+        <div className="grid md:grid-cols-3 gap-8 relative">
+          {/* Connection Lines */}
+          <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-soft-pink via-cool-sky-blue to-amethyst -translate-y-1/2 z-0" />
+
+          {/* Step 1 */}
+          <StepCard
+            number="1"
+            icon={<Sparkles className="w-12 h-12" />}
+            title="Create Markee"
+            description="Set up your message board with your chosen pricing strategy"
+            color="soft-pink"
+          />
+
+          {/* Step 2 */}
+          <StepCard
+            number="2"
+            icon={<DollarSign className="w-12 h-12" />}
+            title="People Pay to Edit"
+            description="Anyone can update the message by paying through your chosen strategy"
+            color="cool-sky-blue"
+          />
+
+          {/* Step 3 */}
+          <StepCard
+            number="3"
+            icon={<Globe className="w-12 h-12" />}
+            title="Revenue → Tokens"
+            description="Payments flow to RevNet, minting MARKEE tokens for buyers and the cooperative"
+            color="amethyst"
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function StepCard({ number, icon, title, description, color }: { number: string, icon: React.ReactNode, title: string, description: string, color: string }) {
+  const colorClasses = {
+    'soft-pink': 'text-soft-pink border-soft-pink',
+    'cool-sky-blue': 'text-cool-sky-blue border-cool-sky-blue',
+    'amethyst': 'text-amethyst border-amethyst',
+  }
+
+  return (
+    <div className="relative z-10 bg-deep-space border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-soft-pink/50 transition-all group">
+      <div className={`inline-block p-4 rounded-full bg-midnight-navy border-2 ${colorClasses[color as keyof typeof colorClasses]} mb-4 group-hover:scale-110 transition-transform`}>
+        {icon}
+      </div>
+      <div className="absolute top-4 right-4 text-5xl font-bold text-cool-slate/20 group-hover:text-soft-pink/20 transition-colors">
+        {number}
+      </div>
+      <h3 className="text-2xl font-bold text-soft-white mb-3">{title}</h3>
+      <p className="text-lavender-gray leading-relaxed">{description}</p>
+    </div>
+  )
+}
+
+// ============================================
+// PRICING STRATEGIES
+// ============================================
+function PricingStrategies() {
+  const [hoveredStrategy, setHoveredStrategy] = useState<string | null>(null)
+
+  const strategies = [
+    {
+      id: 'fixed',
+      name: 'Fixed Price',
+      icon: <DollarSign className="w-8 h-8" />,
+      color: 'soft-pink',
+      description: 'Pay once to update',
+      visual: 'Simple exchange',
+      example: '0.01 ETH per update',
+      status: 'live'
+    },
+    {
+      id: 'topdawg',
+      name: 'Top Dawg',
+      icon: <TrendingUp className="w-8 h-8" />,
+      color: 'cool-sky-blue',
+      description: 'Highest total wins',
+      visual: 'Competitive bidding',
+      example: 'Add to your total',
+      status: 'live'
+    },
+    {
+      id: 'stream',
+      name: 'Stream-to-Own',
+      icon: <Zap className="w-8 h-8" />,
+      color: 'amethyst',
+      description: 'Highest stream owns',
+      visual: 'Continuous payment',
+      example: '0.001 ETH/second',
+      status: 'q1-2026'
+    },
+    {
+      id: 'classic',
+      name: 'Classic',
+      icon: <Clock className="w-8 h-8" />,
+      color: 'galactic-purple',
+      description: 'Dynamic pricing',
+      visual: '10x spike then decay',
+      example: 'Starts at 0.01 ETH',
+      status: 'q1-2026'
+    }
+  ]
+
+  return (
+    <section className="py-24 bg-deep-space border-b border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-bold text-soft-white mb-4">
+            Choose Your Pricing Strategy
+          </h2>
+          <p className="text-xl text-lavender-gray">
+            Each Markee can use a different strategy. Pick what works for your community.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {strategies.map((strategy) => (
+            <StrategyCard
+              key={strategy.id}
+              strategy={strategy}
+              isHovered={hoveredStrategy === strategy.id}
+              onHover={() => setHoveredStrategy(strategy.id)}
+              onLeave={() => setHoveredStrategy(null)}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function StrategyCard({ strategy, isHovered, onHover, onLeave }: any) {
+  const colorClasses = {
+    'soft-pink': 'border-soft-pink text-soft-pink',
+    'cool-sky-blue': 'border-cool-sky-blue text-cool-sky-blue',
+    'amethyst': 'border-amethyst text-amethyst',
+    'galactic-purple': 'border-galactic-purple text-galactic-purple',
+  }
+
+  const isComingSoon = strategy.status !== 'live'
+
+  return (
+    <div
+      onMouseEnter={onHover}
+      onMouseLeave={onLeave}
+      className={`relative bg-midnight-navy border-2 rounded-2xl p-6 transition-all cursor-pointer ${
+        isHovered ? `${colorClasses[strategy.color as keyof typeof colorClasses]} scale-105 shadow-2xl` : 'border-cool-slate/20 hover:border-cool-slate/40'
+      } ${isComingSoon ? 'opacity-70' : ''}`}
+    >
+      {isComingSoon && (
+        <div className="absolute top-4 right-4 bg-deep-space text-cool-slate text-xs font-bold px-3 py-1 rounded-full">
+          Q1 2026
+        </div>
+      )}
+
+      <div className={`inline-block p-3 rounded-xl bg-deep-space border-2 ${colorClasses[strategy.color as keyof typeof colorClasses]} mb-4 transition-transform ${isHovered ? 'scale-110' : ''}`}>
+        {strategy.icon}
       </div>
 
-      <div className="bg-[#060A2A] rounded-lg p-8 shadow-md border border-[#8A8FBF]/20">
-        {activeTab === 'leaderboard' && (
-          <div className="flex justify-center">
-            <img 
-              src="/leaderboard-funding.png" 
-              alt="Leaderboard Markee Funding Flow" 
-              className="max-w-full h-auto"
-            />
-          </div>
-        )}
-        {activeTab === 'website' && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="text-6xl mb-4">🏗️</div>
-            <h3 className="text-2xl font-bold text-[#EDEEFF] mb-2">Coming Soon</h3>
-            <p className="text-[#8A8FBF] text-center max-w-md">
-              Website integrated Markees launching Q1 2026
-            </p>
-          </div>
-        )}
-        {activeTab === 'platform' && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="text-6xl mb-4">🏗️</div>
-            <h3 className="text-2xl font-bold text-[#EDEEFF] mb-2">Coming Soon</h3>
-            <p className="text-[#8A8FBF] text-center max-w-md">
-              Platform integrated Markees launching Q2 2026
-            </p>
-          </div>
-        )}
+      <h3 className="text-xl font-bold text-soft-white mb-2">{strategy.name}</h3>
+      <p className="text-lavender-gray text-sm mb-4">{strategy.description}</p>
+
+      {/* Visual Representation */}
+      <div className="bg-deep-space rounded-lg p-4 mb-3 min-h-[80px] flex items-center justify-center">
+        {strategy.id === 'fixed' && <FixedPriceVisual />}
+        {strategy.id === 'topdawg' && <TopDawgVisual isHovered={isHovered} />}
+        {strategy.id === 'stream' && <StreamVisual isHovered={isHovered} />}
+        {strategy.id === 'classic' && <ClassicVisual isHovered={isHovered} />}
+      </div>
+
+      <div className="text-center text-cool-slate text-xs font-mono">
+        {strategy.example}
       </div>
     </div>
   )
 }
 
-function FAQAccordion() {
+function FixedPriceVisual() {
+  return (
+    <div className="flex items-center gap-2 text-soft-white">
+      <div className="bg-soft-pink text-midnight-navy px-3 py-1 rounded-md text-sm font-bold">
+        💬 Message
+      </div>
+      <div className="text-lavender-gray">←</div>
+      <div className="bg-cool-sky-blue text-midnight-navy px-3 py-1 rounded-md text-sm font-bold">
+        💰 Pay
+      </div>
+    </div>
+  )
+}
+
+function TopDawgVisual({ isHovered }: { isHovered: boolean }) {
+  return (
+    <div className="space-y-1 w-full">
+      {[
+        { name: 'Alice', amount: '0.5', isTop: true },
+        { name: 'Bob', amount: '0.3', isTop: false },
+        { name: 'Carol', amount: '0.2', isTop: false },
+      ].map((entry, i) => (
+        <div
+          key={entry.name}
+          className={`flex items-center justify-between px-2 py-1 rounded transition-all ${
+            entry.isTop && isHovered ? 'bg-soft-pink/20 scale-105' : 'bg-deep-space/50'
+          }`}
+        >
+          <span className="text-xs text-lavender-gray">{entry.name}</span>
+          <span className="text-xs font-mono text-cool-sky-blue">{entry.amount} ETH</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StreamVisual({ isHovered }: { isHovered: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="text-2xl animate-pulse">💧</div>
+      <div className={`flex-1 h-2 rounded-full bg-gradient-to-r from-soft-pink to-cool-sky-blue transition-all ${isHovered ? 'animate-pulse' : ''}`} />
+      <div className="text-2xl">💬</div>
+    </div>
+  )
+}
+
+function ClassicVisual({ isHovered }: { isHovered: boolean }) {
+  return (
+    <svg viewBox="0 0 100 40" className="w-full h-12">
+      <path
+        d="M 5 35 L 20 5 L 35 30 L 50 25 L 65 32 L 80 33 L 95 34"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className={`text-amethyst transition-all ${isHovered ? 'stroke-soft-pink' : ''}`}
+      />
+      <circle cx="20" cy="5" r="3" className="fill-soft-pink" />
+    </svg>
+  )
+}
+
+// ============================================
+// INTEGRATION PATHS
+// ============================================
+function IntegrationPaths() {
+  return (
+    <section className="py-24 bg-midnight-navy border-b border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bold text-soft-white text-center mb-16">
+          Two Ways to Integrate
+        </h2>
+
+        <div className="grid lg:grid-cols-2 gap-12">
+          {/* Add to Your Site */}
+          <IntegrationPathCard
+            title="Add to Your Site"
+            subtitle="Coming Q1 2026"
+            icon="🌐"
+            steps={[
+              { icon: '📋', text: 'Copy embed code' },
+              { icon: '⚙️', text: 'Choose pricing strategy' },
+              { icon: '💰', text: 'Set fee receiver' },
+              { icon: '🚀', text: 'Start earning' },
+            ]}
+            color="soft-pink"
+          />
+
+          {/* Integrate Your Platform */}
+          <IntegrationPathCard
+            title="Integrate Your Platform"
+            subtitle="Coming Q2 2026"
+            icon="🏢"
+            steps={[
+              { icon: '🤝', text: 'Partner with Markee' },
+              { icon: '👥', text: 'Users create Markees' },
+              { icon: '🎯', text: 'They pick strategy & receiver' },
+              { icon: '📈', text: 'Ecosystem grows' },
+            ]}
+            color="cool-sky-blue"
+            ctaLink="/ecosystem"
+            ctaText="View Ecosystem"
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function IntegrationPathCard({ title, subtitle, icon, steps, color, ctaLink, ctaText }: any) {
+  const colorClasses = {
+    'soft-pink': 'border-soft-pink bg-soft-pink/5',
+    'cool-sky-blue': 'border-cool-sky-blue bg-cool-sky-blue/5',
+  }
+
+  return (
+    <div className={`border-2 rounded-2xl p-8 ${colorClasses[color as keyof typeof colorClasses]} transition-all hover:scale-105`}>
+      <div className="text-center mb-8">
+        <div className="text-6xl mb-4">{icon}</div>
+        <h3 className="text-2xl font-bold text-soft-white mb-2">{title}</h3>
+        <p className="text-cool-slate text-sm">{subtitle}</p>
+      </div>
+
+      <div className="space-y-4 mb-8">
+        {steps.map((step: any, index: number) => (
+          <div key={index} className="flex items-center gap-4 bg-deep-space rounded-lg p-4">
+            <div className="text-2xl flex-shrink-0">{step.icon}</div>
+            <div className="text-lavender-gray">{step.text}</div>
+          </div>
+        ))}
+      </div>
+
+      {ctaLink && (
+        <Link
+          href={ctaLink}
+          className="block text-center bg-midnight-navy border-2 border-cool-sky-blue text-cool-sky-blue px-6 py-3 rounded-lg font-bold hover:bg-cool-sky-blue hover:text-midnight-navy transition-all"
+        >
+          {ctaText}
+        </Link>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// NETWORK EFFECT
+// ============================================
+function NetworkEffect() {
+  const [isAnimating, setIsAnimating] = useState(false)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsAnimating(true)
+      setTimeout(() => setIsAnimating(false), 2000)
+    }, 4000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <section className="py-24 bg-deep-space border-b border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-bold text-soft-white mb-4">
+            The Network Effect
+          </h2>
+          <p className="text-xl text-lavender-gray max-w-3xl mx-auto">
+            Markee creators can opt into the network. Message buyers pay once to update all connected Markees at once.
+          </p>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          {/* Visualization */}
+          <div className="relative h-96 bg-midnight-navy rounded-2xl border-2 border-cool-slate/20 p-8 overflow-hidden">
+            <NetworkVisualization isAnimating={isAnimating} />
+          </div>
+
+          {/* Benefits */}
+          <div className="space-y-6">
+            <BenefitCard
+              icon={<Sparkles className="w-6 h-6" />}
+              title="For Markee Creators"
+              description="Earn from network-wide message updates in addition to your own Markee revenue"
+              color="soft-pink"
+            />
+            <BenefitCard
+              icon={<Globe className="w-6 h-6" />}
+              title="For Message Buyers"
+              description="Pay once, reach everywhere. Update your message across all connected Markees simultaneously"
+              color="cool-sky-blue"
+            />
+            <BenefitCard
+              icon={<TrendingUp className="w-6 h-6" />}
+              title="For the Ecosystem"
+              description="More Markees = more value for everyone. Network effects benefit all participants"
+              color="amethyst"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function NetworkVisualization({ isAnimating }: { isAnimating: boolean }) {
+  const nodes = [
+    { x: 50, y: 20, id: 1 },
+    { x: 20, y: 40, id: 2 },
+    { x: 80, y: 40, id: 3 },
+    { x: 35, y: 65, id: 4 },
+    { x: 65, y: 65, id: 5 },
+    { x: 50, y: 85, id: 6 },
+  ]
+
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full">
+      {/* Connection Lines */}
+      {nodes.map((node, i) =>
+        nodes.slice(i + 1).map((target, j) => (
+          <line
+            key={`${i}-${j}`}
+            x1={node.x}
+            y1={node.y}
+            x2={target.x}
+            y2={target.y}
+            stroke="currentColor"
+            strokeWidth="0.5"
+            className={`text-cool-slate transition-all ${isAnimating ? 'text-soft-pink animate-pulse' : ''}`}
+          />
+        ))
+      )}
+
+      {/* Nodes */}
+      {nodes.map((node) => (
+        <g key={node.id}>
+          <circle
+            cx={node.x}
+            cy={node.y}
+            r="4"
+            className={`transition-all ${isAnimating ? 'fill-soft-pink animate-pulse' : 'fill-cool-sky-blue'}`}
+          />
+          <circle
+            cx={node.x}
+            cy={node.y}
+            r={isAnimating ? '8' : '0'}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="0.5"
+            className="text-soft-pink opacity-50 transition-all"
+          />
+        </g>
+      ))}
+
+      {/* Ripple Effect from center */}
+      {isAnimating && (
+        <circle
+          cx="50"
+          cy="50"
+          r="40"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1"
+          className="text-soft-pink opacity-0 animate-ping"
+        />
+      )}
+    </svg>
+  )
+}
+
+function BenefitCard({ icon, title, description, color }: any) {
+  const colorClasses = {
+    'soft-pink': 'border-soft-pink text-soft-pink',
+    'cool-sky-blue': 'border-cool-sky-blue text-cool-sky-blue',
+    'amethyst': 'border-amethyst text-amethyst',
+  }
+
+  return (
+    <div className="bg-midnight-navy border-2 border-cool-slate/20 rounded-xl p-6 hover:border-soft-pink/50 transition-all">
+      <div className={`inline-block p-2 rounded-lg border-2 ${colorClasses[color as keyof typeof colorClasses]} mb-3`}>
+        {icon}
+      </div>
+      <h4 className="text-lg font-bold text-soft-white mb-2">{title}</h4>
+      <p className="text-lavender-gray text-sm">{description}</p>
+    </div>
+  )
+}
+
+// ============================================
+// UNIFIED MONEY FLOW
+// ============================================
+function UnifiedMoneyFlow() {
+  const [activeFlow, setActiveFlow] = useState<'leaderboard' | 'website' | 'platform'>('leaderboard')
+
+  return (
+    <section className="py-24 bg-midnight-navy border-b border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bold text-soft-white text-center mb-8">
+          Where Money Flows
+        </h2>
+        <p className="text-center text-lavender-gray mb-12">
+          All revenue flows through the <Link href="/owners" className="text-soft-pink hover:underline font-semibold">RevNet</Link>, minting MARKEE tokens
+        </p>
+
+        {/* Flow Type Selector */}
+        <div className="flex justify-center gap-4 mb-12 flex-wrap">
+          <FlowButton
+            active={activeFlow === 'leaderboard'}
+            onClick={() => setActiveFlow('leaderboard')}
+            label="Leaderboard"
+            status="Live Now"
+          />
+          <FlowButton
+            active={activeFlow === 'website'}
+            onClick={() => setActiveFlow('website')}
+            label="Website Plugin"
+            status="Q1 2026"
+          />
+          <FlowButton
+            active={activeFlow === 'platform'}
+            onClick={() => setActiveFlow('platform')}
+            label="Platform Integration"
+            status="Q2 2026"
+          />
+        </div>
+
+        {/* Flow Diagram */}
+        <div className="bg-deep-space rounded-2xl p-8 border-2 border-cool-slate/20">
+          {activeFlow === 'leaderboard' && <LeaderboardFlow />}
+          {activeFlow === 'website' && <WebsiteFlow />}
+          {activeFlow === 'platform' && <PlatformFlow />}
+        </div>
+
+        {/* Legend */}
+        <div className="mt-8 flex justify-center gap-8 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-soft-pink" />
+            <span className="text-lavender-gray">Payment Flow</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-cool-sky-blue" />
+            <span className="text-lavender-gray">Token Flow</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function FlowButton({ active, onClick, label, status }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-6 py-3 rounded-lg font-medium transition-all ${
+        active
+          ? 'bg-soft-pink text-midnight-navy scale-105'
+          : 'bg-deep-space text-lavender-gray hover:bg-cosmic-indigo border border-cool-slate/20'
+      }`}
+    >
+      <div>{label}</div>
+      <div className="text-xs opacity-70">{status}</div>
+    </button>
+  )
+}
+
+function LeaderboardFlow() {
+  return (
+    <div className="flex flex-col items-center gap-8 py-8">
+      <FlowNode label="Buyer pays ETH" amount="0.1 ETH" color="soft-pink" />
+      <FlowArrow label="100%" />
+      <FlowNode label="RevNet" icon="🌐" color="galactic-purple" />
+      <div className="flex gap-12">
+        <div className="flex flex-col items-center gap-4">
+          <FlowArrow label="68%" direction="diagonal-left" />
+          <FlowNode label="Buyer receives" amount="68 MARKEE" color="cool-sky-blue" />
+        </div>
+        <div className="flex flex-col items-center gap-4">
+          <FlowArrow label="32%" direction="diagonal-right" />
+          <FlowNode label="Cooperative" amount="32 MARKEE" color="amethyst" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WebsiteFlow() {
+  return (
+    <div className="flex flex-col items-center gap-8 py-8">
+      <FlowNode label="Buyer pays" amount="0.1 ETH" color="soft-pink" />
+      <div className="flex gap-16">
+        <div className="flex flex-col items-center gap-4">
+          <FlowArrow label="68%" direction="diagonal-left" />
+          <FlowNode label="Website Owner" amount="0.068 ETH" color="peach-orb" />
+        </div>
+        <div className="flex flex-col items-center gap-4">
+          <FlowArrow label="32%" direction="diagonal-right" />
+          <FlowNode label="RevNet" icon="🌐" color="galactic-purple" />
+          <div className="flex gap-8 mt-4">
+            <div className="flex flex-col items-center gap-2">
+              <FlowArrow label="68%" direction="down" size="sm" />
+              <FlowNode label="Buyer" amount="22 MARKEE" color="cool-sky-blue" size="sm" />
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <FlowArrow label="32%" direction="down" size="sm" />
+              <FlowNode label="Coop" amount="10 MARKEE" color="amethyst" size="sm" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlatformFlow() {
+  return (
+    <div className="flex flex-col items-center gap-8 py-8">
+      <FlowNode label="Buyer pays" amount="0.1 ETH" color="soft-pink" />
+      <div className="flex gap-16">
+        <div className="flex flex-col items-center gap-4">
+          <FlowArrow label="68%" direction="diagonal-left" />
+          <FlowNode label="Community" amount="0.068 ETH" color="icy-blue" />
+        </div>
+        <div className="flex flex-col items-center gap-4">
+          <FlowArrow label="32%" direction="diagonal-right" />
+          <FlowNode label="RevNet" icon="🌐" color="galactic-purple" />
+          <div className="flex gap-8 mt-4">
+            <div className="flex flex-col items-center gap-2">
+              <FlowArrow label="68%" direction="down" size="sm" />
+              <FlowNode label="Platform" amount="22 MARKEE" color="lavender-accent" size="sm" />
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <FlowArrow label="32%" direction="down" size="sm" />
+              <div className="flex flex-col items-center gap-2">
+                <FlowNode label="Coop" amount="10 MARKEE" color="amethyst" size="sm" />
+                <div className="text-xs text-cool-slate">32% buyer, 68% holders</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FlowNode({ label, amount, icon, color, size = 'default' }: any) {
+  const sizeClasses = size === 'sm' ? 'px-4 py-2 text-sm' : 'px-6 py-4'
+  return (
+    <div className={`bg-${color} text-midnight-navy rounded-xl ${sizeClasses} font-bold text-center min-w-[140px] shadow-lg`}>
+      {icon && <div className="text-2xl mb-1">{icon}</div>}
+      <div>{label}</div>
+      {amount && <div className="text-xs opacity-80 mt-1">{amount}</div>}
+    </div>
+  )
+}
+
+function FlowArrow({ label, direction = 'down', size = 'default' }: any) {
+  const arrowSize = size === 'sm' ? 'text-xl' : 'text-3xl'
+  const arrows = {
+    down: '↓',
+    'diagonal-left': '↙',
+    'diagonal-right': '↘',
+  }
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className={`${arrowSize} text-soft-pink`}>{arrows[direction as keyof typeof arrows]}</div>
+      {label && <div className="text-xs text-cool-slate font-mono">{label}</div>}
+    </div>
+  )
+}
+
+// ============================================
+// VISUAL TIMELINE
+// ============================================
+function VisualTimeline() {
+  const phases = [
+    {
+      phase: 'Phase 0',
+      title: 'Under Construction',
+      status: 'YOU ARE HERE',
+      date: 'Now',
+      icon: '🏗️',
+      color: 'soft-pink',
+      items: [
+        'RevNet opens at 50,000 tokens/ETH',
+        'Leaderboard live on multiple chains',
+        'Platform integration waitlist open',
+      ],
+    },
+    {
+      phase: 'Q1 2026',
+      title: 'First Integrations',
+      status: 'LAUNCHING',
+      date: 'Jan-Mar 2026',
+      icon: '🚀',
+      color: 'cool-sky-blue',
+      items: [
+        'Gardens platform integration',
+        'Website plugin released',
+        'Cooperative governance begins',
+      ],
+    },
+    {
+      phase: 'Q2 2026',
+      title: 'Ecosystem Expansion',
+      status: 'SCALING',
+      date: 'Apr-Jun 2026',
+      icon: '📈',
+      color: 'amethyst',
+      items: [
+        'Multiple platform integrations',
+        'Network effects activate',
+        'Revenue scales across ecosystem',
+      ],
+    },
+    {
+      phase: 'Future',
+      title: 'Global Network',
+      status: 'VISION',
+      date: '2026+',
+      icon: '🌍',
+      color: 'galactic-purple',
+      items: [
+        'Worldwide adoption',
+        'Returns flow to token holders',
+        'Open-source digital marketing standard',
+      ],
+    },
+  ]
+
+  return (
+    <section className="py-24 bg-deep-space border-b border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bold text-soft-white text-center mb-16">
+          The Roadmap
+        </h2>
+
+        {/* Timeline */}
+        <div className="relative">
+          {/* Connection Line */}
+          <div className="absolute top-24 left-0 right-0 h-1 bg-gradient-to-r from-soft-pink via-cool-sky-blue via-amethyst to-galactic-purple hidden lg:block" />
+
+          {/* Phases */}
+          <div className="grid lg:grid-cols-4 gap-8">
+            {phases.map((phase, index) => (
+              <TimelinePhase key={index} phase={phase} index={index} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function TimelinePhase({ phase, index }: any) {
+  const colorClasses = {
+    'soft-pink': 'border-soft-pink bg-soft-pink/10 text-soft-pink',
+    'cool-sky-blue': 'border-cool-sky-blue bg-cool-sky-blue/10 text-cool-sky-blue',
+    'amethyst': 'border-amethyst bg-amethyst/10 text-amethyst',
+    'galactic-purple': 'border-galactic-purple bg-galactic-purple/10 text-galactic-purple',
+  }
+
+  const isActive = index === 0
+
+  return (
+    <div className="relative">
+      {/* Timeline Dot */}
+      <div className="hidden lg:flex justify-center mb-8">
+        <div className={`w-12 h-12 rounded-full border-4 ${colorClasses[phase.color as keyof typeof colorClasses]} flex items-center justify-center text-2xl ${isActive ? 'animate-pulse scale-125' : ''}`}>
+          {phase.icon}
+        </div>
+      </div>
+
+      {/* Card */}
+      <div className={`bg-midnight-navy border-2 rounded-2xl p-6 ${isActive ? colorClasses[phase.color as keyof typeof colorClasses] + ' scale-105' : 'border-cool-slate/20'} transition-all hover:scale-105`}>
+        {isActive && (
+          <div className="bg-soft-pink text-midnight-navy text-xs font-bold px-3 py-1 rounded-full inline-block mb-3">
+            {phase.status}
+          </div>
+        )}
+
+        <div className="text-cool-slate text-sm font-mono mb-1">{phase.date}</div>
+        <h3 className="text-xl font-bold text-soft-white mb-2">{phase.phase}</h3>
+        <h4 className="text-lg text-lavender-gray mb-4">{phase.title}</h4>
+
+        <ul className="space-y-2">
+          {phase.items.map((item: string, i: number) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-lavender-gray">
+              <Check className="w-4 h-4 text-soft-pink flex-shrink-0 mt-0.5" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// CONDENSED FAQ
+// ============================================
+function CondensedFAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   const faqs = [
     {
-      question: "Who is Markee for?",
-      answer: (
-        <div className="space-y-4">
-          <p className="font-semibold text-[#EDEEFF]">Right now:</p>
-          <ul className="list-disc pl-5 space-y-2">
-            <li><strong className="text-[#EDEEFF]">Organizations & DAOs</strong> - Invest via the leaderboard, get RevNet ownership + visibility</li>
-            <li><strong className="text-[#EDEEFF]">Individuals</strong> - Early believers who want ownership in web3's open-source marketing infrastructure</li>
-          </ul>
-          <p className="font-semibold text-[#EDEEFF] mt-4">In the future (Q1 2026+):</p>
-          <ul className="list-disc pl-5 space-y-2">
-            <li><strong className="text-[#EDEEFF]">Advertisers & Brands</strong> - Traditional digital ad buyers promoting products/services</li>
-            <li><strong className="text-[#EDEEFF]">Community Members</strong> - Passionate supporters who want their voice featured + to donate to communities they care about</li>
-            <li><strong className="text-[#EDEEFF]">Platforms & Communities</strong> - Monetize digital spaces with transparent, on-chain revenue</li>
-          </ul>
-        </div>
-      )
-    },
-    {
       question: "What is a RevNet?",
       answer: (
-        <div className="space-y-4">
-          <p><strong className="text-[#EDEEFF]">RevNets = 100% automated tokenized revenue</strong></p>
-          <p>Built on Juicebox crowdfunding smart contracts, RevNets apply these concepts to revenue-generating digital cooperatives with preset terms for how revenue is shared between founders, investors, platform partners, and end users.</p>
-          <p className="text-sm text-[#8A8FBF]">Learn more: <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-[#F897FE] hover:underline">revnet.eth.sucks</a></p>
+        <div>
+          <p className="mb-3">RevNets are 100% automated tokenized revenue systems built on Juicebox smart contracts. They apply crowdfunding concepts to revenue-generating digital cooperatives with preset terms for how revenue is shared.</p>
+          <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
+            Learn more at revnet.eth.sucks →
+          </a>
         </div>
       )
     },
     {
-      question: "Where does the money go?",
+      question: "How do I become an owner?",
       answer: (
-        <div className="space-y-6">
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">1. Leaderboard Markees (Live Now)</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>100% of funds → RevNet</li>
-              <li>68% of RevNet tokens → Buyer</li>
-              <li>32% of RevNet tokens → Cooperative</li>
-            </ul>
-            <p className="text-sm text-[#8A8FBF] mt-2">This is direct RevNet investment - the only way to join during phase 0.</p>
-          </div>
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">2. Website Plugin Markees (Q1 2026)</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>68% of payment → Website owner (fee receiver)</li>
-              <li>32% of payment → RevNet</li>
-              <li>68% of RevNet tokens → Buyer</li>
-              <li>32% of RevNet tokens → Cooperative</li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">3. Platform Integrated Markees (Q2 2026+)</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>68% of payment → Community (set by platform user)</li>
-              <li>32% of payment → RevNet</li>
-              <li>68% of RevNet tokens → Platform</li>
-              <li>32% of RevNet tokens → Cooperative</li>
-              <li>Within cooperative's share: 32% to buyer, 68% to all token holders</li>
-            </ul>
-          </div>
+        <div>
+          <p className="mb-3">During Phase 0, you can become an owner by investing through the leaderboard. Pay to update the message and receive MARKEE tokens based on the current RevNet price (starting at 50,000 tokens/ETH).</p>
+          <Link href="/owners" className="text-soft-pink hover:underline font-semibold">
+            Learn about ownership →
+          </Link>
         </div>
       )
     },
     {
-      question: "What's the roadmap?",
+      question: "What pricing strategy should I use?",
       answer: (
-        <div className="space-y-4">
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">Q4 2025 - Phase 0 Fundraising</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>RevNet opens at lowest price (50,000 tokens/ETH)</li>
-              <li>Leaderboard goes live on Optimism</li>
-              <li>Waitlist opens for platform integration partners</li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">Q1 2026 - Gardens Launch</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>First platform integration with Gardens</li>
-              <li>Website plugin released for manual integration</li>
-              <li>Cooperative governance begins</li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">Q2 2026 & Beyond</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>Additional platform integrations</li>
-              <li>Revenue scales across ecosystem</li>
-              <li>Returns flow to token holders</li>
-              <li>Global expansion of open-source digital marketing</li>
-            </ul>
-          </div>
+        <div className="space-y-3">
+          <p><strong className="text-soft-white">Fixed Price:</strong> Best for predictable, simple transactions</p>
+          <p><strong className="text-soft-white">Top Dawg:</strong> Best for fundraising and early believers</p>
+          <p><strong className="text-soft-white">Stream-to-Own:</strong> Best for continuous engagement (Q1 2026)</p>
+          <p><strong className="text-soft-white">Classic:</strong> Best for viral moments and dynamic pricing (Q1 2026)</p>
         </div>
       )
     },
     {
-      question: "Who's building Markee?",
+      question: "When can I integrate Markee?",
       answer: (
-        <div className="space-y-4">
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">Core Team</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>Paul - Founder</li>
-              <li>Gossman - Lead Developer</li>
-              <li>Mati - Lead Frontend</li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-semibold text-[#EDEEFF]">Advisors</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>Felipe - Smart Contract Security Expert</li>
-              <li>Jango - RevNets Founder</li>
-            </ul>
-          </div>
+        <div className="space-y-2">
+          <p><strong className="text-soft-white">Website Plugin:</strong> Q1 2026 - Add Markees to any website</p>
+          <p><strong className="text-soft-white">Platform Integration:</strong> Q2 2026 - Partner with us to offer Markees to your users</p>
+          <p className="mt-3">Join the waitlist or <Link href="/ecosystem" className="text-soft-pink hover:underline font-semibold">explore our ecosystem</Link> to learn more.</p>
         </div>
       )
-    }
+    },
   ]
-  
+
   return (
-    <div className="space-y-4">
-      {faqs.map((faq, index) => (
-        <div key={index} className="bg-[#0A0F3D] rounded-lg shadow-sm border border-[#8A8FBF]/20 overflow-hidden">
-          <button
-            onClick={() => setOpenIndex(openIndex === index ? null : index)}
-            className="w-full px-6 py-4 flex justify-between items-center hover:bg-[#172090] transition-colors"
-          >
-            <span className="font-semibold text-[#EDEEFF] text-left">{faq.question}</span>
-            <ChevronDown 
-              size={20} 
-              className={`text-[#8A8FBF] transition-transform flex-shrink-0 ml-4 ${
-                openIndex === index ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
-          {openIndex === index && (
-            <div className="px-6 py-4 bg-[#060A2A] border-t border-[#8A8FBF]/20 text-[#B8B6D9]">
-              {faq.answer}
+    <section className="py-24 bg-midnight-navy">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bold text-soft-white text-center mb-12">
+          Quick Answers
+        </h2>
+
+        <div className="space-y-4">
+          {faqs.map((faq, index) => (
+            <div key={index} className="bg-deep-space rounded-xl border-2 border-cool-slate/20 overflow-hidden hover:border-soft-pink/30 transition-all">
+              <button
+                onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                className="w-full px-6 py-4 flex justify-between items-center hover:bg-cosmic-indigo/30 transition-colors"
+              >
+                <span className="font-bold text-soft-white text-left text-lg">{faq.question}</span>
+                <ChevronDown
+                  size={24}
+                  className={`text-soft-pink transition-transform flex-shrink-0 ml-4 ${
+                    openIndex === index ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+              {openIndex === index && (
+                <div className="px-6 py-6 bg-midnight-navy border-t border-cool-slate/20 text-lavender-gray">
+                  {faq.answer}
+                </div>
+              )}
             </div>
-          )}
+          ))}
         </div>
-      ))}
+
+        <div className="mt-12 text-center">
+          <p className="text-lavender-gray mb-4">Have more questions?</p>
+          <button className="text-soft-pink hover:underline font-semibold">
+            View Full FAQ →
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ============================================
+// MULTI-CTA FOOTER
+// ============================================
+function MultiCTAFooter() {
+  return (
+    <section className="bg-gradient-to-b from-deep-space to-cosmic-indigo py-20 border-t border-cool-slate/20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-soft-white mb-4">
+            Ready to Get Started?
+          </h2>
+          <p className="text-xl text-lavender-gray">
+            Join the open-source digital marketing revolution
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Primary CTA */}
+          <CTACard
+            title="Buy MARKEE"
+            description="Invest in the cooperative during Phase 0"
+            buttonText="Buy on RevNet"
+            buttonLink="/"
+            color="soft-pink"
+            isPrimary
+          />
+
+          {/* Secondary CTA */}
+          <CTACard
+            title="Join Waitlist"
+            description="Get early access to platform integrations"
+            buttonText="Sign Up"
+            buttonLink="/ecosystem"
+            color="cool-sky-blue"
+          />
+
+          {/* Tertiary CTA */}
+          <CTACard
+            title="Learn More"
+            description="Explore the ecosystem and partnerships"
+            buttonText="View Ecosystem"
+            buttonLink="/ecosystem"
+            color="amethyst"
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function CTACard({ title, description, buttonText, buttonLink, color, isPrimary }: any) {
+  const colorClasses = {
+    'soft-pink': isPrimary ? 'bg-soft-pink text-midnight-navy' : 'bg-midnight-navy text-soft-pink border-soft-pink',
+    'cool-sky-blue': 'bg-midnight-navy text-cool-sky-blue border-cool-sky-blue',
+    'amethyst': 'bg-midnight-navy text-amethyst border-amethyst',
+  }
+
+  return (
+    <div className={`bg-midnight-navy border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-${color} transition-all ${isPrimary ? 'md:scale-105' : ''}`}>
+      <h3 className="text-2xl font-bold text-soft-white mb-3">{title}</h3>
+      <p className="text-lavender-gray mb-6">{description}</p>
+      <Link
+        href={buttonLink}
+        className={`block text-center px-6 py-3 rounded-xl font-bold transition-all ${colorClasses[color as keyof typeof colorClasses]} ${isPrimary ? '' : 'border-2'} hover:scale-105`}
+      >
+        {buttonText}
+      </Link>
     </div>
   )
 }
