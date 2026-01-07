@@ -41,20 +41,17 @@ export function PartnerMarkeeCard({
 
       {/* Winning Message Section */}
       {winningMarkee ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20">
-          <div className="flex items-start gap-2 mb-2">
-            <span className="text-2xl">🏆</span>
-            <div className="flex-1">
-              <p className="text-[#EDEEFF] font-mono text-sm break-words">
-                {winningMarkee.message}
-              </p>
-              {winningMarkee.name && (
-                <p className="text-[#8A8FBF] text-xs mt-1">— {winningMarkee.name}</p>
-              )}
+        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex items-center justify-center min-h-[120px]">
+          <div className="text-center w-full">
+            <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
+              {winningMarkee.message}
+            </p>
+            {winningMarkee.name && (
+              <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
+            )}
+            <div className="text-[#7C9CFF] text-xs font-medium mt-2">
+              {formatEther(winningMarkee.totalFundsAdded)} ETH
             </div>
-          </div>
-          <div className="text-[#7C9CFF] text-xs font-medium">
-            {formatEther(winningMarkee.totalFundsAdded)} ETH
           </div>
         </div>
       ) : (
