@@ -9,17 +9,20 @@ import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 
 export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
-
-  const cooperative = partnerData?.find(p => p.partner.isCooperative)
-  const partners = partnerData?.filter(p => !p.partner.isCooperative) || []
+  // Separate cooperative from partners
+  const cooperative = partnerData.find(p => p.partner.isCooperative)
+  const partners = partnerData.filter(p => !p.partner.isCooperative)
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
 
+      {/* Hero Section */}
       <section className="relative py-24 overflow-hidden">
+        {/* Cosmic background */}
         <HeroBackground />
         
+        {/* Content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Markee is coming soon to a platform near you...</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
@@ -28,8 +31,10 @@ export default function EcosystemPage() {
         </div>
       </section>
 
+      {/* Partner Cards Section */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Ecosystem Leaderboard Section */}
           <div className="mb-16">
             <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
             <p className="text-[#8A8FBF] mb-8">
@@ -62,6 +67,7 @@ export default function EcosystemPage() {
             )}
           </div>
 
+          {/* Platform Partners Section */}
           <div>
             <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Buy a message for your favorite platform</h2>
             <p className="text-[#8A8FBF] mb-8">
@@ -102,6 +108,7 @@ export default function EcosystemPage() {
         </div>
       </section>
 
+      {/* CTA Section */}
       <section className="py-24 bg-gradient-to-b from-[#060A2A] to-[#0A0F3D]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold text-[#EDEEFF] mb-6">
