@@ -121,7 +121,7 @@ export default function EcosystemPage() {
             Join the waitlist now - first integrations expected in Q1 2026
           </p>
           <div className="flex justify-center">
-            
+            <a
               href="https://discord.gg/UhhRDzwwkM"
               target="_blank"
               rel="noopener noreferrer"
