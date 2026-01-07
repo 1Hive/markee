@@ -61,7 +61,7 @@ export function PartnerMarkeeCard({
       {/* ETH Amount */}
       {winningMarkee && (
         <div className="text-[#7C9CFF] text-xs font-medium mb-4">
-          {formatEther(winningMarkee.totalFundsAdded)} ETH
+          {formatEther(winningMarkee.totalFunds)} ETH raised
         </div>
       )}
 
