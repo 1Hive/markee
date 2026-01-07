@@ -15,11 +15,11 @@ export default function HowItWorks() {
       {/* Hero: Live Interactive Demo */}
       <HeroDemo />
 
-      {/* How It Works - 3 Visual Steps */}
-      <ThreeStepFlow />
-
       {/* Pricing Strategies - Visual Cards */}
       <PricingStrategies />
+
+      {/* How It Works - 3 Visual Steps */}
+      <ThreeStepFlow />
 
       {/* Two Integration Paths */}
       <IntegrationPaths />
@@ -152,7 +152,7 @@ function ThreeStepFlow() {
     <section className="py-24 bg-midnight-navy border-b border-cool-slate/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-soft-white text-center mb-16">
-          How It Works
+          2. How It Works
         </h2>
 
         <div className="grid md:grid-cols-3 gap-8 relative">
@@ -224,17 +224,17 @@ function PricingStrategies() {
       name: 'Fixed Price',
       icon: <DollarSign className="w-8 h-8" />,
       color: 'soft-pink',
-      description: 'Pay once to update',
+      description: 'Paid each time the message is changed',
       visual: 'Simple exchange',
       example: '0.01 ETH per update',
       status: 'live'
     },
     {
-      id: 'topdawg',
-      name: 'Top Dawg',
+      id: 'leaderboard',
+      name: 'Leaderboard',
       icon: <TrendingUp className="w-8 h-8" />,
       color: 'cool-sky-blue',
-      description: 'Highest total wins',
+      description: 'Own your message, highest total paid wins',
       visual: 'Competitive bidding',
       example: 'Add to your total',
       status: 'live'
@@ -244,17 +244,17 @@ function PricingStrategies() {
       name: 'Stream-to-Own',
       icon: <Zap className="w-8 h-8" />,
       color: 'amethyst',
-      description: 'Highest stream owns',
+      description: 'Leaderboard strategy using Superfluid streams',
       visual: 'Continuous payment',
       example: '0.001 ETH/second',
       status: 'q1-2026'
     },
     {
-      id: 'classic',
-      name: 'Classic',
+      id: 'dynamic',
+      name: 'Dynamic',
       icon: <Clock className="w-8 h-8" />,
       color: 'galactic-purple',
-      description: 'Dynamic pricing',
+      description: 'Algorithmic pricing based on demand',
       visual: '10x spike then decay',
       example: 'Starts at 0.01 ETH',
       status: 'q1-2026'
@@ -266,10 +266,10 @@ function PricingStrategies() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-soft-white mb-4">
-            Choose Your Pricing Strategy
+            1. Choose Your Pricing Strategy
           </h2>
           <p className="text-xl text-lavender-gray">
-            Each Markee can use a different strategy. Pick what works for your community.
+            Pricing strategies for Markee messages are interchangeable - choose what works best for your digital real estate
           </p>
         </div>
 
@@ -323,9 +323,9 @@ function StrategyCard({ strategy, isHovered, onHover, onLeave }: any) {
       {/* Visual Representation */}
       <div className="bg-deep-space rounded-lg p-4 mb-3 min-h-[80px] flex items-center justify-center">
         {strategy.id === 'fixed' && <FixedPriceVisual />}
-        {strategy.id === 'topdawg' && <TopDawgVisual isHovered={isHovered} />}
+        {strategy.id === 'leaderboard' && <LeaderboardVisual isHovered={isHovered} />}
         {strategy.id === 'stream' && <StreamVisual isHovered={isHovered} />}
-        {strategy.id === 'classic' && <ClassicVisual isHovered={isHovered} />}
+        {strategy.id === 'dynamic' && <DynamicVisual isHovered={isHovered} />}
       </div>
 
       <div className="text-center text-cool-slate text-xs font-mono">
@@ -349,7 +349,7 @@ function FixedPriceVisual() {
   )
 }
 
-function TopDawgVisual({ isHovered }: { isHovered: boolean }) {
+function LeaderboardVisual({ isHovered }: { isHovered: boolean }) {
   return (
     <div className="space-y-1 w-full">
       {[
@@ -381,7 +381,7 @@ function StreamVisual({ isHovered }: { isHovered: boolean }) {
   )
 }
 
-function ClassicVisual({ isHovered }: { isHovered: boolean }) {
+function DynamicVisual({ isHovered }: { isHovered: boolean }) {
   return (
     <svg viewBox="0 0 100 40" className="w-full h-12">
       <path
@@ -965,9 +965,9 @@ function CondensedFAQ() {
       answer: (
         <div className="space-y-3">
           <p><strong className="text-soft-white">Fixed Price:</strong> Best for predictable, simple transactions</p>
-          <p><strong className="text-soft-white">Top Dawg:</strong> Best for fundraising and early believers</p>
+          <p><strong className="text-soft-white">Leaderboard:</strong> Best for fundraising and early believers</p>
           <p><strong className="text-soft-white">Stream-to-Own:</strong> Best for continuous engagement (Q1 2026)</p>
-          <p><strong className="text-soft-white">Classic:</strong> Best for viral moments and dynamic pricing (Q1 2026)</p>
+          <p><strong className="text-soft-white">Dynamic:</strong> Best for viral moments and algorithmic pricing (Q1 2026)</p>
         </div>
       )
     },
