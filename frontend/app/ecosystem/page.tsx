@@ -41,7 +41,7 @@ export default function EcosystemPage() {
           <div className="mb-16">
             <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
             <p className="text-[#8A8FBF] mb-8">
-              Markee is under construction on the following sites - but you can support them today by buying a message here.
+              Markee is under construction on these sites - buy a message from your favorite!
             </p>
             
             {isLoading ? (
@@ -71,12 +71,7 @@ export default function EcosystemPage() {
           </div>
 
           {/* Platform Partners Section */}
-          <div>
-            <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Buy a message for your favorite platform</h2>
-            <p className="text-[#8A8FBF] mb-8">
-              68% of funding goes to the platform, 32% goes to the Markee Cooperative&apos;s RevNet and issues MARKEE tokens.
-            </p>
-            
+          <div>          
             {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {[1, 2, 3, 4].map(i => (
