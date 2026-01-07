@@ -10,10 +10,6 @@ import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
 
-  // Separate cooperative from partners
-  const cooperative = partnerData.find(p => p.partner.isCooperative)
-  const partners = partnerData.filter(p => !p.partner.isCooperative)
-
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
@@ -26,8 +22,6 @@ export default function EcosystemPage() {
         {/* Content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Markee is coming soon to a platform near you...</h1>
-
-
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
             Join the growing list of sites integrating Markee for their users.
           </p>
@@ -37,72 +31,41 @@ export default function EcosystemPage() {
       {/* Partner Cards Section */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Ecosystem Leaderboard Section */}
-          <div className="mb-16">
-            <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
-            <p className="text-[#8A8FBF] mb-8">
-              Markee is under construction on these sites - buy a message from your favorite!
-            </p>
-            
-            {isLoading ? (
-              <div className="flex justify-center">
-                <div className="w-full md:w-1/2 lg:w-[calc(50%-12px)] bg-[#0A0F3D] rounded-lg p-8 border border-[#8A8FBF]/20 animate-pulse">
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
+          <p className="text-[#8A8FBF] mb-8">
+            Markee is under construction on these sites - buy a message from your favorite!
+          </p>
+          
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="bg-[#0A0F3D] rounded-lg p-8 border border-[#8A8FBF]/20 animate-pulse">
                   <div className="h-48 bg-[#1A1F4D] rounded" />
                 </div>
-              </div>
-            ) : cooperative ? (
-              <div className="flex justify-center">
-                <div className="w-full md:w-1/2 lg:w-[calc(50%-12px)]">
-                  <PartnerMarkeeCard
-                    partner={cooperative.partner}
-                    winningMarkee={cooperative.winningMarkee ?? undefined}
-                    totalFunds={cooperative.totalFunds}
-                    markeeCount={cooperative.markeeCount}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-center">
-                <div className="w-full md:w-1/2 lg:w-[calc(50%-12px)] bg-[#0A0F3D] rounded-lg p-8 border border-[#8A8FBF]/20 text-center">
-                  <p className="text-[#8A8FBF]">Cooperative data not available</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Platform Partners Section */}
-          <div>          
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="bg-[#0A0F3D] rounded-lg p-8 border border-[#8A8FBF]/20 animate-pulse">
-                    <div className="h-48 bg-[#1A1F4D] rounded" />
-                  </div>
-                ))}
-              </div>
-            ) : error ? (
-              <div className="bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg p-6 text-center">
-                <p className="text-[#FF8E8E]">Error loading partners: {error.message}</p>
-              </div>
-            ) : partners.length === 0 ? (
-              <div className="bg-[#0A0F3D] rounded-lg p-12 border border-[#8A8FBF]/20 text-center">
-                <div className="text-6xl mb-4">🤝</div>
-                <p className="text-[#8A8FBF] text-lg">No platform partners yet</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {partners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
-                  <PartnerMarkeeCard
-                    key={partner.slug}
-                    partner={partner}
-                    winningMarkee={winningMarkee ?? undefined}
-                    totalFunds={totalFunds}
-                    markeeCount={markeeCount}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div className="bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg p-6 text-center">
+              <p className="text-[#FF8E8E]">Error loading partners: {error.message}</p>
+            </div>
+          ) : partnerData.length === 0 ? (
+            <div className="bg-[#0A0F3D] rounded-lg p-12 border border-[#8A8FBF]/20 text-center">
+              <div className="text-6xl mb-4">🤝</div>
+              <p className="text-[#8A8FBF] text-lg">No partners yet</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {partnerData.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
+                <PartnerMarkeeCard
+                  key={partner.slug}
+                  partner={partner}
+                  winningMarkee={winningMarkee ?? undefined}
+                  totalFunds={totalFunds}
+                  markeeCount={markeeCount}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -113,7 +76,7 @@ export default function EcosystemPage() {
             Want to add a Markee to your site?
           </h2>
           <p className="text-xl text-[#8A8FBF] mb-8">
-            Join the waitlist now - first integrations expected in Q1 2026
+            Join the waitlist now - first integrations scheduled for Q1 2026
           </p>
           <div className="flex justify-center">
             <a
@@ -124,14 +87,6 @@ export default function EcosystemPage() {
             >
               Join Discord
             </a>
-
-
-
-
-
-
-
-
           </div>
         </div>
       </section>
