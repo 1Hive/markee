@@ -2,18 +2,14 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { ChevronDown, Zap, DollarSign, TrendingUp, Clock, Globe, Users, Sparkles, ArrowRight, Check } from 'lucide-react'
+import { ChevronDown, Zap, DollarSign, TrendingUp, Clock, Globe, Users, Sparkles, Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
-import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 
 export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-midnight-navy">
       <Header activePage="how-it-works" />
-
-      {/* Hero: Live Interactive Demo */}
-      <HeroDemo />
 
       {/* Pricing Strategies - Visual Cards */}
       <PricingStrategies />
@@ -41,106 +37,6 @@ export default function HowItWorks() {
 
       <Footer />
     </div>
-  )
-}
-
-// ============================================
-// HERO: LIVE INTERACTIVE DEMO
-// ============================================
-function HeroDemo() {
-  const [currentMessage, setCurrentMessage] = useState("Welcome to Markee!")
-  const [currentHolder, setCurrentHolder] = useState("Alice")
-  const [isAnimating, setIsAnimating] = useState(false)
-  const [showTokenFlow, setShowTokenFlow] = useState(false)
-
-  const demoMessages = [
-    { holder: "Alice", message: "Welcome to Markee!", amount: "0.1 ETH" },
-    { holder: "Bob", message: "Building the future of web3!", amount: "0.15 ETH" },
-    { holder: "Carol", message: "Open source marketing FTW!", amount: "0.2 ETH" },
-  ]
-
-  const [currentIndex, setCurrentIndex] = useState(0)
-
-  const handleUpdate = () => {
-    if (isAnimating) return
-    
-    setIsAnimating(true)
-    setShowTokenFlow(true)
-    
-    const nextIndex = (currentIndex + 1) % demoMessages.length
-    
-    setTimeout(() => {
-      setCurrentMessage(demoMessages[nextIndex].message)
-      setCurrentHolder(demoMessages[nextIndex].holder)
-      setCurrentIndex(nextIndex)
-    }, 600)
-    
-    setTimeout(() => {
-      setIsAnimating(false)
-      setShowTokenFlow(false)
-    }, 2000)
-  }
-
-  return (
-    <section className="relative py-24 overflow-hidden border-b border-cool-slate/20">
-      <HeroBackground />
-      
-      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-soft-white mb-4">
-            A Sign Anyone Can Pay to Edit
-          </h1>
-          <p className="text-xl text-lavender-gray">
-            See it in action
-          </p>
-        </div>
-
-        {/* Interactive Demo */}
-        <div className="max-w-2xl mx-auto">
-          <div className="relative">
-            {/* Markee Message Board */}
-            <div className={`bg-deep-space border-2 border-soft-pink rounded-2xl p-8 transition-all duration-500 ${isAnimating ? 'scale-105 border-cool-sky-blue' : ''}`}>
-              <div className="text-center mb-6">
-                <div className="inline-block bg-midnight-navy px-4 py-2 rounded-lg mb-4">
-                  <span className="text-cool-slate text-sm">Current Holder</span>
-                  <div className="text-soft-pink font-bold text-lg">{currentHolder}</div>
-                </div>
-              </div>
-              
-              <div className={`text-3xl font-bold text-soft-white text-center mb-8 min-h-[80px] flex items-center justify-center transition-all duration-500 ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-                "{currentMessage}"
-              </div>
-
-              <button
-                onClick={handleUpdate}
-                disabled={isAnimating}
-                className="w-full bg-soft-pink text-midnight-navy px-8 py-4 rounded-xl font-bold text-lg hover:bg-cool-sky-blue transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <Zap className="w-5 h-5" />
-                Pay to Update Message
-              </button>
-            </div>
-
-            {/* Token Flow Animation */}
-            {showTokenFlow && (
-              <div className="absolute -right-32 top-1/2 -translate-y-1/2 hidden lg:flex flex-col items-center gap-2 animate-pulse">
-                <ArrowRight className="w-8 h-8 text-soft-pink" />
-                <div className="bg-galactic-purple text-soft-white px-4 py-2 rounded-lg text-sm font-bold">
-                  ETH → RevNet
-                </div>
-                <div className="bg-amethyst text-soft-white px-4 py-2 rounded-lg text-sm font-bold">
-                  MARKEE Tokens →
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-8 text-center text-lavender-gray text-sm">
-            💡 This is a live demo. In production, updates are instant and on-chain.
-          </div>
-        </div>
-      </div>
-    </section>
   )
 }
 
@@ -262,7 +158,7 @@ function PricingStrategies() {
   ]
 
   return (
-    <section className="py-24 bg-deep-space border-b border-cool-slate/20">
+    <section className="pt-32 pb-24 bg-deep-space border-b border-cool-slate/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-soft-white mb-4">
