@@ -49,15 +49,19 @@ export function PartnerMarkeeCard({
             {winningMarkee.name && (
               <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
             )}
-            <div className="text-[#7C9CFF] text-xs font-medium mt-2">
-              {formatEther(winningMarkee.totalFundsAdded)} ETH
-            </div>
           </div>
         </div>
       ) : (
         <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center">
           <div className="text-4xl mb-2">🪧</div>
           <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
+        </div>
+      )}
+
+      {/* ETH Amount */}
+      {winningMarkee && (
+        <div className="text-[#7C9CFF] text-xs font-medium mb-4">
+          {formatEther(winningMarkee.totalFundsAdded)} ETH
         </div>
       )}
 
