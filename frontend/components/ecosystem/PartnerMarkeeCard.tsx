@@ -33,7 +33,6 @@ export function PartnerMarkeeCard({
         <img src={partner.logo} alt={partner.name} className="h-12 w-12 object-contain" />
         <div className="flex-1">
           <h3 className="font-bold text-[#EDEEFF] text-lg">{partner.name}</h3>
-          <p className="text-[#8A8FBF] text-sm">{partner.fundingSplit}</p>
         </div>
       </div>
 
@@ -69,15 +68,15 @@ export function PartnerMarkeeCard({
       <div className="flex gap-2">
         <Link
           href={`/ecosystem/${partner.slug}`}
-          className="flex-1 bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#F897FE] transition-colors text-sm"
+          className="flex-1 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
         >
-          View All Messages
+          Buy a Message
         </Link>
         <Link
           href={`/ecosystem/${partner.slug}`}
           className="flex-1 bg-[#1A1F4D] text-[#EDEEFF] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#2A2F5D] transition-colors border border-[#8A8FBF]/20 text-sm"
         >
-          Buy a Message
+          View All Messages
         </Link>
       </div>
     </div>
