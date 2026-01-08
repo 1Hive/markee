@@ -275,7 +275,7 @@ function DynamicVisual({ isHovered }: { isHovered: boolean }) {
   return (
     <svg viewBox="0 0 100 40" className="w-full h-12">
       <path
-        d="M 5 35 L 20 5 L 35 30 L 50 25 L 65 32 L 80 33 L 95 34"
+        d="M 5 39 L 20 1 L 35 20 L 50 30 L 65 35 L 80 37 L 95 38"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
