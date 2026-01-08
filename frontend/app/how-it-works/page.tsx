@@ -231,9 +231,9 @@ function LeaderboardVisual({ isHovered }: { isHovered: boolean }) {
   return (
     <div className="space-y-1 w-full">
       {[
-        { name: 'Alice', amount: '0.5', isTop: true },
-        { name: 'Bob', amount: '0.3', isTop: false },
-        { name: 'Carol', amount: '0.2', isTop: false },
+        { name: 'Satoshi', amount: '0.5', isTop: true },
+        { name: 'Vitalik', amount: '0.3', isTop: false },
+        { name: 'Jango', amount: '0.2', isTop: false },
       ].map((entry, i) => (
         <div
           key={entry.name}
@@ -251,10 +251,22 @@ function LeaderboardVisual({ isHovered }: { isHovered: boolean }) {
 
 function StreamVisual({ isHovered }: { isHovered: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="text-2xl animate-pulse">💧</div>
-      <div className={`flex-1 h-2 rounded-full bg-gradient-to-r from-soft-pink to-cool-sky-blue transition-all ${isHovered ? 'animate-pulse' : ''}`} />
-      <div className="text-2xl">💬</div>
+    <div className="space-y-1 w-full">
+      {[
+        { name: 'Neil', amount: '0.15', isTop: true },
+        { name: 'Buzz', amount: '0.06', isTop: false },
+        { name: 'Eugene', amount: '0.05', isTop: false },
+      ].map((entry, i) => (
+        <div
+          key={entry.name}
+          className={`flex items-center justify-between px-2 py-1 rounded transition-all ${
+            entry.isTop && isHovered ? 'bg-soft-pink/20 scale-105' : 'bg-deep-space/50'
+          }`}
+        >
+          <span className="text-xs text-lavender-gray">{entry.name}</span>
+          <span className="text-xs font-mono text-cool-sky-blue">{entry.amount} ETH/mo.</span>
+        </div>
+      ))}
     </div>
   )
 }
