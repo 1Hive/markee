@@ -47,28 +47,35 @@ function FeeReceiverSection() {
   return (
     <section className="py-24 bg-midnight-navy border-b border-cool-slate/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-4xl font-bold text-soft-white text-center mb-16">
-          2: Add a Fee Receiver
+        <h2 className="text-4xl font-bold text-soft-white text-center mb-4">
+          2. Choose an Address to Receive Funds
         </h2>
+        <p className="text-xl text-lavender-gray text-center mb-16">
+          Incoming funds from messages are split according to the Golden Ratio
+        </p>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-          {/* Box 1: Markee Beneficiary */}
-          <FeeReceiverCard
-            percentage="68%"
-            title="Markee Beneficiary"
-            description="Of funds go direct to the fee receiver set for the Markee"
-            color="soft-pink"
-            icon={<Users className="w-12 h-12" />}
-          />
+        <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto">
+          {/* Box 1: Markee Beneficiary - 68% width */}
+          <div className="md:flex-[68]">
+            <FeeReceiverCard
+              percentage="68%"
+              title="Your Beneficiary Address"
+              description="Directly funding your organization"
+              color="soft-pink"
+              icon={<Users className="w-12 h-12" />}
+            />
+          </div>
 
-          {/* Box 2: Cooperative Ownership */}
-          <FeeReceiverCard
-            percentage="32%"
-            title="Cooperative Ownership"
-            description="Of funds go into the Markee Cooperative's RevNet, owned by the network's participants"
-            color="cool-sky-blue"
-            icon={<Globe className="w-12 h-12" />}
-          />
+          {/* Box 2: Cooperative Ownership - 32% width */}
+          <div className="md:flex-[32]">
+            <FeeReceiverCard
+              percentage="32%"
+              title="Markee Cooperative"
+              description="Issues MARKEE tokens in the RevNet"
+              color="cool-sky-blue"
+              icon={<Globe className="w-12 h-12" />}
+            />
+          </div>
         </div>
       </div>
     </section>
