@@ -271,13 +271,12 @@ function DynamicVisual({ isHovered }: { isHovered: boolean }) {
   return (
     <svg viewBox="0 0 100 40" className="w-full h-12">
       <path
-        d="M 5 35 L 20 5 L 35 15 L 50 20 L 65 25 L 80 30 L 95 33"
+        d="M 5 35 L 20 5 L 35 13 L 50 17 L 65 19 L 80 20 L 95 21"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
         className={`text-amethyst transition-all ${isHovered ? 'stroke-soft-pink' : ''}`}
       />
-      <circle cx="15" cy="5" r="1" className="fill-soft-pink" />
     </svg>
   )
 }
