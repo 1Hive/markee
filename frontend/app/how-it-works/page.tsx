@@ -216,7 +216,6 @@ function StrategyCard({ strategy, isHovered, onHover, onLeave }: any) {
 function FixedPriceVisual() {
   return (
     <div className="flex items-center gap-2 text-soft-white">
-      <div className="text-lavender-gray">←</div>
       <div className="bg-cool-sky-blue text-midnight-navy px-3 py-1 rounded-md text-sm font-bold">
         💰 0.1 ETH
       </div>
@@ -272,7 +271,7 @@ function DynamicVisual({ isHovered }: { isHovered: boolean }) {
   return (
     <svg viewBox="0 0 100 40" className="w-full h-12">
       <path
-        d="M 5 39 L 20 1 L 35 20 L 50 30 L 65 35 L 80 37 L 95 38"
+        d="M 15 39 L 20 1 L 35 17 L 50 25 L 65 29 L 80 31 L 95 32"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
