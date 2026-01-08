@@ -303,7 +303,7 @@ function PhaseVisualization() {
 
         <div className="mt-6 text-center">
           <Link 
-            href="/"
+            href="/ecosystem/markee-cooperative"
             className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors inline-block"
           >
             Buy a Message to Join
