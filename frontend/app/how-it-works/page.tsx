@@ -14,8 +14,8 @@ export default function HowItWorks() {
       {/* Pricing Strategies - Visual Cards */}
       <PricingStrategies />
 
-      {/* How It Works - 3 Visual Steps */}
-      <ThreeStepFlow />
+      {/* Fee Receiver Section */}
+      <FeeReceiverSection />
 
       {/* Two Integration Paths */}
       <IntegrationPaths />
@@ -41,45 +41,33 @@ export default function HowItWorks() {
 }
 
 // ============================================
-// THREE STEP FLOW
+// FEE RECEIVER SECTION
 // ============================================
-function ThreeStepFlow() {
+function FeeReceiverSection() {
   return (
     <section className="py-24 bg-midnight-navy border-b border-cool-slate/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-soft-white text-center mb-16">
-          2. How It Works
+          2: Add a Fee Receiver
         </h2>
 
-        <div className="grid md:grid-cols-3 gap-8 relative">
-          {/* Connection Lines */}
-          <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-soft-pink via-cool-sky-blue to-amethyst -translate-y-1/2 z-0" />
-
-          {/* Step 1 */}
-          <StepCard
-            number="1"
-            icon={<Sparkles className="w-12 h-12" />}
-            title="Create Markee"
-            description="Set up your message board with your chosen pricing strategy"
+        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          {/* Box 1: Markee Beneficiary */}
+          <FeeReceiverCard
+            percentage="68%"
+            title="Markee Beneficiary"
+            description="Of funds go direct to the fee receiver set for the Markee"
             color="soft-pink"
+            icon={<Users className="w-12 h-12" />}
           />
 
-          {/* Step 2 */}
-          <StepCard
-            number="2"
-            icon={<DollarSign className="w-12 h-12" />}
-            title="People Pay to Edit"
-            description="Anyone can update the message by paying through your chosen strategy"
+          {/* Box 2: Cooperative Ownership */}
+          <FeeReceiverCard
+            percentage="32%"
+            title="Cooperative Ownership"
+            description="Of funds go into the Markee Cooperative's RevNet, owned by the network's participants"
             color="cool-sky-blue"
-          />
-
-          {/* Step 3 */}
-          <StepCard
-            number="3"
             icon={<Globe className="w-12 h-12" />}
-            title="Revenue → Tokens"
-            description="Payments flow to RevNet, minting MARKEE tokens for buyers and the cooperative"
-            color="amethyst"
           />
         </div>
       </div>
@@ -87,20 +75,19 @@ function ThreeStepFlow() {
   )
 }
 
-function StepCard({ number, icon, title, description, color }: { number: string, icon: React.ReactNode, title: string, description: string, color: string }) {
+function FeeReceiverCard({ percentage, icon, title, description, color }: { percentage: string, icon: React.ReactNode, title: string, description: string, color: string }) {
   const colorClasses = {
     'soft-pink': 'text-soft-pink border-soft-pink',
     'cool-sky-blue': 'text-cool-sky-blue border-cool-sky-blue',
-    'amethyst': 'text-amethyst border-amethyst',
   }
 
   return (
-    <div className="relative z-10 bg-deep-space border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-soft-pink/50 transition-all group">
+    <div className="relative bg-deep-space border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-soft-pink/50 transition-all group">
       <div className={`inline-block p-4 rounded-full bg-midnight-navy border-2 ${colorClasses[color as keyof typeof colorClasses]} mb-4 group-hover:scale-110 transition-transform`}>
         {icon}
       </div>
       <div className="absolute top-4 right-4 text-5xl font-bold text-cool-slate/20 group-hover:text-soft-pink/20 transition-colors">
-        {number}
+        {percentage}
       </div>
       <h3 className="text-2xl font-bold text-soft-white mb-3">{title}</h3>
       <p className="text-lavender-gray leading-relaxed">{description}</p>
