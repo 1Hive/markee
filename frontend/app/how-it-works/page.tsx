@@ -282,16 +282,17 @@ function CollectSection() {
     <section className="py-24 bg-deep-space border-b border-cool-slate/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-soft-white text-center mb-4">
-          3. Collect
+          3. Collect 💰
         </h2>
         <p className="text-xl text-lavender-gray text-center mb-16">
-          From your passionate users with something to say, and from a global network of message buyers.
+          From passionate users with something to say, and from a global network of message buyers.
         </p>
 
         <div className="grid md:grid-cols-3 gap-6">
           {/* CTA 1 */}
           <CollectCTACard
-            title="Learn About the Cooperative"
+            title="Cooperative Ownership"
+            subtitle="See how the network's ownership structure works"
             buttonText="Learn More"
             buttonLink="https://www.markee.xyz/owners"
             color="soft-pink"
@@ -299,16 +300,18 @@ function CollectSection() {
 
           {/* CTA 2 */}
           <CollectCTACard
-            title="View the Ecosystem"
-            buttonText="Explore"
+            title="Our Ecosystem"
+            subtitle="See the platforms adding Markee to their sites"
+            buttonText="View Ecosystem"
             buttonLink="https://www.markee.xyz/ecosystem"
             color="cool-sky-blue"
           />
 
           {/* CTA 3 */}
           <CollectCTACard
-            title="Buy a Message"
-            buttonText="Get Started"
+            title="Join Markee"
+            subtitle="Buy a Message to issue MARKEE tokens from the RevNet"
+            buttonText="Buy a Message"
             buttonLink="https://www.markee.xyz/ecosystem/markee-cooperative"
             color="amethyst"
           />
@@ -318,7 +321,7 @@ function CollectSection() {
   )
 }
 
-function CollectCTACard({ title, buttonText, buttonLink, color }: any) {
+function CollectCTACard({ title, subtitle, buttonText, buttonLink, color }: any) {
   const colorClasses = {
     'soft-pink': 'bg-soft-pink text-midnight-navy hover:bg-opacity-90',
     'cool-sky-blue': 'bg-cool-sky-blue text-midnight-navy hover:bg-opacity-90',
@@ -327,7 +330,8 @@ function CollectCTACard({ title, buttonText, buttonLink, color }: any) {
 
   return (
     <div className="bg-midnight-navy border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-soft-pink/50 transition-all">
-      <h3 className="text-2xl font-bold text-soft-white mb-6 text-center">{title}</h3>
+      <h3 className="text-2xl font-bold text-soft-white mb-3 text-center">{title}</h3>
+      <p className="text-lavender-gray text-sm mb-6 text-center">{subtitle}</p>
       <Link
         href={buttonLink}
         className={`block text-center px-6 py-3 rounded-xl font-bold transition-all ${colorClasses[color as keyof typeof colorClasses]}`}
