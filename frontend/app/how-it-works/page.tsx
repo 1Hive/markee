@@ -60,7 +60,7 @@ function FeeReceiverSection() {
             <FeeReceiverCard
               percentage="68%"
               title="Your Beneficiary Address"
-              description="Directly funding your organization"
+              description="Direct funding for your website, community, or digital organization."
               color="soft-pink"
               icon={<Users className="w-12 h-12" />}
             />
@@ -71,7 +71,7 @@ function FeeReceiverSection() {
             <FeeReceiverCard
               percentage="32%"
               title="Markee Cooperative"
-              description="Issues MARKEE tokens in the RevNet"
+              description="Issues MARKEE in the RevNet."
               color="cool-sky-blue"
               icon={<Globe className="w-12 h-12" />}
             />
@@ -89,7 +89,7 @@ function FeeReceiverCard({ percentage, icon, title, description, color }: { perc
   }
 
   return (
-    <div className="relative bg-deep-space border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-soft-pink/50 transition-all group">
+    <div className="relative bg-deep-space border-2 border-cool-slate/20 rounded-2xl p-8 hover:border-soft-pink/50 transition-all group h-full">
       <div className={`inline-block p-4 rounded-full bg-midnight-navy border-2 ${colorClasses[color as keyof typeof colorClasses]} mb-4 group-hover:scale-110 transition-transform`}>
         {icon}
       </div>
