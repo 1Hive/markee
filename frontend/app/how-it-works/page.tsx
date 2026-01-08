@@ -216,12 +216,9 @@ function StrategyCard({ strategy, isHovered, onHover, onLeave }: any) {
 function FixedPriceVisual() {
   return (
     <div className="flex items-center gap-2 text-soft-white">
-      <div className="bg-soft-pink text-midnight-navy px-3 py-1 rounded-md text-sm font-bold">
-        💬 Message
-      </div>
       <div className="text-lavender-gray">←</div>
       <div className="bg-cool-sky-blue text-midnight-navy px-3 py-1 rounded-md text-sm font-bold">
-        💰 Pay
+        💰 0.1 ETH
       </div>
     </div>
   )
