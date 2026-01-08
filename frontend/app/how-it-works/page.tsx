@@ -102,9 +102,9 @@ function PricingStrategies() {
       name: 'Fixed Price',
       icon: <DollarSign className="w-8 h-8" />,
       color: 'soft-pink',
-      description: 'Paid each time the message is changed',
+      description: 'Set price, paid each time message is changed',
       visual: 'Simple exchange',
-      example: '0.01 ETH per update',
+      example: 'price to update',
       status: 'live'
     },
     {
@@ -112,9 +112,9 @@ function PricingStrategies() {
       name: 'Leaderboard',
       icon: <TrendingUp className="w-8 h-8" />,
       color: 'cool-sky-blue',
-      description: 'Own your message, highest total paid wins',
+      description: 'Buyer owns message, top funded message is featured',
       visual: 'Competitive bidding',
-      example: 'Add to your total',
+      example: '',
       status: 'live'
     },
     {
@@ -124,7 +124,7 @@ function PricingStrategies() {
       color: 'amethyst',
       description: 'Leaderboard strategy using Superfluid streams',
       visual: 'Continuous payment',
-      example: '0.001 ETH/second',
+      example: 'Coming Soon.',
       status: 'q1-2026'
     },
     {
@@ -132,9 +132,9 @@ function PricingStrategies() {
       name: 'Dynamic',
       icon: <Clock className="w-8 h-8" />,
       color: 'galactic-purple',
-      description: 'Algorithmic pricing based on demand',
+      description: 'Automated pricing based on demand',
       visual: '10x spike then decay',
-      example: 'Starts at 0.01 ETH',
+      example: 'Coming Soon.',
       status: 'q1-2026'
     }
   ]
