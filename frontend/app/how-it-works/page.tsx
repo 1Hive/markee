@@ -39,7 +39,7 @@ function FeeReceiverSection() {
           2. Choose an Address to Receive Funds
         </h2>
         <p className="text-xl text-lavender-gray text-center mb-16">
-          Incoming funds from messages are split according to the Golden Ratio
+          Incoming funds from messages are split according to the Golden Ratio.
         </p>
 
         <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto">
@@ -147,7 +147,7 @@ function PricingStrategies() {
             1. Choose Your Pricing Strategy
           </h2>
           <p className="text-xl text-lavender-gray">
-            Pricing strategies for Markee messages are interchangeable - choose what works best for your digital real estate
+            Pricing strategies for Markee messages are interchangeable - choose what works best for your digital real estate.
           </p>
         </div>
 
@@ -295,7 +295,7 @@ function CollectSection() {
             subtitle="See how the network's ownership structure works"
             buttonText="Learn More"
             buttonLink="https://www.markee.xyz/owners"
-            color="soft-pink"
+            color="amethyst"
           />
 
           {/* CTA 2 */}
@@ -313,7 +313,7 @@ function CollectSection() {
             subtitle="Buy a Message to issue MARKEE tokens from the RevNet"
             buttonText="Buy a Message"
             buttonLink="https://www.markee.xyz/ecosystem/markee-cooperative"
-            color="amethyst"
+            color="soft-pink"
           />
         </div>
       </div>
