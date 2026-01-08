@@ -154,89 +154,6 @@ export default function Owners() {
         </div>
       </section>
 
-      {/* Reserve Rate Distribution */}
-      <section className="py-16 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Reserve Rate & Distribution</h2>
-          
-          <div className="bg-[#060A2A] rounded-lg shadow-md p-8 border border-[#8A8FBF]/20 mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">From Every Payment</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-[#7C9CFF]/10 rounded border border-[#7C9CFF]/20">
-                    <span className="font-semibold text-[#EDEEFF]">Buyer/Platform</span>
-                    <span className="text-2xl font-bold text-[#7C9CFF]">68%</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-[#F897FE]/10 rounded border border-[#F897FE]/20">
-                    <span className="font-semibold text-[#EDEEFF]">Cooperative</span>
-                    <span className="text-2xl font-bold text-[#F897FE]">32%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">Cooperative's 32% Goes To</h3>
-                <div className="space-y-3">
-                  <div className="p-3 bg-[#0A0F3D] rounded border border-[#8A8FBF]/20">
-                    <div className="font-semibold text-[#EDEEFF] mb-1">Platform Partners</div>
-                    <p className="text-sm text-[#8A8FBF]">Share based on integration terms</p>
-                  </div>
-                  <div className="p-3 bg-[#0A0F3D] rounded border border-[#8A8FBF]/20">
-                    <div className="font-semibold text-[#EDEEFF] mb-1">Cooperative Members</div>
-                    <p className="text-sm text-[#8A8FBF]">Token holders via patronage dividends</p>
-                  </div>
-                  <div className="p-3 bg-[#0A0F3D] rounded border border-[#8A8FBF]/20">
-                    <div className="font-semibold text-[#EDEEFF] mb-1">Markee Builders</div>
-                    <p className="text-sm text-[#8A8FBF]">Development and operations</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#7C9CFF]/10 rounded-lg p-6 max-w-3xl mx-auto border border-[#7C9CFF]/20">
-            <h4 className="font-bold text-[#EDEEFF] mb-2">Governed by Token Holders</h4>
-            <p className="text-[#B8B6D9]">
-              The cooperative's Board of Directors (elected by MARKEE token holders) can adjust distribution settings through governance votes on Gardens. This ensures the community controls how cooperative reserves are allocated.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Charts Placeholder */}
-      <section className="py-16 bg-[#060A2A] border-b border-[#8A8FBF]/20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Ownership Dynamics</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Chart placeholder 1 */}
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border border-[#8A8FBF]/20">
-              <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">Price Ceiling vs Floor</h3>
-              <div className="aspect-video bg-[#060A2A] rounded flex items-center justify-center border border-[#8A8FBF]/20">
-                <div className="text-center text-[#8A8FBF]">
-                  <div className="text-4xl mb-2">📊</div>
-                  <p>Chart Coming Soon</p>
-                  <p className="text-sm mt-2">Showing price ceiling divergence<br />from floor price over time</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Chart placeholder 2 */}
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border border-[#8A8FBF]/20">
-              <h3 className="text-xl font-bold text-[#EDEEFF] mb-4">LLC vs Cooperative Ownership</h3>
-              <div className="aspect-video bg-[#060A2A] rounded flex items-center justify-center border border-[#8A8FBF]/20">
-                <div className="text-center text-[#8A8FBF]">
-                  <div className="text-4xl mb-2">📈</div>
-                  <p>Chart Coming Soon</p>
-                  <p className="text-sm mt-2">Showing ownership shift<br />from LLC to Cooperative</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* RevNet Terms Link */}
       <section className="py-12 bg-[#0A0F3D]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -245,7 +162,7 @@ export default function Owners() {
             View complete tokenomics, reserve rates, and governance parameters on-chain.
           </p>
           <a 
-            href="https://app.revnet.eth.sucks/v5:op:52/terms" 
+            href="https://www.revnet.app/v5:base:119/terms" 
             target="_blank" 
             rel="noopener noreferrer"
             className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
