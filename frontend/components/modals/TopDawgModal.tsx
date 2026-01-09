@@ -28,7 +28,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError } = useWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
   // Get user's ETH balance
@@ -122,11 +122,12 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
     }
     setAmount('')
     setError(null)
-  }, [userMarkee, initialMode, isOpen])
+    reset()
+  }, [userMarkee, initialMode, isOpen, reset])
 
   // Reset state and trigger refresh when transaction succeeds
   useEffect(() => {
-    if (isSuccess) {
+    if (isSuccess && isOpen) {
       setTimeout(() => {
         setMessage('')
         setAmount('')
