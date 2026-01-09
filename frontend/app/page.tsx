@@ -49,32 +49,32 @@ export default function Home() {
   }, [])
 
   // Simple refetch after transaction - waits 3 seconds to give subgraph time to index
-  const handleTransactionSuccess = () => {
+  const handleTransactionSuccess = useCallback(() => {
     setTimeout(() => {
       console.log('[Markees] Refetching after transaction success')
       refetch()
     }, 3000)
-  }
+  }, [refetch])
 
-  const handleCreateNew = () => {
+  const handleCreateNew = useCallback(() => {
     setSelectedMarkee(null)
     setModalMode('create')
     setIsModalOpen(true)
-  }
+  }, [])
 
-  const handleEditMessage = (markee: Markee) => {
+  const handleEditMessage = useCallback((markee: Markee) => {
     setSelectedMarkee(markee)
     setModalMode('updateMessage')
     setIsModalOpen(true)
-  }
+  }, [])
 
-  const handleAddFunds = (markee: Markee) => {
+  const handleAddFunds = useCallback((markee: Markee) => {
     setSelectedMarkee(markee)
     setModalMode('addFunds')
     setIsModalOpen(true)
-  }
+  }, [])
 
-  const handleReact = async (markee: Markee, emoji: string) => {
+  const handleReact = useCallback(async (markee: Markee, emoji: string) => {
     if (!address) {
       console.error('Wallet not connected')
       return
@@ -85,22 +85,22 @@ export default function Home() {
     } catch (err) {
       console.error('Failed to add reaction:', err)
     }
-  }
+  }, [address, addReaction])
 
-  const handleModalClose = () => {
+  const handleModalClose = useCallback(() => {
     setIsModalOpen(false)
     setSelectedMarkee(null)
-  }
+  }, [])
 
-  const handleFixedMarkeeClick = (fixedMarkee: FixedMarkee) => {
+  const handleFixedMarkeeClick = useCallback((fixedMarkee: FixedMarkee) => {
     setSelectedFixedMarkee(fixedMarkee)
     setIsFixedModalOpen(true)
-  }
+  }, [])
 
-  const handleFixedModalClose = () => {
+  const handleFixedModalClose = useCallback(() => {
     setIsFixedModalOpen(false)
     setSelectedFixedMarkee(null)
-  }
+  }, [])
 
   // Show loading spinner during SSR and initial client render
   if (!mounted) {
