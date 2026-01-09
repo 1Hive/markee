@@ -7,52 +7,36 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 
 interface HeaderProps {
   activePage?: 'home' | 'how-it-works' | 'ecosystem' | 'owners'
-  useRegularLinks?: boolean // Use <a> instead of <Link> for pages with hydration issues
 }
 
-export function Header({ activePage = 'home', useRegularLinks = false }: HeaderProps) {
+// Define NavLink outside the component - only created once, not on every render
+const NavLink = ({ href, active, children, onClick }: { 
+  href: string
+  active: boolean
+  children: React.ReactNode
+  onClick?: () => void
+}) => {
+  const className = active ? 'text-[#F897FE] font-medium' : 'text-[#B8B6D9] hover:text-[#F897FE]'
+  
+  return (
+    <Link href={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  )
+}
+
+export function Header({ activePage = 'home' }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
-  // Helper to render either Link or a tag
-  const NavLink = ({ href, active, children, onClick }: { 
-    href: string
-    active: boolean
-    children: React.ReactNode
-    onClick?: () => void
-  }) => {
-    const className = active ? 'text-[#F897FE] font-medium' : 'text-[#B8B6D9] hover:text-[#F897FE]'
-    
-    if (useRegularLinks) {
-      return (
-        <a href={href} className={className} onClick={onClick}>
-          {children}
-        </a>
-      )
-    }
-    
-    return (
-      <Link href={href} className={className} onClick={onClick}>
-        {children}
-      </Link>
-    )
-  }
-
-  const LogoLink = ({ children }: { children: React.ReactNode }) => {
-    if (useRegularLinks) {
-      return <a href="/" className="flex items-center">{children}</a>
-    }
-    return <Link href="/" className="flex items-center">{children}</Link>
-  }
-
   return (
-    <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20" style={{ position: 'relative' }}>
+    <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <LogoLink>
+            <Link href="/" className="flex items-center">
               <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
-            </LogoLink>
-
+            </Link>
+            
             {/* Desktop Navigation */}
             <nav className="hidden md:flex gap-6">
               <NavLink href="/how-it-works" active={activePage === 'how-it-works'}>
