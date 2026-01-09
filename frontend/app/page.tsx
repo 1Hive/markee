@@ -42,25 +42,19 @@ export default function Home() {
   const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
-  const [refetchTimeout, setRefetchTimeout] = useState<NodeJS.Timeout | null>(null)
-
   // Fix hydration issue - completely suppress SSR for this page
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // Debounced refetch - waits 3 seconds after transaction to give subgraph time to index
-  const debouncedRefetch = useCallback(() => {
-    if (refetchTimeout) clearTimeout(refetchTimeout)
-
-    const timeout = setTimeout(() => {
+  // Simple refetch after transaction - waits 3 seconds to give subgraph time to index
+  const handleTransactionSuccess = () => {
+    setTimeout(() => {
       console.log('[Markees] Refetching after transaction success')
       refetch()
     }, 3000)
-
-    setRefetchTimeout(timeout)
-  }, [refetch, refetchTimeout])
+  }
 
   const handleCreateNew = () => {
     setSelectedMarkee(null)
@@ -397,14 +391,14 @@ export default function Home() {
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
         initialMode={modalMode}
-        onSuccess={debouncedRefetch}
+        onSuccess={handleTransactionSuccess}
       />
 
       <FixedPriceModal
         isOpen={isFixedModalOpen}
         onClose={handleFixedModalClose}
         fixedMarkee={selectedFixedMarkee}
-        onSuccess={debouncedRefetch}
+        onSuccess={handleTransactionSuccess}
       />
 
     </div>
