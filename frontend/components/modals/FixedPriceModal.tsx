@@ -66,7 +66,7 @@ export function FixedPriceModal({
 
   // Close modal & refresh after success
   useEffect(() => {
-    if (isSuccess) {
+    if (isSuccess && isOpen) {
       setTimeout(() => {
         if (onSuccess) onSuccess()
         onClose()
