@@ -72,7 +72,7 @@ export function FixedPriceModal({
         onClose()
       }, 2000)
     }
-  }, [isSuccess, onClose])
+  }, [isSuccess, onClose, isOpen])
 
   // Check if user can afford the message change
   const canAffordMessage = () => {
