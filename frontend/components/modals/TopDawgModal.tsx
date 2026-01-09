@@ -137,7 +137,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
         onClose()
       }, 2000)
     }
-  }, [isSuccess, onClose, onSuccess])
+  }, [isSuccess, onClose])
 
   const handleCreateMarkee = async () => {
     if (!strategyAddress || !isCorrectChain) {
