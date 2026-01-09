@@ -130,7 +130,6 @@ export function MarkeeCard(props: MarkeeCardProps) {
     onReact,
     onRemoveReaction,
     reactions,
-    children,
   } = props
 
   const { address } = useAccount()
@@ -144,12 +143,7 @@ export function MarkeeCard(props: MarkeeCardProps) {
   })
 
   const hasMinBalance = balance ? balance >= MARKEE_THRESHOLD : false
-
-  return (
     <div className="relative">
-      {/* existing card layout is untouched */}
-      {children}
-
       <EmojiOverlay
         reactions={reactions}
         markee={markee}
