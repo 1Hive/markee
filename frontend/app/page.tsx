@@ -101,7 +101,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="home" />
+      {/* FIX ATTEMPT #3: Use regular <a> tags instead of Next.js Link on home page */}
+      <Header activePage="home" useRegularLinks={true} />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
       {/* FIX ATTEMPT #2: Removed mounted check to fix hydration. Reverted z-index since it didn't help. */}
