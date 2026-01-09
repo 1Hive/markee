@@ -161,6 +161,65 @@ export default function Home() {
         </div>
       </section>
 
+              <style jsx>{`
+          .readerboard-card {
+            position: relative;
+            background: #edeeff;
+            border-radius: 4px;
+            padding: 4px;
+            box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
+            aspect-ratio: 2 / 1;
+          }
+        
+          .readerboard-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+              0deg,
+              #0a0f3d 0px,
+              #0a0f3d 28px,
+              #060a2a 28px,
+              #060a2a 30px
+            );
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            overflow: hidden;
+          }
+        
+          .readerboard-text {
+            font-family: var(--font-jetbrains-mono), 'Courier New', Consolas, monospace;
+            font-size: clamp(18px, 3vw, 28px);
+            font-weight: 600;
+            line-height: 1.1;
+            letter-spacing: -0.5px;
+            color: #edeeff;
+            text-align: center;
+            word-wrap: break-word;
+            max-width: 100%;
+            transition: all 0.2s ease;
+          }
+        
+          .group:hover .readerboard-text {
+            color: #7b6af4;
+            transform: scale(1.02);
+          }
+        
+          @media (max-width: 768px) {
+            .readerboard-card {
+              aspect-ratio: 5 / 3;
+            }
+        
+            .readerboard-text {
+              font-size: 20px;
+            }
+          }
+        `}</style>
+
+
       {/* Explore our Ecosystem */}
       <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
