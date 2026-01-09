@@ -60,7 +60,7 @@ export function PartnerMarkeeCard({
 
       {/* ETH Amount */}
       <div className="text-[#7C9CFF] text-xs font-medium mb-4">
-        {formatEther(totalFunds)} ETH raised
+        {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
       </div>
 
       {/* CTAs */}
