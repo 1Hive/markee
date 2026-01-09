@@ -260,13 +260,11 @@ export function MarkeeCard({
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address && MARKEE_TOKEN !== '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807'
+      enabled: !!address
     }
   })
 
-  const hasMinBalance = MARKEE_TOKEN === '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807' 
-    ? true 
-    : balance ? balance >= MARKEE_THRESHOLD : false
+  const hasMinBalance = balance ? balance >= MARKEE_THRESHOLD : false
 
   // List view (compact, single line)
   if (size === 'list') {
