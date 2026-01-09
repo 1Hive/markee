@@ -9,7 +9,7 @@ export const CANONICAL_CHAIN_ID = base.id
 export const JB_TERMINAL = '0x2dB6d704058E552DeFE415753465df8dF0361846' as const
 
 // MARKEE token address (same across all chains)
-export const MARKEE_TOKEN = '0xf2A27822c8b7404c6aA7C3d7e2876DF597f02807' as const
+export const MARKEE_TOKEN = '0xee3027f1e021b09D629922D40436C5DeA3c6cb38' as const
 
 // RevNet Project IDs per chain (MARKEE token)
 // Users receive tokens on the chain they pay from
