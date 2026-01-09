@@ -119,7 +119,8 @@ export default function Home() {
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
+      {/* FIX ATTEMPT #1: Added explicit zIndex: 1 to place hero section below header (zIndex: 50) */}
+      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden" style={{ zIndex: 1 }}>
         {/* Background layer - absolutely positioned and non-interactive */}
         <HeroBackground />
           
