@@ -7,16 +7,26 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 
 interface HeaderProps {
   activePage?: 'home' | 'how-it-works' | 'ecosystem' | 'owners'
+  useRegularLinks?: boolean // FIX ATTEMPT #3: Use <a> instead of <Link> for home page only
 }
 
 // Define NavLink outside the component - only created once, not on every render
-const NavLink = ({ href, active, children, onClick }: { 
+const NavLink = ({ href, active, children, onClick, useRegularLinks }: { 
   href: string
   active: boolean
   children: React.ReactNode
   onClick?: () => void
+  useRegularLinks?: boolean
 }) => {
   const className = active ? 'text-[#F897FE] font-medium' : 'text-[#B8B6D9] hover:text-[#F897FE]'
+  
+  if (useRegularLinks) {
+    return (
+      <a href={href} className={className} onClick={onClick}>
+        {children}
+      </a>
+    )
+  }
   
   return (
     <Link href={href} className={className} onClick={onClick}>
@@ -25,7 +35,7 @@ const NavLink = ({ href, active, children, onClick }: {
   )
 }
 
-export function Header({ activePage = 'home' }: HeaderProps) {
+export function Header({ activePage = 'home', useRegularLinks = false }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   return (
@@ -33,19 +43,25 @@ export function Header({ activePage = 'home' }: HeaderProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center">
-              <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
-            </Link>
+            {useRegularLinks ? (
+              <a href="/" className="flex items-center">
+                <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
+              </a>
+            ) : (
+              <Link href="/" className="flex items-center">
+                <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
+              </Link>
+            )}
             
             {/* Desktop Navigation */}
             <nav className="hidden md:flex gap-6">
-              <NavLink href="/how-it-works" active={activePage === 'how-it-works'}>
+              <NavLink href="/how-it-works" active={activePage === 'how-it-works'} useRegularLinks={useRegularLinks}>
                 How it Works
               </NavLink>
-              <NavLink href="/ecosystem" active={activePage === 'ecosystem'}>
+              <NavLink href="/ecosystem" active={activePage === 'ecosystem'} useRegularLinks={useRegularLinks}>
                 Ecosystem
               </NavLink>
-              <NavLink href="/owners" active={activePage === 'owners'}>
+              <NavLink href="/owners" active={activePage === 'owners'} useRegularLinks={useRegularLinks}>
                 Owners
               </NavLink>
             </nav>
@@ -73,6 +89,7 @@ export function Header({ activePage = 'home' }: HeaderProps) {
                 href="/how-it-works" 
                 active={activePage === 'how-it-works'}
                 onClick={() => setMobileMenuOpen(false)}
+                useRegularLinks={useRegularLinks}
               >
                 How it Works
               </NavLink>
@@ -80,6 +97,7 @@ export function Header({ activePage = 'home' }: HeaderProps) {
                 href="/ecosystem" 
                 active={activePage === 'ecosystem'}
                 onClick={() => setMobileMenuOpen(false)}
+                useRegularLinks={useRegularLinks}
               >
                 Ecosystem
               </NavLink>
@@ -87,6 +105,7 @@ export function Header({ activePage = 'home' }: HeaderProps) {
                 href="/owners" 
                 active={activePage === 'owners'}
                 onClick={() => setMobileMenuOpen(false)}
+                useRegularLinks={useRegularLinks}
               >
                 Owners
               </NavLink>
