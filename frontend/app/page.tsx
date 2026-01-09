@@ -33,7 +33,14 @@ export default function Home() {
   const { address } = useAccount()
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
-  const { reactions, addReaction, isLoading: reactionsLoading, error: reactionsError } = useReactions()
+  const {
+        reactions,
+        toggleReaction,
+        removeReaction,
+        isLoading: reactionsLoading,
+        error: reactionsError,
+      } = useReactions()
+
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
@@ -71,18 +78,35 @@ export default function Home() {
     setIsModalOpen(true)
   }, [])
 
-  const handleReact = useCallback(async (markee: Markee, emoji: string) => {
-    if (!address) {
-      console.error('Wallet not connected')
-      return
-    }
+    const handleReact = useCallback(
+      async (markee: Markee, emoji: string) => {
+        if (!address) {
+          console.error('Wallet not connected')
+          return
+        }
+    
+        try {
+          await toggleReaction(markee.address, emoji, markee.chainId)
+        } catch (err) {
+          console.error('Failed to toggle reaction:', err)
+        }
+      },
+      [address, toggleReaction]
+    )
 
-    try {
-      await addReaction(markee.address, emoji, markee.chainId)
-    } catch (err) {
-      console.error('Failed to add reaction:', err)
-    }
-  }, [address, addReaction])
+  const handleRemoveReaction = useCallback(
+      async (markee: Markee) => {
+        if (!address) return
+    
+        try {
+          await removeReaction(markee.address)
+        } catch (err) {
+          console.error('Failed to remove reaction:', err)
+        }
+      },
+      [address, removeReaction]
+    )
+
 
   const handleModalClose = useCallback(() => {
     setIsModalOpen(false)
