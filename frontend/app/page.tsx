@@ -42,11 +42,8 @@ export default function Home() {
   const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
 
-  // Fix hydration issue - completely suppress SSR for this page
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  // FIX ATTEMPT #2: Removed mounted check to allow proper Next.js hydration
+  // Previous mounted pattern was forcing client-only render, breaking Link components
 
   // Simple refetch after transaction - waits 3 seconds to give subgraph time to index
   const handleTransactionSuccess = useCallback(() => {
@@ -102,25 +99,13 @@ export default function Home() {
     setSelectedFixedMarkee(null)
   }, [])
 
-  // Show loading spinner during SSR and initial client render
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-[#060A2A]">
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#F897FE]"></div>
-        </div>
-      </div>
-    )
-  }
-
-  
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" />
 
       {/* Hero Section - Fixed Price Messages (Readerboard Style) */}
-      {/* FIX ATTEMPT #1: Added explicit zIndex: 1 to place hero section below header (zIndex: 50) */}
-      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden" style={{ zIndex: 1 }}>
+      {/* FIX ATTEMPT #2: Removed mounted check to fix hydration. Reverted z-index since it didn't help. */}
+      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
         {/* Background layer - absolutely positioned and non-interactive */}
         <HeroBackground />
           
