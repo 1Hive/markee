@@ -221,6 +221,29 @@ export default function Home() {
       {/* Leaderboard */}
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-8">
+            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message.  Own the Network.</h3>
+
+            <p className="text-lg text-[#8A8FBF] mb-6">
+              Markee is a digital cooperative owned by its participants. Buy a message to join - and let people know what you need to say.
+            </p>
+
+            <div className="flex gap-4 justify-center mb-8">
+              <button
+                onClick={handleCreateNew}
+                className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
+              >
+                Buy a Message
+              </button>
+              <a
+                href="/how-it-works"
+                className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
+              >
+                How it Works
+              </a>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3 ml-auto">
               {(isFetchingFresh || reactionsLoading) && (
