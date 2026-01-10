@@ -87,7 +87,8 @@ function EmojiDisplay({
 
   const textSize = size === 'hero' ? 'text-base' : size === 'large' ? 'text-sm' : 'text-xs'
 
-  if (!hasMinBalance) return null
+  // Users can see reactions even without balance, but can't interact
+  if (!hasReactions && !hasMinBalance) return null
 
   return (
     <div 
@@ -116,33 +117,41 @@ function EmojiDisplay({
                 className="fixed inset-0 z-40" 
                 onClick={() => setShowMenu(false)}
               />
-              <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50 flex gap-1 flex-wrap max-w-[200px]">
-                {ALL_EMOJIS.map(emoji => {
-                  const isUserEmoji = userReaction?.emoji === emoji
-                  return (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        onReact?.(markee, emoji)
-                        setShowMenu(false)
-                      }}
-                      className={`text-xl p-1 rounded transition-all ${
-                        isUserEmoji 
-                          ? 'bg-[#F897FE]/30 scale-110' 
-                          : 'hover:scale-125 hover:bg-[#8A8FBF]/20'
-                      }`}
-                      title={isUserEmoji ? 'Click to remove' : ''}
-                    >
-                      {emoji}
-                    </button>
-                  )
-                })}
+              <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50">
+                {!hasMinBalance ? (
+                  <div className="px-3 py-2 text-xs text-[#8A8FBF] whitespace-nowrap">
+                    100 MARKEE needed in your wallet to react
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1">
+                    {ALL_EMOJIS.map(emoji => {
+                      const isUserEmoji = userReaction?.emoji === emoji
+                      return (
+                        <button
+                          key={emoji}
+                          onClick={() => {
+                            onReact?.(markee, emoji)
+                            setShowMenu(false)
+                          }}
+                          className={`text-xl p-1 rounded transition-all ${
+                            isUserEmoji 
+                              ? 'bg-[#F897FE]/30 scale-110' 
+                              : 'hover:scale-125 hover:bg-[#8A8FBF]/20'
+                          }`}
+                          title={isUserEmoji ? 'Click to remove' : ''}
+                        >
+                          {emoji}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </>
           )}
         </>
       ) : (
-        // Show hover heart when no reactions - always render the space
+        // Show hover heart when no reactions (only if has balance)
         <button
           onClick={() => onReact?.(markee, '❤️')}
           className={`${textSize} transition-all ${
