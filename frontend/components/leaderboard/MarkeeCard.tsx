@@ -56,7 +56,8 @@ function EmojiDisplay({
   onReact, 
   userAddress, 
   hasMinBalance,
-  size
+  size,
+  isCardHovering
 }: { 
   reactions?: EmojiReaction[]
   markee: Markee
@@ -64,9 +65,9 @@ function EmojiDisplay({
   userAddress?: string
   hasMinBalance: boolean
   size: string
+  isCardHovering: boolean
 }) {
   const [showMenu, setShowMenu] = useState(false)
-  const [isHovering, setIsHovering] = useState(false)
 
   const hasReactions = reactions && reactions.length > 0
 
@@ -91,11 +92,7 @@ function EmojiDisplay({
   if (!hasReactions && !hasMinBalance) return null
 
   return (
-    <div 
-      className="relative flex items-center gap-1 min-w-[30px]"
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-    >
+    <div className="relative flex items-center gap-1 min-w-[30px]">
       {hasReactions ? (
         // Show existing reactions
         <>
@@ -152,16 +149,44 @@ function EmojiDisplay({
         </>
       ) : (
         // Show hover heart when no reactions (only if has balance)
-        <button
-          onClick={() => onReact?.(markee, '❤️')}
-          className={`${textSize} transition-all ${
-            isHovering && userAddress 
-              ? 'text-[#EDEEFF] opacity-100 scale-110' 
-              : 'opacity-0'
-          }`}
-        >
-          ❤️
-        </button>
+        <>
+          <button
+            onClick={() => setShowMenu(true)}
+            className={`${textSize} transition-all ${
+              isCardHovering && userAddress 
+                ? 'text-[#EDEEFF] opacity-100 scale-110' 
+                : 'opacity-0'
+            }`}
+          >
+            ❤️
+          </button>
+
+          {/* Emoji menu for hover heart */}
+          {showMenu && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowMenu(false)}
+              />
+              <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50">
+                <div className="grid grid-cols-4 gap-1">
+                  {ALL_EMOJIS.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        onReact?.(markee, emoji)
+                        setShowMenu(false)
+                      }}
+                      className="text-xl p-1 rounded transition-all hover:scale-125 hover:bg-[#8A8FBF]/20"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   )
@@ -271,8 +296,14 @@ export function MarkeeCard({
 
   // Hero view (rank #1)
   if (size === 'hero') {
+    const [isCardHovering, setIsCardHovering] = useState(false)
+
     return (
-      <div className="relative bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 rounded-xl shadow-lg p-8 mb-6">
+      <div 
+        className="relative bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 rounded-xl shadow-lg p-8 mb-6"
+        onMouseEnter={() => setIsCardHovering(true)}
+        onMouseLeave={() => setIsCardHovering(false)}
+      >
         {/* Message and Author - Bordered Section */}
         <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
           {/* Message */}
@@ -326,6 +357,7 @@ export function MarkeeCard({
               userAddress={userAddress}
               hasMinBalance={hasMinBalance}
               size={size}
+              isCardHovering={isCardHovering}
             />
           </div>
         </div>
@@ -335,8 +367,14 @@ export function MarkeeCard({
 
   // Large view (ranks 2-3)
   if (size === 'large') {
+    const [isCardHovering, setIsCardHovering] = useState(false)
+
     return (
-      <div className="relative bg-[#0A0F3D] rounded-lg shadow-md p-6 h-full flex flex-col">
+      <div 
+        className="relative bg-[#0A0F3D] rounded-lg shadow-md p-6 h-full flex flex-col"
+        onMouseEnter={() => setIsCardHovering(true)}
+        onMouseLeave={() => setIsCardHovering(false)}
+      >
         {/* Message and Author - Bordered Section */}
         <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 flex-grow">
           {/* Message */}
@@ -391,6 +429,7 @@ export function MarkeeCard({
                 userAddress={userAddress}
                 hasMinBalance={hasMinBalance}
                 size={size}
+                isCardHovering={isCardHovering}
               />
             </div>
           </div>
@@ -401,8 +440,14 @@ export function MarkeeCard({
 
   // Medium view (ranks 4-26)
   if (size === 'medium') {
+    const [isCardHovering, setIsCardHovering] = useState(false)
+
     return (
-      <div className="relative bg-[#0A0F3D] rounded-lg shadow-sm p-4 h-full flex flex-col">
+      <div 
+        className="relative bg-[#0A0F3D] rounded-lg shadow-sm p-4 h-full flex flex-col"
+        onMouseEnter={() => setIsCardHovering(true)}
+        onMouseLeave={() => setIsCardHovering(false)}
+      >
         {/* Message and Author - Bordered Section */}
         <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 flex-grow">
           {/* Message */}
@@ -457,6 +502,7 @@ export function MarkeeCard({
                 userAddress={userAddress}
                 hasMinBalance={hasMinBalance}
                 size={size}
+                isCardHovering={isCardHovering}
               />
             </div>
           </div>
