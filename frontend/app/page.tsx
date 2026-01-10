@@ -151,6 +151,73 @@ export default function Home() {
         </div>
       </section>
 
+      <style jsx>{`
+        .readerboard-card {
+          position: relative;
+          background: #edeeff;
+          border-radius: 4px;
+          padding: 4px;
+          box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
+          aspect-ratio: 2 / 1;
+        }
+
+        .readerboard-inner {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
+          border-radius: 2px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          overflow: hidden;
+        }
+
+        .readerboard-text {
+          font-family: var(--font-jetbrains-mono), 'Courier New', Consolas, monospace;
+          font-size: clamp(18px, 3vw, 28px);
+          font-weight: 600;
+          line-height: 1.1;
+          letter-spacing: -0.5px;
+          color: #edeeff;
+          text-align: center;
+          word-wrap: break-word;
+          max-width: 100%;
+          transition: all 0.2s ease;
+        }
+
+        .group:hover .readerboard-text {
+          color: #7b6af4;
+          transform: scale(1.02);
+        }
+
+        @media (max-width: 768px) {
+          .readerboard-card {
+            aspect-ratio: 5 / 3;
+          }
+
+          .readerboard-text {
+            font-size: 20px;
+          }
+        }
+      `}</style>
+
+      {/* Explore our Ecosystem */}
+      <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
+          <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a website near you...</p>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <PartnerCard logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
+            <PartnerCard logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
+            <PartnerCard logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
+            <PartnerCard logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
+          </div>
+        </div>
+      </section>
+
       {/* Leaderboard */}
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
