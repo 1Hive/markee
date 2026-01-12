@@ -71,6 +71,10 @@ export const CONTRACTS = {
         name: 'Bread Cooperative Top Dawg',
         address: '0x05A40489965B355e0404c05134dA68626a5a927c' as const,
       },
+      {
+        name: 'Giveth Top Dawg',
+        address: '0xd9145CCE52D386f254917e481eB44e9943F39138' as const,
+      },
     ],
   },
 } as const
