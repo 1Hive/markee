@@ -56,9 +56,9 @@ export const PARTNERS = [
   }, 
     {
     slug: 'giveth',
-    name: 'giveth',
+    name: 'Giveth', 
     description: 'Web3 crowdfunding platform for nonprofits and social causes',
-    strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
+    strategyAddress: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431',  
     logo: '/partners/giveth.png',
     fundingSplit: '68% to Giveth / 32% to Markee Cooperative',
     percentToBeneficiary: 6800,
