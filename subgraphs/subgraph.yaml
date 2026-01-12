@@ -203,47 +203,46 @@ dataSources:
           handler: handlePercentToBeneficiaryUpdated
       file: ./src/topdawg-partner-strategy.ts
 
-
-  # TopDawgPartnerStrategy - Juicebox Platform
+  # TopDawgPartnerStrategy - Giveth Platform
   - kind: ethereum
-      name: TopDawgPartnerStrategyGiveth
-      network: base
-      source:
-        address: "0xd9145CCE52D386f254917e481eB44e9943F39138"
-        abi: TopDawgPartnerStrategy
-        startBlock: 40444040
-      mapping:
-        kind: ethereum/events
-        apiVersion: 0.0.7
-        language: wasm/assemblyscript
-        entities:
-          - Markee
-          - TopDawgPartnerStrategy
-          - PartnerFundsAdded
-          - MessageUpdate
-          - NameUpdate
-          - GlobalStats
-        abis:
-          - name: TopDawgPartnerStrategy
-            file: ./abis/TopDawgPartnerStrategy.json
-          - name: Markee
-            file: ./abis/Markee.json
-        eventHandlers:
-          - event: MarkeeCreated(indexed address,indexed address,string,string,uint256,uint256,uint256)
-            handler: handlePartnerMarkeeCreated
-          - event: FundsAddedToMarkee(indexed address,indexed address,uint256,uint256,uint256,uint256,uint256)
-            handler: handlePartnerFundsAddedToMarkee
-          - event: MessageUpdated(indexed address,indexed address,string)
-            handler: handlePartnerMessageUpdated
-          - event: NameUpdated(indexed address,indexed address,string)
-            handler: handlePartnerNameUpdated
-          - event: InstanceNameUpdated(string,string)
-            handler: handlePartnerInstanceNameUpdated
-          - event: BeneficiaryAddressUpdated(indexed address,indexed address)
-            handler: handleBeneficiaryAddressUpdated
-          - event: PercentToBeneficiaryUpdated(uint256,uint256)
-            handler: handlePercentToBeneficiaryUpdated
-        file: ./src/topdawg-partner-strategy.ts
+    name: TopDawgPartnerStrategyGiveth
+    network: base
+    source:
+      address: "0xd9145CCE52D386f254917e481eB44e9943F39138"
+      abi: TopDawgPartnerStrategy
+      startBlock: 40444040
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Markee
+        - TopDawgPartnerStrategy
+        - PartnerFundsAdded
+        - MessageUpdate
+        - NameUpdate
+        - GlobalStats
+      abis:
+        - name: TopDawgPartnerStrategy
+          file: ./abis/TopDawgPartnerStrategy.json
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MarkeeCreated(indexed address,indexed address,string,string,uint256,uint256,uint256)
+          handler: handlePartnerMarkeeCreated
+        - event: FundsAddedToMarkee(indexed address,indexed address,uint256,uint256,uint256,uint256,uint256)
+          handler: handlePartnerFundsAddedToMarkee
+        - event: MessageUpdated(indexed address,indexed address,string)
+          handler: handlePartnerMessageUpdated
+        - event: NameUpdated(indexed address,indexed address,string)
+          handler: handlePartnerNameUpdated
+        - event: InstanceNameUpdated(string,string)
+          handler: handlePartnerInstanceNameUpdated
+        - event: BeneficiaryAddressUpdated(indexed address,indexed address)
+          handler: handleBeneficiaryAddressUpdated
+        - event: PercentToBeneficiaryUpdated(uint256,uint256)
+          handler: handlePercentToBeneficiaryUpdated
+      file: ./src/topdawg-partner-strategy.ts    
 
   # FixedPriceStrategy 1 - hero message #1.
   - kind: ethereum
