@@ -53,6 +53,16 @@ export const PARTNERS = [
     fundingSplit: '68% to Juicebox / 32% to Markee Cooperative',
     percentToBeneficiary: 6800,
     isCooperative: false
+  }, 
+    {
+    slug: 'giveth',
+    name: 'giveth',
+    description: 'Web3 crowdfunding platform for nonprofits and social causes',
+    strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
+    logo: '/partners/giveth.png',
+    fundingSplit: '68% to Giveth / 32% to Markee Cooperative',
+    percentToBeneficiary: 6800,
+    isCooperative: false
   }
 ] as const
 
