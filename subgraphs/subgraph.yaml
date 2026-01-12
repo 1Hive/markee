@@ -208,9 +208,9 @@ dataSources:
     name: TopDawgPartnerStrategyGiveth
     network: base
     source:
-      address: "0xd9145CCE52D386f254917e481eB44e9943F39138"
+      address: "0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431"
       abi: TopDawgPartnerStrategy
-      startBlock: 40444040
+      startBlock: 40730164
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
