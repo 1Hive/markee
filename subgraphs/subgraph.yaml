@@ -204,8 +204,8 @@ dataSources:
       file: ./src/topdawg-partner-strategy.ts
 
 
-    # TopDawgPartnerStrategy - Giveth Platform
-    - kind: ethereum
+  # TopDawgPartnerStrategy - Juicebox Platform
+  - kind: ethereum
       name: TopDawgPartnerStrategyGiveth
       network: base
       source:
