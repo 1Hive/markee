@@ -73,7 +73,7 @@ export const CONTRACTS = {
       },
       {
         name: 'Giveth Top Dawg',
-        address: '0xd9145CCE52D386f254917e481eB44e9943F39138' as const,
+        address: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431' as const,
       },
     ],
   },
