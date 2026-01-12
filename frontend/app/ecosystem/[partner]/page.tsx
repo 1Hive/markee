@@ -10,6 +10,7 @@ import { Footer } from '@/components/layout/Footer'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { useReactions } from '@/hooks/useReactions'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
 import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatDistanceToNow } from 'date-fns'
@@ -63,6 +64,15 @@ const PARTNER_ALL_MARKEES_QUERY = `
 export default function PartnerPage() {
   const params = useParams()
   const { address } = useAccount()
+  
+  // Reactions hook
+  const {
+    reactions,
+    toggleReaction,
+    removeReaction,
+    isLoading: reactionsLoading,
+    error: reactionsError,
+  } = useReactions()
   
   const [markees, setMarkees] = useState<Markee[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -166,6 +176,30 @@ export default function PartnerPage() {
     setIsModalOpen(true)
   }
 
+  const handleReact = useCallback(
+    async (markee: Markee, emoji: string) => {
+      if (!address) return
+      try {
+        await toggleReaction(markee.address, emoji, markee.chainId)
+      } catch (err) {
+        console.error('Failed to toggle reaction:', err)
+      }
+    },
+    [address, toggleReaction]
+  )
+
+  const handleRemoveReaction = useCallback(
+    async (markee: Markee) => {
+      if (!address) return
+      try {
+        await removeReaction(markee.address)
+      } catch (err) {
+        console.error('Failed to remove reaction:', err)
+      }
+    },
+    [address, removeReaction]
+  )
+
   const handleModalClose = () => {
     setIsModalOpen(false)
     setSelectedMarkee(null)
@@ -225,6 +259,12 @@ export default function PartnerPage() {
 
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <div className="flex items-center gap-3">
+              {(reactionsLoading) && (
+                <div className="flex items-center gap-2 text-sm text-[#8A8FBF]">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F897FE]" />
+                  <span>Loading reactions...</span>
+                </div>
+              )}
               {lastUpdated && (
                 <div className="text-sm text-[#8A8FBF]">
                   Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
@@ -239,6 +279,12 @@ export default function PartnerPage() {
               Buy a Message
             </button>
           </div>
+
+          {reactionsError && (
+            <div className="mt-4 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg max-w-2xl">
+              <p className="text-sm text-[#8BC8FF]">{reactionsError}</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -286,6 +332,9 @@ export default function PartnerPage() {
                   userAddress={address}
                   onEditMessage={handleEditMessage}
                   onAddFunds={handleAddFunds}
+                  onReact={handleReact}
+                  onRemoveReaction={handleRemoveReaction}
+                  reactions={reactions.get(markees[0].address.toLowerCase())}
                 />
               )}
 
@@ -300,6 +349,9 @@ export default function PartnerPage() {
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      onRemoveReaction={handleRemoveReaction}
+                      reactions={reactions.get(markees[1].address.toLowerCase())}
                     />
                   )}
                   {markees[2] && (
@@ -310,6 +362,9 @@ export default function PartnerPage() {
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      onRemoveReaction={handleRemoveReaction}
+                      reactions={reactions.get(markees[2].address.toLowerCase())}
                     />
                   )}
                 </div>
@@ -327,6 +382,9 @@ export default function PartnerPage() {
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      onRemoveReaction={handleRemoveReaction}
+                      reactions={reactions.get(markee.address.toLowerCase())}
                     />
                   ))}
                 </div>
@@ -346,6 +404,9 @@ export default function PartnerPage() {
                         userAddress={address}
                         onEditMessage={handleEditMessage}
                         onAddFunds={handleAddFunds}
+                        onReact={handleReact}
+                        onRemoveReaction={handleRemoveReaction}
+                        reactions={reactions.get(markee.address.toLowerCase())}
                       />
                     ))}
                   </div>
