@@ -91,7 +91,7 @@ export default function Owners() {
             {/* LLC */}
             <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border-l-4 border-[#7C9CFF]">
               <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Markee LLC</h3>
-              <p className="text-sm text-[#8A8FBF] mb-4">Wyoming Series LLC</p>
+              <p className="text-sm text-[#8A8FBF] mb-4">Wyoming LLC</p>
               
               <div className="space-y-4">
                 <div>
