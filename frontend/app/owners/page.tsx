@@ -129,7 +129,7 @@ export default function Owners() {
                 
                 <div>
                   <h4 className="font-semibold text-[#EDEEFF] mb-2">Token Allocation</h4>
-                  <p className="text-[#B8B6D9]">Receives 32% of all future RevNet tokens from revenue</p>
+                  <p className="text-[#B8B6D9]">Receives 38% of all future RevNet tokens from revenue</p>
                   <p className="text-sm text-[#8A8FBF] mt-1">Ongoing allocation as revenue grows</p>
                 </div>
                 
