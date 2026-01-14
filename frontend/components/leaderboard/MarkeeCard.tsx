@@ -322,8 +322,8 @@ export function MarkeeCard({
         </div>
 
         {/* Stats and Actions at bottom */}
-        <div className="flex items-center justify-between pt-4 border-t border-[#8A8FBF]/30">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-[#8A8FBF]/30">
+          <div className="flex items-center gap-3 flex-wrap">
             <MarkeeStats 
               messageViews={messageViews}
               totalViews={totalViews}
@@ -340,7 +340,7 @@ export function MarkeeCard({
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 justify-between sm:justify-start">
             {isOwner && (
               <button 
                 onClick={() => onEditMessage?.(markee)}
@@ -394,8 +394,8 @@ export function MarkeeCard({
 
         {/* Stats and Actions at bottom */}
         <div className="pt-3 border-t border-[#8A8FBF]/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <MarkeeStats 
                 messageViews={messageViews}
                 totalViews={totalViews}
@@ -412,7 +412,7 @@ export function MarkeeCard({
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 justify-between sm:justify-start">
               {isOwner && (
                 <button 
                   onClick={() => onEditMessage?.(markee)}
@@ -467,8 +467,8 @@ export function MarkeeCard({
 
         {/* Stats and Actions at bottom */}
         <div className="pt-2 border-t border-[#8A8FBF]/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <MarkeeStats 
                 messageViews={messageViews}
                 totalViews={totalViews}
@@ -485,7 +485,7 @@ export function MarkeeCard({
               </button>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 justify-between">
               {isOwner && (
                 <button 
                   onClick={() => onEditMessage?.(markee)}
