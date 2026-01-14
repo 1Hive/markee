@@ -232,7 +232,7 @@ export default function Home() {
             <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message.  Own the Network.</h3>
 
             <p className="text-lg text-[#8A8FBF] mb-6">
-              Markee is a digital cooperative owned by its participants. Buy a message to join - and let people know what you need to say.
+              Markee is a digital cooperative owned by its participants. Buy a message to join - and let people know what you gotta say.
             </p>
 
             <div className="flex gap-4 justify-center mb-8">
