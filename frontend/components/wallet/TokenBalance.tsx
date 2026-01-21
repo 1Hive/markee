@@ -43,7 +43,7 @@ export function TokenBalance() {
         className="bg-[#FFA94D] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
       >
         <ArrowRightLeft size={16} />
-        <span className="hidden sm:inline">Switch to Base</span>
+        <span className="hidden sm:inline">Switch Network to Base</span>
         <span className="sm:hidden">Base</span>
       </button>
     )
