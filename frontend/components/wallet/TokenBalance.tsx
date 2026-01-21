@@ -64,7 +64,7 @@ export function TokenBalance() {
         href="https://app.revnet.eth.sucks/v5:base:119/ops" 
         target="_blank" 
         rel="noopener noreferrer"
-        className="text-[#F897FE] text-sm hover:text-[#F897FE] transition-colors"
+        className="text-[#F897FE] text-sm hover:text-[#8A8FBF] transition-colors"
         >
         MARKEE
         </a>
