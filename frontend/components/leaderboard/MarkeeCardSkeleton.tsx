@@ -74,7 +74,7 @@ export function LeaderboardSkeleton() {
       <MarkeeCardSkeleton size="hero" />
       
       {/* Two large skeletons */}
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <MarkeeCardSkeleton size="large" />
         <MarkeeCardSkeleton size="large" />
       </div>
