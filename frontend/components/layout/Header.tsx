@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { TokenBalance } from '@/components/wallet/TokenBalance'
 
 interface HeaderProps {
   activePage?: 'home' | 'how-it-works' | 'ecosystem' | 'owners'
@@ -68,6 +69,7 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
           </div>
           
           <div className="flex items-center gap-4">
+            <TokenBalance />
             <div className="hidden md:block">
               <ConnectButton />
             </div>
@@ -110,6 +112,9 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
                 Owners
               </NavLink>
               <div className="pt-2 border-t border-[#8A8FBF]/20">
+                <TokenBalance />
+              </div>
+              <div className="pt-2">
                 <ConnectButton />
               </div>
             </nav>
