@@ -336,7 +336,7 @@ export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSucce
                   className="bg-[#FFA94D] text-[#060A2A] px-6 py-3 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
                 >
                   <ArrowRightLeft size={20} />
-                  Switch to {CANONICAL_CHAIN.name}
+                  Switch Network to Base
                 </button>
               </div>
             </div>
