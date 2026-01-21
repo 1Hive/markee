@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
 
@@ -30,16 +30,21 @@ export function PartnerMarkeeCard({
   markeeCount,
   onBuyMessage
 }: PartnerMarkeeCardProps) {
+  const router = useRouter()
+
+  const handleCardClick = () => {
+    router.push(`/ecosystem/${partner.slug}`)
+  }
+
   const handleBuyClick = (e: React.MouseEvent) => {
-    e.preventDefault()
     e.stopPropagation()
     onBuyMessage?.()
   }
 
   return (
-    <Link
-      href={`/ecosystem/${partner.slug}`}
-      className="block bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
+    <div
+      onClick={handleCardClick}
+      className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
     >
       {/* Partner Header */}
       <div className="flex items-center gap-3 mb-3">
@@ -90,6 +95,6 @@ export function PartnerMarkeeCard({
       >
         Buy a Message
       </button>
-    </Link>
+    </div>
   )
 }
