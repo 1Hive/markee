@@ -340,7 +340,7 @@ export default function PartnerPage() {
 
               {/* #2 and #3 - Two Column */}
               {markees.length > 1 && (
-                <div className="grid grid-cols-2 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
                     <MarkeeCard 
                       markee={markees[1]} 
