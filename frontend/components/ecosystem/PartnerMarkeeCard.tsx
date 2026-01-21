@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
@@ -18,16 +20,27 @@ interface PartnerMarkeeCardProps {
   winningMarkee?: Markee
   totalFunds: bigint
   markeeCount?: bigint
+  onBuyMessage?: () => void
 }
 
 export function PartnerMarkeeCard({ 
   partner, 
   winningMarkee, 
   totalFunds,
-  markeeCount 
+  markeeCount,
+  onBuyMessage
 }: PartnerMarkeeCardProps) {
+  const handleBuyClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onBuyMessage?.()
+  }
+
   return (
-    <div className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors">
+    <Link
+      href={`/ecosystem/${partner.slug}`}
+      className="block bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
+    >
       {/* Partner Header */}
       <div className="flex items-center gap-3 mb-3">
         <img src={partner.logo} alt={partner.name} className="h-12 w-12 object-contain" />
@@ -58,26 +71,25 @@ export function PartnerMarkeeCard({
         </div>
       )}
 
-      {/* ETH Amount */}
-      <div className="text-[#7C9CFF] text-xs font-medium mb-4">
-        {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
+      {/* Stats */}
+      <div className="flex items-center justify-between text-xs mb-4">
+        <span className="text-[#7C9CFF] font-medium">
+          {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
+        </span>
+        {markeeCount !== undefined && (
+          <span className="text-[#8A8FBF]">
+            {markeeCount.toString()} {Number(markeeCount) === 1 ? 'message' : 'messages'}
+          </span>
+        )}
       </div>
 
-      {/* CTAs */}
-      <div className="flex gap-2">
-        <Link
-          href={`/ecosystem/${partner.slug}`}
-          className="flex-1 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
-        >
-          Buy a Message
-        </Link>
-        <Link
-          href={`/ecosystem/${partner.slug}`}
-          className="flex-1 bg-[#1A1F4D] text-[#EDEEFF] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#2A2F5D] transition-colors border border-[#8A8FBF]/20 text-sm"
-        >
-          View All Messages
-        </Link>
-      </div>
-    </div>
+      {/* CTA */}
+      <button
+        onClick={handleBuyClick}
+        className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
+      >
+        Buy a Message
+      </button>
+    </Link>
   )
 }
