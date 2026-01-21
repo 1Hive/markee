@@ -42,6 +42,9 @@ export function FixedPriceModal({
     },
   })
 
+  // Check if user is on the correct chain
+  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -152,7 +155,6 @@ export function FixedPriceModal({
 
   if (!isOpen || !fixedMarkee) return null
 
-  const isWrongNetwork = chain && chain.id !== CANONICAL_CHAIN.id
   const priceDisplay = fixedMarkee.price ? `${fixedMarkee.price} ETH` : '...'
   const markeeTokens = fixedMarkee.price ? parseFloat(fixedMarkee.price) * 62000 : 0
   const insufficientBalance = !canAffordMessage()
@@ -192,7 +194,7 @@ export function FixedPriceModal({
                     <ConnectButton />
                   </div>
                 </div>
-              ) : isWrongNetwork ? (
+              ) : !isCorrectChain ? (
                 <div className="text-center py-8">
                   <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
                   <p className="text-[#B8B6D9] mb-4">
@@ -204,7 +206,7 @@ export function FixedPriceModal({
                       className="bg-[#FFA94D] text-[#060A2A] px-6 py-3 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
                     >
                       <ArrowRightLeft size={20} />
-                      Switch to {CANONICAL_CHAIN.name}
+                      Switch Network to Base
                     </button>
                   </div>
                 </div>
