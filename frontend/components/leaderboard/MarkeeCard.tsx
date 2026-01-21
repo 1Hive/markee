@@ -49,7 +49,7 @@ function getMedalEmoji(rank: number): string {
   return ''
 }
 
-// Emoji Reactions Display - shows in bottom right
+// Emoji Reactions Display - Discord-style inline reactions
 function EmojiDisplay({ 
   reactions, 
   markee, 
@@ -68,8 +68,7 @@ function EmojiDisplay({
   isCardHovering: boolean
 }) {
   const [showMenu, setShowMenu] = useState(false)
-
-  const hasReactions = reactions && reactions.length > 0
+  const [showNoBalanceMessage, setShowNoBalanceMessage] = useState(false)
 
   // Group reactions by emoji
   const reactionCounts = reactions?.reduce((acc, reaction) => {
@@ -86,106 +85,121 @@ function EmojiDisplay({
     r => r.userAddress.toLowerCase() === userAddress?.toLowerCase()
   )
 
-  const textSize = size === 'hero' ? 'text-base' : size === 'large' ? 'text-sm' : 'text-xs'
+  const textSize = size === 'hero' ? 'text-sm' : size === 'large' ? 'text-xs' : 'text-[10px]'
+  const emojiSize = size === 'hero' ? 'text-base' : 'text-sm'
 
-  // Users can see reactions even without balance, but can't interact
-  if (!hasReactions && !hasMinBalance) return null
+  // Handle clicking an existing emoji
+  const handleEmojiClick = (emoji: string) => {
+    if (!hasMinBalance) {
+      setShowNoBalanceMessage(true)
+      setTimeout(() => setShowNoBalanceMessage(false), 3000)
+      return
+    }
+    onReact?.(markee, emoji)
+  }
 
+  // Always show the reaction area (with + button if user has balance)
   return (
-    <div className="relative flex items-center gap-1 min-w-[30px]">
-      {hasReactions ? (
-        // Show existing reactions
-        <>
+    <div className="relative flex items-center gap-1.5 flex-wrap">
+      {/* Existing reactions as clickable buttons */}
+      {sortedReactions.map(([emoji, count]) => {
+        const isUserEmoji = userReaction?.emoji === emoji
+        return (
           <button
-            onClick={() => setShowMenu(!showMenu)}
-            className={`flex items-center gap-1 ${textSize}`}
+            key={emoji}
+            onClick={() => handleEmojiClick(emoji)}
+            className={`
+              flex items-center gap-1 px-2 py-1 rounded-md border transition-all
+              ${isUserEmoji 
+                ? 'bg-[#F897FE]/20 border-[#F897FE]/50 hover:bg-[#F897FE]/30' 
+                : 'bg-[#0A0F3D]/50 border-[#8A8FBF]/30 hover:bg-[#8A8FBF]/20 hover:border-[#8A8FBF]/50'
+              }
+              ${textSize}
+            `}
+            title={isUserEmoji ? 'Click to remove your reaction' : hasMinBalance ? 'React with this emoji' : 'Get 100 MARKEE to react'}
           >
-            {sortedReactions.map(([emoji, count]) => (
-              <span key={emoji} className="flex items-center gap-0.5 text-[#EDEEFF]">
-                {emoji} <span className="text-[#8A8FBF]">{count}</span>
-              </span>
-            ))}
+            <span className={emojiSize}>{emoji}</span>
+            <span className="text-[#8A8FBF] font-medium">{count}</span>
           </button>
+        )
+      })}
 
-          {/* Emoji menu */}
-          {showMenu && (
-            <>
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setShowMenu(false)}
-              />
-              <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50 w-[180px]">
-                {!hasMinBalance ? (
-                  <div className="px-3 py-2 text-xs text-[#8A8FBF] text-center">
-                    Buy a message or get 100 MARKEE to react.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-4 gap-1 w-full">
-                    {ALL_EMOJIS.map(emoji => {
-                      const isUserEmoji = userReaction?.emoji === emoji
-                      return (
-                        <button
-                          key={emoji}
-                          onClick={() => {
-                            onReact?.(markee, emoji)
-                            setShowMenu(false)
-                          }}
-                          className={`text-xl p-1 rounded transition-all ${
-                            isUserEmoji 
-                              ? 'bg-[#F897FE]/30 scale-110' 
-                              : 'hover:scale-125 hover:bg-[#8A8FBF]/20'
-                          }`}
-                          title={isUserEmoji ? 'Click to remove' : ''}
-                        >
-                          {emoji}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+      {/* Add reaction button - always visible when connected */}
+      {userAddress && (
+        <button
+          onClick={() => {
+            if (!hasMinBalance) {
+              setShowNoBalanceMessage(true)
+              setTimeout(() => setShowNoBalanceMessage(false), 3000)
+            } else {
+              setShowMenu(!showMenu)
+            }
+          }}
+          className={`
+            flex items-center justify-center w-8 h-8 rounded-md border transition-all
+            bg-[#0A0F3D]/50 border-[#8A8FBF]/30 hover:bg-[#8A8FBF]/20 hover:border-[#8A8FBF]/50
+            ${textSize}
+          `}
+          title={hasMinBalance ? 'Add reaction' : 'Get 100 MARKEE to react'}
+        >
+          <span className="text-[#8A8FBF] font-bold">+</span>
+        </button>
+      )}
+
+      {/* Emoji picker menu */}
+      {showMenu && (
+        <>
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setShowMenu(false)}
+          />
+          <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50 w-[180px]">
+            <div className="grid grid-cols-4 gap-1 w-full">
+              {ALL_EMOJIS.map(emoji => {
+                const isUserEmoji = userReaction?.emoji === emoji
+                const emojiCount = reactionCounts[emoji] || 0
+                return (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      onReact?.(markee, emoji)
+                      setShowMenu(false)
+                    }}
+                    className={`
+                      text-xl p-2 rounded transition-all relative
+                      ${isUserEmoji 
+                        ? 'bg-[#F897FE]/30 scale-110' 
+                        : 'hover:scale-125 hover:bg-[#8A8FBF]/20'
+                      }
+                    `}
+                    title={isUserEmoji ? 'Your reaction' : `${emojiCount} ${emojiCount === 1 ? 'reaction' : 'reactions'}`}
+                  >
+                    {emoji}
+                    {emojiCount > 0 && (
+                      <span className="absolute -top-1 -right-1 text-[8px] bg-[#8A8FBF] text-[#060A2A] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                        {emojiCount}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </>
-      ) : (
-        // Show hover heart when no reactions (only if has balance)
-        <>
-          <button
-            onClick={() => setShowMenu(true)}
-            className={`${textSize} transition-all ${
-              isCardHovering && userAddress 
-                ? 'text-[#EDEEFF] opacity-100 scale-110' 
-                : 'opacity-0'
-            }`}
-          >
-            ❤️
-          </button>
+      )}
 
-          {/* Emoji menu for hover heart */}
-          {showMenu && (
-            <>
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setShowMenu(false)}
-              />
-              <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50 w-[180px]">
-                <div className="grid grid-cols-4 gap-1 w-full">
-                  {ALL_EMOJIS.map(emoji => (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        onReact?.(markee, emoji)
-                        setShowMenu(false)
-                      }}
-                      className="text-xl p-1 rounded transition-all hover:scale-125 hover:bg-[#8A8FBF]/20"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+      {/* No balance message */}
+      {showNoBalanceMessage && (
+        <>
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setShowNoBalanceMessage(false)}
+          />
+          <div className="absolute bottom-full right-0 mb-2 p-3 bg-[#0A0F3D] border border-[#F897FE]/50 rounded-lg shadow-xl z-50 w-[200px]">
+            <p className="text-xs text-[#F897FE] text-center">
+              Buy a message or get 100 MARKEE to react.
+            </p>
+          </div>
         </>
       )}
     </div>
