@@ -33,7 +33,6 @@ export default function EcosystemPage() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
 
-      {/* Hero Section */}
       <section className="relative py-24 overflow-hidden">
         <HeroBackground />
         
@@ -45,7 +44,6 @@ export default function EcosystemPage() {
         </div>
       </section>
 
-      {/* Partner Cards Section */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
@@ -87,7 +85,6 @@ export default function EcosystemPage() {
         </div>
       </section>
 
-      {/* CTA Section */}
       <section className="py-24 bg-gradient-to-b from-[#060A2A] to-[#0A0F3D]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold text-[#EDEEFF] mb-6">
@@ -97,7 +94,7 @@ export default function EcosystemPage() {
             Join the waitlist now - first integrations scheduled for Q1 2026
           </p>
           <div className="flex justify-center">
-            
+            <a
               href="https://discord.gg/UhhRDzwwkM"
               target="_blank"
               rel="noopener noreferrer"
@@ -111,7 +108,6 @@ export default function EcosystemPage() {
 
       <Footer />
 
-      {/* Buy Message Modal */}
       {selectedPartner && (
         <TopDawgModal
           isOpen={isModalOpen}
