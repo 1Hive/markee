@@ -70,9 +70,7 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
           
           <div className="flex items-center gap-4">
             <TokenBalance />
-            <div className="hidden md:block">
-              <ConnectButton />
-            </div>
+            <ConnectButton />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden text-[#B8B6D9] hover:text-[#F897FE] p-2"
@@ -111,12 +109,6 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
               >
                 Owners
               </NavLink>
-              <div className="pt-2 border-t border-[#8A8FBF]/20">
-                <TokenBalance />
-              </div>
-              <div className="pt-2">
-                <ConnectButton />
-              </div>
             </nav>
           </div>
         )}
