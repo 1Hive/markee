@@ -83,7 +83,7 @@ export default function EcosystemPage() {
               href="https://discord.gg/UhhRDzwwkM"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+              className="bg-[#7C9CFF] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#F897FE] transition-colors"
             >
               Join Discord
             </a>
