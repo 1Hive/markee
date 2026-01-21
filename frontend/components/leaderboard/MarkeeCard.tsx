@@ -201,7 +201,7 @@ function EmojiDisplay({
             onClick={() => setShowNoBalanceMessage(false)}
           />
           <div className="absolute bottom-full right-0 mb-2 p-3 bg-[#0A0F3D] border border-[#F897FE]/50 rounded-lg shadow-xl z-50 w-[210px]">
-            <p className="text-xs text-[#F897FE] text-center mb-3">
+            <p className={`text-xs text-[#F897FE] text-center ${!isCorrectChain ? 'mb-3' : ''}`}>
               You need 100 MARKEE to react.
             </p>
             {!isCorrectChain && (
