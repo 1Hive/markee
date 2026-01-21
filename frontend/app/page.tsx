@@ -289,7 +289,7 @@ export default function Home() {
                 reactions={reactions.get(markees[0].address.toLowerCase())}
               />
 
-              <div className="grid grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 {markees.slice(1, 3).map((markee, i) => (
                   <MarkeeCard
                     key={markee.address}
