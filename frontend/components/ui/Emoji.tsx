@@ -5,16 +5,18 @@ interface EmojiProps {
   className?: string
 }
 
-export function Emoji({ children, className }: EmojiProps) {
+export function Emoji({ children, className = '' }: EmojiProps) {
   return (
-    <Twemoji 
-      options={{ 
-        className: className || 'inline-block align-middle',
-        folder: 'svg',
-        ext: '.svg'
-      }}
-    >
-      {children}
-    </Twemoji>
+    <span className={className}>
+      <Twemoji 
+        options={{ 
+          className: 'emoji',
+          folder: 'svg',
+          ext: '.svg'
+        }}
+      >
+        {children}
+      </Twemoji>
+    </span>
   )
 }
