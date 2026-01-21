@@ -1,12 +1,12 @@
 'use client'
 
 import { formatEth, formatAddress } from '@/lib/utils'
-import { Eye } from 'lucide-react'
+import { Eye, ArrowRightLeft } from 'lucide-react'
 import Image from 'next/image'
 import type { Markee, EmojiReaction } from '@/types'
 import { useState } from 'react'
-import { useAccount, useReadContract } from 'wagmi'
-import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
+import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
+import { MARKEE_TOKEN, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 
 interface MarkeeCardProps {
   markee: Markee
@@ -67,8 +67,12 @@ function EmojiDisplay({
   size: string
   isCardHovering: boolean
 }) {
+  const { chain } = useAccount()
+  const { switchChain } = useSwitchChain()
   const [showMenu, setShowMenu] = useState(false)
   const [showNoBalanceMessage, setShowNoBalanceMessage] = useState(false)
+
+  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
   // Group reactions by emoji
   const reactionCounts = reactions?.reduce((acc, reaction) => {
@@ -90,7 +94,7 @@ function EmojiDisplay({
 
   // Handle clicking an existing emoji
   const handleEmojiClick = (emoji: string) => {
-    if (!hasMinBalance) {
+    if (!isCorrectChain || !hasMinBalance) {
       setShowNoBalanceMessage(true)
       setTimeout(() => setShowNoBalanceMessage(false), 3000)
       return
@@ -116,7 +120,7 @@ function EmojiDisplay({
               }
               ${textSize}
             `}
-            title={isUserEmoji ? 'Click to remove your reaction' : hasMinBalance ? 'React with this emoji' : 'Get 100 MARKEE to react'}
+            title={isUserEmoji ? 'Click to remove your reaction' : (isCorrectChain && hasMinBalance) ? 'React with this emoji' : 'Get 100 MARKEE to react'}
           >
             <span className={emojiSize}>{emoji}</span>
             <span className="text-[#8A8FBF] font-medium">{count}</span>
@@ -128,7 +132,7 @@ function EmojiDisplay({
       {userAddress && (
         <button
           onClick={() => {
-            if (!hasMinBalance) {
+            if (!isCorrectChain || !hasMinBalance) {
               setShowNoBalanceMessage(true)
               setTimeout(() => setShowNoBalanceMessage(false), 3000)
             } else {
@@ -140,7 +144,7 @@ function EmojiDisplay({
             bg-[#0A0F3D]/50 border-[#8A8FBF]/30 hover:bg-[#8A8FBF]/20 hover:border-[#8A8FBF]/50
             ${textSize}
           `}
-          title={hasMinBalance ? 'Add reaction' : 'Get 100 MARKEE to react'}
+          title={(isCorrectChain && hasMinBalance) ? 'Add reaction' : 'Get 100 MARKEE to react'}
         >
           <span className="text-[#8A8FBF] font-bold">+</span>
         </button>
@@ -196,9 +200,21 @@ function EmojiDisplay({
             onClick={() => setShowNoBalanceMessage(false)}
           />
           <div className="absolute bottom-full right-0 mb-2 p-3 bg-[#0A0F3D] border border-[#F897FE]/50 rounded-lg shadow-xl z-50 w-[200px]">
-            <p className="text-xs text-[#F897FE] text-center">
+            <p className="text-xs text-[#F897FE] text-center mb-3">
               You need 100 MARKEE to react.
             </p>
+            {!isCorrectChain && (
+              <button
+                onClick={() => {
+                  switchChain({ chainId: CANONICAL_CHAIN.id })
+                  setShowNoBalanceMessage(false)
+                }}
+                className="w-full bg-[#FFA94D] text-[#060A2A] px-3 py-2 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center justify-center gap-2 transition-colors text-xs"
+              >
+                <ArrowRightLeft size={14} />
+                Switch Network to Base
+              </button>
+            )}
           </div>
         </>
       )}
