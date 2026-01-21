@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft } from 'lucide-react'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
@@ -23,6 +23,7 @@ export function FixedPriceModal({
   onSuccess
 }: FixedPriceModalProps) {
   const { isConnected, chain, address } = useAccount()
+  const { switchChain } = useSwitchChain()
   
   // Get user's ETH balance
   const { data: balanceData } = useBalance({
@@ -198,7 +199,13 @@ export function FixedPriceModal({
                     Please switch to {CANONICAL_CHAIN.name} to continue
                   </p>
                   <div className="flex justify-center">
-                    <ConnectButton />
+                    <button
+                      onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
+                      className="bg-[#FFA94D] text-[#060A2A] px-6 py-3 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
+                    >
+                      <ArrowRightLeft size={20} />
+                      Switch to {CANONICAL_CHAIN.name}
+                    </button>
                   </div>
                 </div>
               ) : (
