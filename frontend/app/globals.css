@@ -90,3 +90,12 @@ img.emoji {
   vertical-align: -0.1em;
   display: inline-block;
 }
+
+/* For explicit width/height classes on emoji wrappers */
+.w-6.h-6 img.emoji,
+.w-7.h-7 img.emoji,
+.w-8.h-8 img.emoji {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+}
