@@ -1,14 +1,33 @@
 'use client'
 
-import Link from 'next/link'
+import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { PartnerMarkeeCard } from '@/components/ecosystem/PartnerMarkeeCard'
+import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 
 export default function EcosystemPage() {
-  const { partnerData, isLoading, error } = usePartnerMarkees()
+  const { partnerData, isLoading, error, refetch } = usePartnerMarkees()
+  const [selectedPartnerSlug, setSelectedPartnerSlug] = useState<string | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const selectedPartner = partnerData.find(p => p.partner.slug === selectedPartnerSlug)
+
+  const handleBuyMessage = (partnerSlug: string) => {
+    setSelectedPartnerSlug(partnerSlug)
+    setIsModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedPartnerSlug(null)
+  }
+
+  const handleModalSuccess = () => {
+    refetch()
+  }
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -16,10 +35,8 @@ export default function EcosystemPage() {
 
       {/* Hero Section */}
       <section className="relative py-24 overflow-hidden">
-        {/* Cosmic background */}
         <HeroBackground />
         
-        {/* Content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Markee is coming soon to a platform near you...</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
@@ -62,6 +79,7 @@ export default function EcosystemPage() {
                   winningMarkee={winningMarkee ?? undefined}
                   totalFunds={totalFunds}
                   markeeCount={markeeCount}
+                  onBuyMessage={() => handleBuyMessage(partner.slug)}
                 />
               ))}
             </div>
@@ -79,7 +97,7 @@ export default function EcosystemPage() {
             Join the waitlist now - first integrations scheduled for Q1 2026
           </p>
           <div className="flex justify-center">
-            <a
+            
               href="https://discord.gg/UhhRDzwwkM"
               target="_blank"
               rel="noopener noreferrer"
@@ -92,6 +110,16 @@ export default function EcosystemPage() {
       </section>
 
       <Footer />
+
+      {/* Buy Message Modal */}
+      {selectedPartner && (
+        <TopDawgModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSuccess={handleModalSuccess}
+          strategyAddress={selectedPartner.partner.strategyAddress as `0x${string}`}
+        />
+      )}
     </div>
   )
 }
