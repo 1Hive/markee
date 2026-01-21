@@ -213,7 +213,7 @@ function EmojiDisplay({
                 className="w-full bg-[#FFA94D] text-[#060A2A] px-3 py-2 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center justify-center gap-2 transition-colors text-xs"
               >
                 <ArrowRightLeft size={14} />
-                Switch Network to Base
+                Switch Network
               </button>
             )}
           </div>
