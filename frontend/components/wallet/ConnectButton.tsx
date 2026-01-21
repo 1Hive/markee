@@ -1,12 +1,8 @@
 'use client'
 import { ConnectButton as RainbowConnectButton } from '@rainbow-me/rainbowkit'
-import { useSwitchChain } from 'wagmi'
 import { Wallet } from 'lucide-react'
-import { base } from 'wagmi/chains'
 
 export function ConnectButton() {
-  const { switchChain } = useSwitchChain()
-
   return (
     <RainbowConnectButton.Custom>
       {({
@@ -41,18 +37,6 @@ export function ConnectButton() {
                   >
                     <Wallet size={20} />
                     <span className="hidden sm:inline">Connect Wallet</span>
-                  </button>
-                )
-              }
-
-              if (chain.unsupported) {
-                return (
-                  <button
-                    onClick={() => switchChain({ chainId: base.id })}
-                    type="button"
-                    className="bg-[#FF8E8E] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#FF8E8E]/80 flex items-center gap-2 transition-colors"
-                  >
-                    Switch Network to Base
                   </button>
                 )
               }
