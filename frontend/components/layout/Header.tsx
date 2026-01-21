@@ -8,7 +8,7 @@ import { TokenBalance } from '@/components/wallet/TokenBalance'
 
 interface HeaderProps {
   activePage?: 'home' | 'how-it-works' | 'ecosystem' | 'owners'
-  useRegularLinks?: boolean // FIX ATTEMPT #3: Use <a> instead of <Link> for home page only
+  useRegularLinks?: boolean 
 }
 
 // Define NavLink outside the component - only created once, not on every render
