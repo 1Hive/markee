@@ -7,6 +7,7 @@ import type { Markee, EmojiReaction } from '@/types'
 import { useState } from 'react'
 import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
 import { MARKEE_TOKEN, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { Emoji } from '@/components/ui/Emoji'
 
 interface MarkeeCardProps {
   markee: Markee
@@ -122,7 +123,7 @@ function EmojiDisplay({
             `}
             title={isUserEmoji ? 'Click to remove your reaction' : (isCorrectChain && hasMinBalance) ? 'React with this emoji' : 'Get 100 MARKEE to react'}
           >
-            <span className={emojiSize}>{emoji}</span>
+            <Emoji className={emojiSize}>{emoji}</Emoji>
             <span className="text-[#8A8FBF] font-medium">{count}</span>
           </button>
         )
@@ -178,7 +179,7 @@ function EmojiDisplay({
                     `}
                     title={isUserEmoji ? 'Your reaction' : `${emojiCount} ${emojiCount === 1 ? 'reaction' : 'reactions'}`}
                   >
-                    {emoji}
+                    <Emoji className="w-6 h-6">{emoji}</Emoji>
                     {emojiCount > 0 && (
                       <span className="absolute -top-1 -right-1 text-[8px] bg-[#8A8FBF] text-[#060A2A] rounded-full w-4 h-4 flex items-center justify-center font-bold">
                         {emojiCount}
@@ -244,7 +245,7 @@ function MarkeeStats({
       {/* Medal and Rank */}
       {medal ? (
         <div className="flex items-center gap-1">
-          <span className={size === 'hero' ? 'text-2xl' : size === 'large' ? 'text-xl' : 'text-base'}>{medal}</span>
+          <Emoji className={size === 'hero' ? 'text-2xl' : size === 'large' ? 'text-xl' : 'text-base'}>{medal}</Emoji>
         </div>
       ) : rank <= 26 ? (
         <span className="font-bold text-[#8A8FBF]">#{rank}</span>
