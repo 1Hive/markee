@@ -9,7 +9,7 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 
 export default function EcosystemPage() {
-  const { partnerData, isLoading, error, refetch } = usePartnerMarkees()
+  const { partnerData, isLoading, error } = usePartnerMarkees()
   const [selectedPartnerSlug, setSelectedPartnerSlug] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -26,7 +26,7 @@ export default function EcosystemPage() {
   }
 
   const handleModalSuccess = () => {
-    refetch()
+    // Data will refresh on page navigation/reload
   }
 
   return (
