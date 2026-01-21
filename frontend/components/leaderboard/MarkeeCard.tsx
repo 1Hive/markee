@@ -1,7 +1,7 @@
 'use client'
 
 import { formatEth, formatAddress } from '@/lib/utils'
-import { Eye, ArrowRightLeft } from 'lucide-react'
+import { Eye, ArrowRightLeft, SmilePlus } from 'lucide-react'
 import Image from 'next/image'
 import type { Markee, EmojiReaction } from '@/types'
 import { useState } from 'react'
@@ -147,7 +147,7 @@ function EmojiDisplay({
           `}
           title={(isCorrectChain && hasMinBalance) ? 'Add reaction' : 'Get 100 MARKEE to react'}
         >
-          <span className="text-[#8A8FBF] font-bold">+</span>
+          <SmilePlus size={16} className="text-[#8A8FBF]" />
         </button>
       )}
 
