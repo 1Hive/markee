@@ -5,6 +5,8 @@ import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import TokenomicsSimulator from '@/components/ui/TokenomicsSimulator'
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 // Phase configuration
 const PHASES = [
@@ -82,75 +84,18 @@ export default function Owners() {
         </div>
       </section>
 
-      {/* Ownership Model */}
+      {/* Tokenomics Simulator */}
       <section className="py-16 bg-[#060A2A] border-b border-[#8A8FBF]/20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">Two-Entity Structure</h2>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-8 text-center">
+            Tokenomics Simulator
+          </h2>
+          <p className="text-[#B8B6D9] text-center mb-12 max-w-3xl mx-auto">
+            Model how different investment, revenue, and expense scenarios affect ownership distribution 
+            and token economics over time. All issuance is locked and pre-scheduled in the Revnet.
+          </p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            {/* LLC */}
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border-l-4 border-[#7C9CFF]">
-              <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Markee LLC</h3>
-              <p className="text-sm text-[#8A8FBF] mb-4">Wyoming LLC</p>
-              
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Ownership</h4>
-                  <p className="text-[#B8B6D9]">Owned by the founders</p>
-                </div>
-                
-                <div>
-                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Token Allocation</h4>
-                  <p className="text-[#B8B6D9]">One-time allocation of 50M MARKEE tokens at launch</p>
-                  <p className="text-sm text-[#8A8FBF] mt-1">No further RevNet allocations</p>
-                </div>
-                
-                <div>
-                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Role</h4>
-                  <ul className="list-disc pl-5 space-y-1 text-[#B8B6D9]">
-                    <li>Operates the platform</li>
-                    <li>Maintains infrastructure</li>
-                    <li>Develops integrations</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Cooperative */}
-            <div className="bg-[#0A0F3D] rounded-lg shadow-md p-8 border-l-4 border-[#F897FE]">
-              <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Markee LCA</h3>
-              <p className="text-sm text-[#8A8FBF] mb-4">Colorado Limited Cooperative Association</p>
-              
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Ownership</h4>
-                  <p className="text-[#B8B6D9]">Owned by MARKEE token holders</p>
-                </div>
-                
-                <div>
-                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Token Allocation</h4>
-                  <p className="text-[#B8B6D9]">Receives 38% of all future RevNet tokens from revenue</p>
-                  <p className="text-sm text-[#8A8FBF] mt-1">Ongoing allocation as revenue grows</p>
-                </div>
-                
-                <div>
-                  <h4 className="font-semibold text-[#EDEEFF] mb-2">Governance</h4>
-                  <ul className="list-disc pl-5 space-y-1 text-[#B8B6D9]">
-                    <li>Board of Directors elected by token holders</li>
-                    <li>Managed via Gardens with onchain covenant</li>
-                    <li>Controls distribution settings</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#F897FE]/10 rounded-lg p-6 max-w-3xl mx-auto border border-[#F897FE]/20">
-            <h4 className="font-bold text-[#EDEEFF] mb-2">Progressive Ownership Shift</h4>
-            <p className="text-[#B8B6D9]">
-              As revenue grows and/or the LLC redeems tokens for operational expenses, ownership progressively shifts toward the cooperative and its token holders. This creates a path toward community ownership over time.
-            </p>
-          </div>
+          <TokenomicsSimulator />
         </div>
       </section>
 
