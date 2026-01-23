@@ -22,6 +22,78 @@ const TokenomicsSimulator = () => {
     phase3: '0.5',
   });
 
+  // Helper: Validate input for digits and one decimal point
+  const validateInput = (inputVal) => {
+    // Only allow digits and one decimal point
+    if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) return false;
+    // Check for multiple decimal points
+    if ((inputVal.match(/\./g) || []).length > 1) return false;
+    // Check digit count (max 2)
+    if (inputVal.replace(/[^0-9]/g, '').length > 2) return false;
+    return true;
+  };
+
+  // Reusable PhaseInput component
+  const PhaseInput = ({ phaseKey, label }) => {
+    const paramKey = `${phaseKey}Investment`;
+    
+    return (
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-semibold text-[#EDEEFF] w-16">{label}</label>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              const newVal = Math.max(0, params[paramKey] - 100000);
+              updateParam(paramKey, newVal);
+              setRawInputs(prev => ({ ...prev, [phaseKey]: (newVal / 1_000_000).toString() }));
+            }}
+            className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
+          >
+            −
+          </button>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={rawInputs[phaseKey]}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => {
+              const inputVal = e.target.value;
+              if (!validateInput(inputVal)) return;
+              
+              setRawInputs(prev => ({ ...prev, [phaseKey]: inputVal }));
+              
+              if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
+                updateParam(paramKey, 0);
+                return;
+              }
+              
+              const val = parseFloat(inputVal) * 1_000_000;
+              if (!isNaN(val) && val >= 0) {
+                updateParam(paramKey, val);
+              }
+            }}
+            onBlur={() => {
+              const val = params[paramKey] / 1_000_000;
+              setRawInputs(prev => ({ ...prev, [phaseKey]: val.toString() }));
+            }}
+            className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
+            style={{ color: '#060A2A' }}
+          />
+          <button
+            onClick={() => {
+              const newVal = Math.min(10_000_000, params[paramKey] + 100000);
+              updateParam(paramKey, newVal);
+              setRawInputs(prev => ({ ...prev, [phaseKey]: (newVal / 1_000_000).toString() }));
+            }}
+            className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
+          >
+            +
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // Hard-coded values
   const priceIncreaseFrequency = 3; // Always 3 months (quarterly)
   const timeHorizon = 120; // Always 10 years (120 months)
@@ -181,302 +253,15 @@ const TokenomicsSimulator = () => {
               <h3 className="text-base font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
               <p className="text-xs text-[#8A8FBF] mb-3">in $USD Millions </p>
               <div className="space-y-2">
-                {/* Phase 0 */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
-                    Phase 0
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        const newVal = Math.max(0, params.phase0Investment - 100000);
-                        updateParam('phase0Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase0: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={rawInputs.phase0}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        
-                        // Only allow digits and one decimal point
-                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
-                          return; // Reject invalid characters
-                        }
-                        
-                        // Count decimal points
-                        const decimalCount = (inputVal.match(/\./g) || []).length;
-                        if (decimalCount > 1) {
-                          return; // Reject multiple decimal points
-                        }
-                        
-                        // Count digits (excluding decimal point)
-                        const digitCount = inputVal.replace(/[^0-9]/g, '').length;
-                        
-                        // Only allow if 2 or fewer digits
-                        if (digitCount <= 2) {
-                          setRawInputs(prev => ({ ...prev, phase0: inputVal }));
-                          
-                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
-                            updateParam('phase0Investment', 0);
-                            return;
-                          }
-                          
-                          const val = parseFloat(inputVal) * 1_000_000;
-                          if (!isNaN(val) && val >= 0) {
-                            updateParam('phase0Investment', val);
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        // Clean up display on blur
-                        const val = params.phase0Investment / 1_000_000;
-                        setRawInputs(prev => ({ ...prev, phase0: val.toString() }));
-                      }}
-                      className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
-                    <button
-                      onClick={() => {
-                        const newVal = Math.min(10_000_000, params.phase0Investment + 100000);
-                        updateParam('phase0Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase0: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                {/* Phase 1 */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
-                    Phase 1
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        const newVal = Math.max(0, params.phase1Investment - 100000);
-                        updateParam('phase1Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase1: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={rawInputs.phase1}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        
-                        // Only allow digits and one decimal point
-                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
-                          return;
-                        }
-                        
-                        // Count decimal points
-                        const decimalCount = (inputVal.match(/\./g) || []).length;
-                        if (decimalCount > 1) {
-                          return;
-                        }
-                        
-                        // Count digits (excluding decimal point)
-                        const digitCount = inputVal.replace(/[^0-9]/g, '').length;
-                        
-                        // Only allow if 2 or fewer digits
-                        if (digitCount <= 2) {
-                          setRawInputs(prev => ({ ...prev, phase1: inputVal }));
-                          
-                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
-                            updateParam('phase1Investment', 0);
-                            return;
-                          }
-                          
-                          const val = parseFloat(inputVal) * 1_000_000;
-                          if (!isNaN(val) && val >= 0) {
-                            updateParam('phase1Investment', val);
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        const val = params.phase1Investment / 1_000_000;
-                        setRawInputs(prev => ({ ...prev, phase1: val.toString() }));
-                      }}
-                      className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
-                    <button
-                      onClick={() => {
-                        const newVal = Math.min(10_000_000, params.phase1Investment + 100000);
-                        updateParam('phase1Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase1: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                {/* Phase 2 */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
-                    Phase 2
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        const newVal = Math.max(0, params.phase2Investment - 100000);
-                        updateParam('phase2Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase2: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={rawInputs.phase2}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        
-                        // Only allow digits and one decimal point
-                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
-                          return;
-                        }
-                        
-                        // Count decimal points
-                        const decimalCount = (inputVal.match(/\./g) || []).length;
-                        if (decimalCount > 1) {
-                          return;
-                        }
-                        
-                        // Count digits (excluding decimal point)
-                        const digitCount = inputVal.replace(/[^0-9]/g, '').length;
-                        
-                        // Only allow if 2 or fewer digits
-                        if (digitCount <= 2) {
-                          setRawInputs(prev => ({ ...prev, phase2: inputVal }));
-                          
-                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
-                            updateParam('phase2Investment', 0);
-                            return;
-                          }
-                          
-                          const val = parseFloat(inputVal) * 1_000_000;
-                          if (!isNaN(val) && val >= 0) {
-                            updateParam('phase2Investment', val);
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        const val = params.phase2Investment / 1_000_000;
-                        setRawInputs(prev => ({ ...prev, phase2: val.toString() }));
-                      }}
-                      className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
-                    <button
-                      onClick={() => {
-                        const newVal = Math.min(10_000_000, params.phase2Investment + 100000);
-                        updateParam('phase2Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase2: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                {/* Phase 3 */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
-                    Phase 3
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        const newVal = Math.max(0, params.phase3Investment - 100000);
-                        updateParam('phase3Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase3: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={rawInputs.phase3}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        
-                        // Only allow digits and one decimal point
-                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
-                          return;
-                        }
-                        
-                        // Count decimal points
-                        const decimalCount = (inputVal.match(/\./g) || []).length;
-                        if (decimalCount > 1) {
-                          return;
-                        }
-                        
-                        // Count digits (excluding decimal point)
-                        const digitCount = inputVal.replace(/[^0-9]/g, '').length;
-                        
-                        // Only allow if 2 or fewer digits
-                        if (digitCount <= 2) {
-                          setRawInputs(prev => ({ ...prev, phase3: inputVal }));
-                          
-                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
-                            updateParam('phase3Investment', 0);
-                            return;
-                          }
-                          
-                          const val = parseFloat(inputVal) * 1_000_000;
-                          if (!isNaN(val) && val >= 0) {
-                            updateParam('phase3Investment', val);
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        const val = params.phase3Investment / 1_000_000;
-                        setRawInputs(prev => ({ ...prev, phase3: val.toString() }));
-                      }}
-                      className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
-                    <button
-                      onClick={() => {
-                        const newVal = Math.min(10_000_000, params.phase3Investment + 100000);
-                        updateParam('phase3Investment', newVal);
-                        setRawInputs(prev => ({ ...prev, phase3: (newVal / 1_000_000).toString() }));
-                      }}
-                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                  </div>
+                <PhaseInput phaseKey="phase0" label="Phase 0" />
+                <PhaseInput phaseKey="phase1" label="Phase 1" />
+                <PhaseInput phaseKey="phase2" label="Phase 2" />
+                <PhaseInput phaseKey="phase3" label="Phase 3" />
+              </div>
               <div className="text-xs text-[#8A8FBF] mt-3">
                 Total: ${((params.phase0Investment + params.phase1Investment + params.phase2Investment + params.phase3Investment) / 1_000_000)}M
               </div>
+            </div>
             </div>
         
         <div className="grid grid-cols-1 gap-6">
