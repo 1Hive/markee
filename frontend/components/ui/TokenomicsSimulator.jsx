@@ -168,7 +168,7 @@ const TokenomicsSimulator = () => {
         {/* Direct Seed Funding to Revnet Section */}
         <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
           <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-          <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
+          <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions, add the amounts directly funded into the Revnet during the first 4 phases</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Phase 0 */}
             <div>
