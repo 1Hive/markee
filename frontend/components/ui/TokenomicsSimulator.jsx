@@ -262,7 +262,6 @@ const TokenomicsSimulator = () => {
                 Total: ${((params.phase0Investment + params.phase1Investment + params.phase2Investment + params.phase3Investment) / 1_000_000)}M
               </div>
             </div>
-            </div>
         
         <div className="grid grid-cols-1 gap-6">
           {/* Growth Fund Spending */}
@@ -532,5 +531,6 @@ const TokenomicsSimulator = () => {
       </div>
     </div>
   );
+);
 
 export default TokenomicsSimulator;
