@@ -165,98 +165,174 @@ const TokenomicsSimulator = () => {
           <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
             <h2 className="text-2xl font-bold mb-2 text-[#EDEEFF]">Configuration Parameters</h2>
             <p className="text-sm text-[#B8B6D9] mb-6">
-              Revnet Issuance is locked and pre-scheduled. Use this configuration tool to simulate how different investment, revenue, and expense scenarios affect the ownership economics of the platform
+              Revnet Issuance is pre-scheduled and locked. Use this configuration tool to simulate different revenue and expense scenarios, and see how they affect ownership and economics of the platform.
             </p>
 
             {/* Direct Seed Funding to Revnet Section */}
             <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
               <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-              <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Phase 0 */}
-            <div>
-              <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
-                Phase 0
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.1"
-                value={(params.phase0Investment / 1_000_000).toFixed(1)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) * 1_000_000;
-                  if (!isNaN(val) && val >= 0) updateParam('phase0Investment', val);
-                }}
-                className="w-full px-3 py-2 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF]"
-                style={{ color: '#060A2A' }}
-              />
-            </div>
+              <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions </p>
+              <div className="grid grid-cols-1 gap-4">
+                {/* Phase 0 */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                    Phase 0
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const newVal = Math.max(0, params.phase0Investment - 100000);
+                        updateParam('phase0Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={params.phase0Investment / 1_000_000}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) * 1_000_000;
+                        if (!isNaN(val) && val >= 0) updateParam('phase0Investment', val);
+                        else if (e.target.value === '') updateParam('phase0Investment', 0);
+                      }}
+                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      style={{ color: '#060A2A' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const newVal = params.phase0Investment + 100000;
+                        updateParam('phase0Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
 
-            {/* Phase 1 */}
-            <div>
-              <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
-                Phase 1
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.1"
-                value={(params.phase1Investment / 1_000_000).toFixed(1)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) * 1_000_000;
-                  if (!isNaN(val) && val >= 0) updateParam('phase1Investment', val);
-                }}
-                className="w-full px-3 py-2 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF]"
-                style={{ color: '#060A2A' }}
-              />
-            </div>
+                {/* Phase 1 */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                    Phase 1
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const newVal = Math.max(0, params.phase1Investment - 100000);
+                        updateParam('phase1Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={params.phase1Investment / 1_000_000}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) * 1_000_000;
+                        if (!isNaN(val) && val >= 0) updateParam('phase1Investment', val);
+                        else if (e.target.value === '') updateParam('phase1Investment', 0);
+                      }}
+                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      style={{ color: '#060A2A' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const newVal = params.phase1Investment + 100000;
+                        updateParam('phase1Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
 
-            {/* Phase 2 */}
-            <div>
-              <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
-                Phase 2
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.1"
-                value={(params.phase2Investment / 1_000_000).toFixed(1)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) * 1_000_000;
-                  if (!isNaN(val) && val >= 0) updateParam('phase2Investment', val);
-                }}
-                className="w-full px-3 py-2 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF]"
-                style={{ color: '#060A2A' }}
-              />
-            </div>
+                {/* Phase 2 */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                    Phase 2
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const newVal = Math.max(0, params.phase2Investment - 100000);
+                        updateParam('phase2Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={params.phase2Investment / 1_000_000}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) * 1_000_000;
+                        if (!isNaN(val) && val >= 0) updateParam('phase2Investment', val);
+                        else if (e.target.value === '') updateParam('phase2Investment', 0);
+                      }}
+                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      style={{ color: '#060A2A' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const newVal = params.phase2Investment + 100000;
+                        updateParam('phase2Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
 
-            {/* Phase 3 */}
-            <div>
-              <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
-                Phase 3
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.1"
-                value={(params.phase3Investment / 1_000_000).toFixed(1)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) * 1_000_000;
-                  if (!isNaN(val) && val >= 0) updateParam('phase3Investment', val);
-                }}
-                className="w-full px-3 py-2 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF]"
-                style={{ color: '#060A2A' }}
-              />
+                {/* Phase 3 */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                    Phase 3
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const newVal = Math.max(0, params.phase3Investment - 100000);
+                        updateParam('phase3Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={params.phase3Investment / 1_000_000}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) * 1_000_000;
+                        if (!isNaN(val) && val >= 0) updateParam('phase3Investment', val);
+                        else if (e.target.value === '') updateParam('phase3Investment', 0);
+                      }}
+                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      style={{ color: '#060A2A' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const newVal = params.phase3Investment + 100000;
+                        updateParam('phase3Investment', newVal);
+                      }}
+                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                  </div>
+              <div className="text-sm text-[#8A8FBF] mt-4">
+                Total Seed Funding: ${((params.phase0Investment + params.phase1Investment + params.phase2Investment + params.phase3Investment) / 1_000_000)}M
+              </div>
             </div>
-          </div>
-          <div className="text-sm text-[#8A8FBF] mt-4">
-            Total Seed Funding: ${((params.phase0Investment + params.phase1Investment + params.phase2Investment + params.phase3Investment) / 1_000_000).toFixed(1)}M
-          </div>
-        </div>
         
         <div className="grid grid-cols-1 gap-6">
           {/* Growth Fund Spending */}
@@ -299,7 +375,7 @@ const TokenomicsSimulator = () => {
             <input
               type="range"
               min="0"
-              max="50"
+              max="20"
               step="1"
               value={params.revenueGrowthRate}
               onChange={(e) => updateParam('revenueGrowthRate', e.target.value)}
