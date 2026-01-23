@@ -171,8 +171,8 @@ const TokenomicsSimulator = () => {
             {/* Direct Seed Funding to Revnet Section */}
             <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
               <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-              <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions, add the amounts directly funded into the Revnet during the first 4 phases</p>
-              <div className="grid grid-cols-2 gap-4">
+              <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Phase 0 */}
             <div>
               <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
@@ -180,6 +180,7 @@ const TokenomicsSimulator = () => {
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.1"
                 value={(params.phase0Investment / 1_000_000).toFixed(1)}
@@ -199,6 +200,7 @@ const TokenomicsSimulator = () => {
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.1"
                 value={(params.phase1Investment / 1_000_000).toFixed(1)}
@@ -218,6 +220,7 @@ const TokenomicsSimulator = () => {
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.1"
                 value={(params.phase2Investment / 1_000_000).toFixed(1)}
@@ -237,6 +240,7 @@ const TokenomicsSimulator = () => {
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.1"
                 value={(params.phase3Investment / 1_000_000).toFixed(1)}
