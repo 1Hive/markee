@@ -158,22 +158,18 @@ const TokenomicsSimulator = () => {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column - Parameter Controls (Sticky on Desktop) */}
-        <div className="lg:col-span-5">
-          <div className="lg:sticky lg:top-4">
-            {/* Parameter Controls */}
-            <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
-              <h2 className="text-2xl font-bold mb-2 text-[#EDEEFF]">Configuration Parameters</h2>
-              <p className="text-sm text-[#B8B6D9] mb-6">
-                Revnet Issuance is locked and pre-scheduled. Use this configuration tool to simulate how different investment, revenue, and expense scenarios affect the ownership economics of the platform
-              </p>
+      {/* Parameter Controls - Full Width at Top */}
+      <div className="bg-[#0F1646] rounded-xl p-6 mb-8 border border-[#7C9CFF]/20">
+        <h2 className="text-2xl font-bold mb-2 text-[#EDEEFF]">Configuration Parameters</h2>
+        <p className="text-sm text-[#B8B6D9] mb-6">
+          Revnet Issuance is locked and pre-scheduled. Use this configuration tool to simulate how different investment, revenue, and expense scenarios affect the ownership economics of the platform
+        </p>
 
-              {/* Direct Seed Funding to Revnet Section - Moved to top */}
-              <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
-                <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-                <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
-                <div className="grid grid-cols-2 gap-4">
+        {/* Direct Seed Funding to Revnet Section */}
+        <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
+          <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
+          <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Phase 0 */}
             <div>
               <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
@@ -255,7 +251,7 @@ const TokenomicsSimulator = () => {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Growth Fund Spending */}
           <div>
             <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
@@ -321,18 +317,16 @@ const TokenomicsSimulator = () => {
           </div>
         </div>
       </div>
-          </div>
-        </div>
 
-        {/* Right Column - Charts */}
-        <div className="lg:col-span-7">
-      {/* Ownership Distribution Chart */}
-      <div className="bg-[#0F1646] rounded-xl p-6 mb-8 border border-[#7C9CFF]/20">
-        <h3 className="text-xl font-bold mb-1 text-[#EDEEFF]">Ownership Distribution Over Time</h3>
-        <p className="text-sm text-[#B8B6D9] mb-4"></p>
-        
-        <ResponsiveContainer width="100%" height={400}>
-          <AreaChart data={simulation}>
+      {/* Charts Grid - 3 Columns on Desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Ownership Distribution Chart */}
+        <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
+          <h3 className="text-lg font-bold mb-1 text-[#EDEEFF]">Ownership Distribution</h3>
+          <p className="text-xs text-[#B8B6D9] mb-4"></p>
+          
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={simulation}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
             <XAxis 
               dataKey="month" 
@@ -396,17 +390,17 @@ const TokenomicsSimulator = () => {
           </AreaChart>
         </ResponsiveContainer>
         
-        <div className="bg-[#1A1F4D]/50 rounded-lg p-4 mt-4 border border-[#7C9CFF]/20">
-          <div className="text-sm text-[#B8B6D9]">
+        <div className="bg-[#1A1F4D]/50 rounded-lg p-3 mt-3 border border-[#7C9CFF]/20">
+          <div className="text-xs text-[#B8B6D9]">
             This chart ignores token redemptions to the Revnet, which increase token floor price due to the 10% exit tax, and any token swaps outside the Revnet.
           </div>
         </div>
       </div>
 
       {/* Token Price Chart */}
-      <div className="bg-[#0F1646] rounded-xl p-6 mb-8 border border-[#7C9CFF]/20">
-        <h3 className="text-xl font-bold mb-1 text-[#EDEEFF]">Price Ceiling vs Price Floor</h3>
-        <p className="text-sm text-[#B8B6D9] mb-4">Once a secondary market for MARKEE is established, token prices above the ceiling and below the floor can be arbitraged in the Revnet</p>
+      <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
+        <h3 className="text-lg font-bold mb-1 text-[#EDEEFF]">Price Ceiling vs Floor</h3>
+        <p className="text-xs text-[#B8B6D9] mb-4">Arbitrage opportunities once secondary market exists</p>
         
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={simulation}>
@@ -449,18 +443,18 @@ const TokenomicsSimulator = () => {
           </LineChart>
         </ResponsiveContainer>
         
-        <div className="bg-[#1A1F4D]/50 rounded-lg p-4 mt-4 border border-[#7C9CFF]/20">
-          <div className="text-sm text-[#B8B6D9] space-y-2">
-            <div><strong className="text-[#F897FE]">Price Ceiling:</strong> all Platform revenue goes into the Revnet at this issuance price, increasing in locked, pre-scheduled periods</div>
-            <div><strong className="text-[#4ECDC4]">Price Floor:</strong> redemption price of tokens in the Revnet, equal to all revenue ÷ total supply</div>
+        <div className="bg-[#1A1F4D]/50 rounded-lg p-3 mt-3 border border-[#7C9CFF]/20">
+          <div className="text-xs text-[#B8B6D9] space-y-1">
+            <div><strong className="text-[#F897FE]">Ceiling:</strong> issuance price, increases pre-scheduled</div>
+            <div><strong className="text-[#4ECDC4]">Floor:</strong> redemption price = revenue ÷ supply</div>
           </div>
         </div>
       </div>
 
       {/* Market Cap at Price Floor Chart */}
-      <div className="bg-[#0F1646] rounded-xl p-6 mb-8 border border-[#7C9CFF]/20">
-        <h3 className="text-xl font-bold mb-1 text-[#EDEEFF]">Market Cap at Price Floor</h3>
-        <p className="text-sm text-[#B8B6D9] mb-4">Minimum market cap based on platform revenue and the redemption price</p>
+      <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
+        <h3 className="text-lg font-bold mb-1 text-[#EDEEFF]">Market Cap at Floor</h3>
+        <p className="text-xs text-[#B8B6D9] mb-4">Minimum market cap based on redemption price</p>
         
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={simulation}>
@@ -495,14 +489,14 @@ const TokenomicsSimulator = () => {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      </div>
 
       {/* Assumptions Note */}
       <div className="mt-8 text-center text-sm text-[#8A8FBF]">
         <p>
-          Note: This is a simplified model - for educational purposes only.
+          Note: This is a simplified model. Actual outcomes will vary based on market conditions, 
+          user behavior, and unforeseen events.
         </p>
-      </div>
-        </div>
       </div>
     </div>
   );
