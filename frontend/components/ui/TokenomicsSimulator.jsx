@@ -14,6 +14,22 @@ const TokenomicsSimulator = () => {
     ethPrice: 3000, // ETH price in USD for calculations
   });
 
+  // Track raw input values for decimal entry
+  const [rawInputs, setRawInputs] = useState({
+    phase0: '0.5',
+    phase1: '0.5',
+    phase2: '0.5',
+    phase3: '0.5',
+  });
+
+  // Track max warnings
+  const [maxWarnings, setMaxWarnings] = useState({
+    phase0: false,
+    phase1: false,
+    phase2: false,
+    phase3: false,
+  });
+
   // Hard-coded values
   const priceIncreaseFrequency = 3; // Always 3 months (quarterly)
   const timeHorizon = 120; // Always 10 years (120 months)
@@ -183,35 +199,59 @@ const TokenomicsSimulator = () => {
                       onClick={() => {
                         const newVal = Math.max(0, params.phase0Investment - 100000);
                         updateParam('phase0Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase0: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase0: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={params.phase0Investment / 1_000_000}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        // Allow empty, numbers, and partial decimals like "0." or "."
-                        if (inputVal === '' || inputVal === '.') {
-                          updateParam('phase0Investment', 0);
-                          return;
-                        }
-                        const val = parseFloat(inputVal) * 1_000_000;
-                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
-                          updateParam('phase0Investment', val);
-                        }
-                      }}
-                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={rawInputs.phase0}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const inputVal = e.target.value;
+                          setRawInputs(prev => ({ ...prev, phase0: inputVal }));
+                          
+                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
+                            updateParam('phase0Investment', 0);
+                            setMaxWarnings(prev => ({ ...prev, phase0: false }));
+                            return;
+                          }
+                          
+                          const val = parseFloat(inputVal) * 1_000_000;
+                          if (!isNaN(val) && val >= 0) {
+                            if (val <= 10_000_000) {
+                              updateParam('phase0Investment', val);
+                              setMaxWarnings(prev => ({ ...prev, phase0: false }));
+                            } else {
+                              setMaxWarnings(prev => ({ ...prev, phase0: true }));
+                            }
+                          }
+                        }}
+                        onBlur={() => {
+                          // Clean up display on blur
+                          const val = params.phase0Investment / 1_000_000;
+                          setRawInputs(prev => ({ ...prev, phase0: val.toString() }));
+                        }}
+                        className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
+                        style={{ color: '#060A2A' }}
+                      />
+                      {maxWarnings.phase0 && (
+                        <div className="absolute -right-16 top-1/2 -translate-y-1/2 text-xs text-red-400 whitespace-nowrap">
+                          10 max
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => {
                         const newVal = Math.min(10_000_000, params.phase0Investment + 100000);
                         updateParam('phase0Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase0: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase0: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
@@ -230,34 +270,58 @@ const TokenomicsSimulator = () => {
                       onClick={() => {
                         const newVal = Math.max(0, params.phase1Investment - 100000);
                         updateParam('phase1Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase1: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase1: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={params.phase1Investment / 1_000_000}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        if (inputVal === '' || inputVal === '.') {
-                          updateParam('phase1Investment', 0);
-                          return;
-                        }
-                        const val = parseFloat(inputVal) * 1_000_000;
-                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
-                          updateParam('phase1Investment', val);
-                        }
-                      }}
-                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={rawInputs.phase1}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const inputVal = e.target.value;
+                          setRawInputs(prev => ({ ...prev, phase1: inputVal }));
+                          
+                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
+                            updateParam('phase1Investment', 0);
+                            setMaxWarnings(prev => ({ ...prev, phase1: false }));
+                            return;
+                          }
+                          
+                          const val = parseFloat(inputVal) * 1_000_000;
+                          if (!isNaN(val) && val >= 0) {
+                            if (val <= 10_000_000) {
+                              updateParam('phase1Investment', val);
+                              setMaxWarnings(prev => ({ ...prev, phase1: false }));
+                            } else {
+                              setMaxWarnings(prev => ({ ...prev, phase1: true }));
+                            }
+                          }
+                        }}
+                        onBlur={() => {
+                          const val = params.phase1Investment / 1_000_000;
+                          setRawInputs(prev => ({ ...prev, phase1: val.toString() }));
+                        }}
+                        className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
+                        style={{ color: '#060A2A' }}
+                      />
+                      {maxWarnings.phase1 && (
+                        <div className="absolute -right-16 top-1/2 -translate-y-1/2 text-xs text-red-400 whitespace-nowrap">
+                          10 max
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => {
                         const newVal = Math.min(10_000_000, params.phase1Investment + 100000);
                         updateParam('phase1Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase1: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase1: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
@@ -276,34 +340,58 @@ const TokenomicsSimulator = () => {
                       onClick={() => {
                         const newVal = Math.max(0, params.phase2Investment - 100000);
                         updateParam('phase2Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase2: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase2: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={params.phase2Investment / 1_000_000}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        if (inputVal === '' || inputVal === '.') {
-                          updateParam('phase2Investment', 0);
-                          return;
-                        }
-                        const val = parseFloat(inputVal) * 1_000_000;
-                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
-                          updateParam('phase2Investment', val);
-                        }
-                      }}
-                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={rawInputs.phase2}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const inputVal = e.target.value;
+                          setRawInputs(prev => ({ ...prev, phase2: inputVal }));
+                          
+                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
+                            updateParam('phase2Investment', 0);
+                            setMaxWarnings(prev => ({ ...prev, phase2: false }));
+                            return;
+                          }
+                          
+                          const val = parseFloat(inputVal) * 1_000_000;
+                          if (!isNaN(val) && val >= 0) {
+                            if (val <= 10_000_000) {
+                              updateParam('phase2Investment', val);
+                              setMaxWarnings(prev => ({ ...prev, phase2: false }));
+                            } else {
+                              setMaxWarnings(prev => ({ ...prev, phase2: true }));
+                            }
+                          }
+                        }}
+                        onBlur={() => {
+                          const val = params.phase2Investment / 1_000_000;
+                          setRawInputs(prev => ({ ...prev, phase2: val.toString() }));
+                        }}
+                        className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
+                        style={{ color: '#060A2A' }}
+                      />
+                      {maxWarnings.phase2 && (
+                        <div className="absolute -right-16 top-1/2 -translate-y-1/2 text-xs text-red-400 whitespace-nowrap">
+                          10 max
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => {
                         const newVal = Math.min(10_000_000, params.phase2Investment + 100000);
                         updateParam('phase2Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase2: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase2: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
@@ -322,34 +410,58 @@ const TokenomicsSimulator = () => {
                       onClick={() => {
                         const newVal = Math.max(0, params.phase3Investment - 100000);
                         updateParam('phase3Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase3: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase3: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={params.phase3Investment / 1_000_000}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const inputVal = e.target.value;
-                        if (inputVal === '' || inputVal === '.') {
-                          updateParam('phase3Investment', 0);
-                          return;
-                        }
-                        const val = parseFloat(inputVal) * 1_000_000;
-                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
-                          updateParam('phase3Investment', val);
-                        }
-                      }}
-                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
-                      style={{ color: '#060A2A' }}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={rawInputs.phase3}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const inputVal = e.target.value;
+                          setRawInputs(prev => ({ ...prev, phase3: inputVal }));
+                          
+                          if (inputVal === '' || inputVal === '.' || inputVal === '0.') {
+                            updateParam('phase3Investment', 0);
+                            setMaxWarnings(prev => ({ ...prev, phase3: false }));
+                            return;
+                          }
+                          
+                          const val = parseFloat(inputVal) * 1_000_000;
+                          if (!isNaN(val) && val >= 0) {
+                            if (val <= 10_000_000) {
+                              updateParam('phase3Investment', val);
+                              setMaxWarnings(prev => ({ ...prev, phase3: false }));
+                            } else {
+                              setMaxWarnings(prev => ({ ...prev, phase3: true }));
+                            }
+                          }
+                        }}
+                        onBlur={() => {
+                          const val = params.phase3Investment / 1_000_000;
+                          setRawInputs(prev => ({ ...prev, phase3: val.toString() }));
+                        }}
+                        className="w-10 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
+                        style={{ color: '#060A2A' }}
+                      />
+                      {maxWarnings.phase3 && (
+                        <div className="absolute -right-16 top-1/2 -translate-y-1/2 text-xs text-red-400 whitespace-nowrap">
+                          10 max
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => {
                         const newVal = Math.min(10_000_000, params.phase3Investment + 100000);
                         updateParam('phase3Investment', newVal);
+                        setRawInputs(prev => ({ ...prev, phase3: (newVal / 1_000_000).toString() }));
+                        setMaxWarnings(prev => ({ ...prev, phase3: false }));
                       }}
                       className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
@@ -579,7 +691,16 @@ const TokenomicsSimulator = () => {
             />
             <YAxis 
               stroke="#7C9CFF"
-              tickFormatter={(value) => `$${(value / 1_000_000).toFixed(1)}M`}
+              tickFormatter={(value) => {
+                const maxMarketCap = Math.max(...simulation.map(d => d.marketCapAtFloor));
+                if (maxMarketCap >= 1_000_000_000_000) {
+                  return `$${(value / 1_000_000_000_000).toFixed(1)}T`;
+                } else if (maxMarketCap >= 1_000_000_000) {
+                  return `$${(value / 1_000_000_000).toFixed(1)}B`;
+                } else {
+                  return `$${(value / 1_000_000).toFixed(1)}M`;
+                }
+              }}
             />
             <Tooltip 
               contentStyle={{ 
@@ -588,7 +709,16 @@ const TokenomicsSimulator = () => {
                 borderRadius: '8px',
                 color: '#EDEEFF'
               }}
-              formatter={(value) => `$${(value / 1_000_000).toFixed(2)}M`}
+              formatter={(value) => {
+                const maxMarketCap = Math.max(...simulation.map(d => d.marketCapAtFloor));
+                if (maxMarketCap >= 1_000_000_000_000) {
+                  return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
+                } else if (maxMarketCap >= 1_000_000_000) {
+                  return `$${(value / 1_000_000_000).toFixed(2)}B`;
+                } else {
+                  return `$${(value / 1_000_000).toFixed(2)}M`;
+                }
+              }}
             />
             <Legend wrapperStyle={{ paddingTop: '10px' }} />
             <Line 
@@ -606,8 +736,7 @@ const TokenomicsSimulator = () => {
           {/* Assumptions Note */}
           <div className="mt-8 text-center text-sm text-[#8A8FBF]">
             <p>
-              Note: This is a simplified model. Actual outcomes will vary based on market conditions, 
-              user behavior, and unforeseen events.
+              Note: this is a simplified model, for educational purposes only.
             </p>
           </div>
         </div>
