@@ -158,18 +158,22 @@ const TokenomicsSimulator = () => {
 
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Parameter Controls */}
-      <div className="bg-[#0F1646] rounded-xl p-6 mb-8 border border-[#7C9CFF]/20">
-        <h2 className="text-2xl font-bold mb-2 text-[#EDEEFF]">Configuration Parameters</h2>
-        <p className="text-sm text-[#B8B6D9] mb-6">
-          Revnet Issuance is locked and pre-scheduled. Use this configuration tool to simulate how different investment, revenue, and expense scenarios affect the ownership economics of the platform
-        </p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left Column - Parameter Controls (Sticky on Desktop) */}
+        <div className="lg:col-span-5">
+          <div className="lg:sticky lg:top-4">
+            {/* Parameter Controls */}
+            <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
+              <h2 className="text-2xl font-bold mb-2 text-[#EDEEFF]">Configuration Parameters</h2>
+              <p className="text-sm text-[#B8B6D9] mb-6">
+                Revnet Issuance is locked and pre-scheduled. Use this configuration tool to simulate how different investment, revenue, and expense scenarios affect the ownership economics of the platform
+              </p>
 
-        {/* Direct Seed Funding to Revnet Section - Moved to top */}
-        <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
-          <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-          <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
-          <div className="grid grid-cols-4 gap-4">
+              {/* Direct Seed Funding to Revnet Section - Moved to top */}
+              <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
+                <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
+                <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions</p>
+                <div className="grid grid-cols-2 gap-4">
             {/* Phase 0 */}
             <div>
               <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
@@ -251,7 +255,7 @@ const TokenomicsSimulator = () => {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {/* Growth Fund Spending */}
           <div>
             <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
@@ -317,7 +321,11 @@ const TokenomicsSimulator = () => {
           </div>
         </div>
       </div>
+          </div>
+        </div>
 
+        {/* Right Column - Charts */}
+        <div className="lg:col-span-7">
       {/* Ownership Distribution Chart */}
       <div className="bg-[#0F1646] rounded-xl p-6 mb-8 border border-[#7C9CFF]/20">
         <h3 className="text-xl font-bold mb-1 text-[#EDEEFF]">Ownership Distribution Over Time</h3>
@@ -491,9 +499,10 @@ const TokenomicsSimulator = () => {
       {/* Assumptions Note */}
       <div className="mt-8 text-center text-sm text-[#8A8FBF]">
         <p>
-          Note: This is a simplified model. Actual outcomes will vary based on market conditions, 
-          user behavior, and unforeseen events.
+          Note: This is a simplified model - for educational purposes only.
         </p>
+      </div>
+        </div>
       </div>
     </div>
   );
