@@ -205,6 +205,17 @@ const TokenomicsSimulator = () => {
                       onChange={(e) => {
                         const inputVal = e.target.value;
                         
+                        // Only allow digits and one decimal point
+                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
+                          return; // Reject invalid characters
+                        }
+                        
+                        // Count decimal points
+                        const decimalCount = (inputVal.match(/\./g) || []).length;
+                        if (decimalCount > 1) {
+                          return; // Reject multiple decimal points
+                        }
+                        
                         // Count digits (excluding decimal point)
                         const digitCount = inputVal.replace(/[^0-9]/g, '').length;
                         
@@ -268,6 +279,17 @@ const TokenomicsSimulator = () => {
                       onChange={(e) => {
                         const inputVal = e.target.value;
                         
+                        // Only allow digits and one decimal point
+                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
+                          return;
+                        }
+                        
+                        // Count decimal points
+                        const decimalCount = (inputVal.match(/\./g) || []).length;
+                        if (decimalCount > 1) {
+                          return;
+                        }
+                        
                         // Count digits (excluding decimal point)
                         const digitCount = inputVal.replace(/[^0-9]/g, '').length;
                         
@@ -330,6 +352,17 @@ const TokenomicsSimulator = () => {
                       onChange={(e) => {
                         const inputVal = e.target.value;
                         
+                        // Only allow digits and one decimal point
+                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
+                          return;
+                        }
+                        
+                        // Count decimal points
+                        const decimalCount = (inputVal.match(/\./g) || []).length;
+                        if (decimalCount > 1) {
+                          return;
+                        }
+                        
                         // Count digits (excluding decimal point)
                         const digitCount = inputVal.replace(/[^0-9]/g, '').length;
                         
@@ -391,6 +424,17 @@ const TokenomicsSimulator = () => {
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const inputVal = e.target.value;
+                        
+                        // Only allow digits and one decimal point
+                        if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) {
+                          return;
+                        }
+                        
+                        // Count decimal points
+                        const decimalCount = (inputVal.match(/\./g) || []).length;
+                        if (decimalCount > 1) {
+                          return;
+                        }
                         
                         // Count digits (excluding decimal point)
                         const digitCount = inputVal.replace(/[^0-9]/g, '').length;
