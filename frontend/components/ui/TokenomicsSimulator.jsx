@@ -169,22 +169,22 @@ const TokenomicsSimulator = () => {
             </p>
 
             {/* Direct Seed Funding to Revnet Section */}
-            <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-6 border border-[#FFD93D]/20">
-              <h3 className="text-lg font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-              <p className="text-sm text-[#8A8FBF] mb-4">in $USD Millions </p>
-              <div className="grid grid-cols-1 gap-4">
+            <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-4 border border-[#FFD93D]/20">
+              <h3 className="text-base font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
+              <p className="text-xs text-[#8A8FBF] mb-3">in $USD Millions </p>
+              <div className="space-y-2">
                 {/* Phase 0 */}
-                <div>
-                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
                     Phase 0
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => {
                         const newVal = Math.max(0, params.phase0Investment - 100000);
                         updateParam('phase0Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
@@ -192,20 +192,28 @@ const TokenomicsSimulator = () => {
                       type="text"
                       inputMode="decimal"
                       value={params.phase0Investment / 1_000_000}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) * 1_000_000;
-                        if (!isNaN(val) && val >= 0) updateParam('phase0Investment', val);
-                        else if (e.target.value === '') updateParam('phase0Investment', 0);
+                        const inputVal = e.target.value;
+                        // Allow empty, numbers, and partial decimals like "0." or "."
+                        if (inputVal === '' || inputVal === '.') {
+                          updateParam('phase0Investment', 0);
+                          return;
+                        }
+                        const val = parseFloat(inputVal) * 1_000_000;
+                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
+                          updateParam('phase0Investment', val);
+                        }
                       }}
-                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
                       style={{ color: '#060A2A' }}
                     />
                     <button
                       onClick={() => {
-                        const newVal = params.phase0Investment + 100000;
+                        const newVal = Math.min(10_000_000, params.phase0Investment + 100000);
                         updateParam('phase0Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       +
                     </button>
@@ -213,17 +221,17 @@ const TokenomicsSimulator = () => {
                 </div>
 
                 {/* Phase 1 */}
-                <div>
-                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
                     Phase 1
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => {
                         const newVal = Math.max(0, params.phase1Investment - 100000);
                         updateParam('phase1Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
@@ -231,20 +239,27 @@ const TokenomicsSimulator = () => {
                       type="text"
                       inputMode="decimal"
                       value={params.phase1Investment / 1_000_000}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) * 1_000_000;
-                        if (!isNaN(val) && val >= 0) updateParam('phase1Investment', val);
-                        else if (e.target.value === '') updateParam('phase1Investment', 0);
+                        const inputVal = e.target.value;
+                        if (inputVal === '' || inputVal === '.') {
+                          updateParam('phase1Investment', 0);
+                          return;
+                        }
+                        const val = parseFloat(inputVal) * 1_000_000;
+                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
+                          updateParam('phase1Investment', val);
+                        }
                       }}
-                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
                       style={{ color: '#060A2A' }}
                     />
                     <button
                       onClick={() => {
-                        const newVal = params.phase1Investment + 100000;
+                        const newVal = Math.min(10_000_000, params.phase1Investment + 100000);
                         updateParam('phase1Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       +
                     </button>
@@ -252,17 +267,17 @@ const TokenomicsSimulator = () => {
                 </div>
 
                 {/* Phase 2 */}
-                <div>
-                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
                     Phase 2
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => {
                         const newVal = Math.max(0, params.phase2Investment - 100000);
                         updateParam('phase2Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
@@ -270,20 +285,27 @@ const TokenomicsSimulator = () => {
                       type="text"
                       inputMode="decimal"
                       value={params.phase2Investment / 1_000_000}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) * 1_000_000;
-                        if (!isNaN(val) && val >= 0) updateParam('phase2Investment', val);
-                        else if (e.target.value === '') updateParam('phase2Investment', 0);
+                        const inputVal = e.target.value;
+                        if (inputVal === '' || inputVal === '.') {
+                          updateParam('phase2Investment', 0);
+                          return;
+                        }
+                        const val = parseFloat(inputVal) * 1_000_000;
+                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
+                          updateParam('phase2Investment', val);
+                        }
                       }}
-                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
                       style={{ color: '#060A2A' }}
                     />
                     <button
                       onClick={() => {
-                        const newVal = params.phase2Investment + 100000;
+                        const newVal = Math.min(10_000_000, params.phase2Investment + 100000);
                         updateParam('phase2Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       +
                     </button>
@@ -291,17 +313,17 @@ const TokenomicsSimulator = () => {
                 </div>
 
                 {/* Phase 3 */}
-                <div>
-                  <label className="block text-sm font-semibold text-[#EDEEFF] mb-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-[#EDEEFF] w-16">
                     Phase 3
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => {
                         const newVal = Math.max(0, params.phase3Investment - 100000);
                         updateParam('phase3Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       −
                     </button>
@@ -309,28 +331,35 @@ const TokenomicsSimulator = () => {
                       type="text"
                       inputMode="decimal"
                       value={params.phase3Investment / 1_000_000}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) * 1_000_000;
-                        if (!isNaN(val) && val >= 0) updateParam('phase3Investment', val);
-                        else if (e.target.value === '') updateParam('phase3Investment', 0);
+                        const inputVal = e.target.value;
+                        if (inputVal === '' || inputVal === '.') {
+                          updateParam('phase3Investment', 0);
+                          return;
+                        }
+                        const val = parseFloat(inputVal) * 1_000_000;
+                        if (!isNaN(val) && val >= 0 && val <= 10_000_000) {
+                          updateParam('phase3Investment', val);
+                        }
                       }}
-                      className="flex-1 px-4 py-3 bg-white border-2 border-[#7C9CFF]/20 rounded-lg focus:outline-none focus:border-[#7C9CFF] text-center text-lg font-semibold"
+                      className="w-16 px-2 py-1 bg-white border border-[#7C9CFF]/20 rounded focus:outline-none focus:border-[#7C9CFF] text-center text-sm font-semibold"
                       style={{ color: '#060A2A' }}
                     />
                     <button
                       onClick={() => {
-                        const newVal = params.phase3Investment + 100000;
+                        const newVal = Math.min(10_000_000, params.phase3Investment + 100000);
                         updateParam('phase3Investment', newVal);
                       }}
-                      className="w-12 h-12 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded-lg font-bold text-xl flex items-center justify-center transition-colors"
+                      className="w-8 h-8 bg-[#7C9CFF] hover:bg-[#6A8AEE] text-white rounded font-bold text-lg flex items-center justify-center transition-colors"
                     >
                       +
                     </button>
                   </div>
                 </div>
                   </div>
-              <div className="text-sm text-[#8A8FBF] mt-4">
-                Total Seed Funding: ${((params.phase0Investment + params.phase1Investment + params.phase2Investment + params.phase3Investment) / 1_000_000)}M
+              <div className="text-xs text-[#8A8FBF] mt-3">
+                Total: ${((params.phase0Investment + params.phase1Investment + params.phase2Investment + params.phase3Investment) / 1_000_000)}M
               </div>
             </div>
         
