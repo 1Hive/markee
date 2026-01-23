@@ -531,6 +531,6 @@ const TokenomicsSimulator = () => {
       </div>
     </div>
   );
-);
+};
 
 export default TokenomicsSimulator;
