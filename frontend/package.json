@@ -25,7 +25,8 @@
     "graphql": "^16.6.0",
     "tailwind-merge": "^2.0.0",
     "@apollo/client": "^3.8.5",
-    "react-twemoji": "^0.6.0"
+    "react-twemoji": "^0.6.0",
+    "recharts": "^2.10.0"
   },
   "devDependencies": {
     "typescript": "^5",
