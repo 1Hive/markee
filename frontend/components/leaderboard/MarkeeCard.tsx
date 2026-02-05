@@ -393,12 +393,6 @@ export function MarkeeCard({
               size={size}
             />
 
-            {/* #1 spot indicator */}
-            <div className="flex items-center gap-1 text-sm text-[#F897FE] font-semibold">
-              <Emoji className="text-base">👑</Emoji>
-              <span>Top Spot</span>
-            </div>
-
             <button 
               onClick={() => onAddFunds?.(markee)}
               className="text-xs px-3 py-1.5 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
