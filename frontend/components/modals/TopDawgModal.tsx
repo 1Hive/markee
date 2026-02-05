@@ -58,12 +58,34 @@ export function TopDawgModal({
   // Check if user is on the correct chain
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
-  // Calculate MARKEE tokens based on partner split
+  // Get current phase rate from RevNet schedule
+  const getCurrentPhaseRate = () => {
+    // TODO: Import PHASES from a shared config file
+    // For now, using inline schedule - should match owners/page.tsx
+    const PHASES = [
+      { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
+      { rate: 50000, endDate: new Date('2026-06-21T00:00:00Z') },
+      { rate: 25000, endDate: new Date('2026-09-21T00:00:00Z') },
+      { rate: 12500, endDate: new Date('2026-12-21T00:00:00Z') },
+      { rate: 6250, endDate: new Date('2027-03-21T00:00:00Z') },
+    ]
+    
+    const now = new Date()
+    for (const phase of PHASES) {
+      if (now < phase.endDate) {
+        return phase.rate
+      }
+    }
+    return PHASES[PHASES.length - 1].rate // Return last phase rate if all dates passed
+  }
+
+  // Calculate MARKEE tokens based on partner split and current phase
   const calculateMarkeeTokens = (ethAmount: number) => {
-    const baseRate = 62000 // tokens per ETH at 100% to RevNet
+    const baseRate = getCurrentPhaseRate() // Dynamic rate based on current RevNet phase
     
     if (partnerSplitPercentage) {
       // If partner gets X%, RevNet gets (100-X)%, so user gets (100-X)% of tokens
+      // Example: If partner gets 62%, RevNet gets 38%, user gets 38% of base tokens
       const revnetPercentage = 100 - partnerSplitPercentage
       return ethAmount * baseRate * (revnetPercentage / 100)
     }
@@ -294,8 +316,14 @@ export function TopDawgModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
           <h2 className="text-2xl font-bold text-[#EDEEFF]">
