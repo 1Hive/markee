@@ -591,10 +591,22 @@ export function TopDawgModal({
                       {partnerName && partnerSplitPercentage && (
                         <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
                           <div className="text-center">
-                            <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
-                            <p className="text-4xl font-bold text-[#FFA94D] mb-2">
-                              {(parseFloat(amount) * (partnerSplitPercentage / 100)).toFixed(4)}
+                            <p className="text-sm text-[#FFA94D] font-medium mb-2">
+                              {partnerName} receives
                             </p>
+                      
+                            <p className="text-4xl font-bold text-[#FFA94D] mb-2">
+                              {(() => {
+                                const value =
+                                  parseFloat(amount) * (partnerSplitPercentage / 100)
+                      
+                                if (value === 0) return '0'
+                                if (value < 0.000001) return '< 0.000001'
+                      
+                                return Number(value.toFixed(6)).toString()
+                              })()}
+                            </p>
+                      
                             <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
                           </div>
                         </div>
