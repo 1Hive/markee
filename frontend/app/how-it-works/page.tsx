@@ -43,10 +43,10 @@ function FeeReceiverSection() {
         </p>
 
         <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto">
-          {/* Box 1: Markee Beneficiary - 68% width */}
+          {/* Box 1: Markee Beneficiary - 62% width */}
           <div className="md:flex-[68]">
             <FeeReceiverCard
-              percentage="68%"
+              percentage="62%"
               title="Your Beneficiary Address"
               description="Direct funding for your website, community, or digital organization."
               color="soft-pink"
@@ -54,10 +54,10 @@ function FeeReceiverSection() {
             />
           </div>
 
-          {/* Box 2: Cooperative Ownership - 32% width */}
+          {/* Box 2: Cooperative Ownership - 38% width */}
           <div className="md:flex-[32]">
             <FeeReceiverCard
-              percentage="32%"
+              percentage="38%"
               title="Markee Cooperative"
               description="Issues MARKEE in the RevNet."
               color="cool-sky-blue"
