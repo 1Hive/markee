@@ -82,18 +82,22 @@ export function TopDawgModal({
   }
 
   // Calculate MARKEE tokens based on partner split and current phase
-  const calculateMarkeeTokens = (ethAmount: number) => {
-    const baseRate = getCurrentPhaseRate() // Dynamic rate based on current RevNet phase
-    
-    if (partnerSplitPercentage) {
-      // If partner gets X%, RevNet gets (100-X)%, so user gets (100-X)% of tokens
-      // Example: If partner gets 62%, RevNet gets 38%, user gets 38% of base tokens
-      const revnetPercentage = 100 - partnerSplitPercentage
-      return ethAmount * baseRate * (revnetPercentage / 100)
+    const calculateMarkeeTokens = (ethAmount: number) => {
+      const baseRate = getCurrentPhaseRate()
+      const COOPERATIVE_RESERVE_PERCENT = 0.38 // 38% to reserve
+      const USER_PERCENT = 0.62 // 62% to user
+      
+      if (partnerSplitPercentage) {
+        // Partner: only portion going to RevNet issues tokens
+        const revnetPercentage = (100 - partnerSplitPercentage) / 100
+        const tokensIssued = ethAmount * baseRate * revnetPercentage
+        return tokensIssued * USER_PERCENT // User gets 62% of issued tokens
+      }
+      
+      // Cooperative: 100% to RevNet
+      const tokensIssued = ethAmount * baseRate
+      return tokensIssued * USER_PERCENT // User gets 62% of issued tokens
     }
-    
-    return ethAmount * baseRate
-  }
 
   // Read minimum price and max message length from strategy
   const { data: minimumPrice } = useReadContract({
