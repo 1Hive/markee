@@ -446,7 +446,7 @@ export function MarkeeCard({
           {/* Author at bottom right */}
           <div className="flex justify-end">
             <p className="text-sm text-[#8A8FBF] italic">
-              — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+              <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
                 {hasCustomName ? markee.name : formatAddress(markee.owner)}
               </span>
             </p>
