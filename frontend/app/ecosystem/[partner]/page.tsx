@@ -419,7 +419,7 @@ export default function PartnerPage() {
 
       <Footer />
 
-      {/* Modal - conditionally pass strategyAddress */}
+      {/* Modal - with partner distribution props */}
       <TopDawgModal 
         isOpen={isModalOpen}
         onClose={handleModalClose}
@@ -427,6 +427,8 @@ export default function PartnerPage() {
         initialMode={modalMode}
         onSuccess={handleTransactionSuccess}
         strategyAddress={partner.isCooperative ? undefined : partner.strategyAddress as `0x${string}`}
+        partnerName={partner.isCooperative ? undefined : partner.name}
+        partnerSplitPercentage={partner.isCooperative ? undefined : partner.percentToBeneficiary / 100}
       />
     </div>
   )
