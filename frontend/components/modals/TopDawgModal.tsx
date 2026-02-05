@@ -601,9 +601,9 @@ export function TopDawgModal({
                                   parseFloat(amount) * (partnerSplitPercentage / 100)
                       
                                 if (value === 0) return '0'
-                                if (value < 0.000001) return '< 0.000001'
+                                if (value < 0.00001) return '< 0.00001'
                       
-                                return Number(value.toFixed(6)).toString()
+                                return Number(value.toFixed(5)).toString()
                               })()}
                             </p>
                       
