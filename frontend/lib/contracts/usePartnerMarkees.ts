@@ -20,8 +20,8 @@ export const PARTNERS = [
     description: 'Community governance platform built on conviction voting',
     strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE',
     logo: '/partners/gardens.png',
-    fundingSplit: '68% to Gardens / 32% to Markee Cooperative',
-    percentToBeneficiary: 6800,
+    fundingSplit: '62% to Gardens / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
     isCooperative: false
   },
     {
@@ -30,8 +30,8 @@ export const PARTNERS = [
     description: 'A collective of communities building worker-owned financial infrastructure',
     strategyAddress: '0x05A40489965B355e0404c05134dA68626a5a927c',
     logo: '/partners/breadcoop.png',
-    fundingSplit: '68% to Bread Cooperative / 32% to Markee Cooperative',
-    percentToBeneficiary: 6800,
+    fundingSplit: '62% to Bread Cooperative / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
     isCooperative: false
   },
     {
@@ -40,8 +40,8 @@ export const PARTNERS = [
     description: 'Autonomous revenue-sharing networks with immutable tokenomics rules',
     strategyAddress: '0xe68CbEf87B710B379654Dfd3c0BEC8779bBCcEbB',
     logo: '/partners/revnets.png',
-    fundingSplit: '68% to RevNets / 32% to Markee Cooperative',
-    percentToBeneficiary: 6800,
+    fundingSplit: '62% to RevNets / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
     isCooperative: false
   },
     {
@@ -50,8 +50,8 @@ export const PARTNERS = [
     description: 'Programmable fundraising protocol for community-owned treasury formation',
     strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
     logo: '/partners/juicebox.png',
-    fundingSplit: '68% to Juicebox / 32% to Markee Cooperative',
-    percentToBeneficiary: 6800,
+    fundingSplit: '62% to Juicebox / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
     isCooperative: false
   }, 
     {
@@ -60,8 +60,8 @@ export const PARTNERS = [
     description: 'Web3 crowdfunding platform for nonprofits and social causes',
     strategyAddress: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431',  
     logo: '/partners/giveth.png',
-    fundingSplit: '68% to Giveth / 32% to Markee Cooperative',
-    percentToBeneficiary: 6800,
+    fundingSplit: '62% to Giveth / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
     isCooperative: false
   }
 ] as const
