@@ -472,9 +472,6 @@ export function TopDawgModal({
                     )}
                     {topFundsAdded && topFundsAdded > 0n && (
                       <div className="flex items-center justify-between mt-2 text-xs">
-                        <p className="text-[#7C9CFF]">
-                          🏆 Top spot: {parseFloat(formatEther(topFundsAdded)).toFixed(4)} ETH
-                        </p>
                         <button
                           type="button"
                           onClick={() => {
