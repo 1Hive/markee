@@ -81,18 +81,23 @@ export function TopDawgModal({
     return PHASES[PHASES.length - 1].rate // Return last phase rate if all dates passed
   }
 
-  // Calculate MARKEE tokens based on partner split and current phase
+  // Calculate MARKEE tokens user receives (accounting for cooperative reserve)
   const calculateMarkeeTokens = (ethAmount: number) => {
     const baseRate = getCurrentPhaseRate() // Dynamic rate based on current RevNet phase
+    const COOPERATIVE_RESERVE_PERCENT = 0.38 // 38% of all issuance goes to cooperative
+    const USER_PERCENT = 0.62 // 62% of all issuance goes to user
     
     if (partnerSplitPercentage) {
-      // If partner gets X%, RevNet gets (100-X)%, so user gets (100-X)% of tokens
-      // Example: If partner gets 62%, RevNet gets 38%, user gets 38% of base tokens
-      const revnetPercentage = 100 - partnerSplitPercentage
-      return ethAmount * baseRate * (revnetPercentage / 100)
+      // Partner model: partner gets X% directly, (100-X)% goes to RevNet
+      // Example: If partner gets 62%, then 38% goes to RevNet
+      const revnetPercentage = (100 - partnerSplitPercentage) / 100 // 0.38 for 62% partner
+      const tokensIssued = ethAmount * baseRate * revnetPercentage // 0.38 ETH * 100k = 38k tokens
+      return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 23,560
     }
     
-    return ethAmount * baseRate
+    // Markee Cooperative model: 100% goes to RevNet
+    const tokensIssued = ethAmount * baseRate // 1 ETH * 100k = 100k tokens
+    return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 62,000
   }
 
   // Read minimum price and max message length from strategy
@@ -472,6 +477,9 @@ export function TopDawgModal({
                     )}
                     {topFundsAdded && topFundsAdded > 0n && (
                       <div className="flex items-center justify-between mt-2 text-xs">
+                        <p className="text-[#7C9CFF]">
+                          🏆 Top spot: {parseFloat(formatEther(topFundsAdded)).toFixed(4)} ETH
+                        </p>
                         <button
                           type="button"
                           onClick={() => {
@@ -514,13 +522,19 @@ export function TopDawgModal({
                         </div>
                       )}
                     </div>
+                    {/* Cooperative Reserve Note */}
+                    <div className="mt-3 text-center">
+                      <p className="text-xs text-[#8A8FBF]">
+                        + {((parseFloat(amount) * (partnerName && partnerSplitPercentage ? (100 - partnerSplitPercentage) / 100 : 1)) * getCurrentPhaseRate() * 0.38).toLocaleString()} MARKEE to Cooperative reserve (38%)
+                      </p>
+                    </div>
                   )}
 
                   <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
                     <p className="text-sm text-[#B8B6D9]">
                       {partnerName 
-                        ? `By buying a message, you support ${partnerName} and receive MARKEE tokens, making you a member of the Markee Cooperative.`
-                        : 'By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.'
+                        ? `Your payment supports ${partnerName} and the Markee Cooperative. You'll receive MARKEE tokens (62% of tokens issued), with 38% allocated to the Cooperative reserve.`
+                        : 'You'll receive MARKEE tokens (62% of tokens issued), with 38% allocated to the Cooperative reserve. By buying a message, you become a member of the Markee Cooperative.'
                       }
                     </p>
                   </div>
@@ -595,6 +609,12 @@ export function TopDawgModal({
                           </div>
                         </div>
                       )}
+                    </div>
+                    {/* Cooperative Reserve Note */}
+                    <div className="mt-3 text-center">
+                      <p className="text-xs text-[#8A8FBF]">
+                        + {((parseFloat(amount) * (partnerName && partnerSplitPercentage ? (100 - partnerSplitPercentage) / 100 : 1)) * getCurrentPhaseRate() * 0.38).toLocaleString()} MARKEE to Cooperative reserve (38%)
+                      </p>
                     </div>
                   )}
 
