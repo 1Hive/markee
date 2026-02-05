@@ -44,7 +44,7 @@ function FeeReceiverSection() {
 
         <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto">
           {/* Box 1: Markee Beneficiary - 62% width */}
-          <div className="md:flex-[68]">
+          <div className="md:flex-[62]">
             <FeeReceiverCard
               percentage="62%"
               title="Your Beneficiary Address"
@@ -55,7 +55,7 @@ function FeeReceiverSection() {
           </div>
 
           {/* Box 2: Cooperative Ownership - 38% width */}
-          <div className="md:flex-[32]">
+          <div className="md:flex-[38]">
             <FeeReceiverCard
               percentage="38%"
               title="Markee Cooperative"
@@ -371,7 +371,7 @@ function CondensedFAQ() {
       question: "How do I become an owner?",
       answer: (
         <div>
-          <p className="mb-3">During Phase 0, you can become an owner by investing through the leaderboard. Pay to update the message and receive MARKEE tokens based on the current RevNet price (starting at 50,000 tokens/ETH).</p>
+          <p className="mb-3">During Phase 0, you can become an owner by investing through the leaderboard. Pay to update the message and receive MARKEE tokens based on the current RevNet price (starting at 100,000 tokens/ETH).</p>
           <Link href="/owners" className="text-soft-pink hover:underline font-semibold">
             Learn about ownership →
           </Link>
