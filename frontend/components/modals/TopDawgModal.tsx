@@ -16,24 +16,11 @@ interface TopDawgModalProps {
   initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onSuccess?: () => void
   strategyAddress?: `0x${string}` // Optional: for partner strategies
-  partnerName?: string // Optional: partner display name
-  partnerSplitPercentage?: number // Optional: percentage going to partner (e.g., 62 for 62%)
-  topFundsAdded?: bigint // Optional: current top message's totalFundsAdded for competitive display
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function TopDawgModal({ 
-  isOpen, 
-  onClose, 
-  userMarkee, 
-  initialMode, 
-  onSuccess, 
-  strategyAddress: customStrategyAddress,
-  partnerName,
-  partnerSplitPercentage,
-  topFundsAdded
-}: TopDawgModalProps) {
+export function TopDawgModal({ isOpen, onClose, userMarkee, initialMode, onSuccess, strategyAddress: customStrategyAddress }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -59,46 +46,6 @@ export function TopDawgModal({
 
   // Check if user is on the correct chain
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
-
-  // Get current phase rate from RevNet schedule
-  const getCurrentPhaseRate = () => {
-    // TODO: Import PHASES from a shared config file
-    // For now, using inline schedule - should match owners/page.tsx
-    const PHASES = [
-      { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-      { rate: 50000, endDate: new Date('2026-06-21T00:00:00Z') },
-      { rate: 25000, endDate: new Date('2026-09-21T00:00:00Z') },
-      { rate: 12500, endDate: new Date('2026-12-21T00:00:00Z') },
-      { rate: 6250, endDate: new Date('2027-03-21T00:00:00Z') },
-    ]
-    
-    const now = new Date()
-    for (const phase of PHASES) {
-      if (now < phase.endDate) {
-        return phase.rate
-      }
-    }
-    return PHASES[PHASES.length - 1].rate // Return last phase rate if all dates passed
-  }
-
-  // Calculate MARKEE tokens user receives (accounting for cooperative reserve)
-  const calculateMarkeeTokens = (ethAmount: number) => {
-    const baseRate = getCurrentPhaseRate() // Dynamic rate based on current RevNet phase
-    const COOPERATIVE_RESERVE_PERCENT = 0.38 // 38% of all issuance goes to cooperative
-    const USER_PERCENT = 0.62 // 62% of all issuance goes to user
-    
-    if (partnerSplitPercentage) {
-      // Partner model: partner gets X% directly, (100-X)% goes to RevNet
-      // Example: If partner gets 62%, then 38% goes to RevNet
-      const revnetPercentage = (100 - partnerSplitPercentage) / 100 // 0.38 for 62% partner
-      const tokensIssued = ethAmount * baseRate * revnetPercentage // 0.38 ETH times 100k = 38k tokens
-      return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 23,560
-    }
-    
-    // Markee Cooperative model: 100% goes to RevNet
-    const tokensIssued = ethAmount * baseRate // 1 ETH times 100k = 100k tokens
-    return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 62,000
-  }
 
   // Read minimum price and max message length from strategy
   const { data: minimumPrice } = useReadContract({
@@ -192,7 +139,7 @@ export function TopDawgModal({
         onClose()
       }, 2000)
     }
-  }, [isSuccess, onClose, isOpen, onSuccess])
+  }, [isSuccess, onClose, isOpen])
 
   const handleCreateMarkee = async () => {
     if (!strategyAddress || !isCorrectChain) {
@@ -323,14 +270,8 @@ export function TopDawgModal({
   }
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
           <h2 className="text-2xl font-bold text-[#EDEEFF]">
@@ -475,61 +416,24 @@ export function TopDawgModal({
                         Your Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
                       </p>
                     )}
-                    {topFundsAdded && topFundsAdded > 0n && (
-                      <div className="flex items-center justify-between mt-2 text-xs">
-                        <p className="text-[#7C9CFF]">
-                          🏆 Top spot: {parseFloat(formatEther(topFundsAdded)).toFixed(4)} ETH
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const beatAmount = (parseFloat(formatEther(topFundsAdded)) * 1.05).toFixed(4)
-                            setAmount(beatAmount)
-                          }}
-                          className="text-[#F897FE] hover:text-[#F897FE]/80 font-semibold transition-colors"
-                          disabled={isPending || isConfirming}
-                        >
-                          Beat by 5% →
-                        </button>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Token/Partner Distribution Display */}
+                  {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
-                    <div className={`grid ${partnerName ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                      {/* MARKEE Tokens Box */}
-                      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
-                        <div className="text-center">
-                          <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
-                          <p className="text-4xl font-bold text-[#F897FE] mb-2">
-                            {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-                          </p>
-                          <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-                        </div>
+                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
+                      <div className="text-center">
+                        <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
+                        <p className="text-4xl font-bold text-[#F897FE] mb-2">
+                          {(parseFloat(amount) * 62000).toLocaleString()}
+                        </p>
+                        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
                       </div>
-
-                      {/* Partner Distribution Box - only show for partners */}
-                      {partnerName && partnerSplitPercentage && (
-                        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
-                          <div className="text-center">
-                            <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
-                            <p className="text-4xl font-bold text-[#FFA94D] mb-2">
-                              {(parseFloat(amount) * (partnerSplitPercentage / 100)).toFixed(4)}
-                            </p>
-                            <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
                   <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
                     <p className="text-sm text-[#B8B6D9]">
-                      {partnerName 
-                        ? `Your payment supports ${partnerName} and the Markee Cooperative. You'll receive MARKEE tokens (62% of tokens issued), with 38% allocated to the Cooperative reserve.`
-                        : 'You'll receive MARKEE tokens (62% of tokens issued), with 38% allocated to the Cooperative reserve. By buying a message, you become a member of the Markee Cooperative.'
-                      }
+                      By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.
                     </p>
                   </div>
 
@@ -577,32 +481,16 @@ export function TopDawgModal({
                     )}
                   </div>
 
-                  {/* Token/Partner Distribution Display */}
+                  {/* Featured MARKEE Token Display */}
                   {amount && parseFloat(amount) > 0 && (
-                    <div className={`grid ${partnerName ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                      {/* MARKEE Tokens Box */}
-                      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
-                        <div className="text-center">
-                          <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
-                          <p className="text-4xl font-bold text-[#F897FE] mb-2">
-                            {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-                          </p>
-                          <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-                        </div>
+                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
+                      <div className="text-center">
+                        <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
+                        <p className="text-4xl font-bold text-[#F897FE] mb-2">
+                          {(parseFloat(amount) * 62000).toLocaleString()}
+                        </p>
+                        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
                       </div>
-
-                      {/* Partner Distribution Box - only show for partners */}
-                      {partnerName && partnerSplitPercentage && (
-                        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
-                          <div className="text-center">
-                            <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
-                            <p className="text-4xl font-bold text-[#FFA94D] mb-2">
-                              {(parseFloat(amount) * (partnerSplitPercentage / 100)).toFixed(4)}
-                            </p>
-                            <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
