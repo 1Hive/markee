@@ -91,12 +91,12 @@ export function TopDawgModal({
       // Partner model: partner gets X% directly, (100-X)% goes to RevNet
       // Example: If partner gets 62%, then 38% goes to RevNet
       const revnetPercentage = (100 - partnerSplitPercentage) / 100 // 0.38 for 62% partner
-      const tokensIssued = ethAmount * baseRate * revnetPercentage // 0.38 ETH × 100k = 38k tokens
+      const tokensIssued = ethAmount * baseRate * revnetPercentage // 0.38 ETH times 100k = 38k tokens
       return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 23,560
     }
     
     // Markee Cooperative model: 100% goes to RevNet
-    const tokensIssued = ethAmount * baseRate // 1 ETH × 100k = 100k tokens
+    const tokensIssued = ethAmount * baseRate // 1 ETH times 100k = 100k tokens
     return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 62,000
   }
 
