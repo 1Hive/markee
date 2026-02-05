@@ -114,6 +114,8 @@ export default function EcosystemPage() {
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
           strategyAddress={selectedPartner.partner.strategyAddress as `0x${string}`}
+          partnerName={selectedPartner.partner.isCooperative ? undefined : selectedPartner.partner.name}
+          partnerSplitPercentage={selectedPartner.partner.isCooperative ? undefined : selectedPartner.partner.percentToBeneficiary / 100}
         />
       )}
     </div>
