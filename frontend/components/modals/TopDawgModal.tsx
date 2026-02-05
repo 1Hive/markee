@@ -90,14 +90,14 @@ export function TopDawgModal({
     if (partnerSplitPercentage) {
       // Partner model: partner gets X% directly, (100-X)% goes to RevNet
       // Example: If partner gets 62%, then 38% goes to RevNet
-      const revnetPercentage = (100 - partnerSplitPercentage) / 100 // 0.38 for 62% partner
-      const tokensIssued = ethAmount * baseRate * revnetPercentage // 0.38 ETH times 100k = 38k tokens
-      return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 23,560
+      const revnetAllocation = (100 - partnerSplitPercentage) / 100 // 0.38 for 62% partner split
+      const tokensFromRevnet = ethAmount * baseRate * revnetAllocation // 38% of ETH value in tokens
+      return tokensFromRevnet * USER_PERCENT // User gets 62% of issued tokens
     }
     
     // Markee Cooperative model: 100% goes to RevNet
-    const tokensIssued = ethAmount * baseRate // 1 ETH times 100k = 100k tokens
-    return tokensIssued * USER_PERCENT // User gets 62% of those tokens = 62,000
+    const tokensIssued = ethAmount * baseRate // Full ETH value in tokens
+    return tokensIssued * USER_PERCENT // User gets 62% of those tokens
   }
 
   // Read minimum price and max message length from strategy
@@ -128,7 +128,7 @@ export function TopDawgModal({
     
     try {
       const amountWei = parseEther(amount)
-      const estimatedGas = parseEther('0.001') // Rough estimate for gas
+      const estimatedGas = parseEther('0.0005') // Base L2 has lower gas costs
       const totalNeeded = amountWei + estimatedGas
       
       return balanceData.value >= totalNeeded
@@ -142,11 +142,12 @@ export function TopDawgModal({
     
     try {
       const amountWei = parseEther(amount)
-      const estimatedGas = parseEther('0.001')
+      const estimatedGas = parseEther('0.0005')
       const totalNeeded = amountWei + estimatedGas
       
       if (balanceData.value < totalNeeded) {
-        return `You don't have enough ETH to complete this transaction.`
+        const shortage = formatEther(totalNeeded - balanceData.value)
+        return `You need ${parseFloat(shortage).toFixed(4)} more ETH to complete this transaction (including gas).`
       }
     } catch {
       return 'Invalid amount entered'
@@ -375,7 +376,7 @@ export function TopDawgModal({
 
         {/* Content */}
         <div className="p-6">
-        {!isConnected ? (
+          {!isConnected ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
