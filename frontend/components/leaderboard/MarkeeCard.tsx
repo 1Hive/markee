@@ -1,7 +1,7 @@
 'use client'
 
 import { formatEth, formatAddress } from '@/lib/utils'
-import { Eye, ArrowRightLeft, SmilePlus } from 'lucide-react'
+import { Eye, ArrowRightLeft, SmilePlus, TrendingUp } from 'lucide-react'
 import Image from 'next/image'
 import type { Markee, EmojiReaction } from '@/types'
 import { useState } from 'react'
@@ -21,6 +21,7 @@ interface MarkeeCardProps {
   messageViews?: number
   totalViews?: number
   reactions?: EmojiReaction[]
+  topFundsAdded?: bigint // Optional: current top message's totalFundsAdded for competitive display
 }
 
 const ALL_EMOJIS = ['❤️', '👍', '👎', '💯', '😂', '🎉', '😮', '💩', '😠', '🚀', '👑', '🤔', '🪧']
@@ -48,6 +49,34 @@ function getMedalEmoji(rank: number): string {
   if (rank === 2) return '🥈'
   if (rank === 3) return '🥉'
   return ''
+}
+
+// Helper to calculate amount needed to reach #1
+function AmountToTop({ 
+  currentFunds, 
+  topFunds, 
+  rank, 
+  size 
+}: { 
+  currentFunds: bigint
+  topFunds?: bigint
+  rank: number
+  size: string
+}) {
+  // Don't show for #1 or if no top funds data
+  if (rank === 1 || !topFunds) return null
+
+  const difference = topFunds - currentFunds
+  if (difference <= 0n) return null
+
+  const textSize = size === 'large' ? 'text-xs' : 'text-[10px]'
+
+  return (
+    <div className={`flex items-center gap-1 ${textSize} text-[#7C9CFF]`}>
+      <TrendingUp size={size === 'large' ? 12 : 10} className="opacity-60" />
+      <span>+{formatEth(difference)} ETH to #1</span>
+    </div>
+  )
 }
 
 // Emoji Reactions Display - Discord-style inline reactions
@@ -279,7 +308,8 @@ export function MarkeeCard({
   onRemoveReaction,
   messageViews, 
   totalViews,
-  reactions
+  reactions,
+  topFundsAdded
 }: MarkeeCardProps) {
   const { address } = useAccount()
   const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
@@ -363,6 +393,12 @@ export function MarkeeCard({
               size={size}
             />
 
+            {/* #1 spot indicator */}
+            <div className="flex items-center gap-1 text-sm text-[#F897FE] font-semibold">
+              <Emoji className="text-base">👑</Emoji>
+              <span>Top Spot</span>
+            </div>
+
             <button 
               onClick={() => onAddFunds?.(markee)}
               className="text-xs px-3 py-1.5 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
@@ -425,7 +461,7 @@ export function MarkeeCard({
 
         {/* Stats and Actions at bottom */}
         <div className="pt-3 border-t border-[#8A8FBF]/20">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <MarkeeStats 
                 messageViews={messageViews}
@@ -435,33 +471,43 @@ export function MarkeeCard({
                 size={size}
               />
 
+              {/* Amount needed to reach #1 */}
+              <AmountToTop 
+                currentFunds={markee.totalFundsAdded}
+                topFunds={topFundsAdded}
+                rank={rank}
+                size={size}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 justify-between">
               <button 
                 onClick={() => onAddFunds?.(markee)}
                 className="text-xs px-2 py-1 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
               >
                 Add Funds
               </button>
-            </div>
 
-            <div className="flex items-center gap-2 justify-between sm:justify-start">
-              {isOwner && (
-                <button 
-                  onClick={() => onEditMessage?.(markee)}
-                  className="text-xs px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
-                >
-                  Edit Message
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {isOwner && (
+                  <button 
+                    onClick={() => onEditMessage?.(markee)}
+                    className="text-xs px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
+                  >
+                    Edit Message
+                  </button>
+                )}
 
-              <EmojiDisplay
-                reactions={reactions}
-                markee={markee}
-                onReact={onReact}
-                userAddress={userAddress}
-                hasMinBalance={hasMinBalance}
-                size={size}
-                isCardHovering={isCardHovering}
-              />
+                <EmojiDisplay
+                  reactions={reactions}
+                  markee={markee}
+                  onReact={onReact}
+                  userAddress={userAddress}
+                  hasMinBalance={hasMinBalance}
+                  size={size}
+                  isCardHovering={isCardHovering}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -508,33 +554,43 @@ export function MarkeeCard({
                 size={size}
               />
 
+              {/* Amount needed to reach #1 */}
+              <AmountToTop 
+                currentFunds={markee.totalFundsAdded}
+                topFunds={topFundsAdded}
+                rank={rank}
+                size={size}
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 justify-between">
               <button 
                 onClick={() => onAddFunds?.(markee)}
                 className="text-[10px] px-2 py-1 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
               >
                 Add Funds
               </button>
-            </div>
 
-            <div className="flex items-center gap-1.5 justify-between">
-              {isOwner && (
-                <button 
-                  onClick={() => onEditMessage?.(markee)}
-                  className="text-[10px] px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
-                >
-                  Edit Message
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {isOwner && (
+                  <button 
+                    onClick={() => onEditMessage?.(markee)}
+                    className="text-[10px] px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
+                  >
+                    Edit Message
+                  </button>
+                )}
 
-              <EmojiDisplay
-                reactions={reactions}
-                markee={markee}
-                onReact={onReact}
-                userAddress={userAddress}
-                hasMinBalance={hasMinBalance}
-                size={size}
-                isCardHovering={isCardHovering}
-              />
+                <EmojiDisplay
+                  reactions={reactions}
+                  markee={markee}
+                  onReact={onReact}
+                  userAddress={userAddress}
+                  hasMinBalance={hasMinBalance}
+                  size={size}
+                  isCardHovering={isCardHovering}
+                />
+              </div>
             </div>
           </div>
         </div>
