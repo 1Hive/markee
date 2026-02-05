@@ -18,6 +18,7 @@ interface TopDawgModalProps {
   strategyAddress?: `0x${string}` // Optional: for partner strategies
   partnerName?: string // Optional: partner display name
   partnerSplitPercentage?: number // Optional: percentage going to partner (e.g., 62 for 62%)
+  topFundsAdded?: bigint // Optional: current top message's totalFundsAdded for competitive display
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
@@ -30,7 +31,8 @@ export function TopDawgModal({
   onSuccess, 
   strategyAddress: customStrategyAddress,
   partnerName,
-  partnerSplitPercentage
+  partnerSplitPercentage,
+  topFundsAdded
 }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -472,6 +474,24 @@ export function TopDawgModal({
                       <p className="text-xs text-[#8A8FBF] mt-1">
                         Your Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
                       </p>
+                    )}
+                    {topFundsAdded && topFundsAdded > 0n && (
+                      <div className="flex items-center justify-between mt-2 text-xs">
+                        <p className="text-[#7C9CFF]">
+                          🏆 Top spot: {parseFloat(formatEther(topFundsAdded)).toFixed(4)} ETH
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const beatAmount = (parseFloat(formatEther(topFundsAdded)) * 1.05).toFixed(4)
+                            setAmount(beatAmount)
+                          }}
+                          className="text-[#F897FE] hover:text-[#F897FE]/80 font-semibold transition-colors"
+                          disabled={isPending || isConfirming}
+                        >
+                          Beat by 5% →
+                        </button>
+                      </div>
                     )}
                   </div>
 
