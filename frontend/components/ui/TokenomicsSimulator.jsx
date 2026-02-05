@@ -150,37 +150,34 @@ const TokenomicsSimulator = () => {
       const monthlyInvestment = getPhaseInvestment(month);
       if (monthlyInvestment > 0) {
         const investmentInEth = monthlyInvestment / params.ethPrice;
+        // Only RevNet portion goes to treasury (100% for seed funding, no partner split)
         treasuryBalance += monthlyInvestment;
         
+        // All seed funding goes to RevNet and mints tokens
         const investmentTokensIssued = investmentInEth * currentPrice;
-        // Seed funding has no partner allocation, same as non-partner revenue
-        seedFunderTokens += investmentTokensIssued * 0.62; // 62% to seed funders
-        cooperativeTokens += investmentTokensIssued * 0.38; // 38% to cooperative
+        seedFunderTokens += investmentTokensIssued; // All tokens to seed funders
       }
       
       // Calculate monthly revenue with growth
       const monthlyRevenue = params.initialRevenue * Math.pow(1 + params.revenueGrowthRate / 100, month);
       const revenueInEth = monthlyRevenue / params.ethPrice;
       
-      // Revenue adds to treasury
-      treasuryBalance += monthlyRevenue;
-      
-      // Calculate revenue split (100% platform partner)
+      // Calculate revenue split (100% platform partner revenue)
       const partnerRevenue = revenueInEth * (partnerRevenuePercent / 100);
       const nonPartnerRevenue = revenueInEth * (1 - partnerRevenuePercent / 100);
       
-      // Tokens issued from revenue
-      const partnerTokensIssued = partnerRevenue * currentPrice;
+      // For PARTNER revenue: 62% to partner directly (no tokens), 38% to RevNet (mints tokens)
+      const partnerDirectShare = partnerRevenue * 0.62; // Goes to partner wallet
+      const partnerRevnetShare = partnerRevenue * 0.38; // Goes to RevNet, mints tokens
+      treasuryBalance += (partnerRevnetShare * params.ethPrice); // Only RevNet share adds to treasury
+      
+      const partnerTokensIssued = partnerRevnetShare * currentPrice;
+      customerTokens += partnerTokensIssued; // All tokens from partner payments go to customers
+      
+      // For NON-PARTNER revenue: 100% to RevNet (mints tokens)
+      treasuryBalance += (nonPartnerRevenue * params.ethPrice);
       const nonPartnerTokensIssued = nonPartnerRevenue * currentPrice;
-      
-      // Distribute partner revenue tokens (62% customers, 25.84% platform, 12.16% coop)
-      customerTokens += partnerTokensIssued * 0.62;
-      platformTokens += partnerTokensIssued * 0.2584; // 68% of 38%
-      cooperativeTokens += partnerTokensIssued * 0.1216; // 32% of 38%
-      
-      // Distribute non-partner revenue tokens (62% customers, 38% coop)
-      customerTokens += nonPartnerTokensIssued * 0.62;
-      cooperativeTokens += nonPartnerTokensIssued * 0.38;
+      customerTokens += nonPartnerTokensIssued; // All tokens go to customers
       
       // Calculate total supply BEFORE redemptions
       const totalSupply = growthFundTokens + cooperativeTokens + platformTokens + customerTokens + seedFunderTokens;
