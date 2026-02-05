@@ -19,7 +19,7 @@ contract TopDawgStrategy {
     string public instanceName;  // Identifies this specific instance (e.g., "Markee Top Dawg", "Gardens Top Dawg")
     address public adminAddress;
     address public beneficiaryAddress;
-    uint256 public percentToBeneficiary; // In basis points (6800 = 68%)
+    uint256 public percentToBeneficiary; // In basis points (6200 = 62%)
     uint256 public minimumPrice;
     uint256 public maxMessageLength;
     uint256 public maxNameLength;
@@ -103,7 +103,7 @@ contract TopDawgStrategy {
         instanceName = _instanceName;
         adminAddress = _adminAddress;
         beneficiaryAddress = _beneficiaryAddress;
-        percentToBeneficiary = 6800; // 68% in basis points
+        percentToBeneficiary = 6200; // 62% in basis points
         minimumPrice = _minimumPrice;
         maxMessageLength = _maxMessageLength;
         maxNameLength = _maxNameLength;
