@@ -85,7 +85,12 @@ export default function EcosystemPage() {
           )}
 
           {/* Partner Reserve Distributor - moved below partner cards */}
-          <PartnerReserveDistributor />
+          <PartnerReserveDistributor 
+            partners={partnerData.map(({ partner }) => ({
+              name: partner.name,
+              strategyAddress: partner.strategyAddress,
+            }))}
+          />
         </div>
       </section>
 
