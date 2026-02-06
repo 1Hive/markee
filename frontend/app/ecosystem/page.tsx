@@ -6,6 +6,7 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { PartnerMarkeeCard } from '@/components/ecosystem/PartnerMarkeeCard'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { PartnerReserveDistributor } from '@/components/ecosystem/PartnerReserveDistributor'
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 
 export default function EcosystemPage() {
@@ -46,6 +47,9 @@ export default function EcosystemPage() {
 
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Partner Reserve Distributor */}
+          <PartnerReserveDistributor />
+
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
           <p className="text-[#8A8FBF] mb-8">
             Markee is under construction on these sites - buy a message from your favorite!
