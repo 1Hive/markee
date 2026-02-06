@@ -63,7 +63,17 @@ export const PARTNERS = [
     fundingSplit: '62% to Giveth / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
     isCooperative: false
-  }
+  },
+    {
+    slug: 'flow-state',
+    name: 'Flow State', 
+    description: 'Continuous funding apps, incentive systems & governance mechanisms',
+    strategyAddress: '0x24512EE8E5f9138e2Bfca0c8253e7525035f4989',  
+    logo: '/partners/flowstate.png',
+    fundingSplit: '62% to Flow State / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
+    isCooperative: false
+  },
 ] as const
 
 interface PartnerData {
