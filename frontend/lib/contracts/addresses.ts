@@ -72,6 +72,10 @@ export const CONTRACTS = {
         name: 'Giveth Top Dawg',
         address: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431' as const,
       },
+      {
+        name: 'Flow State Top Dawg',
+        address: '0x24512EE8E5f9138e2Bfca0c8253e7525035f4989' as const,
+      },
     ],
   },
 } as const
