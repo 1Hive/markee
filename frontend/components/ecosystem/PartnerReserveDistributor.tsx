@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { formatUnits } from 'viem'
+import { useState, useEffect } from 'react'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi'
+import { formatUnits, parseAbiItem } from 'viem'
 import { base } from 'wagmi/chains'
 import { MARKEE_TOKEN, PARTNER_RESERVE_DISTRIBUTOR } from '@/lib/contracts/addresses'
 
@@ -50,6 +50,8 @@ interface PartnerReserveDistributorProps {
 export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistributorProps) {
   const { isConnected } = useAccount()
   const [showPreview, setShowPreview] = useState(false)
+  const [totalDistributed, setTotalDistributed] = useState<bigint>(0n)
+  const publicClient = usePublicClient({ chainId: base.id })
 
   // Create a map of strategy addresses to partner names
   const strategyToName = partners.reduce((acc, partner) => {
@@ -84,6 +86,32 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
   })
+
+  // Fetch total distributed from past events
+  useEffect(() => {
+    const fetchTotalDistributed = async () => {
+      if (!publicClient) return
+
+      try {
+        const logs = await publicClient.getLogs({
+          address: PARTNER_RESERVE_DISTRIBUTOR,
+          event: parseAbiItem('event Distributed(uint256 totalAmount, uint256 totalFundsRaised, uint256 partnerCount, uint256 timestamp)'),
+          fromBlock: 'earliest',
+          toBlock: 'latest',
+        })
+
+        const total = logs.reduce((sum, log) => {
+          return sum + (log.args.totalAmount || 0n)
+        }, 0n)
+
+        setTotalDistributed(total)
+      } catch (err) {
+        console.error('Error fetching distribution history:', err)
+      }
+    }
+
+    fetchTotalDistributed()
+  }, [publicClient, isSuccess]) // Refetch when a new distribution succeeds
 
   // Refetch balance after successful distribution
   if (isSuccess) {
@@ -155,7 +183,25 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
       {/* Preview Section */}
       {showPreview && preview && preview[0].length > 0 && (
         <div className="mt-8 pt-6 border-t border-[#7C9CFF]/30">
-          <h4 className="text-sm font-semibold text-[#EDEEFF] mb-4 text-center">Distribution Preview</h4>
+          <h4 className="text-sm font-semibold text-[#EDEEFF] mb-4 text-center">Distribution Details</h4>
+          
+          {/* Summary Stats */}
+          <div className="mb-6 grid grid-cols-2 gap-4 text-center">
+            <div>
+              <p className="text-xs text-[#8A8FBF] mb-1">Available Now</p>
+              <p className="text-lg font-bold text-[#7C9CFF]">
+                {parseFloat(balanceFormatted).toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[#8A8FBF] mb-1">Total Distributed</p>
+              <p className="text-lg font-bold text-[#7C9CFF]">
+                {parseFloat(formatUnits(totalDistributed, 18)).toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          {/* Partner Breakdown */}
           <div className="space-y-2">
             {preview[0]
               .map((strategy, index) => ({
