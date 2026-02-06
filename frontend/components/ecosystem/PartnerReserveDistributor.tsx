@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi'
-import { formatUnits, parseAbiItem } from 'viem'
+import { formatUnits } from 'viem'
 import { base } from 'wagmi/chains'
 import { MARKEE_TOKEN, PARTNER_RESERVE_DISTRIBUTOR } from '@/lib/contracts/addresses'
 
@@ -25,6 +25,17 @@ const DISTRIBUTOR_ABI = [
     ],
     stateMutability: 'view',
     type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: false, internalType: 'uint256', name: 'totalAmount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'totalFundsRaised', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'partnerCount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'Distributed',
+    type: 'event',
   },
 ] as const
 
@@ -93,17 +104,27 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
       if (!publicClient) return
 
       try {
+        // Small delay to ensure events are indexed after distribution
+        if (isSuccess) {
+          await new Promise(resolve => setTimeout(resolve, 3000))
+        }
+
         const logs = await publicClient.getLogs({
           address: PARTNER_RESERVE_DISTRIBUTOR,
-          event: parseAbiItem('event Distributed(uint256 totalAmount, uint256 totalFundsRaised, uint256 partnerCount, uint256 timestamp)'),
-          fromBlock: 'earliest',
+          event: DISTRIBUTOR_ABI[2], // Distributed event
+          fromBlock: 0n,
           toBlock: 'latest',
         })
 
+        console.log('Distributed events found:', logs.length)
+        
         const total = logs.reduce((sum, log) => {
-          return sum + (log.args.totalAmount || 0n)
+          const amount = log.args.totalAmount || 0n
+          console.log('Distribution amount:', amount.toString())
+          return sum + amount
         }, 0n)
 
+        console.log('Total distributed:', total.toString())
         setTotalDistributed(total)
       } catch (err) {
         console.error('Error fetching distribution history:', err)
