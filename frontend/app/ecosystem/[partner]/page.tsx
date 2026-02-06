@@ -65,14 +65,6 @@ export default function PartnerPage() {
   const params = useParams()
   const { address } = useAccount()
   
-  // DEBUG: Log all partners on component mount
-  console.log('🔍 [PARTNERS] All available partners:', PARTNERS.map(p => ({
-    slug: p.slug,
-    name: p.name,
-    address: p.strategyAddress
-  })))
-  console.log('🔍 [PARAMS] URL param:', params.partner)
-  
   // Reactions hook
   const {
     reactions,
@@ -93,32 +85,10 @@ export default function PartnerPage() {
 
   // Find the partner
   const partner = PARTNERS.find(p => p.slug === params.partner)
-  
-  // DEBUG: Log partner match result
-  if (partner) {
-    console.log('✅ [PARTNER FOUND]:', {
-      slug: partner.slug,
-      name: partner.name,
-      strategyAddress: partner.strategyAddress,
-      isCooperative: partner.isCooperative
-    })
-  } else {
-    console.log('❌ [PARTNER NOT FOUND] for slug:', params.partner)
-  }
 
   // Fetch markees for this partner from subgraph
   const fetchMarkees = useCallback(async () => {
-    if (!partner) {
-      console.log('⚠️ [FETCH] Skipping - no partner')
-      return
-    }
-
-    console.log('🔄 [FETCH START]:', {
-      partnerName: partner.name,
-      partnerSlug: partner.slug,
-      strategyAddress: partner.strategyAddress,
-      isCooperative: partner.isCooperative
-    })
+    if (!partner) return
 
     try {
       setIsLoading(true)
@@ -134,12 +104,6 @@ export default function PartnerPage() {
       const query = partner.isCooperative ? COOPERATIVE_ALL_MARKEES_QUERY : PARTNER_ALL_MARKEES_QUERY
       const variables = partner.isCooperative ? {} : { strategyId: partner.strategyAddress.toLowerCase() }
 
-      console.log('🔍 [QUERY]:', {
-        query: query.split('\n')[0], // First line of query
-        variables,
-        subgraphUrl: subgraphUrl.substring(0, 50) + '...'
-      })
-
       const response = await fetch(subgraphUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -152,15 +116,8 @@ export default function PartnerPage() {
 
       const result = await response.json()
 
-      console.log('📥 [RESPONSE]:', {
-        hasErrors: !!result.errors,
-        errors: result.errors,
-        hasData: !!result.data,
-        dataKeys: result.data ? Object.keys(result.data) : []
-      })
-
       if (result.errors) {
-        console.error('❌ [GRAPHQL ERRORS]:', result.errors)
+        console.error('GraphQL errors:', result.errors)
         throw new Error(result.errors[0]?.message || 'GraphQL query failed')
       }
 
@@ -168,21 +125,7 @@ export default function PartnerPage() {
         ? result.data?.topDawgStrategy
         : result.data?.topDawgPartnerStrategy
 
-      console.log('🔍 [STRATEGY DATA]:', {
-        hasStrategyData: !!strategyData,
-        totalFundsRaised: strategyData?.totalFundsRaised,
-        totalMarkeesCreated: strategyData?.totalMarkeesCreated,
-        hasMarkees: !!strategyData?.markees,
-        markeesLength: strategyData?.markees?.length,
-        firstMarkee: strategyData?.markees?.[0] ? {
-          address: strategyData.markees[0].address,
-          message: strategyData.markees[0].message,
-          name: strategyData.markees[0].name
-        } : null
-      })
-
       if (!strategyData || !strategyData.markees) {
-        console.log('⚠️ [NO DATA] Setting empty markees array')
         setMarkees([])
         setLastUpdated(new Date())
         setIsLoading(false)
@@ -201,47 +144,19 @@ export default function PartnerPage() {
         chainId: CANONICAL_CHAIN_ID
       }))
 
-      console.log('✅ [TRANSFORMED]:', {
-        transformedCount: transformedMarkees.length,
-        firstTransformed: transformedMarkees[0] ? {
-          address: transformedMarkees[0].address,
-          message: transformedMarkees[0].message,
-          name: transformedMarkees[0].name,
-          totalFundsAdded: transformedMarkees[0].totalFundsAdded.toString()
-        } : null
-      })
-
       setMarkees(transformedMarkees)
       setLastUpdated(new Date())
-      
-      console.log('✅ [STATE SET] Markees state updated with', transformedMarkees.length, 'items')
     } catch (err) {
-      console.error('❌ [FETCH ERROR]:', err)
+      console.error('Error fetching markees:', err)
       setError(err instanceof Error ? err : new Error('Failed to fetch markees'))
     } finally {
       setIsLoading(false)
-      console.log('🏁 [FETCH COMPLETE] isLoading set to false')
     }
   }, [partner])
 
   useEffect(() => {
-    console.log('🎬 [EFFECT] Running fetchMarkees')
     fetchMarkees()
   }, [fetchMarkees])
-
-  // DEBUG: Log markees state changes
-  useEffect(() => {
-    console.log('📊 [STATE UPDATE] markees:', {
-      length: markees.length,
-      isLoading,
-      hasError: !!error,
-      markees: markees.map(m => ({
-        address: m.address,
-        message: m.message,
-        name: m.name
-      }))
-    })
-  }, [markees, isLoading, error])
 
   const handleCreateNew = () => {
     setSelectedMarkee(null)
