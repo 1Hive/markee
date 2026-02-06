@@ -131,7 +131,7 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
               onClick={() => setShowPreview(!showPreview)}
               className="px-6 py-3 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] rounded-lg hover:bg-[#7C9CFF]/10 transition-colors font-semibold min-w-[160px]"
             >
-              {showPreview ? 'Hide Preview' : 'Preview Distribution'}
+              {showPreview ? 'Hide Details' : 'Show Details'}
             </button>
           </div>
         )}
@@ -141,7 +141,7 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
         )}
 
         <p className="text-sm text-[#8A8FBF]">
-          Learn how the community reserve is distributed on the{' '}
+          Learn about the community reserve on the{' '}
           <a 
             href="https://www.markee.xyz/owners" 
             className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors underline"
