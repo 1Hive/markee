@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi'
+import { useState } from 'react'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { formatUnits } from 'viem'
 import { base } from 'wagmi/chains'
 import { MARKEE_TOKEN, PARTNER_RESERVE_DISTRIBUTOR } from '@/lib/contracts/addresses'
@@ -25,17 +25,6 @@ const DISTRIBUTOR_ABI = [
     ],
     stateMutability: 'view',
     type: 'function',
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: false, internalType: 'uint256', name: 'totalAmount', type: 'uint256' },
-      { indexed: false, internalType: 'uint256', name: 'totalFundsRaised', type: 'uint256' },
-      { indexed: false, internalType: 'uint256', name: 'partnerCount', type: 'uint256' },
-      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
-    ],
-    name: 'Distributed',
-    type: 'event',
   },
 ] as const
 
@@ -61,8 +50,6 @@ interface PartnerReserveDistributorProps {
 export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistributorProps) {
   const { isConnected } = useAccount()
   const [showPreview, setShowPreview] = useState(false)
-  const [totalDistributed, setTotalDistributed] = useState<bigint>(0n)
-  const publicClient = usePublicClient({ chainId: base.id })
 
   // Create a map of strategy addresses to partner names
   const strategyToName = partners.reduce((acc, partner) => {
@@ -98,42 +85,6 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
     hash,
   })
 
-  // Fetch total distributed from past events
-  useEffect(() => {
-    const fetchTotalDistributed = async () => {
-      if (!publicClient) return
-
-      try {
-        // Small delay to ensure events are indexed after distribution
-        if (isSuccess) {
-          await new Promise(resolve => setTimeout(resolve, 3000))
-        }
-
-        const logs = await publicClient.getLogs({
-          address: PARTNER_RESERVE_DISTRIBUTOR,
-          event: DISTRIBUTOR_ABI[2], // Distributed event
-          fromBlock: 0n,
-          toBlock: 'latest',
-        })
-
-        console.log('Distributed events found:', logs.length)
-        
-        const total = logs.reduce((sum, log) => {
-          const amount = log.args.totalAmount || 0n
-          console.log('Distribution amount:', amount.toString())
-          return sum + amount
-        }, 0n)
-
-        console.log('Total distributed:', total.toString())
-        setTotalDistributed(total)
-      } catch (err) {
-        console.error('Error fetching distribution history:', err)
-      }
-    }
-
-    fetchTotalDistributed()
-  }, [publicClient, isSuccess]) // Refetch when a new distribution succeeds
-
   // Refetch balance after successful distribution
   if (isSuccess) {
     refetchBalance()
@@ -157,13 +108,9 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
         <h3 className="text-xl font-bold text-[#EDEEFF] mb-3">Partner Reserve Pool</h3>
         
         <p className="text-[#8A8FBF] mb-6">
-          {hasBalance ? (
-            <span className="text-3xl font-bold text-[#7C9CFF] block">
-              {parseFloat(balanceFormatted).toFixed(2)} MARKEE
-            </span>
-          ) : (
-            'No MARKEE available for distribution'
-          )}
+          <span className="text-3xl font-bold text-[#7C9CFF] block">
+            {Math.floor(parseFloat(balanceFormatted))} MARKEE
+          </span>
         </p>
 
         {hasBalance && (
@@ -186,7 +133,7 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
         )}
 
         {!isConnected && hasBalance && (
-          <p className="text-sm text-[#8A8FBF] mb-4">Connect wallet to distribute</p>
+          <p className="text-sm text-[#7C9CFF] font-semibold mb-4">Connect wallet to distribute</p>
         )}
 
         <p className="text-sm text-[#8A8FBF]">
@@ -202,71 +149,62 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
       </div>
 
       {/* Preview Section */}
-      {showPreview && preview && preview[0].length > 0 && (
+      {showPreview && (
         <div className="mt-8 pt-6 border-t border-[#7C9CFF]/30">
-          <h4 className="text-sm font-semibold text-[#EDEEFF] mb-4 text-center">Distribution Details</h4>
+          <h4 className="text-sm font-semibold text-[#EDEEFF] mb-4 text-center">
+            Tokens available to distribute
+          </h4>
           
-          {/* Summary Stats */}
-          <div className="mb-6 grid grid-cols-2 gap-4 text-center">
-            <div>
-              <p className="text-xs text-[#8A8FBF] mb-1">Available Now</p>
-              <p className="text-lg font-bold text-[#7C9CFF]">
-                {parseFloat(balanceFormatted).toFixed(2)}
-              </p>
+          {!hasBalance ? (
+            <p className="text-center text-[#8A8FBF] text-sm">
+              No Reserve tokens to distribute
+            </p>
+          ) : preview && preview[0].length > 0 ? (
+            <div className="space-y-2">
+              {preview[0]
+                .map((strategy, index) => ({
+                  strategy,
+                  beneficiary: preview[1][index],
+                  amount: preview[2][index],
+                  index,
+                }))
+                .filter(item => item.amount > 0n)
+                .sort((a, b) => {
+                  // Sort by amount, highest first
+                  if (a.amount > b.amount) return -1
+                  if (a.amount < b.amount) return 1
+                  return 0
+                })
+                .map(({ strategy, beneficiary, amount }) => {
+                  const partnerName = strategyToName[strategy.toLowerCase()]
+                  const beneficiaryShort = beneficiary.slice(-4)
+                  
+                  return (
+                    <div key={strategy} className="flex justify-between items-center text-sm gap-4">
+                      <span className="text-[#8A8FBF]">
+                        {partnerName || (
+                          <span className="font-mono">
+                            {strategy.slice(0, 6)}...{strategy.slice(-4)}
+                          </span>
+                        )}
+                        {' '}
+                        <a
+                          href={`https://basescan.org/address/${beneficiary}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors font-mono"
+                        >
+                          ...{beneficiaryShort}
+                        </a>
+                      </span>
+                      <span className="text-[#7C9CFF] font-semibold whitespace-nowrap">
+                        {parseFloat(formatUnits(amount, 18)).toFixed(2)} MARKEE
+                      </span>
+                    </div>
+                  )
+                })}
             </div>
-            <div>
-              <p className="text-xs text-[#8A8FBF] mb-1">Total Distributed</p>
-              <p className="text-lg font-bold text-[#7C9CFF]">
-                {parseFloat(formatUnits(totalDistributed, 18)).toFixed(2)}
-              </p>
-            </div>
-          </div>
-
-          {/* Partner Breakdown */}
-          <div className="space-y-2">
-            {preview[0]
-              .map((strategy, index) => ({
-                strategy,
-                beneficiary: preview[1][index],
-                amount: preview[2][index],
-                index,
-              }))
-              .filter(item => item.amount > 0n)
-              .sort((a, b) => {
-                // Sort by amount, highest first
-                if (a.amount > b.amount) return -1
-                if (a.amount < b.amount) return 1
-                return 0
-              })
-              .map(({ strategy, beneficiary, amount }) => {
-                const partnerName = strategyToName[strategy.toLowerCase()]
-                const beneficiaryShort = beneficiary.slice(-4)
-                
-                return (
-                  <div key={strategy} className="flex justify-between items-center text-sm gap-4">
-                    <span className="text-[#8A8FBF]">
-                      {partnerName || (
-                        <span className="font-mono">
-                          {strategy.slice(0, 6)}...{strategy.slice(-4)}
-                        </span>
-                      )}
-                      {' '}
-                      <a
-                        href={`https://basescan.org/address/${beneficiary}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors font-mono"
-                      >
-                        ...{beneficiaryShort}
-                      </a>
-                    </span>
-                    <span className="text-[#7C9CFF] font-semibold whitespace-nowrap">
-                      {parseFloat(formatUnits(amount, 18)).toFixed(2)} MARKEE
-                    </span>
-                  </div>
-                )
-              })}
-          </div>
+          ) : null}
         </div>
       )}
 
