@@ -88,53 +88,59 @@ export function PartnerReserveDistributor() {
   const hasBalance = balance !== undefined && balance > 0n
 
   return (
-    <div className="bg-gradient-to-r from-[#7C9CFF]/10 to-[#F897FE]/10 border border-[#7C9CFF]/30 rounded-lg p-6 mb-8">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-bold text-[#EDEEFF] mb-2">Partner Reserve Pool</h3>
-          <p className="text-[#8A8FBF]">
-            {hasBalance ? (
-              <>
-                <span className="text-2xl font-bold text-[#7C9CFF]">{parseFloat(balanceFormatted).toFixed(4)} MARKEE</span>
-                {' '}ready to distribute to partners
-              </>
-            ) : (
-              'No MARKEE available for distribution'
-            )}
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {hasBalance && (
-            <>
-              <button
-                onClick={() => setShowPreview(!showPreview)}
-                className="px-4 py-2 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] rounded-lg hover:bg-[#7C9CFF]/10 transition-colors text-sm"
-              >
-                {showPreview ? 'Hide Preview' : 'Preview Distribution'}
-              </button>
-              
-              <button
-                onClick={handleDistribute}
-                disabled={!isConnected || isPending || isConfirming}
-                className="px-6 py-3 bg-[#7C9CFF] text-[#060A2A] rounded-lg font-semibold hover:bg-[#F897FE] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isPending || isConfirming ? 'Distributing...' : 'Distribute to Partners'}
-              </button>
-            </>
+    <div className="bg-gradient-to-r from-[#7C9CFF]/10 to-[#F897FE]/10 border border-[#7C9CFF]/30 rounded-lg p-8">
+      <div className="max-w-2xl mx-auto text-center">
+        <h3 className="text-xl font-bold text-[#EDEEFF] mb-3">Partner Reserve Pool</h3>
+        
+        <p className="text-[#8A8FBF] mb-2">
+          {hasBalance ? (
+            <span className="text-3xl font-bold text-[#7C9CFF] block mb-2">
+              {parseFloat(balanceFormatted).toFixed(2)} MARKEE
+            </span>
+          ) : (
+            'No MARKEE available for distribution'
           )}
+        </p>
 
-          {!isConnected && hasBalance && (
-            <p className="text-sm text-[#8A8FBF] text-center">Connect wallet to distribute</p>
-          )}
-        </div>
+        <p className="text-sm text-[#8A8FBF] mb-6">
+          Learn how the community reserve is distributed on the{' '}
+          <a 
+            href="https://www.markee.xyz/owners" 
+            className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors underline"
+          >
+            Owners page
+          </a>
+        </p>
+
+        {hasBalance && (
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="px-6 py-3 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] rounded-lg hover:bg-[#7C9CFF]/10 transition-colors font-semibold min-w-[160px]"
+            >
+              {showPreview ? 'Hide Preview' : 'Preview'}
+            </button>
+            
+            <button
+              onClick={handleDistribute}
+              disabled={!isConnected || isPending || isConfirming}
+              className="px-6 py-3 bg-[#7C9CFF] text-[#060A2A] rounded-lg font-semibold hover:bg-[#F897FE] transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px]"
+            >
+              {isPending || isConfirming ? 'Distributing...' : 'Distribute'}
+            </button>
+          </div>
+        )}
+
+        {!isConnected && hasBalance && (
+          <p className="text-sm text-[#8A8FBF] mt-4">Connect wallet to distribute</p>
+        )}
       </div>
 
       {/* Preview Section */}
       {showPreview && preview && preview[0].length > 0 && (
-        <div className="mt-6 pt-6 border-t border-[#7C9CFF]/30">
-          <h4 className="text-sm font-semibold text-[#EDEEFF] mb-3">Distribution Preview</h4>
-          <div className="space-y-2">
+        <div className="mt-8 pt-6 border-t border-[#7C9CFF]/30">
+          <h4 className="text-sm font-semibold text-[#EDEEFF] mb-4 text-center">Distribution Preview</h4>
+          <div className="space-y-2 max-w-md mx-auto">
             {preview[0].map((strategy, index) => {
               const amount = preview[2][index]
               if (amount === 0n) return null
@@ -145,7 +151,7 @@ export function PartnerReserveDistributor() {
                     {strategy.slice(0, 6)}...{strategy.slice(-4)}
                   </span>
                   <span className="text-[#7C9CFF] font-semibold">
-                    {parseFloat(formatUnits(amount, 18)).toFixed(4)} MARKEE
+                    {parseFloat(formatUnits(amount, 18)).toFixed(2)} MARKEE
                   </span>
                 </div>
               )
@@ -156,15 +162,15 @@ export function PartnerReserveDistributor() {
 
       {/* Success Message */}
       {isSuccess && (
-        <div className="mt-4 p-4 bg-[#7C9CFF]/20 border border-[#7C9CFF] rounded-lg">
-          <p className="text-[#7C9CFF] font-semibold">✓ Distribution successful!</p>
+        <div className="mt-6 p-4 bg-[#7C9CFF]/20 border border-[#7C9CFF] rounded-lg max-w-md mx-auto">
+          <p className="text-[#7C9CFF] font-semibold text-center">✓ Distribution successful!</p>
         </div>
       )}
 
       {/* Error Message */}
       {error && (
-        <div className="mt-4 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg">
-          <p className="text-[#FF8E8E] text-sm">{error.message}</p>
+        <div className="mt-6 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg max-w-md mx-auto">
+          <p className="text-[#FF8E8E] text-sm text-center">{error.message}</p>
         </div>
       )}
     </div>
