@@ -244,6 +244,47 @@ dataSources:
           handler: handlePercentToBeneficiaryUpdated
       file: ./src/topdawg-partner-strategy.ts    
 
+  # TopDawgPartnerStrategy - Flow State Platform
+  - kind: ethereum
+    name: TopDawgPartnerStrategyFlowState
+    network: base
+    source:
+      address: "0x24512EE8E5f9138e2Bfca0c8253e7525035f4989"
+      abi: TopDawgPartnerStrategy
+      startBlock: 41779645
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Markee
+        - TopDawgPartnerStrategy
+        - PartnerFundsAdded
+        - MessageUpdate
+        - NameUpdate
+        - GlobalStats
+      abis:
+        - name: TopDawgPartnerStrategy
+          file: ./abis/TopDawgPartnerStrategy.json
+        - name: Markee
+          file: ./abis/Markee.json
+      eventHandlers:
+        - event: MarkeeCreated(indexed address,indexed address,string,string,uint256,uint256,uint256)
+          handler: handlePartnerMarkeeCreated
+        - event: FundsAddedToMarkee(indexed address,indexed address,uint256,uint256,uint256,uint256,uint256)
+          handler: handlePartnerFundsAddedToMarkee
+        - event: MessageUpdated(indexed address,indexed address,string)
+          handler: handlePartnerMessageUpdated
+        - event: NameUpdated(indexed address,indexed address,string)
+          handler: handlePartnerNameUpdated
+        - event: InstanceNameUpdated(string,string)
+          handler: handlePartnerInstanceNameUpdated
+        - event: BeneficiaryAddressUpdated(indexed address,indexed address)
+          handler: handleBeneficiaryAddressUpdated
+        - event: PercentToBeneficiaryUpdated(uint256,uint256)
+          handler: handlePercentToBeneficiaryUpdated
+      file: ./src/topdawg-partner-strategy.ts    
+
   # FixedPriceStrategy 1 - hero message #1.
   - kind: ethereum
     name: FixedPriceStrategy1
