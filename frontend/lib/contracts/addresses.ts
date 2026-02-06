@@ -1,16 +1,14 @@
 // Contract addresses and configuration for Markee
 import { base, optimism, arbitrum, mainnet } from 'wagmi/chains'
-
 // All Markees are deployed on Base (canonical chain)
 export const CANONICAL_CHAIN = base
 export const CANONICAL_CHAIN_ID = base.id
-
 // JB Multi Terminal V5 (same across all chains)
 export const JB_TERMINAL = '0x2dB6d704058E552DeFE415753465df8dF0361846' as const
-
 // MARKEE token address (same across all chains)
 export const MARKEE_TOKEN = '0xee3027f1e021b09D629922D40436C5DeA3c6cb38' as const
-
+// Partner Reserve Distributor (Base only)
+export const PARTNER_RESERVE_DISTRIBUTOR = '0x7FD2aF60B309f872a2cDAcCa853A9F7885466577' as const
 // RevNet Project IDs per chain (MARKEE token)
 // Users receive tokens on the chain they pay from
 export const REVNET_CONFIG = {
@@ -31,7 +29,6 @@ export const REVNET_CONFIG = {
     terminal: JB_TERMINAL,
   },
 } as const
-
 // Strategy Contract Addresses (Base only - canonical chain)
 // All strategies and Markees exist on Base
 export const CONTRACTS = {
@@ -78,7 +75,6 @@ export const CONTRACTS = {
     ],
   },
 } as const
-
 // Helper to get all strategy addresses (useful for subgraph indexing)
 export function getAllStrategyAddresses(): string[] {
   const baseContracts = CONTRACTS[base.id]
@@ -87,11 +83,9 @@ export function getAllStrategyAddresses(): string[] {
     ...baseContracts.topDawgStrategies.map(s => s.address),
   ]
 }
-
 // Subgraph endpoints
 export const SUBGRAPH_URLS = {
   [base.id]: `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`,
 }
-
 // Type exports
 export type SupportedChainId = keyof typeof REVNET_CONFIG
