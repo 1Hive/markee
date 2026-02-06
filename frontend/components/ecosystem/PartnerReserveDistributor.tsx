@@ -1,11 +1,10 @@
-
 'use client'
 
 import { useState } from 'react'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { formatUnits } from 'viem'
 import { base } from 'wagmi/chains'
-import { MARKEE_TOKEN, PARTNER_RESERVE_DISTRIBUTOR } from '@/lib/addresses'
+import { MARKEE_TOKEN, PARTNER_RESERVE_DISTRIBUTOR } from '@/lib/contracts/addresses'
 
 const DISTRIBUTOR_ABI = [
   {
