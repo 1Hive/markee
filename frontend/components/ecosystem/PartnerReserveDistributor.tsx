@@ -157,27 +157,48 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
         <div className="mt-8 pt-6 border-t border-[#7C9CFF]/30">
           <h4 className="text-sm font-semibold text-[#EDEEFF] mb-4 text-center">Distribution Preview</h4>
           <div className="space-y-2">
-            {preview[0].map((strategy, index) => {
-              const amount = preview[2][index]
-              if (amount === 0n) return null
-              
-              const partnerName = strategyToName[strategy.toLowerCase()]
-              
-              return (
-                <div key={strategy} className="flex justify-between items-center text-sm gap-4">
-                  <span className="text-[#8A8FBF]">
-                    {partnerName || (
-                      <span className="font-mono">
-                        {strategy.slice(0, 6)}...{strategy.slice(-4)}
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-[#7C9CFF] font-semibold whitespace-nowrap">
-                    {parseFloat(formatUnits(amount, 18)).toFixed(2)} MARKEE
-                  </span>
-                </div>
-              )
-            })}
+            {preview[0]
+              .map((strategy, index) => ({
+                strategy,
+                beneficiary: preview[1][index],
+                amount: preview[2][index],
+                index,
+              }))
+              .filter(item => item.amount > 0n)
+              .sort((a, b) => {
+                // Sort by amount, highest first
+                if (a.amount > b.amount) return -1
+                if (a.amount < b.amount) return 1
+                return 0
+              })
+              .map(({ strategy, beneficiary, amount }) => {
+                const partnerName = strategyToName[strategy.toLowerCase()]
+                const beneficiaryShort = beneficiary.slice(-4)
+                
+                return (
+                  <div key={strategy} className="flex justify-between items-center text-sm gap-4">
+                    <span className="text-[#8A8FBF]">
+                      {partnerName || (
+                        <span className="font-mono">
+                          {strategy.slice(0, 6)}...{strategy.slice(-4)}
+                        </span>
+                      )}
+                      {' '}
+                      <a
+                        href={`https://basescan.org/address/${beneficiary}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors font-mono"
+                      >
+                        ...{beneficiaryShort}
+                      </a>
+                    </span>
+                    <span className="text-[#7C9CFF] font-semibold whitespace-nowrap">
+                      {parseFloat(formatUnits(amount, 18)).toFixed(2)} MARKEE
+                    </span>
+                  </div>
+                )
+              })}
           </div>
         </div>
       )}
