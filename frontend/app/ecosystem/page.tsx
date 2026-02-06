@@ -47,9 +47,6 @@ export default function EcosystemPage() {
 
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Partner Reserve Distributor */}
-          <PartnerReserveDistributor />
-
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
           <p className="text-[#8A8FBF] mb-8">
             Markee is under construction on these sites - buy a message from your favorite!
@@ -73,7 +70,7 @@ export default function EcosystemPage() {
               <p className="text-[#8A8FBF] text-lg">No partners yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
               {partnerData.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
                 <PartnerMarkeeCard
                   key={partner.slug}
@@ -86,6 +83,9 @@ export default function EcosystemPage() {
               ))}
             </div>
           )}
+
+          {/* Partner Reserve Distributor - moved below partner cards */}
+          <PartnerReserveDistributor />
         </div>
       </section>
 
