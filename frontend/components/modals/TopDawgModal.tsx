@@ -417,7 +417,7 @@ export function TopDawgModal({
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Tell us how you really feel..."
+                      placeholder="Tell the world how you really feel..."
                       className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
                       rows={3}
                       maxLength={maxMessageLength ? Number(maxMessageLength) : undefined}
