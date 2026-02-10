@@ -77,7 +77,7 @@ export const PARTNERS = [
     {
     slug: 'superfluid',
     name: 'Superfluid', 
-    description: 'Protocol for money streaming',
+    description: 'Protocol for money streaming - send and receive tokens continuously',
     strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',  
     logo: '/partners/superfluid.png',
     fundingSplit: '62% to Superfluid / 38% to Markee Cooperative',
