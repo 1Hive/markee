@@ -215,13 +215,14 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
           <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a website near you...</p>
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-6">
             <PartnerCard logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
             <PartnerCard logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
             <PartnerCard logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
             <PartnerCard logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
             <PartnerCard logo="/partners/giveth.png" name="Giveth" description="Fundraising Platform" />
             <PartnerCard logo="/partners/flowstate.png" name="Flow State" description="Continuous Funding" />
+            <PartnerCard logo="/partners/superfluid.png" name="Superfluid" description="Streaming Protocol" />
           </div>
         </div>
       </section>
