@@ -89,7 +89,8 @@ export function getAllStrategyAddresses(): string[] {
 }
 // Subgraph endpoints
 export const SUBGRAPH_URLS = {
-  [base.id]: `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`,
+  [base.id]: 'https://api.studio.thegraph.com/query/40814/markee-base/version/latest',
 }
+
 // Type exports
 export type SupportedChainId = keyof typeof REVNET_CONFIG
