@@ -79,8 +79,8 @@ export const PARTNERS = [
     name: 'Superfluid', 
     description: 'Protocol for money streaming',
     strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',  
-    logo: '/partners/flowstate.png',
-    fundingSplit: '62% to Flow State / 38% to Markee Cooperative',
+    logo: '/partners/superfluid.png',
+    fundingSplit: '62% to Superfluid / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
     isCooperative: false
   },
