@@ -285,7 +285,7 @@ dataSources:
           handler: handlePercentToBeneficiaryUpdated
       file: ./src/topdawg-partner-strategy.ts   
 
-  # TopDawgPartnerStrategy - Flow State Platform
+  # TopDawgPartnerStrategy - Superfluid Platform
   - kind: ethereum
     name: TopDawgPartnerStrategySuperfluid
     network: base
