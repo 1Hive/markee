@@ -19,7 +19,7 @@ export const MODERATION_DEFAULTS = {
   /** Text shown over blurred content */
   overlayText: '🚩 this message has been flagged by moderators',
   /** Allow users to click through and reveal flagged content */
-  allowReveal: true,
+  allowReveal: false,
   /** Text on the reveal button */
   revealText: 'Show flagged message',
 } as const
