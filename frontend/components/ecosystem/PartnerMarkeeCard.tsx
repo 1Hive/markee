@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 
 interface Partner {
   slug: string
@@ -62,22 +64,24 @@ export function PartnerMarkeeCard({
 
       {/* Winning Message Section */}
       {winningMarkee ? (
-        <Link 
-          href={`/markee/${winningMarkee.address}`} 
-          onClick={(e) => e.stopPropagation()}
-          className="block"
-        >
-          <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex items-center justify-center min-h-[120px]">
-            <div className="text-center w-full">
-              <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
-                {winningMarkee.message}
-              </p>
-              {winningMarkee.name && (
-                <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
-              )}
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={winningMarkee.address}>
+          <Link 
+            href={`/markee/${winningMarkee.address}`} 
+            onClick={(e) => e.stopPropagation()}
+            className="block"
+          >
+            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex items-center justify-center min-h-[120px]">
+              <div className="text-center w-full">
+                <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
+                  {winningMarkee.message}
+                </p>
+                {winningMarkee.name && (
+                  <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
+                )}
+              </div>
             </div>
-          </div>
-        </Link>
+          </Link>
+        </ModeratedContent>
       ) : (
         <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center">
           <div className="text-4xl mb-2">🪧</div>
@@ -87,9 +91,14 @@ export function PartnerMarkeeCard({
 
       {/* Stats */}
       <div className="flex items-center justify-between text-xs mb-4">
-        <span className="text-[#7C9CFF] font-medium">
-          {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[#7C9CFF] font-medium">
+            {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
+          </span>
+          {winningMarkee && (
+            <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={winningMarkee.address} compact />
+          )}
+        </div>
         {markeeCount !== undefined && (
           <span className="text-[#8A8FBF]">
             {markeeCount.toString()} {Number(markeeCount) === 1 ? 'message' : 'messages'}
