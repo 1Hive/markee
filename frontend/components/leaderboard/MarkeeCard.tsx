@@ -322,7 +322,7 @@ export function MarkeeCard({
     return (
       <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <ModeratedContent chainId={chainId} markeeId={markee.id}>
+          <ModeratedContent chainId={chainId} markeeId={markee.address}>
             <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
               {markee.message}
             </p>
@@ -334,7 +334,7 @@ export function MarkeeCard({
           </ModeratedContent>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-          <FlagButton chainId={chainId} markeeId={markee.id} compact />
+          <FlagButton chainId={chainId} markeeId={markee.address} compact />
           <MarkeeStats 
             messageViews={messageViews}
             totalViews={totalViews}
@@ -358,7 +358,7 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <ModeratedContent chainId={chainId} markeeId={markee.id}>
+        <ModeratedContent chainId={chainId} markeeId={markee.address}>
           <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
             <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
               {markee.message}
@@ -393,7 +393,7 @@ export function MarkeeCard({
           </div>
 
           <div className="flex items-center gap-3 justify-between sm:justify-start">
-            <FlagButton chainId={chainId} markeeId={markee.id} />
+            <FlagButton chainId={chainId} markeeId={markee.address} />
 
             {isOwner && (
               <button 
@@ -430,7 +430,7 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <ModeratedContent chainId={chainId} markeeId={markee.id} className="flex-grow">
+        <ModeratedContent chainId={chainId} markeeId={markee.address} className="flex-grow">
           <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full">
             <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
               {markee.message}
@@ -474,7 +474,7 @@ export function MarkeeCard({
               </button>
 
               <div className="flex items-center gap-2">
-                <FlagButton chainId={chainId} markeeId={markee.id} compact />
+                <FlagButton chainId={chainId} markeeId={markee.address} compact />
 
                 {isOwner && (
                   <button 
@@ -513,7 +513,7 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <ModeratedContent chainId={chainId} markeeId={markee.id} className="flex-grow">
+        <ModeratedContent chainId={chainId} markeeId={markee.address} className="flex-grow">
           <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full">
             <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
               {markee.message}
@@ -557,7 +557,7 @@ export function MarkeeCard({
               </button>
 
               <div className="flex items-center gap-1.5">
-                <FlagButton chainId={chainId} markeeId={markee.id} compact />
+                <FlagButton chainId={chainId} markeeId={markee.address} compact />
 
                 {isOwner && (
                   <button 
