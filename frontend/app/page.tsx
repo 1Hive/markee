@@ -216,13 +216,13 @@ export default function Home() {
           <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a website near you...</p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <PartnerCard logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
-            <PartnerCard logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
-            <PartnerCard logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
-            <PartnerCard logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
-            <PartnerCard logo="/partners/giveth.png" name="Giveth" description="Fundraising Platform" />
-            <PartnerCard logo="/partners/flowstate.png" name="Flow State" description="Continuous Funding" />
-            <PartnerCard logo="/partners/superfluid.png" name="Superfluid" description="Streaming Protocol" />
+            <PartnerCard slug="gardens" logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
+            <PartnerCard slug="juicebox" logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
+            <PartnerCard slug="revnets" logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
+            <PartnerCard slug="bread-cooperative" logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
+            <PartnerCard slug="giveth" logo="/partners/giveth.png" name="Giveth" description="Fundraising Platform" />
+            <PartnerCard slug="flow-state" logo="/partners/flowstate.png" name="Flow State" description="Continuous Funding" />
+            <PartnerCard slug="superfluid" logo="/partners/superfluid.png" name="Superfluid" description="Streaming Protocol" />
           </div>
         </div>
       </section>
