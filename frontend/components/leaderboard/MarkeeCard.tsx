@@ -6,8 +6,9 @@ import Image from 'next/image'
 import type { Markee, EmojiReaction } from '@/types'
 import { useState } from 'react'
 import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
-import { MARKEE_TOKEN, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { MARKEE_TOKEN, CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { Emoji } from '@/components/ui/Emoji'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 
 interface MarkeeCardProps {
   markee: Markee
@@ -340,17 +341,20 @@ export function MarkeeCard({
   if (size === 'list') {
     return (
       <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
-            {markee.message}
-          </p>
-          <span className="text-xs text-[#8A8FBF] italic">
-            — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-              {hasCustomName ? markee.name : formatAddress(markee.owner)}
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
+              {markee.message}
+            </p>
+            <span className="text-xs text-[#8A8FBF] italic">
+              — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
             </span>
-          </span>
-        </div>
+          </div>
+        </ModeratedContent>
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} compact />
           <MarkeeStats 
             messageViews={messageViews}
             totalViews={totalViews}
@@ -374,21 +378,23 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
-          {/* Message */}
-          <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
-            {markee.message}
-          </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
+          <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
+            {/* Message */}
+            <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
+              {markee.message}
+            </div>
 
-          {/* Author at bottom right */}
-          <div className="flex justify-end">
-            <p className="text-base text-[#8A8FBF] italic">
-              — <span className={hasCustomName ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
-                {hasCustomName ? markee.name : formatAddress(markee.owner)}
-              </span>
-            </p>
+            {/* Author at bottom right */}
+            <div className="flex justify-end">
+              <p className="text-base text-[#8A8FBF] italic">
+                — <span className={hasCustomName ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
+                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
+        </ModeratedContent>
 
         {/* Stats and Actions at bottom */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-[#8A8FBF]/30">
@@ -410,6 +416,7 @@ export function MarkeeCard({
           </div>
 
           <div className="flex items-center gap-3 justify-between sm:justify-start">
+            <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} />
             {isOwner && (
               <button 
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditMessage?.(markee) }}
@@ -445,21 +452,23 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 flex-grow">
-          {/* Message */}
-          <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
-            {markee.message}
-          </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
+          <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full">
+            {/* Message */}
+            <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
+              {markee.message}
+            </div>
 
-          {/* Author at bottom right */}
-          <div className="flex justify-end">
-            <p className="text-sm text-[#8A8FBF] italic">
-              <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                {hasCustomName ? markee.name : formatAddress(markee.owner)}
-              </span>
-            </p>
+            {/* Author at bottom right */}
+            <div className="flex justify-end">
+              <p className="text-sm text-[#8A8FBF] italic">
+                <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
+        </ModeratedContent>
 
         {/* Stats and Actions at bottom */}
         <div className="pt-3 border-t border-[#8A8FBF]/20">
@@ -491,6 +500,7 @@ export function MarkeeCard({
               </button>
 
               <div className="flex items-center gap-2">
+                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} compact />
                 {isOwner && (
                   <button 
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditMessage?.(markee) }}
@@ -528,21 +538,23 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 flex-grow">
-          {/* Message */}
-          <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
-            {markee.message}
-          </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
+          <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full">
+            {/* Message */}
+            <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
+              {markee.message}
+            </div>
 
-          {/* Author at bottom right */}
-          <div className="flex justify-end">
-            <p className="text-xs text-[#8A8FBF] italic">
-              — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                {hasCustomName ? markee.name : formatAddress(markee.owner)}
-              </span>
-            </p>
+            {/* Author at bottom right */}
+            <div className="flex justify-end">
+              <p className="text-xs text-[#8A8FBF] italic">
+                — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
+        </ModeratedContent>
 
         {/* Stats and Actions at bottom */}
         <div className="pt-2 border-t border-[#8A8FBF]/20">
@@ -574,6 +586,7 @@ export function MarkeeCard({
               </button>
 
               <div className="flex items-center gap-1.5">
+                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} compact />
                 {isOwner && (
                   <button 
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditMessage?.(markee) }}
