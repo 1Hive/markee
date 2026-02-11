@@ -62,7 +62,7 @@ export function PartnerMarkeeCard({
 
       {/* Winning Message Section */}
       {winningMarkee ? (
-        <ModeratedContent chainId={chainId} markeeId={winningMarkee.id}>
+        <ModeratedContent chainId={chainId} markeeId={winningMarkee.address}>
           <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex items-center justify-center min-h-[120px]">
             <div className="text-center w-full">
               <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
@@ -88,7 +88,7 @@ export function PartnerMarkeeCard({
             {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
           </span>
           {winningMarkee && (
-            <FlagButton chainId={chainId} markeeId={winningMarkee.id} compact />
+            <FlagButton chainId={chainId} markeeId={winningMarkee.address} compact />
           )}
         </div>
         {markeeCount !== undefined && (
