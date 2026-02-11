@@ -20,7 +20,7 @@ import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 function PartnerCard({ logo, name, description }: { logo: string; name: string; description: string }) {
   return (
     <a
-      href="/ecosystem"
+      href={`/ecosystem/${slug}`}
       className="bg-[#060A2A] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group block"
     >
       <div className="flex flex-col items-center text-center">
