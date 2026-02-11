@@ -17,7 +17,7 @@ export const MODERATION_DEFAULTS = {
   /** CSS blur radius for flagged messages */
   blurAmount: '8px',
   /** Text shown over blurred content */
-  overlayText: '🚩 this message has been flagged by moderators',
+  overlayText: '🚩 this message has been flagged',
   /** Allow users to click through and reveal flagged content */
   allowReveal: false,
   /** Text on the reveal button */
