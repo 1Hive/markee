@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Markee - this is your sign',
+  title: 'Markee',
   description: 'open source digital real estate that funds the open internet 🪧',
   icons: {
     icon: '/favicon.ico',
