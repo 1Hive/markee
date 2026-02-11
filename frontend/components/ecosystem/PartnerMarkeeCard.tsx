@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { formatEther } from 'viem'
 import type { Markee } from '@/types'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 
 interface Partner {
   slug: string
@@ -20,6 +21,7 @@ interface PartnerMarkeeCardProps {
   winningMarkee?: Markee
   totalFunds: bigint
   markeeCount?: bigint
+  chainId: number
   onBuyMessage?: () => void
 }
 
@@ -28,6 +30,7 @@ export function PartnerMarkeeCard({
   winningMarkee, 
   totalFunds,
   markeeCount,
+  chainId,
   onBuyMessage
 }: PartnerMarkeeCardProps) {
   const router = useRouter()
@@ -59,16 +62,18 @@ export function PartnerMarkeeCard({
 
       {/* Winning Message Section */}
       {winningMarkee ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex items-center justify-center min-h-[120px]">
-          <div className="text-center w-full">
-            <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
-              {winningMarkee.message}
-            </p>
-            {winningMarkee.name && (
-              <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
-            )}
+        <ModeratedContent chainId={chainId} markeeId={winningMarkee.id}>
+          <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex items-center justify-center min-h-[120px]">
+            <div className="text-center w-full">
+              <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
+                {winningMarkee.message}
+              </p>
+              {winningMarkee.name && (
+                <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
+              )}
+            </div>
           </div>
-        </div>
+        </ModeratedContent>
       ) : (
         <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center">
           <div className="text-4xl mb-2">🪧</div>
@@ -78,9 +83,14 @@ export function PartnerMarkeeCard({
 
       {/* Stats */}
       <div className="flex items-center justify-between text-xs mb-4">
-        <span className="text-[#7C9CFF] font-medium">
-          {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[#7C9CFF] font-medium">
+            {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
+          </span>
+          {winningMarkee && (
+            <FlagButton chainId={chainId} markeeId={winningMarkee.id} compact />
+          )}
+        </div>
         {markeeCount !== undefined && (
           <span className="text-[#8A8FBF]">
             {markeeCount.toString()} {Number(markeeCount) === 1 ? 'message' : 'messages'}
