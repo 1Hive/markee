@@ -17,7 +17,7 @@ import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
-function PartnerCard({ logo, name, description }: { logo: string; name: string; description: string }) {
+function PartnerCard({ slug, logo, name, description }: { slug: string; logo: string; name: string; description: string }) {
   return (
     <a
       href={`/ecosystem/${slug}`}
