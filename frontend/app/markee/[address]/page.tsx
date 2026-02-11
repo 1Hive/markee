@@ -25,6 +25,7 @@ import { formatEth, formatAddress } from '@/lib/utils'
 import { getTxUrl, getAddressUrl } from '@/lib/explorer'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { Emoji } from '@/components/ui/Emoji'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -228,22 +229,25 @@ export default function MarkeeDetailPage() {
         {markee && (
           <div className="space-y-6">
             {/* ── Current Message ────────────────────────────────── */}
-            <div className="bg-gradient-to-r from-[#F897FE]/10 to-[#7C9CFF]/10 rounded-xl p-6 sm:p-8 border border-[#F897FE]/30">
-              <div className="font-jetbrains text-2xl sm:text-3xl font-bold text-[#EDEEFF] mb-4 break-words">
-                {markee.message}
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-[#8A8FBF] italic">
-                  — <span className={markee.name ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
-                    {markee.name || formatAddress(markee.owner)}
-                  </span>
-                </p>
-                <div className="flex items-center gap-3 text-xs text-[#8A8FBF]">
-                  <span>Owner: <AddressLink address={markee.owner} /></span>
-                  <CopyButton text={markee.owner} />
+            <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
+              <div className="bg-gradient-to-r from-[#F897FE]/10 to-[#7C9CFF]/10 rounded-xl p-6 sm:p-8 border border-[#F897FE]/30">
+                <div className="font-jetbrains text-2xl sm:text-3xl font-bold text-[#EDEEFF] mb-4 break-words">
+                  {markee.message}
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-[#8A8FBF] italic">
+                    — <span className={markee.name ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
+                      {markee.name || formatAddress(markee.owner)}
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-[#8A8FBF]">
+                    <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} />
+                    <span>Owner: <AddressLink address={markee.owner} /></span>
+                    <CopyButton text={markee.owner} />
+                  </div>
                 </div>
               </div>
-            </div>
+            </ModeratedContent>
 
             {/* ── Stats Grid ─────────────────────────────────────── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
