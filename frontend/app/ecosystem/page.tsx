@@ -8,6 +8,8 @@ import { PartnerMarkeeCard } from '@/components/ecosystem/PartnerMarkeeCard'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { PartnerReserveDistributor } from '@/components/ecosystem/PartnerReserveDistributor'
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { ModerationProvider } from '@/components/moderation'
 
 export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
@@ -70,18 +72,21 @@ export default function EcosystemPage() {
               <p className="text-[#8A8FBF] text-lg">No partners yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-              {partnerData.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
-                <PartnerMarkeeCard
-                  key={partner.slug}
-                  partner={partner}
-                  winningMarkee={winningMarkee ?? undefined}
-                  totalFunds={totalFunds}
-                  markeeCount={markeeCount}
-                  onBuyMessage={() => handleBuyMessage(partner.slug)}
-                />
-              ))}
-            </div>
+            <ModerationProvider>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                {partnerData.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
+                  <PartnerMarkeeCard
+                    key={partner.slug}
+                    partner={partner}
+                    winningMarkee={winningMarkee ?? undefined}
+                    totalFunds={totalFunds}
+                    markeeCount={markeeCount}
+                    chainId={CANONICAL_CHAIN_ID}
+                    onBuyMessage={() => handleBuyMessage(partner.slug)}
+                  />
+                ))}
+              </div>
+            </ModerationProvider>
           )}
 
           {/* Partner Reserve Distributor - moved below partner cards */}
