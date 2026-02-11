@@ -13,6 +13,7 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { useReactions } from '@/hooks/useReactions'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
 import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { ModerationProvider } from '@/components/moderation'
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
 
@@ -322,13 +323,14 @@ export default function PartnerPage() {
           )}
 
           {markees.length > 0 && (
-            <div>
+            <ModerationProvider>
               {/* #1 Spot - Full Width */}
               {markees[0] && (
                 <MarkeeCard 
                   markee={markees[0]} 
                   rank={1} 
                   size="hero"
+                  chainId={markees[0].chainId}
                   userAddress={address}
                   onEditMessage={handleEditMessage}
                   onAddFunds={handleAddFunds}
@@ -346,6 +348,7 @@ export default function PartnerPage() {
                       markee={markees[1]} 
                       rank={2} 
                       size="large"
+                      chainId={markees[1].chainId}
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
@@ -359,6 +362,7 @@ export default function PartnerPage() {
                       markee={markees[2]} 
                       rank={3} 
                       size="large"
+                      chainId={markees[2].chainId}
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
@@ -379,6 +383,7 @@ export default function PartnerPage() {
                       markee={markee} 
                       rank={index + 4} 
                       size="medium"
+                      chainId={markee.chainId}
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
@@ -401,6 +406,7 @@ export default function PartnerPage() {
                         markee={markee} 
                         rank={index + 27} 
                         size="list"
+                        chainId={markee.chainId}
                         userAddress={address}
                         onEditMessage={handleEditMessage}
                         onAddFunds={handleAddFunds}
@@ -412,7 +418,7 @@ export default function PartnerPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </ModerationProvider>
           )}
         </div>
       </section>
