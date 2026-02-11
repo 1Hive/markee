@@ -13,7 +13,6 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { useReactions } from '@/hooks/useReactions'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
 import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { ModerationProvider } from '@/components/moderation'
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
 
@@ -323,53 +322,56 @@ export default function PartnerPage() {
           )}
 
           {markees.length > 0 && (
-            <ModerationProvider>
+            <div>
               {/* #1 Spot - Full Width */}
               {markees[0] && (
-                <MarkeeCard 
-                  markee={markees[0]} 
-                  rank={1} 
-                  size="hero"
-                  chainId={markees[0].chainId}
-                  userAddress={address}
-                  onEditMessage={handleEditMessage}
-                  onAddFunds={handleAddFunds}
-                  onReact={handleReact}
-                  onRemoveReaction={handleRemoveReaction}
-                  reactions={reactions.get(markees[0].address.toLowerCase())}
-                />
+                <Link href={`/markee/${markees[0].address}`} className="block">
+                  <MarkeeCard 
+                    markee={markees[0]} 
+                    rank={1} 
+                    size="hero"
+                    userAddress={address}
+                    onEditMessage={handleEditMessage}
+                    onAddFunds={handleAddFunds}
+                    onReact={handleReact}
+                    onRemoveReaction={handleRemoveReaction}
+                    reactions={reactions.get(markees[0].address.toLowerCase())}
+                  />
+                </Link>
               )}
 
               {/* #2 and #3 - Two Column */}
               {markees.length > 1 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
-                    <MarkeeCard 
-                      markee={markees[1]} 
-                      rank={2} 
-                      size="large"
-                      chainId={markees[1].chainId}
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markees[1].address.toLowerCase())}
-                    />
+                    <Link href={`/markee/${markees[1].address}`} className="block">
+                      <MarkeeCard 
+                        markee={markees[1]} 
+                        rank={2} 
+                        size="large"
+                        userAddress={address}
+                        onEditMessage={handleEditMessage}
+                        onAddFunds={handleAddFunds}
+                        onReact={handleReact}
+                        onRemoveReaction={handleRemoveReaction}
+                        reactions={reactions.get(markees[1].address.toLowerCase())}
+                      />
+                    </Link>
                   )}
                   {markees[2] && (
-                    <MarkeeCard 
-                      markee={markees[2]} 
-                      rank={3} 
-                      size="large"
-                      chainId={markees[2].chainId}
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markees[2].address.toLowerCase())}
-                    />
+                    <Link href={`/markee/${markees[2].address}`} className="block">
+                      <MarkeeCard 
+                        markee={markees[2]} 
+                        rank={3} 
+                        size="large"
+                        userAddress={address}
+                        onEditMessage={handleEditMessage}
+                        onAddFunds={handleAddFunds}
+                        onReact={handleReact}
+                        onRemoveReaction={handleRemoveReaction}
+                        reactions={reactions.get(markees[2].address.toLowerCase())}
+                      />
+                    </Link>
                   )}
                 </div>
               )}
@@ -378,19 +380,19 @@ export default function PartnerPage() {
               {markees.length > 3 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   {markees.slice(3, 26).map((markee, index) => (
-                    <MarkeeCard 
-                      key={markee.address} 
-                      markee={markee} 
-                      rank={index + 4} 
-                      size="medium"
-                      chainId={markee.chainId}
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markee.address.toLowerCase())}
-                    />
+                    <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
+                      <MarkeeCard 
+                        markee={markee} 
+                        rank={index + 4} 
+                        size="medium"
+                        userAddress={address}
+                        onEditMessage={handleEditMessage}
+                        onAddFunds={handleAddFunds}
+                        onReact={handleReact}
+                        onRemoveReaction={handleRemoveReaction}
+                        reactions={reactions.get(markee.address.toLowerCase())}
+                      />
+                    </Link>
                   ))}
                 </div>
               )}
@@ -401,24 +403,24 @@ export default function PartnerPage() {
                   <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
                   <div className="space-y-2">
                     {markees.slice(26).map((markee, index) => (
-                      <MarkeeCard 
-                        key={markee.address} 
-                        markee={markee} 
-                        rank={index + 27} 
-                        size="list"
-                        chainId={markee.chainId}
-                        userAddress={address}
-                        onEditMessage={handleEditMessage}
-                        onAddFunds={handleAddFunds}
-                        onReact={handleReact}
-                        onRemoveReaction={handleRemoveReaction}
-                        reactions={reactions.get(markee.address.toLowerCase())}
-                      />
+                      <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
+                        <MarkeeCard 
+                          markee={markee} 
+                          rank={index + 27} 
+                          size="list"
+                          userAddress={address}
+                          onEditMessage={handleEditMessage}
+                          onAddFunds={handleAddFunds}
+                          onReact={handleReact}
+                          onRemoveReaction={handleRemoveReaction}
+                          reactions={reactions.get(markee.address.toLowerCase())}
+                        />
+                      </Link>
                     ))}
                   </div>
                 </div>
               )}
-            </ModerationProvider>
+            </div>
           )}
         </div>
       </section>
