@@ -6,6 +6,7 @@ import { ApolloProvider } from '@apollo/client'
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
 import { apolloClient } from '@/lib/apollo-client'
 import { config } from '@/lib/config/wagmi'
+import { ModerationProvider } from '@/components/moderation'
 import { ReactNode, useState } from 'react'
 
 export function Web3Provider({ children }: { children: ReactNode }) {
@@ -24,7 +25,9 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             })}
             modalSize="compact"
           >
-            {children}
+            <ModerationProvider>
+              {children}
+            </ModerationProvider>
           </RainbowKitProvider>
         </QueryClientProvider>
       </WagmiProvider>
