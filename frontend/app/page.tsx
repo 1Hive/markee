@@ -12,6 +12,7 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { ModerationProvider } from '@/components/moderation'
 
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
@@ -278,11 +279,12 @@ export default function Home() {
           {isLoading && <LeaderboardSkeleton />}
 
           {!isLoading && markees.length > 0 && (
-            <>
+            <ModerationProvider>
               <MarkeeCard
                 markee={markees[0]}
                 rank={1}
                 size="hero"
+                chainId={markees[0].chainId}
                 userAddress={address}
                 onEditMessage={handleEditMessage}
                 onAddFunds={handleAddFunds}
@@ -298,6 +300,7 @@ export default function Home() {
                     markee={markee}
                     rank={i + 2}
                     size="large"
+                    chainId={markee.chainId}
                     userAddress={address}
                     onEditMessage={handleEditMessage}
                     onAddFunds={handleAddFunds}
@@ -315,6 +318,7 @@ export default function Home() {
                     markee={markee}
                     rank={i + 4}
                     size="medium"
+                    chainId={markee.chainId}
                     userAddress={address}
                     onEditMessage={handleEditMessage}
                     onAddFunds={handleAddFunds}
@@ -333,6 +337,7 @@ export default function Home() {
                       markee={markee}
                       rank={i + 27}
                       size="list"
+                      chainId={markee.chainId}
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
@@ -343,7 +348,7 @@ export default function Home() {
                   ))}
                 </div>
               )}
-            </>
+            </ModerationProvider>
           )}
         </div>
       </section>
