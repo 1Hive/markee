@@ -8,13 +8,11 @@ import { useState } from 'react'
 import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
 import { MARKEE_TOKEN, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { Emoji } from '@/components/ui/Emoji'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
 
 interface MarkeeCardProps {
   markee: Markee
   rank: number
   size: 'hero' | 'large' | 'medium' | 'small' | 'list'
-  chainId: number
   userAddress?: string
   onEditMessage?: (markee: Markee) => void
   onAddFunds?: (markee: Markee) => void
@@ -23,7 +21,7 @@ interface MarkeeCardProps {
   messageViews?: number
   totalViews?: number
   reactions?: EmojiReaction[]
-  topFundsAdded?: bigint
+  topFundsAdded?: bigint // Optional: current top message's totalFundsAdded for competitive display
 }
 
 const ALL_EMOJIS = ['❤️', '👍', '👎', '💯', '😂', '🎉', '😮', '💩', '😠', '🚀', '👑', '🤔', '🪧']
@@ -65,6 +63,7 @@ function AmountToTop({
   rank: number
   size: string
 }) {
+  // Don't show for #1 or if no top funds data
   if (rank === 1 || !topFunds) return null
 
   const difference = topFunds - currentFunds
@@ -105,14 +104,17 @@ function EmojiDisplay({
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
+  // Group reactions by emoji
   const reactionCounts = reactions?.reduce((acc, reaction) => {
     acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1
     return acc
   }, {} as Record<string, number>) || {}
 
+  // Sort by count
   const sortedReactions = Object.entries(reactionCounts)
     .sort(([, a], [, b]) => b - a)
 
+  // Get user's current reaction
   const userReaction = reactions?.find(
     r => r.userAddress.toLowerCase() === userAddress?.toLowerCase()
   )
@@ -120,7 +122,10 @@ function EmojiDisplay({
   const textSize = size === 'hero' ? 'text-sm' : size === 'large' ? 'text-xs' : 'text-[10px]'
   const emojiSize = size === 'hero' ? 'text-base' : 'text-sm'
 
-  const handleEmojiClick = (emoji: string) => {
+  // Handle clicking an existing emoji
+  const handleEmojiClick = (e: React.MouseEvent, emoji: string) => {
+    e.preventDefault()
+    e.stopPropagation()
     if (!isCorrectChain || !hasMinBalance) {
       setShowNoBalanceMessage(true)
       setTimeout(() => setShowNoBalanceMessage(false), 3000)
@@ -129,14 +134,16 @@ function EmojiDisplay({
     onReact?.(markee, emoji)
   }
 
+  // Always show the reaction area (with + button if user has balance)
   return (
-    <div className="relative flex items-center gap-1.5 flex-wrap">
+    <div className="relative flex items-center gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+      {/* Existing reactions as clickable buttons */}
       {sortedReactions.map(([emoji, count]) => {
         const isUserEmoji = userReaction?.emoji === emoji
         return (
           <button
             key={emoji}
-            onClick={() => handleEmojiClick(emoji)}
+            onClick={(e) => handleEmojiClick(e, emoji)}
             className={`
               flex items-center gap-1 px-2 py-1 rounded-md border transition-all
               ${isUserEmoji 
@@ -153,9 +160,12 @@ function EmojiDisplay({
         )
       })}
 
+      {/* Add reaction button - always visible when connected */}
       {userAddress && (
         <button
-          onClick={() => {
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
             if (!isCorrectChain || !hasMinBalance) {
               setShowNoBalanceMessage(true)
               setTimeout(() => setShowNoBalanceMessage(false), 3000)
@@ -174,11 +184,12 @@ function EmojiDisplay({
         </button>
       )}
 
+      {/* Emoji picker menu */}
       {showMenu && (
         <>
           <div 
             className="fixed inset-0 z-40" 
-            onClick={() => setShowMenu(false)}
+            onClick={(e) => { e.stopPropagation(); setShowMenu(false) }}
           />
           <div className="absolute bottom-full right-0 mb-2 p-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl z-50 w-[180px]">
             <div className="grid grid-cols-4 gap-1 w-full">
@@ -188,7 +199,9 @@ function EmojiDisplay({
                 return (
                   <button
                     key={emoji}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
                       onReact?.(markee, emoji)
                       setShowMenu(false)
                     }}
@@ -215,11 +228,12 @@ function EmojiDisplay({
         </>
       )}
 
+      {/* No balance message */}
       {showNoBalanceMessage && (
         <>
           <div 
             className="fixed inset-0 z-40" 
-            onClick={() => setShowNoBalanceMessage(false)}
+            onClick={(e) => { e.stopPropagation(); setShowNoBalanceMessage(false) }}
           />
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 mb-2 p-3 bg-[#0A0F3D] border border-[#F897FE]/50 rounded-lg shadow-xl z-50 w-[230px]">
             <p className={`text-xs text-[#F897FE] text-center ${!isCorrectChain ? 'mb-3' : ''}`}>
@@ -227,7 +241,9 @@ function EmojiDisplay({
             </p>
             {!isCorrectChain && (
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
                   switchChain({ chainId: CANONICAL_CHAIN.id })
                   setShowNoBalanceMessage(false)
                 }}
@@ -244,7 +260,7 @@ function EmojiDisplay({
   )
 }
 
-// Stats component
+// Stats component - ETH, views, rank, and medal (no chain indicator)
 function MarkeeStats({ 
   messageViews, 
   totalViews,
@@ -263,6 +279,7 @@ function MarkeeStats({
 
   return (
     <div className={`flex items-center gap-3 ${textSize} text-[#8A8FBF]`}>
+      {/* Medal and Rank */}
       {medal ? (
         <div className="flex items-center gap-1">
           <Emoji className={size === 'hero' ? 'text-2xl' : size === 'large' ? 'text-xl' : 'text-base'}>{medal}</Emoji>
@@ -271,8 +288,10 @@ function MarkeeStats({
         <span className="font-bold text-[#8A8FBF]">#{rank}</span>
       ) : null}
 
+      {/* ETH Amount */}
       <span className="font-bold text-[#7C9CFF]">{formatEth(ethAmount)} ETH</span>
 
+      {/* Views */}
       {totalViews !== undefined && (
         <div className="flex items-center gap-1 group relative">
           <Eye size={size === 'hero' ? 14 : 12} className="opacity-60" />
@@ -290,7 +309,6 @@ export function MarkeeCard({
   markee, 
   rank, 
   size, 
-  chainId,
   userAddress, 
   onEditMessage, 
   onAddFunds, 
@@ -305,6 +323,7 @@ export function MarkeeCard({
   const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
   const hasCustomName = markee.name && markee.name.trim()
 
+  // Check user's MARKEE balance
   const { data: balance } = useReadContract({
     address: MARKEE_TOKEN,
     abi: ERC20_ABI,
@@ -322,19 +341,16 @@ export function MarkeeCard({
     return (
       <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <ModeratedContent chainId={chainId} markeeId={markee.address}>
-            <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
-              {markee.message}
-            </p>
-            <span className="text-xs text-[#8A8FBF] italic">
-              — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                {hasCustomName ? markee.name : formatAddress(markee.owner)}
-              </span>
+          <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
+            {markee.message}
+          </p>
+          <span className="text-xs text-[#8A8FBF] italic">
+            — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+              {hasCustomName ? markee.name : formatAddress(markee.owner)}
             </span>
-          </ModeratedContent>
+          </span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-          <FlagButton chainId={chainId} markeeId={markee.address} compact />
           <MarkeeStats 
             messageViews={messageViews}
             totalViews={totalViews}
@@ -358,20 +374,21 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <ModeratedContent chainId={chainId} markeeId={markee.address}>
-          <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
-            <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
-              {markee.message}
-            </div>
-            <div className="flex justify-end">
-              <p className="text-base text-[#8A8FBF] italic">
-                — <span className={hasCustomName ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
-                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
-                </span>
-              </p>
-            </div>
+        <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
+          {/* Message */}
+          <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
+            {markee.message}
           </div>
-        </ModeratedContent>
+
+          {/* Author at bottom right */}
+          <div className="flex justify-end">
+            <p className="text-base text-[#8A8FBF] italic">
+              — <span className={hasCustomName ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
+          </div>
+        </div>
 
         {/* Stats and Actions at bottom */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-[#8A8FBF]/30">
@@ -385,7 +402,7 @@ export function MarkeeCard({
             />
 
             <button 
-              onClick={() => onAddFunds?.(markee)}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddFunds?.(markee) }}
               className="text-xs px-3 py-1.5 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
             >
               Add Funds
@@ -393,11 +410,9 @@ export function MarkeeCard({
           </div>
 
           <div className="flex items-center gap-3 justify-between sm:justify-start">
-            <FlagButton chainId={chainId} markeeId={markee.address} />
-
             {isOwner && (
               <button 
-                onClick={() => onEditMessage?.(markee)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditMessage?.(markee) }}
                 className="text-xs px-3 py-1.5 bg-[#0A0F3D] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
               >
                 Edit Message
@@ -430,20 +445,21 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <ModeratedContent chainId={chainId} markeeId={markee.address} className="flex-grow">
-          <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full">
-            <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
-              {markee.message}
-            </div>
-            <div className="flex justify-end">
-              <p className="text-sm text-[#8A8FBF] italic">
-                <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
-                </span>
-              </p>
-            </div>
+        <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 flex-grow">
+          {/* Message */}
+          <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
+            {markee.message}
           </div>
-        </ModeratedContent>
+
+          {/* Author at bottom right */}
+          <div className="flex justify-end">
+            <p className="text-sm text-[#8A8FBF] italic">
+              <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
+          </div>
+        </div>
 
         {/* Stats and Actions at bottom */}
         <div className="pt-3 border-t border-[#8A8FBF]/20">
@@ -457,6 +473,7 @@ export function MarkeeCard({
                 size={size}
               />
 
+              {/* Amount needed to reach #1 */}
               <AmountToTop 
                 currentFunds={markee.totalFundsAdded}
                 topFunds={topFundsAdded}
@@ -467,18 +484,16 @@ export function MarkeeCard({
 
             <div className="flex items-center gap-2 justify-between">
               <button 
-                onClick={() => onAddFunds?.(markee)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddFunds?.(markee) }}
                 className="text-xs px-2 py-1 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
               >
                 Add Funds
               </button>
 
               <div className="flex items-center gap-2">
-                <FlagButton chainId={chainId} markeeId={markee.address} compact />
-
                 {isOwner && (
                   <button 
-                    onClick={() => onEditMessage?.(markee)}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditMessage?.(markee) }}
                     className="text-xs px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
                   >
                     Edit Message
@@ -513,20 +528,21 @@ export function MarkeeCard({
         onMouseLeave={() => setIsCardHovering(false)}
       >
         {/* Message and Author - Bordered Section */}
-        <ModeratedContent chainId={chainId} markeeId={markee.address} className="flex-grow">
-          <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full">
-            <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
-              {markee.message}
-            </div>
-            <div className="flex justify-end">
-              <p className="text-xs text-[#8A8FBF] italic">
-                — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
-                </span>
-              </p>
-            </div>
+        <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 flex-grow">
+          {/* Message */}
+          <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
+            {markee.message}
           </div>
-        </ModeratedContent>
+
+          {/* Author at bottom right */}
+          <div className="flex justify-end">
+            <p className="text-xs text-[#8A8FBF] italic">
+              — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
+          </div>
+        </div>
 
         {/* Stats and Actions at bottom */}
         <div className="pt-2 border-t border-[#8A8FBF]/20">
@@ -540,6 +556,7 @@ export function MarkeeCard({
                 size={size}
               />
 
+              {/* Amount needed to reach #1 */}
               <AmountToTop 
                 currentFunds={markee.totalFundsAdded}
                 topFunds={topFundsAdded}
@@ -550,18 +567,16 @@ export function MarkeeCard({
 
             <div className="flex items-center gap-1.5 justify-between">
               <button 
-                onClick={() => onAddFunds?.(markee)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddFunds?.(markee) }}
                 className="text-[10px] px-2 py-1 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
               >
                 Add Funds
               </button>
 
               <div className="flex items-center gap-1.5">
-                <FlagButton chainId={chainId} markeeId={markee.address} compact />
-
                 {isOwner && (
                   <button 
-                    onClick={() => onEditMessage?.(markee)}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditMessage?.(markee) }}
                     className="text-[10px] px-2 py-1 bg-[#060A2A] hover:bg-[#8A8FBF]/20 border border-[#8A8FBF]/30 rounded transition text-[#B8B6D9]"
                   >
                     Edit Message
