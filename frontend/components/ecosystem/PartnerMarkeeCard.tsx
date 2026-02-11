@@ -21,6 +21,7 @@ interface PartnerMarkeeCardProps {
   winningMarkee?: Markee
   totalFunds: bigint
   markeeCount?: bigint
+  chainId?: number
   onBuyMessage?: () => void
 }
 
@@ -29,6 +30,7 @@ export function PartnerMarkeeCard({
   winningMarkee, 
   totalFunds,
   markeeCount,
+  chainId,
   onBuyMessage
 }: PartnerMarkeeCardProps) {
   const router = useRouter()
