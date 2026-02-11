@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useAccount } from 'wagmi'
+import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkees } from '@/lib/contracts/useMarkees'
@@ -12,7 +13,6 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { ModerationProvider } from '@/components/moderation'
 
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
@@ -148,7 +148,7 @@ export default function Home() {
 
                   <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
                     <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                      {fixedMarkee.price ? `${fixedMarkee.price} ETH to change` : 'Loading...'}
+                      {fixedMarkee.price ? `${(Number(fixedMarkee.price) / 1e18).toFixed(4)} ETH to edit` : 'Edit Message'}
                     </div>
                   </div>
                 </button>
@@ -158,65 +158,14 @@ export default function Home() {
         </div>
       </section>
 
-      <style jsx>{`
-        .readerboard-card {
-          position: relative;
-          background: #edeeff;
-          border-radius: 4px;
-          padding: 4px;
-          box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
-          aspect-ratio: 2 / 1;
-        }
+      {/* Ecosystem Partners */}
+      <section className="bg-[#0A0F3D] py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="flex items-center justify-center gap-4 mb-8">
+            <h2 className="text-2xl font-bold text-[#EDEEFF]">Ecosystem Partners</h2>
+          </div>
 
-        .readerboard-inner {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
-          border-radius: 2px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          overflow: hidden;
-        }
-
-        .readerboard-text {
-          font-family: var(--font-jetbrains-mono), 'Courier New', Consolas, monospace;
-          font-size: clamp(18px, 3vw, 28px);
-          font-weight: 600;
-          line-height: 1.1;
-          letter-spacing: -0.5px;
-          color: #edeeff;
-          text-align: center;
-          word-wrap: break-word;
-          max-width: 100%;
-          transition: all 0.2s ease;
-        }
-
-        .group:hover .readerboard-text {
-          color: #7b6af4;
-          transform: scale(1.02);
-        }
-
-        @media (max-width: 768px) {
-          .readerboard-card {
-            aspect-ratio: 5 / 3;
-          }
-
-          .readerboard-text {
-            font-size: 20px;
-          }
-        }
-      `}</style>
-
-      {/* Explore our Ecosystem */}
-      <section className="bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4 text-center">Our Ecosystem</h2>
-          <p className="text-center text-[#8A8FBF] mb-12 text-lg">Markee is coming soon to a website near you...</p>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 max-w-6xl mx-auto">
             <PartnerCard slug="gardens" logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
             <PartnerCard slug="juicebox" logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
             <PartnerCard slug="revnets" logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
@@ -279,65 +228,30 @@ export default function Home() {
           {isLoading && <LeaderboardSkeleton />}
 
           {!isLoading && markees.length > 0 && (
-            <ModerationProvider>
-              <MarkeeCard
-                markee={markees[0]}
-                rank={1}
-                size="hero"
-                chainId={markees[0].chainId}
-                userAddress={address}
-                onEditMessage={handleEditMessage}
-                onAddFunds={handleAddFunds}
-                onReact={handleReact}
-                onRemoveReaction={handleRemoveReaction}
-                reactions={reactions.get(markees[0].address.toLowerCase())}
-              />
+            <>
+              {/* #1 Hero */}
+              <Link href={`/markee/${markees[0].address}`} className="block">
+                <MarkeeCard
+                  markee={markees[0]}
+                  rank={1}
+                  size="hero"
+                  userAddress={address}
+                  onEditMessage={handleEditMessage}
+                  onAddFunds={handleAddFunds}
+                  onReact={handleReact}
+                  onRemoveReaction={handleRemoveReaction}
+                  reactions={reactions.get(markees[0].address.toLowerCase())}
+                />
+              </Link>
 
+              {/* #2-3 Large */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 {markees.slice(1, 3).map((markee, i) => (
-                  <MarkeeCard
-                    key={markee.address}
-                    markee={markee}
-                    rank={i + 2}
-                    size="large"
-                    chainId={markee.chainId}
-                    userAddress={address}
-                    onEditMessage={handleEditMessage}
-                    onAddFunds={handleAddFunds}
-                    onReact={handleReact}
-                    onRemoveReaction={handleRemoveReaction}
-                    reactions={reactions.get(markee.address.toLowerCase())}
-                  />
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {markees.slice(3, 26).map((markee, i) => (
-                  <MarkeeCard
-                    key={markee.address}
-                    markee={markee}
-                    rank={i + 4}
-                    size="medium"
-                    chainId={markee.chainId}
-                    userAddress={address}
-                    onEditMessage={handleEditMessage}
-                    onAddFunds={handleAddFunds}
-                    onReact={handleReact}
-                    onRemoveReaction={handleRemoveReaction}
-                    reactions={reactions.get(markee.address.toLowerCase())}
-                  />
-                ))}
-              </div>
-
-              {markees.length > 26 && (
-                <div className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20">
-                  {markees.slice(26).map((markee, i) => (
+                  <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
                     <MarkeeCard
-                      key={markee.address}
                       markee={markee}
-                      rank={i + 27}
-                      size="list"
-                      chainId={markee.chainId}
+                      rank={i + 2}
+                      size="large"
                       userAddress={address}
                       onEditMessage={handleEditMessage}
                       onAddFunds={handleAddFunds}
@@ -345,10 +259,50 @@ export default function Home() {
                       onRemoveReaction={handleRemoveReaction}
                       reactions={reactions.get(markee.address.toLowerCase())}
                     />
+                  </Link>
+                ))}
+              </div>
+
+              {/* #4-26 Medium */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                {markees.slice(3, 26).map((markee, i) => (
+                  <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
+                    <MarkeeCard
+                      markee={markee}
+                      rank={i + 4}
+                      size="medium"
+                      userAddress={address}
+                      onEditMessage={handleEditMessage}
+                      onAddFunds={handleAddFunds}
+                      onReact={handleReact}
+                      onRemoveReaction={handleRemoveReaction}
+                      reactions={reactions.get(markee.address.toLowerCase())}
+                    />
+                  </Link>
+                ))}
+              </div>
+
+              {/* #27+ List */}
+              {markees.length > 26 && (
+                <div className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20">
+                  {markees.slice(26).map((markee, i) => (
+                    <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
+                      <MarkeeCard
+                        markee={markee}
+                        rank={i + 27}
+                        size="list"
+                        userAddress={address}
+                        onEditMessage={handleEditMessage}
+                        onAddFunds={handleAddFunds}
+                        onReact={handleReact}
+                        onRemoveReaction={handleRemoveReaction}
+                        reactions={reactions.get(markee.address.toLowerCase())}
+                      />
+                    </Link>
                   ))}
                 </div>
               )}
-            </ModerationProvider>
+            </>
           )}
         </div>
       </section>
