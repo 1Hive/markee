@@ -142,7 +142,7 @@ export function useMarkeeDetail(markeeAddress: string | undefined) {
         if (!subgraphUrl) throw new Error('Subgraph URL not configured')
 
         // The subgraph uses the contract address (lowercased) as the entity ID
-        const id = markeeAddress.toLowerCase()
+        const id = markeeAddress!.toLowerCase()
 
         const response = await fetch(subgraphUrl, {
           method: 'POST',
