@@ -123,10 +123,14 @@ export function TopDawgModal({
 
   // Calculate preset amounts
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
-  const takeFirstAmount = topFundsAdded && topFundsAdded > 0n
+  const minimumAmount = minimumPrice || parseEther('0.001')
+  const rawTakeFirstAmount = topFundsAdded && topFundsAdded > 0n
     ? topFundsAdded + MIN_INCREMENT
     : null
-  const minimumAmount = minimumPrice || parseEther('0.001')
+  // Floor at minimumAmount so take-first never shows below contract minimum
+  const takeFirstAmount = rawTakeFirstAmount
+    ? (rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount)
+    : null
 
   // Formatted preset values
   const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(4)
@@ -134,8 +138,8 @@ export function TopDawgModal({
     ? Number(formatEther(takeFirstAmount)).toFixed(4)
     : null
 
-  // Whether the top spot is meaningful (different from minimum)
-  const hasCompetition = takeFirstAmount && takeFirstAmount > minimumAmount
+  // Show Featured Message button when there's a leader with funds
+  const hasCompetition = !!(takeFirstAmount && takeFirstAmount >= minimumAmount)
 
   // Check if user can afford the transaction
   const canAffordTransaction = () => {
