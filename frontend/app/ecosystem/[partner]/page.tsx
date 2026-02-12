@@ -437,6 +437,7 @@ export default function PartnerPage() {
         strategyAddress={partner.isCooperative ? undefined : partner.strategyAddress as `0x${string}`}
         partnerName={partner.isCooperative ? undefined : partner.name}
         partnerSplitPercentage={partner.isCooperative ? undefined : partner.percentToBeneficiary / 100}
+        topFundsAdded={markees[0]?.totalFundsAdded}
       />
     </div>
   )
