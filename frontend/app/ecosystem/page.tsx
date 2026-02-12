@@ -130,6 +130,8 @@ export default function EcosystemPage() {
           strategyAddress={selectedPartner.partner.strategyAddress as `0x${string}`}
           partnerName={selectedPartner.partner.isCooperative ? undefined : selectedPartner.partner.name}
           partnerSplitPercentage={selectedPartner.partner.isCooperative ? undefined : selectedPartner.partner.percentToBeneficiary / 100}
+          topFundsAdded={selectedPartner.winningMarkee?.totalFundsAdded}
+
         />
       )}
     </div>
