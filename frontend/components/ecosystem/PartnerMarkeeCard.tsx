@@ -102,7 +102,7 @@ export function PartnerMarkeeCard({
       <div className="flex items-center justify-between text-xs mb-4">
         <div className="flex items-center gap-2">
           <span className="text-[#7C9CFF] font-medium">
-            {Number(formatEther(totalFunds)).toFixed(4)} ETH raised
+            {Number(formatEther(totalFunds)).toFixed(4)} total ETH raised.
           </span>
           {winningMarkee && (
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={winningMarkee.address} compact />
@@ -120,7 +120,7 @@ export function PartnerMarkeeCard({
         onClick={handleBuyClick}
         className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
       >
-        Buy for {buyPriceFormatted} ETH
+        {buyPriceFormatted} ETH to change
       </button>
     </div>
   )
