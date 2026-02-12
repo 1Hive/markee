@@ -367,6 +367,7 @@ export default function Home() {
         userMarkee={selectedMarkee}
         initialMode={modalMode}
         onSuccess={handleTransactionSuccess}
+        topFundsAdded={markees[0]?.totalFundsAdded} 
       />
 
       <FixedPriceModal
