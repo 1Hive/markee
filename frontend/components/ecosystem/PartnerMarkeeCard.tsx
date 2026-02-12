@@ -37,6 +37,11 @@ export function PartnerMarkeeCard({
 }: PartnerMarkeeCardProps) {
   const router = useRouter()
 
+  // Calculate buy price: top message's fundsAdded + 0.001 ETH
+  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+  const buyPrice = (winningMarkee?.fundsAdded ?? BigInt(0)) + minIncrement
+  const buyPriceFormatted = Number(formatEther(buyPrice)).toFixed(4)
+
   const handleCardClick = () => {
     router.push(`/ecosystem/${partner.slug}`)
   }
@@ -111,7 +116,7 @@ export function PartnerMarkeeCard({
         onClick={handleBuyClick}
         className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
       >
-        Buy a Message
+        Buy for {buyPriceFormatted} ETH
       </button>
     </div>
   )
