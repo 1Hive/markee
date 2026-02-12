@@ -22,6 +22,7 @@ interface TopDawgModalProps {
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
+type AmountPreset = 'minimum' | 'takeFirst' | 'custom'
 
 export function TopDawgModal({ 
   isOpen, 
@@ -41,6 +42,7 @@ export function TopDawgModal({
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [selectedPreset, setSelectedPreset] = useState<AmountPreset>('takeFirst')
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -121,6 +123,47 @@ export function TopDawgModal({
     chainId: CANONICAL_CHAIN.id,
   })
 
+  // Calculate preset amounts
+  const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
+  const takeFirstAmount = topFundsAdded && topFundsAdded > 0n
+    ? topFundsAdded + MIN_INCREMENT
+    : null
+  const minimumAmount = minimumPrice || parseEther('0.001')
+
+  // Formatted preset values
+  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(4)
+  const takeFirstAmountFormatted = takeFirstAmount
+    ? Number(formatEther(takeFirstAmount)).toFixed(4)
+    : null
+
+  // Whether the top spot is meaningful (different from minimum)
+  const hasCompetition = takeFirstAmount && takeFirstAmount > minimumAmount
+
+  // Handle preset selection
+  const handlePresetSelect = (preset: AmountPreset) => {
+    setSelectedPreset(preset)
+    if (preset === 'minimum') {
+      setAmount(minimumAmountFormatted)
+    } else if (preset === 'takeFirst' && takeFirstAmountFormatted) {
+      setAmount(takeFirstAmountFormatted)
+    } else if (preset === 'custom') {
+      setAmount('')
+    }
+  }
+
+  // When user manually types, switch to custom
+  const handleAmountChange = (value: string) => {
+    setAmount(value)
+    // Auto-detect if they typed a preset value, otherwise mark as custom
+    if (value === minimumAmountFormatted) {
+      setSelectedPreset('minimum')
+    } else if (takeFirstAmountFormatted && value === takeFirstAmountFormatted) {
+      setSelectedPreset('takeFirst')
+    } else {
+      setSelectedPreset('custom')
+    }
+  }
+
   // Check if user can afford the transaction
   const canAffordTransaction = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return false
@@ -176,7 +219,16 @@ export function TopDawgModal({
     setAmount('')
     setError(null)
     reset()
-  }, [userMarkee, initialMode, isOpen, reset])
+
+    // Default preset: "Take #1" if there's competition, otherwise "minimum"
+    if (hasCompetition && takeFirstAmountFormatted) {
+      setSelectedPreset('takeFirst')
+      setAmount(takeFirstAmountFormatted)
+    } else {
+      setSelectedPreset('minimum')
+      setAmount(minimumAmountFormatted)
+    }
+  }, [userMarkee, initialMode, isOpen, reset, hasCompetition, takeFirstAmountFormatted, minimumAmountFormatted])
 
   // Reset state and trigger refresh when transaction succeeds
   useEffect(() => {
@@ -321,6 +373,95 @@ export function TopDawgModal({
     return 'Manage Your Markee'
   }
 
+  // Shared Amount Selector component used in both Create and Add Funds tabs
+  const AmountSelector = () => (
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-[#B8B6D9]">
+        Amount (ETH)
+      </label>
+
+      {/* Preset Buttons */}
+      <div className={`grid ${hasCompetition ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+        {/* Minimum */}
+        <button
+          type="button"
+          onClick={() => handlePresetSelect('minimum')}
+          disabled={isPending || isConfirming}
+          className={`relative rounded-lg p-3 border-2 transition-all text-left ${
+            selectedPreset === 'minimum'
+              ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
+              : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#0A0F3D]/50'
+          } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        >
+          <p className="text-xs font-medium text-[#8A8FBF] mb-1">Enter</p>
+          <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
+          <p className="text-[10px] text-[#8A8FBF] mt-0.5">Minimum</p>
+        </button>
+
+        {/* Take #1 - only show if there's competition */}
+        {hasCompetition && (
+          <button
+            type="button"
+            onClick={() => handlePresetSelect('takeFirst')}
+            disabled={isPending || isConfirming}
+            className={`relative rounded-lg p-3 border-2 transition-all text-left ${
+              selectedPreset === 'takeFirst'
+                ? 'border-[#F897FE] bg-[#F897FE]/10'
+                : 'border-[#F897FE]/30 hover:border-[#F897FE]/60 bg-[#0A0F3D]/50'
+            } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <div className="flex items-center gap-1 mb-1">
+              <p className="text-xs font-medium text-[#F897FE]">Take #1</p>
+              <span className="text-[10px]">👑</span>
+            </div>
+            <p className="text-sm font-bold text-[#EDEEFF]">{takeFirstAmountFormatted} ETH</p>
+            <p className="text-[10px] text-[#F897FE] mt-0.5">Beat the leader</p>
+          </button>
+        )}
+
+        {/* Custom */}
+        <button
+          type="button"
+          onClick={() => handlePresetSelect('custom')}
+          disabled={isPending || isConfirming}
+          className={`relative rounded-lg p-3 border-2 transition-all text-left ${
+            selectedPreset === 'custom'
+              ? 'border-[#7C9CFF] bg-[#7C9CFF]/10'
+              : 'border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 bg-[#0A0F3D]/50'
+          } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        >
+          <p className="text-xs font-medium text-[#7C9CFF] mb-1">Custom</p>
+          <p className="text-sm font-bold text-[#EDEEFF]">Any amount</p>
+          <p className="text-[10px] text-[#8A8FBF] mt-0.5">Your choice</p>
+        </button>
+      </div>
+
+      {/* Amount Input - always visible, editable */}
+      <div className="relative">
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => handleAmountChange(e.target.value)}
+          placeholder="0.001"
+          step="0.001"
+          min="0"
+          className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF] pr-12"
+          disabled={isPending || isConfirming}
+        />
+        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8A8FBF] text-sm">
+          ETH
+        </span>
+      </div>
+
+      {/* Balance display */}
+      {balanceData && (
+        <p className="text-xs text-[#8A8FBF]">
+          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+        </p>
+      )}
+    </div>
+  )
+
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -450,46 +591,8 @@ export function TopDawgModal({
                     )}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
-                      Amount to Pay (ETH)
-                    </label>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0.01"
-                      step="0.01"
-                      min="0"
-                      className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
-                      disabled={isPending || isConfirming}
-                    />
-                    {minimumPrice && (
-                      <p className="text-xs text-[#8A8FBF] mt-1">
-                        Minimum: {formatEther(minimumPrice)} ETH
-                      </p>
-                    )}
-                    {balanceData && (
-                      <p className="text-xs text-[#8A8FBF] mt-1">
-                        Your Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
-                      </p>
-                    )}
-                    {topFundsAdded && topFundsAdded > 0n && (
-                      <div className="flex items-center justify-between mt-2 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const beatAmount = (parseFloat(formatEther(topFundsAdded)) * 1.05).toFixed(4)
-                            setAmount(beatAmount)
-                          }}
-                          className="text-[#F897FE] hover:text-[#F897FE]/80 font-semibold transition-colors"
-                          disabled={isPending || isConfirming}
-                        >
-                          Beat by 5% →
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Amount Selector */}
+                  <AmountSelector />
 
                   {/* Token/Partner Distribution Display */}
                   {amount && parseFloat(amount) > 0 && (
@@ -552,26 +655,8 @@ export function TopDawgModal({
                     </p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
-                      Additional Amount (ETH)
-                    </label>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0.01"
-                      step="0.01"
-                      min="0"
-                      className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF]"
-                      disabled={isPending || isConfirming}
-                    />
-                    {balanceData && (
-                      <p className="text-xs text-[#8A8FBF] mt-1">
-                        Your Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
-                      </p>
-                    )}
-                  </div>
+                  {/* Amount Selector */}
+                  <AmountSelector />
 
                   {/* Token/Partner Distribution Display */}
                   {amount && parseFloat(amount) > 0 && (
