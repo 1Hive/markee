@@ -39,7 +39,7 @@ export function PartnerMarkeeCard({
 
   // Calculate buy price: top message's fundsAdded + 0.001 ETH
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const buyPrice = (winningMarkee?.fundsAdded ?? BigInt(0)) + minIncrement
+  const buyPrice = (winningMarkee?.totalFundsAdded ?? BigInt(0)) + minIncrement
   const buyPriceFormatted = Number(formatEther(buyPrice)).toFixed(4)
 
   const handleCardClick = () => {
