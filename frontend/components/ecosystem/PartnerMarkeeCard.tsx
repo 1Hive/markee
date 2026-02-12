@@ -24,6 +24,7 @@ interface PartnerMarkeeCardProps {
   totalFunds: bigint
   markeeCount?: bigint
   chainId?: number
+  minimumPrice?: bigint
   onBuyMessage?: () => void
 }
 
@@ -33,15 +34,16 @@ export function PartnerMarkeeCard({
   totalFunds,
   markeeCount,
   chainId,
+  minimumPrice,
   onBuyMessage
 }: PartnerMarkeeCardProps) {
   const router = useRouter()
 
   // Calculate buy price: top message's fundsAdded + 0.001 ETH
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const minimumPrice = BigInt('1000000000000000') // 0.001 ETH
+  const minPrice = minimumPrice ?? BigInt('1000000000000000') // fallback 0.001 ETH
   const rawBuyPrice = (winningMarkee?.totalFundsAdded ?? BigInt(0)) + minIncrement
-  const buyPrice = rawBuyPrice > minimumPrice ? rawBuyPrice : minimumPrice
+  const buyPrice = rawBuyPrice > minPrice ? rawBuyPrice : minPrice
   const buyPriceFormatted = Number(formatEther(buyPrice)).toFixed(3)
 
   const handleCardClick = () => {
