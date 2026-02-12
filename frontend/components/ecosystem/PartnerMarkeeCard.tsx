@@ -39,8 +39,10 @@ export function PartnerMarkeeCard({
 
   // Calculate buy price: top message's fundsAdded + 0.001 ETH
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const buyPrice = (winningMarkee?.totalFundsAdded ?? BigInt(0)) + minIncrement
-  const buyPriceFormatted = Number(formatEther(buyPrice)).toFixed(4)
+  const minimumPrice = BigInt('1000000000000000') // 0.001 ETH
+  const rawBuyPrice = (winningMarkee?.totalFundsAdded ?? BigInt(0)) + minIncrement
+  const buyPrice = rawBuyPrice > minimumPrice ? rawBuyPrice : minimumPrice
+  const buyPriceFormatted = Number(formatEther(buyPrice)).toFixed(3)
 
   const handleCardClick = () => {
     router.push(`/ecosystem/${partner.slug}`)
