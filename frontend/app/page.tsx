@@ -219,12 +219,12 @@ export default function Home() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 max-w-6xl mx-auto">
             <PartnerCard slug="gardens" logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
+            <PartnerCard slug="superfluid" logo="/partners/superfluid.png" name="Superfluid" description="Streaming Protocol" />
             <PartnerCard slug="juicebox" logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
             <PartnerCard slug="revnets" logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
             <PartnerCard slug="bread-cooperative" logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
             <PartnerCard slug="giveth" logo="/partners/giveth.png" name="Giveth" description="Fundraising Platform" />
             <PartnerCard slug="flow-state" logo="/partners/flowstate.png" name="Flow State" description="Continuous Funding" />
-            <PartnerCard slug="superfluid" logo="/partners/superfluid.png" name="Superfluid" description="Streaming Protocol" />
           </div>
         </div>
       </section>
