@@ -52,7 +52,7 @@ export function Footer() {
             </a>
           </div>
           <div className="text-sm text-[#8A8FBF]">
-            © 2026 Markee
+            © 2026 Markee Cooperative
           </div>
         </div>
       </div>
