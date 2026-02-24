@@ -235,9 +235,10 @@ export default function Home() {
           <div className="text-center mb-8">
             <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message.  Own the Network.</h3>
 
-            <p className="text-lg text-[#8A8FBF] mb-6">
-              Markee is a digital cooperative owned by its participants. Buy a message to join - and let people know what you gotta say.
-            </p>
+              <p className="text-lg text-[#8A8FBF] mb-6">
+                Markee is a network of messages anyone can pay to change. Our network is cooperatively owned by MARKEE token holders - you can get MARKEE by buying a message here. 
+                Or you can buy from <a href="/ecosystem" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">Our Ecosystem</a> and support your favorite platform there.
+              </p>
 
             <div className="flex gap-4 justify-center mb-8">
               <button
