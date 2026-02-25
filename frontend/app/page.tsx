@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -8,6 +8,7 @@ import { Footer } from '@/components/layout/Footer'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { useReactions } from '@/hooks/useReactions'
+import { useViews } from '@/hooks/useViews'                          // NEW
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
@@ -46,6 +47,18 @@ export default function Home() {
     isLoading: reactionsLoading,
     error: reactionsError,
   } = useReactions()
+
+  // ── View tracking ───────────────────────────────────────────────────────────
+  const { views, trackView } = useViews(markees)
+
+  // Track views for visible leaderboard entries once markees load
+  useEffect(() => {
+    if (markees.length === 0) return
+    // Track top 10 — adjust slice as needed
+    markees.slice(0, 10).forEach(trackView)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markees.map(m => m.address).join(',')])
+  // ────────────────────────────────────────────────────────────────────────────
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
@@ -117,6 +130,15 @@ export default function Home() {
     setSelectedFixedMarkee(null)
   }, [])
 
+  // Helper to get view counts for a markee
+  const getViews = (markee: Markee) => {
+    const v = views.get(markee.address.toLowerCase())
+    return {
+      totalViews: v?.totalViews,
+      messageViews: v?.messageViews,
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" useRegularLinks />
@@ -148,7 +170,7 @@ export default function Home() {
 
                   <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
                     <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                      {fixedMarkee.price ? `${fixedMarkee.price} ETH to change` : 'Change Message'}
+                      {fixedMarkee.price ? `${fixedMarkee.price} ETH to edit` : 'Edit Message'}
                     </div>
                   </div>
                 </button>
@@ -294,6 +316,7 @@ export default function Home() {
                   onReact={handleReact}
                   onRemoveReaction={handleRemoveReaction}
                   reactions={reactions.get(markees[0].address.toLowerCase())}
+                  {...getViews(markees[0])}
                 />
               </Link>
 
@@ -311,6 +334,7 @@ export default function Home() {
                       onReact={handleReact}
                       onRemoveReaction={handleRemoveReaction}
                       reactions={reactions.get(markee.address.toLowerCase())}
+                      {...getViews(markee)}
                     />
                   </Link>
                 ))}
@@ -330,6 +354,7 @@ export default function Home() {
                       onReact={handleReact}
                       onRemoveReaction={handleRemoveReaction}
                       reactions={reactions.get(markee.address.toLowerCase())}
+                      {...getViews(markee)}
                     />
                   </Link>
                 ))}
@@ -350,6 +375,7 @@ export default function Home() {
                         onReact={handleReact}
                         onRemoveReaction={handleRemoveReaction}
                         reactions={reactions.get(markee.address.toLowerCase())}
+                        {...getViews(markee)}
                       />
                     </Link>
                   ))}
