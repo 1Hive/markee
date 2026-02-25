@@ -22,7 +22,7 @@ interface MarkeeCardProps {
   messageViews?: number
   totalViews?: number
   reactions?: EmojiReaction[]
-  topFundsAdded?: bigint // Optional: current top message's totalFundsAdded for competitive display
+  topFundsAdded?: bigint
 }
 
 const ALL_EMOJIS = ['❤️', '👍', '👎', '💯', '😂', '🎉', '😮', '💩', '😠', '🚀', '👑', '🤔', '🪧']
@@ -52,7 +52,6 @@ function getMedalEmoji(rank: number): string {
   return ''
 }
 
-// Helper to calculate amount needed to reach #1
 function AmountToTop({ 
   currentFunds, 
   topFunds, 
@@ -64,7 +63,6 @@ function AmountToTop({
   rank: number
   size: string
 }) {
-  // Don't show for #1 or if no top funds data
   if (rank === 1 || !topFunds) return null
 
   const difference = topFunds - currentFunds
@@ -80,7 +78,6 @@ function AmountToTop({
   )
 }
 
-// Emoji Reactions Display - Discord-style inline reactions
 function EmojiDisplay({ 
   reactions, 
   markee, 
@@ -105,17 +102,14 @@ function EmojiDisplay({
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
-  // Group reactions by emoji
   const reactionCounts = reactions?.reduce((acc, reaction) => {
     acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1
     return acc
   }, {} as Record<string, number>) || {}
 
-  // Sort by count
   const sortedReactions = Object.entries(reactionCounts)
     .sort(([, a], [, b]) => b - a)
 
-  // Get user's current reaction
   const userReaction = reactions?.find(
     r => r.userAddress.toLowerCase() === userAddress?.toLowerCase()
   )
@@ -123,7 +117,6 @@ function EmojiDisplay({
   const textSize = size === 'hero' ? 'text-sm' : size === 'large' ? 'text-xs' : 'text-[10px]'
   const emojiSize = size === 'hero' ? 'text-base' : 'text-sm'
 
-  // Handle clicking an existing emoji
   const handleEmojiClick = (e: React.MouseEvent, emoji: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -135,10 +128,8 @@ function EmojiDisplay({
     onReact?.(markee, emoji)
   }
 
-  // Always show the reaction area (with + button if user has balance)
   return (
     <div className="relative flex items-center gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-      {/* Existing reactions as clickable buttons */}
       {sortedReactions.map(([emoji, count]) => {
         const isUserEmoji = userReaction?.emoji === emoji
         return (
@@ -161,7 +152,6 @@ function EmojiDisplay({
         )
       })}
 
-      {/* Add reaction button - always visible when connected */}
       {userAddress && (
         <button
           onClick={(e) => {
@@ -185,7 +175,6 @@ function EmojiDisplay({
         </button>
       )}
 
-      {/* Emoji picker menu */}
       {showMenu && (
         <>
           <div 
@@ -229,14 +218,13 @@ function EmojiDisplay({
         </>
       )}
 
-      {/* No balance message */}
       {showNoBalanceMessage && (
         <>
           <div 
             className="fixed inset-0 z-40" 
             onClick={(e) => { e.stopPropagation(); setShowNoBalanceMessage(false) }}
           />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 mb-2 p-3 bg-[#0A0F3D] border border-[#F897FE]/50 rounded-lg shadow-xl z-50 w-[230px]">
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 mb-2 p-3 bg-[#0A0F3D] border border-[#F897FE]/50 rounded-lg shadow-xl z-50 w-[230px]">
             <p className={`text-xs text-[#F897FE] text-center ${!isCorrectChain ? 'mb-3' : ''}`}>
               You need 100 MARKEE to react.
             </p>
@@ -261,7 +249,6 @@ function EmojiDisplay({
   )
 }
 
-// Stats component - ETH, views, rank, and medal (no chain indicator)
 function MarkeeStats({ 
   messageViews, 
   totalViews,
@@ -280,7 +267,6 @@ function MarkeeStats({
 
   return (
     <div className={`flex items-center gap-3 ${textSize} text-[#8A8FBF]`}>
-      {/* Medal and Rank */}
       {medal ? (
         <div className="flex items-center gap-1">
           <Emoji className={size === 'hero' ? 'text-2xl' : size === 'large' ? 'text-xl' : 'text-base'}>{medal}</Emoji>
@@ -289,10 +275,8 @@ function MarkeeStats({
         <span className="font-bold text-[#8A8FBF]">#{rank}</span>
       ) : null}
 
-      {/* ETH Amount */}
       <span className="font-bold text-[#7C9CFF]">{formatEth(ethAmount)} ETH</span>
 
-      {/* Views */}
       {totalViews !== undefined && (
         <div className="flex items-center gap-1 group relative">
           <Eye size={size === 'hero' ? 14 : 12} className="opacity-60" />
@@ -324,7 +308,6 @@ export function MarkeeCard({
   const isOwner = userAddress?.toLowerCase() === markee.owner.toLowerCase()
   const hasCustomName = markee.name && markee.name.trim()
 
-  // Check user's MARKEE balance
   const { data: balance } = useReadContract({
     address: MARKEE_TOKEN,
     abi: ERC20_ABI,
@@ -347,7 +330,7 @@ export function MarkeeCard({
               {markee.message}
             </p>
             <span className="text-xs text-[#8A8FBF] italic">
-              — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+              - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
                 {hasCustomName ? markee.name : formatAddress(markee.owner)}
               </span>
             </span>
@@ -377,18 +360,14 @@ export function MarkeeCard({
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
-        {/* Message and Author - Bordered Section */}
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
-          <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4">
-            {/* Message */}
+          <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4 flex flex-col">
             <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
               {markee.message}
             </div>
-
-            {/* Author at bottom right */}
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-auto pt-2">
               <p className="text-base text-[#8A8FBF] italic">
-                — <span className={hasCustomName ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
+                - <span className={hasCustomName ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
                   {hasCustomName ? markee.name : formatAddress(markee.owner)}
                 </span>
               </p>
@@ -396,7 +375,6 @@ export function MarkeeCard({
           </div>
         </ModeratedContent>
 
-        {/* Stats and Actions at bottom */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-[#8A8FBF]/30">
           <div className="flex items-center gap-3 flex-wrap">
             <MarkeeStats 
@@ -406,7 +384,6 @@ export function MarkeeCard({
               rank={rank}
               size={size}
             />
-
             <button 
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddFunds?.(markee) }}
               className="text-xs px-3 py-1.5 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
@@ -425,7 +402,6 @@ export function MarkeeCard({
                 Edit Message
               </button>
             )}
-
             <EmojiDisplay
               reactions={reactions}
               markee={markee}
@@ -451,18 +427,14 @@ export function MarkeeCard({
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
-        {/* Message and Author - Bordered Section */}
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
-          <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full">
-            {/* Message */}
+          <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full flex flex-col">
             <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
               {markee.message}
             </div>
-
-            {/* Author at bottom right */}
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-auto pt-2">
               <p className="text-sm text-[#8A8FBF] italic">
-                <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
                   {hasCustomName ? markee.name : formatAddress(markee.owner)}
                 </span>
               </p>
@@ -470,7 +442,6 @@ export function MarkeeCard({
           </div>
         </ModeratedContent>
 
-        {/* Stats and Actions at bottom */}
         <div className="pt-3 border-t border-[#8A8FBF]/20">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 flex-wrap">
@@ -481,8 +452,6 @@ export function MarkeeCard({
                 rank={rank}
                 size={size}
               />
-
-              {/* Amount needed to reach #1 */}
               <AmountToTop 
                 currentFunds={markee.totalFundsAdded}
                 topFunds={topFundsAdded}
@@ -498,7 +467,6 @@ export function MarkeeCard({
               >
                 Add Funds
               </button>
-
               <div className="flex items-center gap-2">
                 <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} compact />
                 {isOwner && (
@@ -509,7 +477,6 @@ export function MarkeeCard({
                     Edit Message
                   </button>
                 )}
-
                 <EmojiDisplay
                   reactions={reactions}
                   markee={markee}
@@ -537,18 +504,14 @@ export function MarkeeCard({
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
-        {/* Message and Author - Bordered Section */}
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
-          <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full">
-            {/* Message */}
+          <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full flex flex-col">
             <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
               {markee.message}
             </div>
-
-            {/* Author at bottom right */}
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-auto pt-1">
               <p className="text-xs text-[#8A8FBF] italic">
-                — <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
                   {hasCustomName ? markee.name : formatAddress(markee.owner)}
                 </span>
               </p>
@@ -556,7 +519,6 @@ export function MarkeeCard({
           </div>
         </ModeratedContent>
 
-        {/* Stats and Actions at bottom */}
         <div className="pt-2 border-t border-[#8A8FBF]/20">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -567,8 +529,6 @@ export function MarkeeCard({
                 rank={rank}
                 size={size}
               />
-
-              {/* Amount needed to reach #1 */}
               <AmountToTop 
                 currentFunds={markee.totalFundsAdded}
                 topFunds={topFundsAdded}
@@ -584,7 +544,6 @@ export function MarkeeCard({
               >
                 Add Funds
               </button>
-
               <div className="flex items-center gap-1.5">
                 <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} compact />
                 {isOwner && (
@@ -595,7 +554,6 @@ export function MarkeeCard({
                     Edit Message
                   </button>
                 )}
-
                 <EmojiDisplay
                   reactions={reactions}
                   markee={markee}
