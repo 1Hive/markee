@@ -40,18 +40,18 @@ export default function EcosystemPage() {
         <HeroBackground />
         
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Markee is coming soon to a platform near you...</h1>
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Join the growing list of sites raising funds with Markee.</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
-            Join the growing list of sites integrating Markee for their users.
+            Funds follow the Golden Ratio - 62% to the site directly, 38% to the Markee Cooperative Revnet
           </p>
         </div>
       </section>
 
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Leaderboard</h2>
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Messages</h2>
           <p className="text-[#8A8FBF] mb-8">
-            Markee is under construction on these sites - buy a message from your favorite!
+            Buy a message from your favorite!
           </p>
           
           {isLoading ? (
