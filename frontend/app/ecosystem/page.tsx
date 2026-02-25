@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -8,9 +8,11 @@ import { PartnerMarkeeCard } from '@/components/ecosystem/PartnerMarkeeCard'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { PartnerReserveDistributor } from '@/components/ecosystem/PartnerReserveDistributor'
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
+import { useViews } from '@/hooks/useViews'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ModerationProvider } from '@/components/moderation'
 import { ExternalLink } from 'lucide-react'
+import type { Markee } from '@/types'
 
 export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
@@ -18,6 +20,27 @@ export default function EcosystemPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   const selectedPartner = partnerData.find(p => p.partner.slug === selectedPartnerSlug)
+
+  // ── View tracking ──────────────────────────────────────────────────
+  // Collect all winning markees so useViews can batch-fetch their counts
+  const winningMarkees: Markee[] = partnerData
+    .filter(({ winningMarkee }) => !!winningMarkee)
+    .map(({ winningMarkee }) => winningMarkee as Markee)
+
+  const { views, trackView } = useViews(winningMarkees)
+
+  // Track views for all visible winning markees once data loads
+  useEffect(() => {
+    if (winningMarkees.length === 0) return
+    winningMarkees.forEach(trackView)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winningMarkees.map(m => m.address).join(',')])
+
+  const getWinnerViews = (markee?: Markee) => {
+    if (!markee) return undefined
+    return views.get(markee.address.toLowerCase())?.totalViews
+  }
+  // ──────────────────────────────────────────────────────────────────
 
   const handleBuyMessage = (partnerSlug: string) => {
     setSelectedPartnerSlug(partnerSlug)
@@ -33,7 +56,6 @@ export default function EcosystemPage() {
     // Data will refresh on page navigation/reload
   }
 
-  // Split into live vs waitlist, sorted by totalFunds within each group
   const livePartners = partnerData
     .filter(({ partner }) => !!partner.liveUrl)
     .sort((a, b) => (b.totalFunds > a.totalFunds ? 1 : -1))
@@ -89,7 +111,6 @@ export default function EcosystemPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {livePartners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
                       <div key={partner.slug} className="relative">
-                        {/* Live site link banner */}
                         <a
                           href={partner.liveUrl}
                           target="_blank"
@@ -108,6 +129,7 @@ export default function EcosystemPage() {
                             markeeCount={markeeCount}
                             chainId={CANONICAL_CHAIN_ID}
                             onBuyMessage={() => handleBuyMessage(partner.slug)}
+                            totalViews={getWinnerViews(winningMarkee ?? undefined)}
                           />
                         </div>
                       </div>
@@ -136,6 +158,7 @@ export default function EcosystemPage() {
                           markeeCount={markeeCount}
                           chainId={CANONICAL_CHAIN_ID}
                           onBuyMessage={() => handleBuyMessage(partner.slug)}
+                          totalViews={getWinnerViews(winningMarkee ?? undefined)}
                         />
                       </div>
                     ))}
