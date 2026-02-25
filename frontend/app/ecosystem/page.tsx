@@ -105,16 +105,16 @@ export default function EcosystemPage() {
             Want to add a Markee to your site?
           </h2>
           <p className="text-xl text-[#8A8FBF] mb-8">
-            Join the waitlist now - first integrations scheduled for Q1 2026
+            We'll work with you to make it right for your site. Current lead time: 1-2 months
           </p>
           <div className="flex justify-center">
             <a
-              href="https://discord.gg/UhhRDzwwkM"
+              href="https://form.typeform.com/to/GsKEKbQj"
               target="_blank"
               rel="noopener noreferrer"
               className="bg-[#7C9CFF] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#F897FE] transition-colors"
             >
-              Join Discord
+              Join the Waitlist
             </a>
           </div>
         </div>
