@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useReadContract } from 'wagmi'
 import { formatEther } from 'viem'
+import { Eye } from 'lucide-react'
 import type { Markee } from '@/types'
 import { CANONICAL_CHAIN_ID, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -27,6 +28,13 @@ interface PartnerMarkeeCardProps {
   markeeCount?: bigint
   chainId?: number
   onBuyMessage?: () => void
+  totalViews?: number
+}
+
+function formatViewCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toString()
 }
 
 export function PartnerMarkeeCard({ 
@@ -35,11 +43,11 @@ export function PartnerMarkeeCard({
   totalFunds,
   markeeCount,
   chainId,
-  onBuyMessage
+  onBuyMessage,
+  totalViews,
 }: PartnerMarkeeCardProps) {
   const router = useRouter()
 
-  // Read minimum price from the partner's strategy contract
   const { data: minimumPrice } = useReadContract({
     address: partner.strategyAddress as `0x${string}`,
     abi: TopDawgPartnerStrategyABI,
@@ -47,7 +55,6 @@ export function PartnerMarkeeCard({
     chainId: CANONICAL_CHAIN.id,
   })
 
-  // Calculate buy price: top message's totalFundsAdded + 0.001 ETH, floored at minimumPrice
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
   const minPrice = (minimumPrice as bigint) ?? minIncrement
   const rawBuyPrice = (winningMarkee?.totalFundsAdded ?? BigInt(0)) + minIncrement
@@ -116,11 +123,19 @@ export function PartnerMarkeeCard({
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={winningMarkee.address} compact />
           )}
         </div>
-        {markeeCount !== undefined && (
-          <span className="text-[#8A8FBF]">
-            {markeeCount.toString()} {Number(markeeCount) === 1 ? 'message' : 'messages'}
-          </span>
-        )}
+        <div className="flex items-center gap-3 text-[#8A8FBF]">
+          {totalViews !== undefined && (
+            <span className="flex items-center gap-1">
+              <Eye size={10} className="opacity-60" />
+              {formatViewCount(totalViews)}
+            </span>
+          )}
+          {markeeCount !== undefined && (
+            <span>
+              {markeeCount.toString()} {Number(markeeCount) === 1 ? 'message' : 'messages'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* CTA */}
