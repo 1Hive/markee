@@ -125,7 +125,7 @@ function PricingStrategies() {
       description: 'Leaderboard strategy using Superfluid streams',
       visual: 'Continuous payment',
       example: 'Coming Soon.',
-      status: 'q1-2026'
+      status: 'coming-soon'
     },
     {
       id: 'dynamic',
@@ -135,7 +135,7 @@ function PricingStrategies() {
       description: 'Automated pricing based on demand',
       visual: '10x spike then decay',
       example: 'Coming Soon.',
-      status: 'q1-2026'
+      status: 'coming-soon'
     }
   ]
 
@@ -187,7 +187,7 @@ function StrategyCard({ strategy, isHovered, onHover, onLeave }: any) {
     >
       {isComingSoon && (
         <div className="absolute top-4 right-4 bg-deep-space text-cool-slate text-xs font-bold px-3 py-1 rounded-full">
-          Q1 2026
+          Coming Soon
         </div>
       )}
 
@@ -289,7 +289,7 @@ function CollectSection() {
     <section className="py-24 bg-deep-space border-b border-cool-slate/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-soft-white text-center mb-4">
-          3. Collect 💰
+          3. Earn Revenue
         </h2>
         <p className="text-xl text-lavender-gray text-center mb-16">
           From passionate users with something to say, and from a global network of message buyers.
@@ -357,12 +357,13 @@ function CondensedFAQ() {
 
   const faqs = [
     {
-      question: "What is a RevNet?",
+      question: "What is the Markee Cooperative?",
       answer: (
         <div>
-          <p className="mb-3">RevNets are 100% automated tokenized revenue systems built on Juicebox smart contracts. They apply crowdfunding concepts to revenue-generating digital cooperatives with preset terms for how revenue is shared.</p>
-          <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
-            Learn more at revnet.eth.sucks →
+          <p className="mb-3">The Markee Cooperative is the collective of MARKEE token holders who collectively own the Markee Network — including its smart contracts, domains, brand assets, and treasury. Holding any amount of MARKEE makes you an Owner.</p>
+          <p className="mb-3">Governance decisions are made onchain through the Gardens community using conviction voting. The foundational ownership rights and tokenomics are immutable — no one, including the Council Safe, can alter them.</p>
+          <a href="https://app.gardens.fund/gardens/8453/0xee3027f1e021b09d629922d40436c5dea3c6cb38/0xce6b968c8bd130ca08f1fcc97b509a824380d867" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
+            Participate in governance on Gardens →
           </a>
         </div>
       )
@@ -371,7 +372,8 @@ function CondensedFAQ() {
       question: "How do I become an owner?",
       answer: (
         <div>
-          <p className="mb-3">During Phase 0, you can become an owner by investing through the leaderboard. Pay to update the message and receive MARKEE tokens based on the current RevNet price (starting at 100,000 tokens/ETH).</p>
+          <p className="mb-3">Buy a message on any Markee Network platform and you'll automatically receive MARKEE tokens from the RevNet. Holding any amount of MARKEE makes you an Owner of the Markee Network — it's that simple.</p>
+          <p className="mb-3">MARKEE tokens are freely transferable and can also be allocated from the Community Reserve to organizations and participants who advance the Cooperative's mission.</p>
           <Link href="/owners" className="text-soft-pink hover:underline font-semibold">
             Learn about ownership →
           </Link>
@@ -379,13 +381,50 @@ function CondensedFAQ() {
       )
     },
     {
+      question: "Where does my money go?",
+      answer: (
+        <div className="space-y-3">
+          <p>Every payment made through Markee is automatically split onchain between two destinations:</p>
+          <p><strong className="text-soft-white">62% → Your Beneficiary:</strong> Goes directly to the Network Platform's chosen address — funding communities, DAOs, open source projects, or any digital organization.</p>
+          <p><strong className="text-soft-white">38% → Markee Cooperative:</strong> Flows into the RevNet, which issues MARKEE tokens to the message buyer. This is how ownership is distributed — every purchase makes the buyer a co-owner of the network.</p>
+          <p className="text-lavender-gray text-sm">All splits are enforced automatically by smart contracts. No one can redirect or intercept funds.</p>
+        </div>
+      )
+    },
+    {
+      question: "What do MARKEE tokens do?",
+      answer: (
+        <div className="space-y-3">
+          <p>MARKEE is the governance and ownership token of the Markee Network. Holding MARKEE means you are a co-owner of the network and its assets.</p>
+          <p><strong className="text-soft-white">Governance:</strong> Vote on proposals in the Gardens community using conviction voting to shape the future of the network.</p>
+          <p><strong className="text-soft-white">Ownership:</strong> MARKEE holders collectively own the Markee Network — its smart contracts, domains, brand, and treasury.</p>
+          <p><strong className="text-soft-white">Transferable:</strong> MARKEE tokens are freely transferable. You can acquire them by buying messages or receiving allocations from the Community Reserve.</p>
+          <a href="https://www.revnet.app/v5:base:119/terms" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
+            View immutable token terms →
+          </a>
+        </div>
+      )
+    },
+    {
+      question: "What is a RevNet?",
+      answer: (
+        <div>
+          <p className="mb-3">RevNets are 100% automated tokenized revenue systems built on Juicebox smart contracts. They apply crowdfunding concepts to revenue-generating digital cooperatives with preset terms for how revenue is shared.</p>
+          <p className="mb-3">The Markee RevNet's issuance rules are immutable — no one can change how MARKEE tokens are issued or how revenue flows through the system.</p>
+          <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
+            Learn more at revnet.eth.sucks →
+          </a>
+        </div>
+      )
+    },
+    {
       question: "What pricing strategy should I use?",
       answer: (
         <div className="space-y-3">
-          <p><strong className="text-soft-white">Fixed Price:</strong> Best for predictable, simple transactions</p>
-          <p><strong className="text-soft-white">Leaderboard:</strong> Best for fundraising and early believers</p>
-          <p><strong className="text-soft-white">Stream-to-Own:</strong> Best for continuous engagement (Q1 2026)</p>
-          <p><strong className="text-soft-white">Dynamic:</strong> Best for viral moments and algorithmic pricing (Q1 2026)</p>
+          <p><strong className="text-soft-white">Fixed Price:</strong> Best for predictable, simple transactions — visitors pay a set amount each time they update the message.</p>
+          <p><strong className="text-soft-white">Leaderboard:</strong> Best for fundraising and competitive visibility — the highest-funded message stays on top.</p>
+          <p><strong className="text-soft-white">Stream-to-Own:</strong> Best for continuous engagement — uses Superfluid streams so the top streamer holds the message. Coming soon.</p>
+          <p><strong className="text-soft-white">Dynamic:</strong> Best for viral moments — pricing adjusts automatically based on demand. Coming soon.</p>
         </div>
       )
     },
@@ -393,9 +432,20 @@ function CondensedFAQ() {
       question: "When can I integrate Markee?",
       answer: (
         <div className="space-y-2">
-          <p><strong className="text-soft-white">Website Plugin:</strong> Q1 2026 - Add Markees to any website</p>
-          <p><strong className="text-soft-white">Platform Integration:</strong> Q2 2026 - Partner with us to offer Markees to your users</p>
-          <p className="mt-3">Join the waitlist or <Link href="/ecosystem" className="text-soft-pink hover:underline font-semibold">explore our ecosystem</Link> to learn more.</p>
+          <p>Markee is live and open to integrations now. If you run a website, community platform, or digital organization, reach out to discuss becoming a Network Platform.</p>
+          <p className="mt-3"><Link href="/ecosystem" className="text-soft-pink hover:underline font-semibold">Explore our ecosystem</Link> to see existing integrations, or contact us to get started.</p>
+        </div>
+      )
+    },
+    {
+      question: "Is Markee open source?",
+      answer: (
+        <div>
+          <p className="mb-3">Yes. The Markee Network and all of its assets are open source under the GNU General Public License v3.0 (GPL-3.0). Anyone may fork, modify, share, or redistribute Markee, provided derivative works carry the same freedoms.</p>
+          <p className="mb-3">This is a core value of the Cooperative — we believe in an open internet where communities own the infrastructure they rely on.</p>
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
+            View source on GitHub →
+          </a>
         </div>
       )
     },
