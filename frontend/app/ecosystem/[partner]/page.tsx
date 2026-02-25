@@ -11,6 +11,7 @@ import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { useReactions } from '@/hooks/useReactions'
+import { useViews } from '@/hooks/useViews'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
 import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatDistanceToNow } from 'date-fns'
@@ -65,7 +66,6 @@ export default function PartnerPage() {
   const params = useParams()
   const { address } = useAccount()
   
-  // Reactions hook
   const {
     reactions,
     toggleReaction,
@@ -83,10 +83,23 @@ export default function PartnerPage() {
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
   const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
 
-  // Find the partner
   const partner = PARTNERS.find(p => p.slug === params.partner)
 
-  // Fetch markees for this partner from subgraph
+  // ── View tracking ──────────────────────────────────────────────────
+  const { views, trackView } = useViews(markees)
+
+  useEffect(() => {
+    if (markees.length === 0) return
+    markees.slice(0, 10).forEach(trackView)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markees.map(m => m.address).join(',')])
+
+  const getViews = (markee: Markee) => {
+    const v = views.get(markee.address.toLowerCase())
+    return { totalViews: v?.totalViews, messageViews: v?.messageViews }
+  }
+  // ──────────────────────────────────────────────────────────────────
+
   const fetchMarkees = useCallback(async () => {
     if (!partner) return
 
@@ -100,7 +113,6 @@ export default function PartnerPage() {
         throw new Error('Subgraph URL not configured')
       }
 
-      // Choose query based on whether this is the cooperative or a partner
       const query = partner.isCooperative ? COOPERATIVE_ALL_MARKEES_QUERY : PARTNER_ALL_MARKEES_QUERY
       const variables = partner.isCooperative ? {} : { strategyId: partner.strategyAddress.toLowerCase() }
 
@@ -132,7 +144,6 @@ export default function PartnerPage() {
         return
       }
 
-      // Transform subgraph data to Markee type
       const transformedMarkees: Markee[] = strategyData.markees.map((m: any) => ({
         address: m.address,
         message: m.message,
@@ -206,7 +217,6 @@ export default function PartnerPage() {
   }
 
   const handleTransactionSuccess = () => {
-    // Refetch after a delay to allow subgraph to index
     setTimeout(() => {
       fetchMarkees()
     }, 3000)
@@ -259,7 +269,7 @@ export default function PartnerPage() {
 
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <div className="flex items-center gap-3">
-              {(reactionsLoading) && (
+              {reactionsLoading && (
                 <div className="flex items-center gap-2 text-sm text-[#8A8FBF]">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F897FE]" />
                   <span>Loading reactions...</span>
@@ -291,11 +301,7 @@ export default function PartnerPage() {
       {/* Leaderboard */}
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {isLoading && markees.length === 0 && (
-            <div>
-              <LeaderboardSkeleton />
-            </div>
-          )}
+          {isLoading && markees.length === 0 && <LeaderboardSkeleton />}
 
           {error && (
             <div className="text-center py-12">
@@ -323,24 +329,23 @@ export default function PartnerPage() {
 
           {markees.length > 0 && (
             <div>
-              {/* #1 Spot - Full Width */}
-              {markees[0] && (
-                <Link href={`/markee/${markees[0].address}`} className="block">
-                  <MarkeeCard 
-                    markee={markees[0]} 
-                    rank={1} 
-                    size="hero"
-                    userAddress={address}
-                    onEditMessage={handleEditMessage}
-                    onAddFunds={handleAddFunds}
-                    onReact={handleReact}
-                    onRemoveReaction={handleRemoveReaction}
-                    reactions={reactions.get(markees[0].address.toLowerCase())}
-                  />
-                </Link>
-              )}
+              {/* #1 Hero */}
+              <Link href={`/markee/${markees[0].address}`} className="block">
+                <MarkeeCard 
+                  markee={markees[0]} 
+                  rank={1} 
+                  size="hero"
+                  userAddress={address}
+                  onEditMessage={handleEditMessage}
+                  onAddFunds={handleAddFunds}
+                  onReact={handleReact}
+                  onRemoveReaction={handleRemoveReaction}
+                  reactions={reactions.get(markees[0].address.toLowerCase())}
+                  {...getViews(markees[0])}
+                />
+              </Link>
 
-              {/* #2 and #3 - Two Column */}
+              {/* #2-3 Large */}
               {markees.length > 1 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
@@ -355,6 +360,7 @@ export default function PartnerPage() {
                         onReact={handleReact}
                         onRemoveReaction={handleRemoveReaction}
                         reactions={reactions.get(markees[1].address.toLowerCase())}
+                        {...getViews(markees[1])}
                       />
                     </Link>
                   )}
@@ -370,13 +376,14 @@ export default function PartnerPage() {
                         onReact={handleReact}
                         onRemoveReaction={handleRemoveReaction}
                         reactions={reactions.get(markees[2].address.toLowerCase())}
+                        {...getViews(markees[2])}
                       />
                     </Link>
                   )}
                 </div>
               )}
 
-              {/* #4-26 - Grid */}
+              {/* #4-26 Grid */}
               {markees.length > 3 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   {markees.slice(3, 26).map((markee, index) => (
@@ -391,13 +398,14 @@ export default function PartnerPage() {
                         onReact={handleReact}
                         onRemoveReaction={handleRemoveReaction}
                         reactions={reactions.get(markee.address.toLowerCase())}
+                        {...getViews(markee)}
                       />
                     </Link>
                   ))}
                 </div>
               )}
 
-              {/* #27+ - List View */}
+              {/* #27+ List */}
               {markees.length > 26 && (
                 <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-6 border border-[#8A8FBF]/20">
                   <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
@@ -414,6 +422,7 @@ export default function PartnerPage() {
                           onReact={handleReact}
                           onRemoveReaction={handleRemoveReaction}
                           reactions={reactions.get(markee.address.toLowerCase())}
+                          {...getViews(markee)}
                         />
                       </Link>
                     ))}
@@ -427,7 +436,6 @@ export default function PartnerPage() {
 
       <Footer />
 
-      {/* Modal - with partner distribution props */}
       <TopDawgModal 
         isOpen={isModalOpen}
         onClose={handleModalClose}
