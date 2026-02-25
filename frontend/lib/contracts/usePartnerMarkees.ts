@@ -12,7 +12,8 @@ export const PARTNERS = [
     logo: '/markee-logo.png',
     fundingSplit: '100% to Markee Cooperative',
     percentToBeneficiary: 0,
-    isCooperative: true
+    isCooperative: true,
+    liveUrl: 'https://markee.xyz',
   },
   {
     slug: 'gardens',
@@ -22,9 +23,10 @@ export const PARTNERS = [
     logo: '/partners/gardens.png',
     fundingSplit: '62% to Gardens / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
+    isCooperative: false,
+    liveUrl: 'https://app.gardens.fund',
   },
-    {
+  {
     slug: 'bread-cooperative',
     name: 'Bread Cooperative',
     description: 'A collective of communities building worker-owned financial infrastructure',
@@ -32,9 +34,10 @@ export const PARTNERS = [
     logo: '/partners/breadcoop.png',
     fundingSplit: '62% to Bread Cooperative / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
+    isCooperative: false,
+    liveUrl: undefined,
   },
-    {
+  {
     slug: 'revnets',
     name: 'RevNets',
     description: 'Autonomous revenue-sharing networks with immutable tokenomics rules',
@@ -42,9 +45,10 @@ export const PARTNERS = [
     logo: '/partners/revnets.png',
     fundingSplit: '62% to RevNets / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
+    isCooperative: false,
+    liveUrl: undefined,
   },
-    {
+  {
     slug: 'juicebox',
     name: 'Juicebox',
     description: 'Programmable fundraising protocol for community-owned treasury formation',
@@ -52,37 +56,41 @@ export const PARTNERS = [
     logo: '/partners/juicebox.png',
     fundingSplit: '62% to Juicebox / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
-  }, 
-    {
+    isCooperative: false,
+    liveUrl: undefined,
+  },
+  {
     slug: 'giveth',
-    name: 'Giveth', 
+    name: 'Giveth',
     description: 'Web3 crowdfunding platform for nonprofits and social causes',
-    strategyAddress: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431',  
+    strategyAddress: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431',
     logo: '/partners/giveth.png',
     fundingSplit: '62% to Giveth / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
+    isCooperative: false,
+    liveUrl: undefined,
   },
-    {
+  {
     slug: 'flow-state',
-    name: 'Flow State', 
+    name: 'Flow State',
     description: 'Continuous funding apps, incentive systems & governance mechanisms',
-    strategyAddress: '0x24512EE8E5f9138e2Bfca0c8253e7525035f4989',  
+    strategyAddress: '0x24512EE8E5f9138e2Bfca0c8253e7525035f4989',
     logo: '/partners/flowstate.png',
     fundingSplit: '62% to Flow State / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
+    isCooperative: false,
+    liveUrl: undefined,
   },
-    {
+  {
     slug: 'superfluid',
-    name: 'Superfluid', 
+    name: 'Superfluid',
     description: 'Protocol for money streaming - send and receive tokens continuously',
-    strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',  
+    strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
     logo: '/partners/superfluid.png',
     fundingSplit: '62% to Superfluid / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
-    isCooperative: false
+    isCooperative: false,
+    liveUrl: 'https://campaigns.superfluid.org',
   },
 ] as const
 
