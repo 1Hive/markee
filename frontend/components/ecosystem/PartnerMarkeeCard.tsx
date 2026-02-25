@@ -87,13 +87,13 @@ export function PartnerMarkeeCard({
             onClick={(e) => e.stopPropagation()}
             className="block"
           >
-            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex items-center justify-center min-h-[120px]">
-              <div className="text-center w-full">
+            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
+              <div className="flex flex-col h-full flex-1">
                 <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
                   {winningMarkee.message}
                 </p>
                 {winningMarkee.name && (
-                  <p className="text-[#8A8FBF] text-xs text-right">— {winningMarkee.name}</p>
+                  <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {winningMarkee.name}</p>
                 )}
               </div>
             </div>
