@@ -277,13 +277,11 @@ function MarkeeStats({
 
       <span className="font-bold text-[#7C9CFF]">{formatEth(ethAmount)} ETH</span>
 
+
       {totalViews !== undefined && (
-        <div className="flex items-center gap-1 group relative">
+        <div className="flex items-center gap-1">
           <Eye size={size === 'hero' ? 14 : 12} className="opacity-60" />
           <span>{formatNumber(totalViews)}</span>
-          <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-[#0A0F3D] text-[#B8B6D9] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-[#8A8FBF]/30">
-            {totalViews.toLocaleString()} all-time views
-          </div>
         </div>
       )}
     </div>
