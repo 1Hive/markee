@@ -617,8 +617,8 @@ export function TopDawgModal({
                   <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
                     <p className="text-sm text-[#B8B6D9]">
                       {partnerName 
-                        ? `By buying a message, you support ${partnerName} and receive MARKEE tokens, making you a member of the Markee Cooperative.`
-                        : 'By buying a message and getting MARKEE tokens, you agree to the Covenant and become a member of the Markee Cooperative.'
+                        ? `You'll receive MARKEE tokens for your purchase and become an owner of the Markee Network.'
+                        : 'You'll receive MARKEE tokens for your purchase and become an owner of the Markee Network.'
                       }
                     </p>
                   </div>
