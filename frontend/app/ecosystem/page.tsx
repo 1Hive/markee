@@ -10,6 +10,7 @@ import { PartnerReserveDistributor } from '@/components/ecosystem/PartnerReserve
 import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ModerationProvider } from '@/components/moderation'
+import { ExternalLink } from 'lucide-react'
 
 export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
@@ -32,6 +33,15 @@ export default function EcosystemPage() {
     // Data will refresh on page navigation/reload
   }
 
+  // Split into live vs waitlist, sorted by totalFunds within each group
+  const livePartners = partnerData
+    .filter(({ partner }) => !!partner.liveUrl)
+    .sort((a, b) => (b.totalFunds > a.totalFunds ? 1 : -1))
+
+  const waitlistPartners = partnerData
+    .filter(({ partner }) => !partner.liveUrl)
+    .sort((a, b) => (b.totalFunds > a.totalFunds ? 1 : -1))
+
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
@@ -49,8 +59,7 @@ export default function EcosystemPage() {
 
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-2">Ecosystem Messages</h2>
-          
+
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5].map(i => (
@@ -63,30 +72,81 @@ export default function EcosystemPage() {
             <div className="bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg p-6 text-center">
               <p className="text-[#FF8E8E]">Error loading partners: {error.message}</p>
             </div>
-          ) : partnerData.length === 0 ? (
-            <div className="bg-[#0A0F3D] rounded-lg p-12 border border-[#8A8FBF]/20 text-center">
-              <div className="text-6xl mb-4">🤝</div>
-              <p className="text-[#8A8FBF] text-lg">No partners yet</p>
-            </div>
           ) : (
             <ModerationProvider>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                {partnerData.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
-                  <PartnerMarkeeCard
-                    key={partner.slug}
-                    partner={partner}
-                    winningMarkee={winningMarkee ?? undefined}
-                    totalFunds={totalFunds}
-                    markeeCount={markeeCount}
-                    chainId={CANONICAL_CHAIN_ID}
-                    onBuyMessage={() => handleBuyMessage(partner.slug)}
-                  />
-                ))}
-              </div>
+
+              {/* Live Integrations */}
+              {livePartners.length > 0 && (
+                <div className="mb-16">
+                  <div className="flex items-center gap-3 mb-6">
+                    <h2 className="text-2xl font-bold text-[#EDEEFF]">Live Integrations</h2>
+                    <span className="flex items-center gap-1.5 bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE] text-xs font-semibold px-3 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#F897FE] animate-pulse" />
+                      Live
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {livePartners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
+                      <div key={partner.slug} className="relative">
+                        {/* Live site link banner */}
+                        <a
+                          href={partner.liveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <ExternalLink size={12} />
+                          {partner.liveUrl.replace(/^https?:\/\//, '')}
+                        </a>
+                        <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
+                          <PartnerMarkeeCard
+                            partner={partner}
+                            winningMarkee={winningMarkee ?? undefined}
+                            totalFunds={totalFunds}
+                            markeeCount={markeeCount}
+                            chainId={CANONICAL_CHAIN_ID}
+                            onBuyMessage={() => handleBuyMessage(partner.slug)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Waitlist */}
+              {waitlistPartners.length > 0 && (
+                <div className="mb-12">
+                  <div className="flex items-center gap-3 mb-6">
+                    <h2 className="text-2xl font-bold text-[#EDEEFF]">Coming Soon</h2>
+                    <span className="bg-[#8A8FBF]/15 border border-[#8A8FBF]/30 text-[#8A8FBF] text-xs font-semibold px-3 py-1 rounded-full">
+                      Waitlist
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {waitlistPartners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
+                      <div key={partner.slug} className="opacity-80">
+                        <PartnerMarkeeCard
+                          partner={partner}
+                          winningMarkee={winningMarkee ?? undefined}
+                          totalFunds={totalFunds}
+                          markeeCount={markeeCount}
+                          chainId={CANONICAL_CHAIN_ID}
+                          onBuyMessage={() => handleBuyMessage(partner.slug)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </ModerationProvider>
           )}
 
-          {/* Partner Reserve Distributor - moved below partner cards */}
+          {/* Partner Reserve Distributor */}
           <PartnerReserveDistributor 
             partners={partnerData.map(({ partner }) => ({
               name: partner.name,
@@ -128,7 +188,6 @@ export default function EcosystemPage() {
           partnerName={selectedPartner.partner.isCooperative ? undefined : selectedPartner.partner.name}
           partnerSplitPercentage={selectedPartner.partner.isCooperative ? undefined : selectedPartner.partner.percentToBeneficiary / 100}
           topFundsAdded={selectedPartner.winningMarkee?.totalFundsAdded}
-
         />
       )}
     </div>
