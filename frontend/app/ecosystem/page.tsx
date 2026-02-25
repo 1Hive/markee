@@ -40,7 +40,7 @@ export default function EcosystemPage() {
         <HeroBackground />
         
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Join the growing list of sites raising funds with Markee.</h1>
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Join the growing list of sites raising funds with Markee</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
             Funds follow the Golden Ratio - 62% to the site directly, 38% to the Markee Cooperative Revnet
           </p>
