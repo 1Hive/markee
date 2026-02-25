@@ -4,20 +4,12 @@
  * Markee Detail Page
  * 
  * Route: /markee/[address]
- * 
- * Displays full detail for a single markee including:
- *   - Current message with author attribution
- *   - Key stats (total funded, created date, update counts)
- *   - Message edit history with diffs
- *   - Funding history with Basescan transaction links
- *   - Name change history
- *   - Contract address link
  */
 
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check, Eye } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkeeDetail } from '@/lib/contracts/useMarkeeDetail'
@@ -47,6 +39,12 @@ function timeAgo(ts: bigint | number): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
   if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`
   return `${Math.floor(seconds / 2592000)}mo ago`
+}
+
+function formatViewCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toString()
 }
 
 // ── Copy Button ──────────────────────────────────────────────────────
@@ -113,22 +111,6 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
         <span>{label}</span>
       </div>
       <div className="text-[#EDEEFF] font-bold text-lg">{value}</div>
-    </div>
-  )
-}
-
-// ── Section Header ───────────────────────────────────────────────────
-
-function SectionHeader({ icon, title, count }: { icon: React.ReactNode; title: string; count?: number }) {
-  return (
-    <div className="flex items-center gap-2 mb-4">
-      <div className="text-[#F897FE]">{icon}</div>
-      <h2 className="text-lg font-bold text-[#EDEEFF]">{title}</h2>
-      {count !== undefined && (
-        <span className="text-xs bg-[#8A8FBF]/20 text-[#8A8FBF] px-2 py-0.5 rounded-full">
-          {count}
-        </span>
-      )}
     </div>
   )
 }
@@ -202,6 +184,33 @@ export default function MarkeeDetailPage() {
   const markeeAddress = params.address as string
   const { markee, isLoading, error } = useMarkeeDetail(markeeAddress)
   const [activeTab, setActiveTab] = useState<TabId>('funds')
+  const [totalViews, setTotalViews] = useState<number | null>(null)
+
+  // Track this detail page view and fetch current count
+  useEffect(() => {
+    if (!markee) return
+
+    const track = async () => {
+      try {
+        const res = await fetch('/api/views', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: markee.address,
+            message: markee.message,
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setTotalViews(data.totalViews)
+        }
+      } catch (err) {
+        console.error('[views] track failed:', err)
+      }
+    }
+
+    track()
+  }, [markee?.address])
 
   return (
     <div className="min-h-screen bg-[#060A2A] text-[#EDEEFF]">
@@ -250,7 +259,7 @@ export default function MarkeeDetailPage() {
             </ModeratedContent>
 
             {/* ── Stats Grid ─────────────────────────────────────── */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <StatCard
                 icon={<Coins size={14} />}
                 label="Total Funded"
@@ -274,6 +283,11 @@ export default function MarkeeDetailPage() {
                 icon={<User size={14} />}
                 label="Contributions"
                 value={markee.fundsAddedCount.toString()}
+              />
+              <StatCard
+                icon={<Eye size={14} />}
+                label="All-Time Views"
+                value={totalViews !== null ? formatViewCount(totalViews) : '—'}
               />
             </div>
 
@@ -391,11 +405,9 @@ export default function MarkeeDetailPage() {
                                 <MessageSquare size={14} className="text-[#F897FE]" />
                               </div>
                               <div className="min-w-0 flex-1">
-                                {/* Old message - struck through */}
                                 <div className="text-xs text-[#8A8FBF] line-through mb-1 truncate" title={event.oldMessage}>
                                   {event.oldMessage || '(empty)'}
                                 </div>
-                                {/* New message */}
                                 <div className="font-jetbrains text-sm text-[#EDEEFF] break-words">
                                   {event.newMessage}
                                 </div>
