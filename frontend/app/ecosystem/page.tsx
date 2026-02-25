@@ -98,7 +98,7 @@ export default function EcosystemPage() {
                           onClick={e => e.stopPropagation()}
                         >
                           <ExternalLink size={12} />
-                          {partner.liveUrl.replace(/^https?:\/\//, '')}
+                          {partner.liveUrl?.replace(/^https?:\/\//, '')}
                         </a>
                         <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
                           <PartnerMarkeeCard
