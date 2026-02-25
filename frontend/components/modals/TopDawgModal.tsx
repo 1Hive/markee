@@ -121,25 +121,49 @@ export function TopDawgModal({
     chainId: CANONICAL_CHAIN.id,
   })
 
-  // Calculate preset amounts
+  // ---------------------------------------------------------------------------
+  // Preset amount calculations
+  // ---------------------------------------------------------------------------
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
   const minimumAmount = minimumPrice || parseEther('0.001')
-  const rawTakeFirstAmount = topFundsAdded && topFundsAdded > 0n
-    ? topFundsAdded + MIN_INCREMENT
-    : null
-  // Floor at minimumAmount so take-first never shows below contract minimum
+
+  // Create tab: topFundsAdded + 0.001, floored at minimumAmount
+  const rawTakeFirstAmount =
+    topFundsAdded && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT : null
   const takeFirstAmount = rawTakeFirstAmount
-    ? (rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount)
+    ? rawTakeFirstAmount >= minimumAmount
+      ? rawTakeFirstAmount
+      : minimumAmount
     : null
+
+  // Add Funds tab: only the *additional* ETH needed to overtake the top message.
+  // = (topFundsAdded + 0.001) - userMarkee.totalFundsAdded
+  // Hidden when the user already holds the top spot (result <= 0).
+  const addFundsRawTakeFirst =
+    topFundsAdded && topFundsAdded > 0n && userMarkee
+      ? topFundsAdded + MIN_INCREMENT - userMarkee.totalFundsAdded
+      : null
+  const addFundsTakeFirstAmount =
+    addFundsRawTakeFirst && addFundsRawTakeFirst > 0n ? addFundsRawTakeFirst : null
+
+  // Active preset values depending on which tab is showing
+  const activeTakeFirstAmount =
+    activeTab === 'addFunds' ? addFundsTakeFirstAmount : takeFirstAmount
 
   // Formatted preset values
   const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(4)
-  const takeFirstAmountFormatted = takeFirstAmount
-    ? Number(formatEther(takeFirstAmount)).toFixed(4)
+  const takeFirstAmountFormatted = activeTakeFirstAmount
+    ? Number(formatEther(activeTakeFirstAmount)).toFixed(4)
     : null
 
-  // Show Featured Message button when there's a leader with funds
-  const hasCompetition = !!(takeFirstAmount && takeFirstAmount >= minimumAmount)
+  // Show Featured Message button when there's a leader to beat.
+  // Add Funds tab has no minimum floor — any positive amount to overtake qualifies.
+  const hasCompetition =
+    activeTab === 'addFunds'
+      ? !!addFundsTakeFirstAmount
+      : !!(takeFirstAmount && takeFirstAmount >= minimumAmount)
+
+  // ---------------------------------------------------------------------------
 
   // Check if user can afford the transaction
   const canAffordTransaction = () => {
@@ -282,6 +306,8 @@ export function TopDawgModal({
       return
     }
 
+    // No minimum price check for adding funds — any positive amount is valid
+
     // Check balance before attempting transaction
     if (!canAffordTransaction()) {
       setError(getInsufficientBalanceMessage() || 'Insufficient balance')
@@ -374,25 +400,31 @@ export function TopDawgModal({
               <span className="text-[10px]">👑</span>
             </div>
             <p className="text-sm font-bold text-[#EDEEFF]">{takeFirstAmountFormatted} ETH</p>
-            <p className="text-[10px] text-[#F897FE] mt-0.5">Price to take the top spot on this leaderboard</p>
+            <p className="text-[10px] text-[#F897FE] mt-0.5">
+              {activeTab === 'addFunds'
+                ? 'Additional ETH needed to take the top spot'
+                : 'Price to take the top spot on this leaderboard'}
+            </p>
           </button>
         )}
 
-        {/* Minimum */}
-        <button
-          type="button"
-          onClick={() => setAmount(minimumAmountFormatted)}
-          disabled={isPending || isConfirming}
-          className={`relative rounded-lg p-3 border-2 transition-all text-left ${
-            amount === minimumAmountFormatted
-              ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
-              : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#0A0F3D]/50'
-          } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-        >
-          <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
-          <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
-          <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
-        </button>
+        {/* Minimum - only shown on create tab */}
+        {activeTab !== 'addFunds' && (
+          <button
+            type="button"
+            onClick={() => setAmount(minimumAmountFormatted)}
+            disabled={isPending || isConfirming}
+            className={`relative rounded-lg p-3 border-2 transition-all text-left ${
+              amount === minimumAmountFormatted
+                ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
+                : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#0A0F3D]/50'
+            } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
+            <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
+            <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
+          </button>
+        )}
       </div>
 
       {/* Amount Input - always visible, freely editable */}
@@ -401,7 +433,7 @@ export function TopDawgModal({
           type="number"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder={minimumAmountFormatted}
+          placeholder={activeTab === 'addFunds' ? '0.001' : minimumAmountFormatted}
           step="0.001"
           min="0"
           className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF] pr-12"
