@@ -282,7 +282,7 @@ export function FixedPriceModal({
 
               <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
                 <p className="text-sm text-[#B8B6D9]">
-                  This is PRIME digital real estate... for big bag holders only. If you decide to change this message, read the Markee Cooperative Covenant first. By buying you agree to its terms.
+                  This is PRIME digital real estate... for big bag holders only. If you decide to purchase, you'll receive MARKEE tokens and become an owner of the Markee Network.
                 </p>
               </div>
 
