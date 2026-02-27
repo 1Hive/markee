@@ -95,7 +95,7 @@ export const PARTNERS = [
   {
     slug: 'clawchemy',
     name: 'Clawchemy',
-    description: 'Autonomous element discovery engine for AI agents',
+    description: 'Autonomous element discovery engine for AI agents on Base Network',
     strategyAddress: '0x89e608223BEc645227f11d8241e8175A9A95597E',
     logo: '/partners/clawchemy.png',
     fundingSplit: '62% to Clawchemy / 38% to Markee Cooperative',
