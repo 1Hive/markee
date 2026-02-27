@@ -92,6 +92,17 @@ export const PARTNERS = [
     isCooperative: false,
     liveUrl: 'https://campaigns.superfluid.org',
   },
+  {
+    slug: 'clawchemy',
+    name: 'Clawchemy',
+    description: 'Autonomous element discovery engine for AI agents',
+    strategyAddress: '0x89e608223BEc645227f11d8241e8175A9A95597E',
+    logo: '/partners/clawchemy.png',
+    fundingSplit: '62% to Clawchemy / 38% to Markee Cooperative',
+    percentToBeneficiary: 6200,
+    isCooperative: false,
+    liveUrl: undefined,
+  },
 ] as const
 
 interface PartnerData {
