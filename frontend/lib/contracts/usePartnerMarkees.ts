@@ -101,7 +101,7 @@ export const PARTNERS = [
     fundingSplit: '62% to Clawchemy / 38% to Markee Cooperative',
     percentToBeneficiary: 6200,
     isCooperative: false,
-    liveUrl: undefined,
+    liveUrl: 'https://clawchemy.xyz/',
   },
 ] as const
 
