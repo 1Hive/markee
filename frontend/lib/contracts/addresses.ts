@@ -80,6 +80,10 @@ export const CONTRACTS = {
         name: 'Superfluid Top Dawg',
         address: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E' as const,
       },
+      {
+        name: 'Clawchemy Top Dawg',
+        address: '0x89e608223BEc645227f11d8241e8175A9A95597E' as const,
+      },
     ],
   },
 } as const
