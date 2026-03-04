@@ -500,9 +500,6 @@ export default function MarkeeDetailPage() {
           onClose={() => setIsAddFundsOpen(false)}
           userMarkee={markee as any}
           initialMode="addFunds"
-          strategyAddress={markee.strategyAddress as `0x${string}` | undefined}
-          partnerName={markee.isPartnerStrategy ? markee.strategyName : undefined}
-          partnerSplitPercentage={markee.isPartnerStrategy ? markee.partnerPercentage : undefined}
           onSuccess={() => {
             setIsAddFundsOpen(false)
           }}
