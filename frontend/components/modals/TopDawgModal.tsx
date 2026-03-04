@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft } from 'lucide-react'
+import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy } from 'lucide-react'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -62,8 +62,6 @@ export function TopDawgModal({
 
   // Get current phase rate from RevNet schedule
   const getCurrentPhaseRate = () => {
-    // TODO: Import PHASES from a shared config file
-    // For now, using inline schedule - should match owners/page.tsx
     const PHASES = [
       { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
       { rate: 50000, endDate: new Date('2026-06-21T00:00:00Z') },
@@ -78,26 +76,22 @@ export function TopDawgModal({
         return phase.rate
       }
     }
-    return PHASES[PHASES.length - 1].rate // Return last phase rate if all dates passed
+    return PHASES[PHASES.length - 1].rate
   }
 
-  // Calculate MARKEE tokens based on partner split and current phase
-    const calculateMarkeeTokens = (ethAmount: number) => {
-      const baseRate = getCurrentPhaseRate()
-      const COOPERATIVE_RESERVE_PERCENT = 0.38 // 38% to reserve
-      const USER_PERCENT = 0.62 // 62% to user
-      
-      if (partnerSplitPercentage) {
-        // Partner: only portion going to RevNet issues tokens
-        const revnetPercentage = (100 - partnerSplitPercentage) / 100
-        const tokensIssued = ethAmount * baseRate * revnetPercentage
-        return tokensIssued * USER_PERCENT // User gets 62% of issued tokens
-      }
-      
-      // Cooperative: 100% to RevNet
-      const tokensIssued = ethAmount * baseRate
-      return tokensIssued * USER_PERCENT // User gets 62% of issued tokens
+  const calculateMarkeeTokens = (ethAmount: number) => {
+    const baseRate = getCurrentPhaseRate()
+    const USER_PERCENT = 0.62
+    
+    if (partnerSplitPercentage) {
+      const revnetPercentage = (100 - partnerSplitPercentage) / 100
+      const tokensIssued = ethAmount * baseRate * revnetPercentage
+      return tokensIssued * USER_PERCENT
     }
+    
+    const tokensIssued = ethAmount * baseRate
+    return tokensIssued * USER_PERCENT
+  }
 
   // Read minimum price and max message length from strategy
   const { data: minimumPrice } = useReadContract({
@@ -137,14 +131,19 @@ export function TopDawgModal({
     : null
 
   // Add Funds tab: only the *additional* ETH needed to overtake the top message.
-  // = (topFundsAdded + 0.001) - userMarkee.totalFundsAdded
-  // Hidden when the user already holds the top spot (result <= 0).
   const addFundsRawTakeFirst =
     topFundsAdded && topFundsAdded > 0n && userMarkee
       ? topFundsAdded + MIN_INCREMENT - userMarkee.totalFundsAdded
       : null
   const addFundsTakeFirstAmount =
     addFundsRawTakeFirst && addFundsRawTakeFirst > 0n ? addFundsRawTakeFirst : null
+
+  // Is the user's message already holding the top spot?
+  const userIsTopDawg =
+    activeTab === 'addFunds' &&
+    userMarkee &&
+    topFundsAdded !== undefined &&
+    userMarkee.totalFundsAdded >= topFundsAdded
 
   // Active preset values depending on which tab is showing
   const activeTakeFirstAmount =
@@ -156,8 +155,7 @@ export function TopDawgModal({
     ? Number(formatEther(activeTakeFirstAmount)).toFixed(4)
     : null
 
-  // Show Featured Message button when there's a leader to beat.
-  // Add Funds tab has no minimum floor — any positive amount to overtake qualifies.
+  // Show Featured Message button when there's competition to beat
   const hasCompetition =
     activeTab === 'addFunds'
       ? !!addFundsTakeFirstAmount
@@ -165,15 +163,12 @@ export function TopDawgModal({
 
   // ---------------------------------------------------------------------------
 
-  // Check if user can afford the transaction
   const canAffordTransaction = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return false
-    
     try {
       const amountWei = parseEther(amount)
-      const estimatedGas = parseEther('0.001') // Rough estimate for gas
+      const estimatedGas = parseEther('0.001')
       const totalNeeded = amountWei + estimatedGas
-      
       return balanceData.value >= totalNeeded
     } catch {
       return false
@@ -182,52 +177,56 @@ export function TopDawgModal({
 
   const getInsufficientBalanceMessage = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
-    
     try {
       const amountWei = parseEther(amount)
       const estimatedGas = parseEther('0.001')
       const totalNeeded = amountWei + estimatedGas
-      
       if (balanceData.value < totalNeeded) {
         return `You don't have enough ETH to complete this transaction.`
       }
     } catch {
       return 'Invalid amount entered'
     }
-    
     return null
   }
 
   const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
   const balanceWarning = getInsufficientBalanceMessage()
 
-  // Set default tab based on initialMode or whether user has a Markee
+  // ---------------------------------------------------------------------------
+  // Effects
+  // ---------------------------------------------------------------------------
+
+  // Reset form state when modal opens/closes or mode changes.
+  // IMPORTANT: intentionally excludes hasCompetition/takeFirstAmountFormatted/minimumAmountFormatted
+  // from deps — including them caused the amount field to reset while the user was typing
+  // because those values recompute whenever topFundsAdded refreshes.
   useEffect(() => {
+    if (!isOpen) return
     if (initialMode) {
       setActiveTab(initialMode)
-      if (initialMode === 'updateMessage' && userMarkee) {
-        setMessage('') // Start with empty for new message
-      } else {
-        setMessage('')
-      }
     } else if (userMarkee) {
       setActiveTab('addFunds')
-      setMessage('')
     } else {
       setActiveTab('create')
-      setMessage('')
     }
-    setAmount('')
+    setMessage('')
     setError(null)
     reset()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userMarkee, initialMode, isOpen, reset])
 
-    // Default amount: "Take #1" price if there's competition, otherwise minimum
+  // Set the default amount only when the modal first opens.
+  // Runs once on open, not on every data refresh.
+  useEffect(() => {
+    if (!isOpen) return
     if (hasCompetition && takeFirstAmountFormatted) {
       setAmount(takeFirstAmountFormatted)
     } else {
       setAmount(minimumAmountFormatted)
     }
-  }, [userMarkee, initialMode, isOpen, reset, hasCompetition, takeFirstAmountFormatted, minimumAmountFormatted])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
   // Reset state and trigger refresh when transaction succeeds
   useEffect(() => {
@@ -244,17 +243,19 @@ export function TopDawgModal({
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
 
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
+
   const handleCreateMarkee = async () => {
     if (!strategyAddress || !isCorrectChain) {
       setError(`Please switch to ${CANONICAL_CHAIN.name}`)
       return
     }
-
     if (!message.trim()) {
       setError('Please enter a message')
       return
     }
-
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter an amount')
       return
@@ -267,20 +268,16 @@ export function TopDawgModal({
       setError(`Minimum payment is ${formatEther(minPrice)} ETH`)
       return
     }
-
     if (maxMessageLength && message.length > Number(maxMessageLength)) {
       setError(`Message must be ${maxMessageLength} characters or less`)
       return
     }
-
-    // Check balance before attempting transaction
     if (!canAffordTransaction()) {
       setError(getInsufficientBalanceMessage() || 'Insufficient balance')
       return
     }
 
     setError(null)
-
     try {
       writeContract({
         address: strategyAddress,
@@ -300,22 +297,16 @@ export function TopDawgModal({
       setError('Please connect wallet and ensure you have a Markee')
       return
     }
-
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter an amount')
       return
     }
-
-    // No minimum price check for adding funds — any positive amount is valid
-
-    // Check balance before attempting transaction
     if (!canAffordTransaction()) {
       setError(getInsufficientBalanceMessage() || 'Insufficient balance')
       return
     }
 
     setError(null)
-
     try {
       writeContract({
         address: strategyAddress,
@@ -335,19 +326,16 @@ export function TopDawgModal({
       setError('Please connect wallet and ensure you have a Markee')
       return
     }
-
     if (!message.trim()) {
       setError('Please enter a message')
       return
     }
-
     if (maxMessageLength && message.length > Number(maxMessageLength)) {
       setError(`Message must be ${maxMessageLength} characters or less`)
       return
     }
 
     setError(null)
-
     try {
       writeContract({
         address: strategyAddress,
@@ -366,7 +354,6 @@ export function TopDawgModal({
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
 
-  // Determine modal title
   const getModalTitle = () => {
     if (!userMarkee) return 'Buy a Message'
     if (activeTab === 'addFunds') return 'Add Funds'
@@ -374,58 +361,75 @@ export function TopDawgModal({
     return 'Manage Your Markee'
   }
 
-  // Inline amount selector JSX - not a component to avoid remount/focus issues
+  // ---------------------------------------------------------------------------
+  // Amount selector JSX
+  // ---------------------------------------------------------------------------
   const amountSelectorJSX = (
     <div className="space-y-3">
       <label className="block text-sm font-medium text-[#B8B6D9]">
         Amount (ETH)
       </label>
 
-      {/* Preset Buttons */}
-      <div className={`grid ${hasCompetition ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
-        {/* Featured Message / Take #1 - only show if there's competition */}
-        {hasCompetition && (
-          <button
-            type="button"
-            onClick={() => setAmount(takeFirstAmountFormatted!)}
-            disabled={isPending || isConfirming}
-            className={`relative rounded-lg p-3 border-2 transition-all text-left ${
-              amount === takeFirstAmountFormatted
-                ? 'border-[#F897FE] bg-[#F897FE]/10'
-                : 'border-[#F897FE]/30 hover:border-[#F897FE]/60 bg-[#0A0F3D]/50'
-            } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <div className="flex items-center gap-1 mb-1">
-              <p className="text-xs font-medium text-[#F897FE]">Featured Message</p>
-              <span className="text-[10px]">👑</span>
-            </div>
-            <p className="text-sm font-bold text-[#EDEEFF]">{takeFirstAmountFormatted} ETH</p>
-            <p className="text-[10px] text-[#F897FE] mt-0.5">
-              {activeTab === 'addFunds'
-                ? 'Additional ETH needed to take the top spot'
-                : 'Price to take the top spot on this leaderboard'}
+      {/* #1 spot banner — shown instead of preset buttons when user already holds the top */}
+      {userIsTopDawg ? (
+        <div className="rounded-xl p-4 border-2 border-[#FFD700]/50 bg-[#FFD700]/10 flex items-start gap-3">
+          <Trophy size={20} className="text-[#FFD700] flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-[#FFD700]">
+              👑 This message holds the top spot!
             </p>
-          </button>
-        )}
+            <p className="text-xs text-[#FFD700]/80 mt-0.5">
+              Add more funds to make it harder for anyone to overtake you.
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* Preset Buttons */
+        <div className={`grid ${hasCompetition ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+          {/* Featured Message / Take #1 - only show if there's competition */}
+          {hasCompetition && (
+            <button
+              type="button"
+              onClick={() => setAmount(takeFirstAmountFormatted!)}
+              disabled={isPending || isConfirming}
+              className={`relative rounded-lg p-3 border-2 transition-all text-left ${
+                amount === takeFirstAmountFormatted
+                  ? 'border-[#F897FE] bg-[#F897FE]/10'
+                  : 'border-[#F897FE]/30 hover:border-[#F897FE]/60 bg-[#0A0F3D]/50'
+              } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <div className="flex items-center gap-1 mb-1">
+                <p className="text-xs font-medium text-[#F897FE]">Featured Message</p>
+                <span className="text-[10px]">👑</span>
+              </div>
+              <p className="text-sm font-bold text-[#EDEEFF]">{takeFirstAmountFormatted} ETH</p>
+              <p className="text-[10px] text-[#F897FE] mt-0.5">
+                {activeTab === 'addFunds'
+                  ? 'Additional ETH needed to take the top spot'
+                  : 'Price to take the top spot on this leaderboard'}
+              </p>
+            </button>
+          )}
 
-        {/* Minimum - only shown on create tab */}
-        {activeTab !== 'addFunds' && (
-          <button
-            type="button"
-            onClick={() => setAmount(minimumAmountFormatted)}
-            disabled={isPending || isConfirming}
-            className={`relative rounded-lg p-3 border-2 transition-all text-left ${
-              amount === minimumAmountFormatted
-                ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
-                : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#0A0F3D]/50'
-            } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
-            <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
-            <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
-          </button>
-        )}
-      </div>
+          {/* Minimum - only shown on create tab */}
+          {activeTab !== 'addFunds' && (
+            <button
+              type="button"
+              onClick={() => setAmount(minimumAmountFormatted)}
+              disabled={isPending || isConfirming}
+              className={`relative rounded-lg p-3 border-2 transition-all text-left ${
+                amount === minimumAmountFormatted
+                  ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
+                  : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#0A0F3D]/50'
+              } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
+              <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
+              <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Amount Input - always visible, freely editable */}
       <div className="relative">
@@ -506,7 +510,7 @@ export function TopDawgModal({
 
         {/* Content */}
         <div className="p-6">
-        {!isConnected ? (
+          {!isConnected ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
@@ -582,13 +586,11 @@ export function TopDawgModal({
                     )}
                   </div>
 
-                  {/* Amount Selector */}
                   {amountSelectorJSX}
 
                   {/* Token/Partner Distribution Display */}
                   {amount && parseFloat(amount) > 0 && (
                     <div className={`grid ${partnerName ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                      {/* MARKEE Tokens Box */}
                       <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
                         <div className="text-center">
                           <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
@@ -599,7 +601,6 @@ export function TopDawgModal({
                         </div>
                       </div>
 
-                      {/* Partner Distribution Box - only show for partners */}
                       {partnerName && partnerSplitPercentage && (
                         <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
                           <div className="text-center">
@@ -616,14 +617,10 @@ export function TopDawgModal({
 
                   <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
                     <p className="text-sm text-[#B8B6D9]">
-                      {partnerName 
-                        ? `You'll receive MARKEE tokens for your purchase and become an owner of the Markee Network.`
-                        : `You'll receive MARKEE tokens for your purchase and become an owner of the Markee Network.`
-                      }
+                      You'll receive MARKEE tokens for your purchase and become an owner of the Markee Network.
                     </p>
                   </div>
 
-                  {/* Insufficient Balance Warning */}
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                       <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
@@ -646,13 +643,11 @@ export function TopDawgModal({
                     </p>
                   </div>
 
-                  {/* Amount Selector */}
                   {amountSelectorJSX}
 
                   {/* Token/Partner Distribution Display */}
                   {amount && parseFloat(amount) > 0 && (
                     <div className={`grid ${partnerName ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                      {/* MARKEE Tokens Box */}
                       <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
                         <div className="text-center">
                           <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
@@ -663,26 +658,20 @@ export function TopDawgModal({
                         </div>
                       </div>
 
-                      {/* Partner Distribution Box - only show for partners */}
                       {partnerName && partnerSplitPercentage && (
                         <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
                           <div className="text-center">
                             <p className="text-sm text-[#FFA94D] font-medium mb-2">
                               {partnerName} receives
                             </p>
-                      
                             <p className="text-4xl font-bold text-[#FFA94D] mb-2">
                               {(() => {
-                                const value =
-                                  parseFloat(amount) * (partnerSplitPercentage / 100)
-                      
+                                const value = parseFloat(amount) * (partnerSplitPercentage / 100)
                                 if (value === 0) return '0'
                                 if (value < 0.00001) return '< 0.00001'
-                      
                                 return Number(value.toFixed(5)).toString()
                               })()}
                             </p>
-                      
                             <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
                           </div>
                         </div>
@@ -696,7 +685,6 @@ export function TopDawgModal({
                     </p>
                   </div>
 
-                  {/* Insufficient Balance Warning */}
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                       <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
@@ -712,7 +700,6 @@ export function TopDawgModal({
               {/* Update Message */}
               {activeTab === 'updateMessage' && userMarkee && (
                 <div className="space-y-4">
-                  {/* Current Message */}
                   <div>
                     <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Current Message
@@ -722,7 +709,6 @@ export function TopDawgModal({
                     </div>
                   </div>
 
-                  {/* New Message */}
                   <div>
                     <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       New Message
