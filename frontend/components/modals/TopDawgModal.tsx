@@ -379,7 +379,7 @@ export function TopDawgModal({
               👑 This message holds the top spot!
             </p>
             <p className="text-xs text-[#FFD700]/80 mt-0.5">
-              Add more funds to make it harder for anyone to overtake you.
+              Add more funds to make it harder for another message to overtake it.
             </p>
           </div>
         </div>
