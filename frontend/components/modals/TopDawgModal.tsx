@@ -366,12 +366,8 @@ export function TopDawgModal({
   // ---------------------------------------------------------------------------
   const amountSelectorJSX = (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-[#B8B6D9]">
-        Amount (ETH)
-      </label>
-
-      {/* #1 spot banner — shown instead of preset buttons when user already holds the top */}
-      {userIsTopDawg ? (
+      {/* #1 spot banner — shown above everything when user already holds the top */}
+      {userIsTopDawg && (
         <div className="rounded-xl p-4 border-2 border-[#FFD700]/50 bg-[#FFD700]/10 flex items-start gap-3">
           <Trophy size={20} className="text-[#FFD700] flex-shrink-0 mt-0.5" />
           <div>
@@ -379,11 +375,18 @@ export function TopDawgModal({
               👑 This message holds the top spot!
             </p>
             <p className="text-xs text-[#FFD700]/80 mt-0.5">
-              Add more funds to make it harder for another message to overtake it.
+              Add more funds to make it harder for anyone to overtake you.
             </p>
           </div>
         </div>
-      ) : (
+      )}
+
+      <label className="block text-sm font-medium text-[#B8B6D9]">
+        Amount (ETH)
+      </label>
+
+      {/* Preset buttons — only when not holding the top spot */}
+      {!userIsTopDawg && (
         /* Preset Buttons */
         <div className={`grid ${hasCompetition ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
           {/* Featured Message / Take #1 - only show if there's competition */}
@@ -636,40 +639,7 @@ export function TopDawgModal({
               {/* Add Funds */}
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
-                  {/* Funding breakdown */}
-                  <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-[#8A8FBF]">Current funds</p>
-                      <p className="text-sm font-medium text-[#EDEEFF]">
-                        {formatEther(userMarkee.totalFundsAdded)} ETH
-                      </p>
-                    </div>
-                    {amount && parseFloat(amount) > 0 && (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-[#8A8FBF]">You're adding</p>
-                          <p className="text-sm font-medium text-[#7C9CFF]">+ {amount} ETH</p>
-                        </div>
-                        <div className="border-t border-[#8A8FBF]/30 pt-3 flex items-center justify-between">
-                          <p className="text-sm font-semibold text-[#B8B6D9]">New total</p>
-                          <p className="text-lg font-bold text-[#F897FE]">
-                            {(
-                              parseFloat(formatEther(userMarkee.totalFundsAdded)) +
-                              parseFloat(amount)
-                            ).toFixed(4)} ETH
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {(!amount || parseFloat(amount) <= 0) && (
-                      <div className="border-t border-[#8A8FBF]/30 pt-3 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-[#B8B6D9]">Total funded</p>
-                        <p className="text-lg font-bold text-[#F897FE]">
-                          {formatEther(userMarkee.totalFundsAdded)} ETH
-                        </p>
-                      </div>
-                    )}
-                  </div>
+
 
                   {amountSelectorJSX}
 
@@ -707,10 +677,33 @@ export function TopDawgModal({
                     </div>
                   )}
 
-                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
+                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20 space-y-3">
                     <p className="text-sm text-[#B8B6D9]">
                       💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
                     </p>
+                    <div className="border-t border-[#F897FE]/20 pt-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-[#8A8FBF]">Current funds</p>
+                        <p className="text-xs font-medium text-[#EDEEFF]">
+                          {formatEther(userMarkee.totalFundsAdded)} ETH
+                        </p>
+                      </div>
+                      {amount && parseFloat(amount) > 0 && (
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-[#8A8FBF]">You're adding</p>
+                          <p className="text-xs font-medium text-[#7C9CFF]">+ {amount} ETH</p>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-[#B8B6D9]">New total</p>
+                        <p className="text-sm font-bold text-[#F897FE]">
+                          {amount && parseFloat(amount) > 0
+                            ? (parseFloat(formatEther(userMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(4)
+                            : formatEther(userMarkee.totalFundsAdded)
+                          } ETH
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {insufficientBalance && balanceWarning && !error && !isError && (
