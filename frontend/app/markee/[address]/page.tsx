@@ -183,7 +183,7 @@ export default function MarkeeDetailPage() {
   const params = useParams()
   const router = useRouter()
   const markeeAddress = params.address as string
-  const { markee, isLoading, error, refetch } = useMarkeeDetail(markeeAddress)
+  const { markee, isLoading, error } = useMarkeeDetail(markeeAddress)
   const [activeTab, setActiveTab] = useState<TabId>('funds')
   const [totalViews, setTotalViews] = useState<number | null>(null)
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
@@ -505,7 +505,6 @@ export default function MarkeeDetailPage() {
           partnerSplitPercentage={markee.isPartnerStrategy ? markee.partnerPercentage : undefined}
           onSuccess={() => {
             setIsAddFundsOpen(false)
-            refetch?.()
           }}
         />
       )}
