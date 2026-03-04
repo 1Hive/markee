@@ -636,11 +636,39 @@ export function TopDawgModal({
               {/* Add Funds */}
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
-                  <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30">
-                    <p className="text-sm text-[#8A8FBF] mb-1">Total Funds Added</p>
-                    <p className="text-2xl font-bold text-[#F897FE]">
-                      {formatEther(userMarkee.totalFundsAdded)} ETH
-                    </p>
+                  {/* Funding breakdown */}
+                  <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-[#8A8FBF]">Current funds</p>
+                      <p className="text-sm font-medium text-[#EDEEFF]">
+                        {formatEther(userMarkee.totalFundsAdded)} ETH
+                      </p>
+                    </div>
+                    {amount && parseFloat(amount) > 0 && (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-[#8A8FBF]">You're adding</p>
+                          <p className="text-sm font-medium text-[#7C9CFF]">+ {amount} ETH</p>
+                        </div>
+                        <div className="border-t border-[#8A8FBF]/30 pt-3 flex items-center justify-between">
+                          <p className="text-sm font-semibold text-[#B8B6D9]">New total</p>
+                          <p className="text-lg font-bold text-[#F897FE]">
+                            {(
+                              parseFloat(formatEther(userMarkee.totalFundsAdded)) +
+                              parseFloat(amount)
+                            ).toFixed(4)} ETH
+                          </p>
+                        </div>
+                      </>
+                    )}
+                    {(!amount || parseFloat(amount) <= 0) && (
+                      <div className="border-t border-[#8A8FBF]/30 pt-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-[#B8B6D9]">Total funded</p>
+                        <p className="text-lg font-bold text-[#F897FE]">
+                          {formatEther(userMarkee.totalFundsAdded)} ETH
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {amountSelectorJSX}
