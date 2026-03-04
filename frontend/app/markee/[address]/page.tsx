@@ -8,7 +8,7 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check, Eye } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check, Eye, Plus } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -18,6 +18,7 @@ import { getTxUrl, getAddressUrl } from '@/lib/explorer'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { Emoji } from '@/components/ui/Emoji'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { TopDawgModal } from '@/components/modals/TopDawgModal'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -182,9 +183,10 @@ export default function MarkeeDetailPage() {
   const params = useParams()
   const router = useRouter()
   const markeeAddress = params.address as string
-  const { markee, isLoading, error } = useMarkeeDetail(markeeAddress)
+  const { markee, isLoading, error, refetch } = useMarkeeDetail(markeeAddress)
   const [activeTab, setActiveTab] = useState<TabId>('funds')
   const [totalViews, setTotalViews] = useState<number | null>(null)
+  const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
 
   // Track this detail page view and fetch current count
   useEffect(() => {
@@ -257,6 +259,17 @@ export default function MarkeeDetailPage() {
                 </div>
               </div>
             </ModeratedContent>
+
+            {/* ── Add Funds Button ───────────────────────────────── */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => setIsAddFundsOpen(true)}
+                className="flex items-center gap-2 bg-[#F897FE] hover:bg-[#F897FE]/90 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
+              >
+                <Plus size={16} />
+                Add Funds
+              </button>
+            </div>
 
             {/* ── Stats Grid ─────────────────────────────────────── */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -478,6 +491,24 @@ export default function MarkeeDetailPage() {
       </main>
 
       <Footer />
+
+      {/* Add Funds Modal — open to anyone, no userMarkee passed so it shows create flow
+          but initialMode='addFunds' lets the owner add funds if they connect their wallet */}
+      {markee && (
+        <TopDawgModal
+          isOpen={isAddFundsOpen}
+          onClose={() => setIsAddFundsOpen(false)}
+          userMarkee={markee as any}
+          initialMode="addFunds"
+          strategyAddress={markee.strategyAddress as `0x${string}` | undefined}
+          partnerName={markee.isPartnerStrategy ? markee.strategyName : undefined}
+          partnerSplitPercentage={markee.isPartnerStrategy ? markee.partnerPercentage : undefined}
+          onSuccess={() => {
+            setIsAddFundsOpen(false)
+            refetch?.()
+          }}
+        />
+      )}
     </div>
   )
 }
