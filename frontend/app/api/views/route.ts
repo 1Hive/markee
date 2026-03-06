@@ -11,7 +11,7 @@ const ALLOWED_ORIGINS = [
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const allowed =
-    origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app'))
+    origin && (ALLOWED_ORIGINS.includes(origin)
       ? origin
       : ALLOWED_ORIGINS[0]
   return {
