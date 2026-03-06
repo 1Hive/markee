@@ -9,7 +9,6 @@ const ALLOWED_ORIGINS = [
 export function middleware(req: NextRequest) {
   const origin = req.headers.get('origin') ?? ''
   const isAllowed =
-    ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app')
 
   // Handle preflight before any redirect logic touches it
   if (req.method === 'OPTIONS' && isAllowed) {
