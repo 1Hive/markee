@@ -7,7 +7,6 @@ const ALLOWED_ORIGINS = [
   'https://markee.xyz',
   'https://www.markee.xyz',
   'https://app.gardens.fund',
-  // Add new integration domains here as you expand
 ]
 
 function corsHeaders(origin: string | null): Record<string, string> {
@@ -41,11 +40,31 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 // GET /api/views?addresses=0x1,0x2,...
+// GET /api/views?address=0x1&messages=msg1||msg2||msg3  (pipe-delimited, per-message counts)
 export async function GET(req: NextRequest) {
   const origin = req.headers.get('origin')
   const { searchParams } = new URL(req.url)
-  const addressParam = searchParams.get('addresses')
 
+  // Per-message view counts for leaderboard
+  const singleAddress = searchParams.get('address')
+  const messagesParam = searchParams.get('messages')
+  if (singleAddress && messagesParam) {
+    const address = singleAddress.toLowerCase().trim()
+    const messages = messagesParam.split('||').filter(Boolean)
+    if (messages.length === 0) {
+      return NextResponse.json({}, { headers: corsHeaders(origin) })
+    }
+    const keys = messages.map((m) => `views:msg:${address}:${hashMessage(m)}`)
+    const counts = await kv.mget<number[]>(...keys)
+    const result: Record<string, number> = {}
+    messages.forEach((msg, i) => {
+      result[msg] = counts[i] ?? 0
+    })
+    return NextResponse.json(result, { headers: corsHeaders(origin) })
+  }
+
+  // Batch total view counts by address
+  const addressParam = searchParams.get('addresses')
   if (!addressParam) {
     return NextResponse.json(
       { error: 'Missing addresses param' },
@@ -57,21 +76,18 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((a) => a.toLowerCase().trim())
     .filter(Boolean)
-    .slice(0, 100) // hard cap
+    .slice(0, 100)
 
   if (addresses.length === 0) {
     return NextResponse.json({}, { headers: corsHeaders(origin) })
   }
 
-  // Batch fetch all total view keys
   const totalKeys = addresses.map((a) => `views:total:${a}`)
   const totalCounts = await kv.mget<number[]>(...totalKeys)
 
   const result: Record<string, { totalViews: number }> = {}
   addresses.forEach((address, i) => {
-    result[address] = {
-      totalViews: totalCounts[i] ?? 0,
-    }
+    result[address] = { totalViews: totalCounts[i] ?? 0 }
   })
 
   return NextResponse.json(result, { headers: corsHeaders(origin) })
@@ -109,7 +125,6 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Increment both counters atomically via pipeline
   const pipeline = kv.pipeline()
   pipeline.incr(`views:total:${address}`)
   pipeline.incr(`views:msg:${address}:${msgHash}`)
