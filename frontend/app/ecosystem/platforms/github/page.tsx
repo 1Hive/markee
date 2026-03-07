@@ -65,7 +65,7 @@ export default function GithubPlatformPage() {
               Ecosystem
             </Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#8A8FBF]">Platforms</span>
+            <Link href="/ecosystem/platforms" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Platforms</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <span className="text-[#EDEEFF]">GitHub</span>
           </div>
