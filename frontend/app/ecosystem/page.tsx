@@ -1,7 +1,7 @@
+
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -12,7 +12,7 @@ import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 import { useViews } from '@/hooks/useViews'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ModerationProvider } from '@/components/moderation'
-import { ExternalLink, Github, ChevronRight } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import type { Markee } from '@/types'
 
 export default function EcosystemPage() {
@@ -23,12 +23,14 @@ export default function EcosystemPage() {
   const selectedPartner = partnerData.find(p => p.partner.slug === selectedPartnerSlug)
 
   // ── View tracking ──────────────────────────────────────────────────
+  // Collect all winning markees so useViews can batch-fetch their counts
   const winningMarkees: Markee[] = partnerData
     .filter(({ winningMarkee }) => !!winningMarkee)
     .map(({ winningMarkee }) => winningMarkee as Markee)
 
   const { views, trackView } = useViews(winningMarkees)
 
+  // Track views for all visible winning markees once data loads
   useEffect(() => {
     if (winningMarkees.length === 0) return
     winningMarkees.forEach(trackView)
@@ -69,6 +71,7 @@ export default function EcosystemPage() {
 
       <section className="relative py-24 overflow-hidden">
         <HeroBackground />
+        
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Raise funds with Markee</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
@@ -95,32 +98,6 @@ export default function EcosystemPage() {
           ) : (
             <ModerationProvider>
 
-              {/* Platforms */}
-              <div className="mb-16">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-[#EDEEFF]">Platforms</h2>
-                  <Link
-                    href="/ecosystem/platforms"
-                    className="flex items-center gap-1 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
-                  >
-                    View all <ChevronRight size={14} />
-                  </Link>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Link
-                    href="/ecosystem/platforms/github"
-                    className="group bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE]/40 transition-all p-6 flex items-center gap-4"
-                  >
-                    <Github size={28} className="text-[#EDEEFF] flex-shrink-0" />
-                    <div className="min-w-0">
-                      <h3 className="text-[#EDEEFF] font-semibold group-hover:text-[#F897FE] transition-colors">GitHub — SKILL.md</h3>
-                      <p className="text-[#8A8FBF] text-sm truncate">Context window advertising for open source repos</p>
-                    </div>
-                    <ChevronRight size={16} className="text-[#8A8FBF] ml-auto flex-shrink-0" />
-                  </Link>
-                </div>
-              </div>
-
               {/* Live Integrations */}
               {livePartners.length > 0 && (
                 <div className="mb-16">
@@ -131,6 +108,7 @@ export default function EcosystemPage() {
                       Live
                     </span>
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {livePartners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
                       <div key={partner.slug} className="relative">
@@ -170,6 +148,7 @@ export default function EcosystemPage() {
                       Waitlist
                     </span>
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {waitlistPartners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
                       <div key={partner.slug} className="opacity-80">
@@ -192,7 +171,7 @@ export default function EcosystemPage() {
           )}
 
           {/* Partner Reserve Distributor */}
-          <PartnerReserveDistributor
+          <PartnerReserveDistributor 
             partners={partnerData.map(({ partner }) => ({
               name: partner.name,
               strategyAddress: partner.strategyAddress,
