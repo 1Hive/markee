@@ -151,11 +151,11 @@ export default function GithubPlatformPage() {
               </div>
             </div>
             <button
-              onClick={handleConnect}
+              onClick={() => setCreateModalOpen(true)}
               className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
             >
-              <Github size={18} />
-              Connect a Repo
+              <Plus size={18} />
+              Create a Leaderboard
             </button>
           </div>
 
@@ -187,36 +187,28 @@ export default function GithubPlatformPage() {
             {[
               {
                 step: '1',
-                title: 'Connect your repo',
-                body: 'Authorize the Markee GitHub App with write access to your SKILL.md file.',
+                title: 'Create a leaderboard',
+                body: 'Deploy your leaderboard onchain. Set a treasury address — 62% of every payment flows there automatically.',
               },
               {
                 step: '2',
-                title: 'Add the delimiters',
-                body: null,
-                code: true,
+                title: 'Connect your repo',
+                body: 'Authorize the Markee GitHub App to write to your SKILL.md and add the MARKEE delimiters.',
+                code: false,
               },
               {
                 step: '3',
                 title: 'Earn on every bid',
-                body: 'The leaderboard updates automatically. 62% of every payment flows to your repo treasury.',
+                body: 'The leaderboard updates your SKILL.md automatically. Every AI agent that reads your repo sees the top message.',
               },
-            ].map(({ step, title, body, code }) => (
+            ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-sm font-bold">
                   {step}
                 </div>
                 <div>
                   <h3 className="text-[#EDEEFF] font-semibold mb-1">{title}</h3>
-                  {code ? (
-                    <p className="text-[#8A8FBF] text-sm">
-                      Drop{' '}
-                      <code className="text-[#7C9CFF] text-xs">{'<!-- MARKEE:START -->'}</code> and{' '}
-                      <code className="text-[#7C9CFF] text-xs">{'<!-- MARKEE:END -->'}</code> into your SKILL.md.
-                    </p>
-                  ) : (
-                    <p className="text-[#8A8FBF] text-sm">{body}</p>
-                  )}
+                  <p className="text-[#8A8FBF] text-sm">{body}</p>
                 </div>
               </div>
             ))}
@@ -347,9 +339,9 @@ export default function GithubPlatformPage() {
       <Footer />
 
       {/* Create Leaderboard Modal */}
-      {createModalOpen && selectedRepo && (
+      {createModalOpen && (
         <CreateLeaderboardModal
-          repo={selectedRepo}
+          repo={selectedRepo ?? undefined}
           onClose={() => {
             setCreateModalOpen(false)
             setSelectedRepo(null)
@@ -521,12 +513,13 @@ function CreateLeaderboardModal({
   onClose,
   onSuccess,
 }: {
-  repo: GithubRepo
+  repo?: GithubRepo
   onClose: () => void
   onSuccess: () => void
 }) {
   const { address, isConnected } = useAccount()
   const [beneficiary, setBeneficiary] = useState(address ?? '')
+  const [customName, setCustomName] = useState(repo ? `${repo.fullName} SKILL.md` : '')
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
@@ -534,17 +527,18 @@ function CreateLeaderboardModal({
 
   useEffect(() => {
     if (isSuccess) {
-      setTimeout(() => {
-        onSuccess()
-        onClose()
-      }, 2000)
+      onSuccess()
     }
-  }, [isSuccess, onSuccess, onClose])
+  }, [isSuccess, onSuccess])
 
-  const leaderboardName = `${repo.fullName} SKILL.md`
+  const leaderboardName = repo ? `${repo.fullName} SKILL.md` : customName
 
   const handleCreate = () => {
     setError(null)
+    if (!leaderboardName.trim()) {
+      setError('Enter a name for your leaderboard.')
+      return
+    }
     if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
       setError('Enter a valid Ethereum address for your repo treasury.')
       return
@@ -574,25 +568,50 @@ function CreateLeaderboardModal({
           </div>
           <div>
             <h2 className="text-[#EDEEFF] font-bold text-lg">Create Leaderboard</h2>
-            <p className="text-[#8A8FBF] text-xs">{repo.fullName}</p>
+            <p className="text-[#8A8FBF] text-xs">{repo ? repo.fullName : 'GitHub Markdown'}</p>
           </div>
         </div>
 
         {isSuccess ? (
-          <div className="flex flex-col items-center gap-3 py-6">
+          <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={40} className="text-green-400" />
-            <p className="text-[#EDEEFF] font-semibold">Leaderboard created!</p>
-            <p className="text-[#8A8FBF] text-sm text-center">Your SKILL.md leaderboard is live on Base.</p>
+            <p className="text-[#EDEEFF] font-semibold text-lg">Leaderboard created!</p>
+            <p className="text-[#8A8FBF] text-sm text-center">
+              Your SKILL.md leaderboard is live on Base. Now connect your repo so Markee can write the top message automatically.
+            </p>
+            <button
+              onClick={() => { window.location.href = '/api/github/connect' }}
+              className="mt-2 flex items-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
+            >
+              <Github size={18} />
+              Connect your repo on GitHub
+            </button>
+            <button
+              onClick={onClose}
+              className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors"
+            >
+              Skip for now
+            </button>
           </div>
         ) : (
           <>
             <div className="space-y-5">
-              {/* Leaderboard name — derived, read-only */}
+              {/* Leaderboard name */}
               <div>
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Leaderboard Name</label>
-                <div className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono">
-                  {leaderboardName}
-                </div>
+                {repo ? (
+                  <div className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono">
+                    {leaderboardName}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={customName}
+                    onChange={e => setCustomName(e.target.value)}
+                    placeholder="e.g. my-org/my-repo SKILL.md"
+                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
+                  />
+                )}
               </div>
 
               {/* Beneficiary address */}
