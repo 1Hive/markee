@@ -17,10 +17,7 @@ export type FixedMarkee = {
 const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies ?? []
 
 export function useFixedMarkees() {
-  // ── Phase 1: markeeAddress + price + owner ────────────────────────────────
-  // No chainId here — lets wagmi use your configured transport (Alchemy etc.)
-  // instead of falling back to the public mainnet.base.org RPC.
-  // No refetchInterval — these values never change after deploy.
+  // Phase 1: static data — fetches once, never refetches
   const phase1Contracts = fixedStrategies.flatMap((s) => [
     {
       address: s.address as `0x${string}`,
@@ -41,8 +38,6 @@ export function useFixedMarkees() {
 
   const { data: phase1Data, isLoading: isLoadingPhase1 } = useReadContracts({
     contracts: phase1Contracts,
-    // staleTime: Infinity means it fetches once and never re-fetches automatically.
-    // markeeAddress/price/owner don't change after contract deploy.
     query: { staleTime: Infinity },
   })
 
@@ -52,9 +47,7 @@ export function useFixedMarkees() {
 
   const allResolved = markeeAddresses.every(Boolean)
 
-  // ── Phase 2: message from each markee contract ────────────────────────────
-  // Messages DO change, so we refetch — but at a reasonable interval.
-  // No chainId here either, for the same reason.
+  // Phase 2: messages — fetches once on load; call refetch() after a purchase
   const phase2Contracts = allResolved
     ? markeeAddresses.map((addr) => ({
         address: addr as `0x${string}`,
@@ -63,11 +56,11 @@ export function useFixedMarkees() {
       }))
     : []
 
-  const { data: phase2Data } = useReadContracts({
+  const { data: phase2Data, refetch } = useReadContracts({
     contracts: phase2Contracts,
     query: {
       enabled: allResolved,
-      refetchInterval: 60_000, // once per minute is plenty for messages
+      staleTime: Infinity,
     },
   })
 
@@ -90,5 +83,6 @@ export function useFixedMarkees() {
   return {
     markees,
     isLoading: isLoadingPhase1 || !phase2Data,
+    refetch,
   }
 }
