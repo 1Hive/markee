@@ -298,24 +298,57 @@ export default function GithubLeaderboardPage() {
         </div>
       </section>
 
-      {/* GitHub integration CTA */}
+      {/* GitHub integration instructions */}
       <section className="py-12 bg-[#0A0F3D] border-t border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-[#060A2A] rounded-2xl p-8 border border-[#8A8FBF]/20">
-            <div>
-              <h3 className="text-[#EDEEFF] font-bold text-lg mb-2">Auto-sync to SKILL.md</h3>
-              <p className="text-[#8A8FBF] text-sm max-w-md">
-                Connect your GitHub repo and Markee will automatically write the top message into your SKILL.md whenever it changes. Every AI agent that reads your codebase sees it.
+          <div className="flex items-center gap-3 mb-6">
+            <Github size={18} className="text-[#F897FE]" />
+            <h3 className="text-[#EDEEFF] font-bold text-lg">Add to a GitHub File</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Step 1 */}
+            <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
+              <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">1</div>
+              <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Add delimiters to your file</h4>
+              <p className="text-[#8A8FBF] text-xs mb-3">Paste these two comments where you want the Markee block to appear:</p>
+              <div className="bg-[#0A0F3D] rounded-lg p-3 font-mono text-xs text-[#7C9CFF] leading-relaxed border border-[#8A8FBF]/10">
+                {'<!-- MARKEE:START -->'}<br />
+                {'<!-- MARKEE:END -->'}
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
+              <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">2</div>
+              <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Connect your repo</h4>
+              <p className="text-[#8A8FBF] text-xs mb-4">
+                Authorize the Markee GitHub App so it can write between those delimiters whenever a new top message is set.
+              </p>
+              <a
+                href="/api/github/connect"
+                className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
+              >
+                <Github size={14} />
+                Connect on GitHub
+              </a>
+            </div>
+
+            {/* Step 3 */}
+            <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
+              <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">3</div>
+              <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">It updates automatically</h4>
+              <p className="text-[#8A8FBF] text-xs">
+                Whenever someone takes the top spot on this leaderboard, Markee pushes a commit that updates the block in your file. Every AI agent reading your repo sees the current top message.
               </p>
             </div>
-            <a
-              href="/api/github/connect"
-              className="flex-shrink-0 flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE] transition-colors whitespace-nowrap"
-            >
-              <Github size={18} />
-              Connect a Repo
-            </a>
           </div>
+
+          <p className="text-[#8A8FBF] text-xs mt-5">
+            This leaderboard address:{' '}
+            <span className="font-mono text-[#7C9CFF]">{leaderboardAddress}</span>
+            {' '}— one Markee sign can sync to multiple files by reusing the same delimiters in each.
+          </p>
         </div>
       </section>
 
