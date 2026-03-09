@@ -607,7 +607,7 @@ function BuyMessageModal({
                 {(error || writeError) && (
                   <div className="flex items-start gap-2 text-red-400 text-sm">
                     <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error ?? writeError?.shortMessage ?? writeError?.message}</span>
+                    <span>{error ?? writeError?.message}</span>
                   </div>
                 )}
 
