@@ -1,52 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useReadContracts } from 'wagmi'
-import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatEther } from 'viem'
-
-// FixedPriceStrategy ABI - only the functions we need
-const FixedPriceStrategyABI = [
-  {
-    inputs: [],
-    name: "markeeAddress",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "price",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "owner",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function"
-  }
-] as const
-
-// Markee ABI - only the functions we need
-const MarkeeABI = [
-  {
-    inputs: [],
-    name: "message",
-    outputs: [{ internalType: "string", name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "name",
-    outputs: [{ internalType: "string", name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function"
-  }
-] as const
+import { FixedPriceStrategyABI, MarkeeABI } from '@/lib/contracts/abis'
+import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 export type FixedMarkee = {
   name: string
@@ -57,142 +14,80 @@ export type FixedMarkee = {
   chainId: number
 }
 
+const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies ?? []
+
 export function useFixedMarkees() {
-  const [markees, setMarkees] = useState<FixedMarkee[]>([])
-  const [markeeAddresses, setMarkeeAddresses] = useState<(string | null)[]>([])
-  
-  // Fix hydration: only enable queries after mount
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
-
-  // Step 1: Read from FixedPriceStrategy contracts
-  const strategyContracts = fixedStrategies.flatMap((strategy) => [
+  // ── Phase 1: markeeAddress + price + owner from each strategy (one multicall)
+  const phase1Contracts = fixedStrategies.flatMap((s) => [
     {
-      address: strategy.address,
+      address: s.address as `0x${string}`,
       abi: FixedPriceStrategyABI,
-      functionName: 'markeeAddress',
+      functionName: 'markeeAddress' as const,
       chainId: CANONICAL_CHAIN_ID,
     },
     {
-      address: strategy.address,
+      address: s.address as `0x${string}`,
       abi: FixedPriceStrategyABI,
-      functionName: 'price',
+      functionName: 'price' as const,
       chainId: CANONICAL_CHAIN_ID,
     },
     {
-      address: strategy.address,
+      address: s.address as `0x${string}`,
       abi: FixedPriceStrategyABI,
-      functionName: 'owner',
+      functionName: 'owner' as const,
       chainId: CANONICAL_CHAIN_ID,
     },
   ])
 
-  const { 
-    data: strategyData, 
-    isLoading: isLoadingStrategy, 
-    refetch: refetchStrategy 
-  } = useReadContracts({ 
-    contracts: strategyContracts,
-    query: {
-      enabled: mounted, // Only run after mount to avoid SSR hydration mismatch
-      refetchInterval: 10000, // Poll every 10 seconds
-    }
+  const { data: phase1Data, isLoading: isLoadingPhase1 } = useReadContracts({
+    contracts: phase1Contracts,
+    query: { refetchInterval: 15_000 },
   })
 
-  // Extract markee addresses from strategy data
-  useEffect(() => {
-    if (!strategyData || !fixedStrategies.length) return
+  // Extract markee addresses once phase 1 resolves
+  const markeeAddresses: (`0x${string}` | null)[] = phase1Data
+    ? fixedStrategies.map((_, i) => (phase1Data[i * 3]?.result as `0x${string}`) ?? null)
+    : fixedStrategies.map(() => null)
 
-    const addresses = fixedStrategies.map((_, i) => {
-      const base = i * 3
-      const markeeAddressResult = strategyData[base]
-      return (markeeAddressResult?.result as string) || null
-    })
+  const allResolved = markeeAddresses.every(Boolean)
 
-    setMarkeeAddresses(addresses)
-  }, [strategyData, fixedStrategies])
-
-  // Step 2: Read from Markee contracts (only for valid addresses)
-  const validAddresses = markeeAddresses.filter((addr): addr is string => !!addr)
-  
-  const markeeContracts = validAddresses.flatMap((address) => [
-    {
-      address: address as `0x${string}`,
-      abi: MarkeeABI,
-      functionName: 'message',
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: address as `0x${string}`,
-      abi: MarkeeABI,
-      functionName: 'name',
-      chainId: CANONICAL_CHAIN_ID,
-    },
-  ])
-
-  const { 
-    data: markeeData, 
-    isLoading: isLoadingMarkee 
-  } = useReadContracts({ 
-    contracts: markeeContracts,
-    query: {
-      enabled: mounted && validAddresses.length > 0, // Only run after mount
-      refetchInterval: 10000, // Poll every 10 seconds
-    }
-  })
-
-  // Step 3: Combine all data
-  useEffect(() => {
-    if (!strategyData || !fixedStrategies.length) return
-
-    const result: FixedMarkee[] = fixedStrategies.map((strategyConfig, i) => {
-      const strategyBase = i * 3
-
-      // From FixedPriceStrategy
-      const markeeAddressResult = strategyData[strategyBase]
-      const priceResult = strategyData[strategyBase + 1]
-      const ownerResult = strategyData[strategyBase + 2]
-      
-      const markeeAddr = markeeAddressResult?.result as string
-      
-      // Find this markee's data in the markeeData array
-      let messageText = ''
-      let nameText = ''
-      
-      if (markeeAddr && markeeData) {
-        const markeeIndex = validAddresses.indexOf(markeeAddr)
-        if (markeeIndex >= 0) {
-          const markeeBase = markeeIndex * 2
-          const messageResult = markeeData[markeeBase]
-          const nameResult = markeeData[markeeBase + 1]
-          messageText = (messageResult?.result as string) || ''
-          nameText = (nameResult?.result as string) || ''
-        }
-      }
-
-      return {
-        name: strategyConfig.name,
-        strategyAddress: strategyConfig.address,
-        message: messageText,
-        price: priceResult?.result
-          ? formatEther(priceResult.result as bigint)
-          : '0',
-        owner: (ownerResult?.result as string) || '',
+  // ── Phase 2: message from each markee contract (one multicall) ─────────────
+  const phase2Contracts = allResolved
+    ? markeeAddresses.map((addr) => ({
+        address: addr as `0x${string}`,
+        abi: MarkeeABI,
+        functionName: 'message' as const,
         chainId: CANONICAL_CHAIN_ID,
-      }
-    })
+      }))
+    : []
 
-    setMarkees(result)
-  }, [strategyData, markeeData, fixedStrategies, validAddresses])
+  const { data: phase2Data, isLoading: isLoadingPhase2 } = useReadContracts({
+    contracts: phase2Contracts,
+    query: {
+      enabled: allResolved,
+      refetchInterval: 15_000,
+    },
+  })
 
-  const isLoading = !mounted || isLoadingStrategy || isLoadingMarkee
-  const refetch = () => {
-    refetchStrategy()
+  // ── Build result ───────────────────────────────────────────────────────────
+  const markees: FixedMarkee[] = phase2Data
+    ? fixedStrategies.map((s, i) => {
+        const priceRaw = phase1Data?.[i * 3 + 1]?.result as bigint | undefined
+        const owner = (phase1Data?.[i * 3 + 2]?.result as string) ?? ''
+        const message = (phase2Data[i]?.result as string) ?? ''
+        return {
+          name: s.name,
+          strategyAddress: s.address,
+          message,
+          price: priceRaw ? formatEther(priceRaw) : '0',
+          owner,
+          chainId: CANONICAL_CHAIN_ID,
+        }
+      })
+    : []
+
+  return {
+    markees,
+    isLoading: isLoadingPhase1 || isLoadingPhase2,
   }
-
-  return { markees, isLoading, refetch }
 }
