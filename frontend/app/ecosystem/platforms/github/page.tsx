@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, ExternalLink, LogOut, ChevronRight as Arrow,
+  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -41,6 +41,14 @@ interface GithubLeaderboard {
   minimumPrice: string
   topMessage: string | null
   topMessageOwner: string | null
+  // Verified repo metadata
+  repoFullName: string | null
+  repoOwner: string | null
+  repoName: string | null
+  repoAvatarUrl: string | null
+  repoHtmlUrl: string | null
+  filePath: string | null
+  repoVerified: boolean
 }
 
 interface GithubUser {
@@ -91,7 +99,6 @@ export default function GithubPlatformPage() {
     return `${n.toFixed(4)} ETH`
   }
 
-  // Leaderboards where the connected wallet is admin
   const myLeaderboards = walletAddress
     ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
     : []
@@ -100,7 +107,6 @@ export default function GithubPlatformPage() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
 
-      {/* Breadcrumbs */}
       <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm">
@@ -113,7 +119,6 @@ export default function GithubPlatformPage() {
         </div>
       </section>
 
-      {/* Hero */}
       <section className="relative py-20 overflow-hidden">
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -158,14 +163,13 @@ export default function GithubPlatformPage() {
         </div>
       </section>
 
-      {/* How it works */}
       <section className="py-12 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { step: '1', title: 'Create a Markee', body: 'Deploy your sign onchain in seconds. Set a treasury address — 62% of every payment flows there automatically.' },
-              { step: '2', title: 'Connect your repo', body: 'Authorize the Markee GitHub App to write to your markdown file and add the MARKEE delimiters.' },
-              { step: '3', title: 'Earn on every bid', body: 'The sign updates automatically. Every AI agent that reads your repo sees the top message.' },
+              { step: '1', title: 'Connect GitHub & create a Markee', body: 'Link your repo via OAuth so Markee can verify ownership. Deploy your sign onchain — 62% of payments go to your treasury.' },
+              { step: '2', title: 'Add delimiters to your file', body: 'Drop <!-- MARKEE:START --> and <!-- MARKEE:END --> into any markdown file in your repo.' },
+              { step: '3', title: 'Earn on every bid', body: 'Markee auto-syncs the top message into your file. Every AI agent reading your repo sees it.' },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-sm font-bold">{step}</div>
@@ -179,7 +183,6 @@ export default function GithubPlatformPage() {
         </div>
       </section>
 
-      {/* Top Markee Signs */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3 mb-8">
@@ -249,22 +252,40 @@ function LeaderboardCard({
   }
   const rankStyle = rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/30 bg-[#8A8FBF]/10'
 
-  // name is stored as e.g. "my-org/my-repo — SKILL.md"
-  // Split on em dash to show repo + file separately
-  const [repoPart, filePart] = leaderboard.name.split(' — ')
-
   return (
     <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE]/40 transition-all overflow-hidden flex flex-col">
       <div className="p-5 border-b border-[#8A8FBF]/20 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <Github size={13} className="text-[#8A8FBF] flex-shrink-0" />
-            <span className="text-[#EDEEFF] font-semibold text-sm truncate">{repoPart ?? leaderboard.name}</span>
-          </div>
-          {filePart && (
-            <span className="inline-block text-xs bg-[#7C9CFF]/15 border border-[#7C9CFF]/30 text-[#7C9CFF] px-2 py-0.5 rounded font-mono mt-1">
-              {filePart}
-            </span>
+        <div className="min-w-0 flex-1">
+          {leaderboard.repoVerified ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                {leaderboard.repoAvatarUrl && (
+                  <img src={leaderboard.repoAvatarUrl} alt={leaderboard.repoOwner ?? ''} className="w-5 h-5 rounded-full flex-shrink-0" />
+                )}
+                <a
+                  href={leaderboard.repoHtmlUrl ?? '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#EDEEFF] font-semibold text-sm hover:text-[#F897FE] transition-colors truncate flex items-center gap-1"
+                >
+                  {leaderboard.repoFullName}
+                  <ExternalLink size={11} className="text-[#8A8FBF] flex-shrink-0" />
+                </a>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block text-xs bg-[#7C9CFF]/15 border border-[#7C9CFF]/30 text-[#7C9CFF] px-2 py-0.5 rounded font-mono">
+                  {leaderboard.filePath}
+                </span>
+                <ShieldCheck size={11} className="text-green-400" title="Repo verified via GitHub OAuth" />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-[#EDEEFF] font-semibold text-sm truncate">{leaderboard.name}</h3>
+              <p className="text-[#8A8FBF] text-xs mt-0.5 font-mono truncate">
+                {leaderboard.address.slice(0, 6)}…{leaderboard.address.slice(-4)}
+              </p>
+            </div>
           )}
         </div>
         <span className={`flex-shrink-0 text-xs font-bold px-2 py-1 rounded border ${rankStyle}`}>
@@ -297,7 +318,7 @@ function LeaderboardCard({
           href={`/ecosystem/platforms/github/${leaderboard.address}`}
           className="block w-full text-center bg-[#F897FE]/10 border border-[#F897FE]/30 text-[#F897FE] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE]/20 transition-colors"
         >
-          View Sign
+          View Markee
         </Link>
       </div>
     </div>
@@ -305,18 +326,11 @@ function LeaderboardCard({
 }
 
 // ─── Create Markee Modal ──────────────────────────────────────────────────────
-// View A: GitHub status + existing signs for this wallet
-// View B: Create form
 
 type ModalView = 'overview' | 'create'
 
 function CreateMarkeeModal({
-  githubUser,
-  myLeaderboards,
-  walletAddress,
-  onClose,
-  onSuccess,
-  onGithubChange,
+  githubUser, myLeaderboards, walletAddress, onClose, onSuccess, onGithubChange,
 }: {
   githubUser: GithubUser
   myLeaderboards: GithubLeaderboard[]
@@ -328,30 +342,54 @@ function CreateMarkeeModal({
   const router = useRouter()
   const [view, setView] = useState<ModalView>('overview')
   const [fileName, setFileName] = useState('')
+  const [repoFullName, setRepoFullName] = useState('')
   const [beneficiary, setBeneficiary] = useState(walletAddress ?? '')
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
+  const [registerError, setRegisterError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { isConnected } = useAccount()
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
+  // After tx confirms: extract leaderboard address, then register in KV
   useEffect(() => {
-    if (isSuccess && receipt) {
-      // Try to extract leaderboard address from factory logs
-      for (const log of receipt.logs) {
-        if (
-          log.address.toLowerCase() === GITHUB_FACTORY_ADDRESS.toLowerCase() &&
-          log.topics[1]
-        ) {
-          const addr = `0x${log.topics[1].slice(26)}`
-          setNewLeaderboardAddress(addr)
-          break
-        }
+    if (!isSuccess || !receipt) return
+
+    let foundAddress: string | null = null
+    for (const log of receipt.logs) {
+      if (
+        log.address.toLowerCase() === GITHUB_FACTORY_ADDRESS.toLowerCase() &&
+        log.topics[1]
+      ) {
+        foundAddress = `0x${log.topics[1].slice(26)}`
+        break
       }
+    }
+
+    setNewLeaderboardAddress(foundAddress)
+
+    // Register the verified repo link server-side
+    if (foundAddress && repoFullName && fileName) {
+      fetch('/api/github/register-markee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leaderboardAddress: foundAddress,
+          repoFullName,
+          filePath: fileName,
+        }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.success) setRegisterError(data.error ?? 'Could not verify repo link')
+          onSuccess()
+        })
+        .catch(() => setRegisterError('Could not reach server to verify repo'))
+    } else {
       onSuccess()
     }
-  }, [isSuccess, receipt, onSuccess])
+  }, [isSuccess, receipt, repoFullName, fileName, onSuccess])
 
   const handleDisconnect = async () => {
     await fetch('/api/github/me', { method: 'DELETE' })
@@ -360,18 +398,17 @@ function CreateMarkeeModal({
 
   const handleCreate = () => {
     setError(null)
+    if (!repoFullName.trim()) { setError('Enter a repo (e.g. my-org/my-repo).'); return }
     if (!fileName.trim()) { setError('Enter a file name.'); return }
     if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
       setError('Enter a valid Ethereum address.')
       return
     }
-    // Name format: "repo — filename" if connected, otherwise just filename
-    const leaderboardName = fileName.trim()
     writeContract({
       address: GITHUB_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
       functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, leaderboardName],
+      args: [beneficiary as `0x${string}`, `${repoFullName} — ${fileName}`],
     })
   }
 
@@ -383,14 +420,20 @@ function CreateMarkeeModal({
           <X size={20} />
         </button>
 
-        {/* ── Success state ─────────────────────────────────────────── */}
+        {/* ── Success ───────────────────────────────────────────────── */}
         {isSuccess ? (
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
             <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
-            <p className="text-[#8A8FBF] text-sm text-center">
-              Your sign is live on Base. Buy the first message to get it into context windows.
-            </p>
+            {registerError ? (
+              <div className="w-full bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-xs">
+                ⚠ Repo link could not be verified: {registerError}. The Markee is live but won't show a verified repo badge until you re-link it from the Markee page.
+              </div>
+            ) : (
+              <p className="text-[#8A8FBF] text-sm text-center">
+                Linked to <span className="text-[#EDEEFF] font-mono">{repoFullName}</span> — <span className="text-[#7C9CFF] font-mono">{fileName}</span>
+              </p>
+            )}
             <div className="flex flex-col gap-3 w-full mt-2">
               <button
                 onClick={() => newLeaderboardAddress && router.push(`/ecosystem/platforms/github/${newLeaderboardAddress}`)}
@@ -398,27 +441,18 @@ function CreateMarkeeModal({
               >
                 View your Markee →
               </button>
-              {!githubUser.connected && (
-                <a
-                  href="/api/github/connect"
-                  className="w-full flex items-center justify-center gap-2 text-[#8A8FBF] hover:text-[#EDEEFF] text-sm transition-colors border border-[#8A8FBF]/20 px-6 py-3 rounded-lg hover:border-[#8A8FBF]/40"
-                >
-                  <Github size={16} />
-                  Connect a repo to auto-sync
-                </a>
-              )}
               <button onClick={onClose} className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center">
-                Skip for now
+                Close
               </button>
             </div>
           </div>
 
-        /* ── Overview: GitHub status + existing signs ──────────────── */
+        /* ── Overview ─────────────────────────────────────────────── */
         ) : view === 'overview' ? (
           <>
             <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Create a Markee</h2>
 
-            {/* GitHub connection status */}
+            {/* GitHub status */}
             <div className="mb-6">
               <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">GitHub Account</div>
               {githubUser.connected ? (
@@ -441,65 +475,68 @@ function CreateMarkeeModal({
                   </button>
                 </div>
               ) : (
-                <div className="bg-[#060A2A] rounded-lg px-4 py-4 border border-[#8A8FBF]/15 flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[#EDEEFF] text-sm mb-1">No repo connected</p>
-                    <p className="text-[#8A8FBF] text-xs">Connect GitHub to auto-sync your markdown files.</p>
-                  </div>
+                <div className="bg-[#060A2A] rounded-lg px-4 py-4 border border-[#8A8FBF]/15">
+                  <p className="text-[#EDEEFF] text-sm mb-1">Connect GitHub first</p>
+                  <p className="text-[#8A8FBF] text-xs mb-4">
+                    GitHub OAuth lets us verify you own the repo and securely link your Markee to it.
+                  </p>
                   <a
                     href="/api/github/connect"
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#F897FE] transition-colors whitespace-nowrap"
+                    className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
                   >
-                    <Github size={13} />
-                    Connect
+                    <Github size={15} />
+                    Connect GitHub
                   </a>
                 </div>
               )}
             </div>
 
-            {/* Existing signs for this wallet */}
+            {/* Existing signs */}
             {myLeaderboards.length > 0 && (
               <div className="mb-6">
                 <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
                 <div className="space-y-2">
-                  {myLeaderboards.map(lb => {
-                    const [repoPart, filePart] = lb.name.split(' — ')
-                    return (
-                      <div key={lb.address} className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
-                        <div className="min-w-0">
-                          <p className="text-[#EDEEFF] text-sm truncate">{repoPart ?? lb.name}</p>
-                          {filePart && (
-                            <span className="text-xs text-[#7C9CFF] font-mono">{filePart}</span>
-                          )}
-                        </div>
-                        <a
-                          href={`/ecosystem/platforms/github/${lb.address}`}
-                          className="flex-shrink-0 flex items-center gap-1 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
-                        >
-                          Manage
-                          <Arrow size={13} />
-                        </a>
+                  {myLeaderboards.map(lb => (
+                    <div key={lb.address} className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
+                      <div className="min-w-0 flex-1">
+                        {lb.repoVerified ? (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {lb.repoAvatarUrl && <img src={lb.repoAvatarUrl} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />}
+                            <span className="text-[#EDEEFF] text-sm truncate">{lb.repoFullName}</span>
+                            <span className="text-[#7C9CFF] text-xs font-mono flex-shrink-0">{lb.filePath}</span>
+                            <ShieldCheck size={11} className="text-green-400 flex-shrink-0" />
+                          </div>
+                        ) : (
+                          <p className="text-[#EDEEFF] text-sm truncate">{lb.name}</p>
+                        )}
                       </div>
-                    )
-                  })}
+                      <a
+                        href={`/ecosystem/platforms/github/${lb.address}`}
+                        className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
+                      >
+                        Manage →
+                      </a>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Create new */}
-            {!isConnected ? (
-              <div className="space-y-3">
-                <p className="text-[#8A8FBF] text-sm">Connect your wallet to create a Markee.</p>
-                <ConnectButton />
-              </div>
-            ) : (
-              <button
-                onClick={() => setView('create')}
-                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
-              >
-                <Plus size={18} />
-                Create a new Markee
-              </button>
+            {/* Only show create button if GitHub is connected */}
+            {githubUser.connected && (
+              isConnected ? (
+                <button
+                  onClick={() => setView('create')}
+                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
+                >
+                  Create a Markee
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-[#8A8FBF] text-sm">Connect your wallet to create a Markee.</p>
+                  <ConnectButton />
+                </div>
+              )
             )}
           </>
 
@@ -512,9 +549,23 @@ function CreateMarkeeModal({
             >
               ← Back
             </button>
-            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">New Markee</h2>
+            <h2 className="text-[#EDEEFF] font-bold text-lg mb-1">New Markee</h2>
+            <p className="text-[#8A8FBF] text-xs mb-6">as @{githubUser.login}</p>
 
             <div className="space-y-5">
+              {/* Repo */}
+              <div>
+                <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Repo</label>
+                <input
+                  type="text"
+                  value={repoFullName}
+                  onChange={e => setRepoFullName(e.target.value)}
+                  placeholder="e.g. my-org/my-repo"
+                  className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
+                />
+                <p className="text-[#8A8FBF] text-xs mt-1.5">Must have push access. Verified via your connected GitHub account.</p>
+              </div>
+
               {/* File name */}
               <div>
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">File Name</label>
@@ -525,10 +576,9 @@ function CreateMarkeeModal({
                   placeholder="e.g. SKILL.md or README.md"
                   className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
                 />
-                <p className="text-[#8A8FBF] text-xs mt-1.5">The markdown file this Markee will live in.</p>
               </div>
 
-              {/* Treasury address */}
+              {/* Treasury */}
               <div>
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
                   Treasury Address <span className="text-[#F897FE]">*</span>
@@ -540,12 +590,10 @@ function CreateMarkeeModal({
                   placeholder="0x…"
                   className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
                 />
-                <p className="text-[#8A8FBF] text-xs mt-1.5">
-                  62% of every payment goes here. Use a multisig or your repo's Juicebox treasury.
-                </p>
+                <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
               </div>
 
-              {/* Revenue split */}
+              {/* Split */}
               <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                 <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
                 <div className="flex justify-between">
@@ -573,7 +621,7 @@ function CreateMarkeeModal({
                 {isPending || isConfirming ? (
                   <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
                 ) : (
-                  <><Plus size={18} /> Create Markee</>
+                  'Create a Markee'
                 )}
               </button>
             </div>
