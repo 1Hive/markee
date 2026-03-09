@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck,
+  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, Eye,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -39,6 +39,8 @@ interface GithubLeaderboard {
   markeeCount: number
   admin: string
   minimumPrice: string
+  minimumPriceRaw: string
+  topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
   // Verified repo metadata
@@ -247,27 +249,7 @@ export default function GithubPlatformPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {leaderboards.map((lb, idx) => (
-                <div key={lb.address} className="relative">
-                  {lb.repoVerified && lb.repoHtmlUrl ? (
-                    <a
-                      href={lb.repoHtmlUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {lb.repoAvatarUrl && (
-                        <img src={lb.repoAvatarUrl} alt={lb.repoOwner ?? ''} className="w-4 h-4 rounded-full" />
-                      )}
-                      <Github size={12} />
-                      {lb.repoFullName}
-                      <ExternalLink size={11} />
-                    </a>
-                  ) : null}
-                  <div className={lb.repoVerified && lb.repoHtmlUrl ? 'rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#8A8FBF]/20 hover:border-[#F897FE]/40 transition-all' : ''}>
-                    <LeaderboardCard leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} hasTab={!!(lb.repoVerified && lb.repoHtmlUrl)} />
-                  </div>
-                </div>
+                <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} />
               ))}
             </div>
           )}
@@ -293,73 +275,109 @@ export default function GithubPlatformPage() {
 
 // ─── Leaderboard Card ─────────────────────────────────────────────────────────
 
+const GITHUB_LOGO = 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'
+
 function LeaderboardCard({
-  leaderboard, rank, formatFunds, hasTab,
+  leaderboard, formatFunds,
 }: {
   leaderboard: GithubLeaderboard
   rank: number
   formatFunds: (eth: string) => string
-  hasTab?: boolean
 }) {
-  const rankColors: Record<number, string> = {
-    1: 'text-[#FFD700] border-[#FFD700]/40 bg-[#FFD700]/10',
-    2: 'text-[#C0C0C0] border-[#C0C0C0]/40 bg-[#C0C0C0]/10',
-    3: 'text-[#CD7F32] border-[#CD7F32]/40 bg-[#CD7F32]/10',
-  }
-  const rankStyle = rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/30 bg-[#8A8FBF]/10'
+  const router = useRouter()
+
+  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+  const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
+  const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
+  const rawBuyPrice = topFunds + minIncrement
+  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
+  const buyPriceFormatted = Number(buyPrice) / 1e18
+
+  const title = leaderboard.repoVerified
+    ? (leaderboard.repoName ?? leaderboard.repoFullName ?? leaderboard.name)
+    : leaderboard.name
+
+  const subtitle = leaderboard.repoVerified && leaderboard.filePath
+    ? leaderboard.filePath
+    : `${leaderboard.address.slice(0, 6)}…${leaderboard.address.slice(-4)}`
 
   return (
-    <div className={`bg-[#0A0F3D] flex flex-col h-full ${!hasTab ? 'rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE]/40 transition-all' : ''}`}>
-      <div className="p-5 border-b border-[#8A8FBF]/20 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {leaderboard.repoVerified ? (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="inline-block text-xs bg-[#7C9CFF]/15 border border-[#7C9CFF]/30 text-[#7C9CFF] px-2 py-0.5 rounded font-mono">
-                {leaderboard.filePath}
-              </span>
-              <ShieldCheck size={11} className="text-green-400" />
-            </div>
-          ) : (
-            <div>
-              <h3 className="text-[#EDEEFF] font-semibold text-sm truncate">{leaderboard.name}</h3>
-              <p className="text-[#8A8FBF] text-xs mt-0.5 font-mono truncate">
-                {leaderboard.address.slice(0, 6)}…{leaderboard.address.slice(-4)}
-              </p>
-            </div>
-          )}
-        </div>
-        <span className={`flex-shrink-0 text-xs font-bold px-2 py-1 rounded border ${rankStyle}`}>
-          #{rank}
-        </span>
-      </div>
+    <div className="relative">
+      {/* Repo link tab — same pattern as ecosystem Live Integrations */}
+      {leaderboard.repoVerified && leaderboard.repoHtmlUrl ? (
+        <a
+          href={leaderboard.repoHtmlUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+          onClick={e => e.stopPropagation()}
+        >
+          <ExternalLink size={12} />
+          {leaderboard.repoHtmlUrl.replace(/^https?:\/\//, '')}
+        </a>
+      ) : null}
 
-      <div className="p-5 flex-1">
+      {/* Card body — matches PartnerMarkeeCard exactly */}
+      <div
+        onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
+        className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
+          leaderboard.repoVerified && leaderboard.repoHtmlUrl
+            ? 'rounded-t-none rounded-b-lg border-t-0'
+            : 'rounded-lg'
+        }`}
+      >
+        {/* Header: logo + repo name */}
+        <div className="flex items-center gap-3 mb-3">
+          <img
+            src={leaderboard.repoAvatarUrl ?? GITHUB_LOGO}
+            alt={title}
+            className="h-12 w-12 object-contain rounded-lg"
+          />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{title}</h3>
+            {leaderboard.repoVerified && leaderboard.filePath && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[#7C9CFF] text-xs font-mono truncate">{subtitle}</span>
+                <ShieldCheck size={11} className="text-green-400 flex-shrink-0" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top message box */}
         {leaderboard.topMessage ? (
-          <div>
-            <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Top Message</div>
-            <p className="text-[#EDEEFF] text-sm font-mono leading-relaxed line-clamp-3">{leaderboard.topMessage}</p>
+          <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
+            <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
+              {leaderboard.topMessage}
+            </p>
             {leaderboard.topMessageOwner && (
-              <p className="text-[#8A8FBF] text-xs mt-2 truncate">by {leaderboard.topMessageOwner}</p>
+              <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {leaderboard.topMessageOwner}</p>
             )}
           </div>
         ) : (
-          <div className="text-center py-4">
-            <p className="text-[#8A8FBF] text-sm">No messages yet</p>
+          <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
+            <div className="text-4xl mb-2">🪧</div>
+            <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
           </div>
         )}
-      </div>
 
-      <div className="px-5 pb-5 space-y-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-[#8A8FBF]">{leaderboard.markeeCount} messages</span>
-          <span className="text-[#F897FE] font-semibold">{formatFunds(leaderboard.totalFunds)}</span>
+        {/* Stats */}
+        <div className="flex items-center justify-between text-xs mb-4">
+          <span className="text-[#7C9CFF] font-medium">
+            {formatFunds(leaderboard.totalFunds)} total raised.
+          </span>
+          <span className="text-[#8A8FBF]">
+            {leaderboard.markeeCount} {leaderboard.markeeCount === 1 ? 'message' : 'messages'}
+          </span>
         </div>
-        <Link
-          href={`/ecosystem/platforms/github/${leaderboard.address}`}
-          className="block w-full text-center bg-[#F897FE]/10 border border-[#F897FE]/30 text-[#F897FE] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE]/20 transition-colors"
+
+        {/* CTA */}
+        <button
+          onClick={e => { e.stopPropagation(); router.push(`/ecosystem/platforms/github/${leaderboard.address}`) }}
+          className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
         >
-          View Markee
-        </Link>
+          {buyPriceFormatted.toFixed(3)} ETH to change
+        </button>
       </div>
     </div>
   )
@@ -383,10 +401,12 @@ function CreateMarkeeModal({
   const router = useRouter()
   const [view, setView] = useState<ModalView>('overview')
   const [fileName, setFileName] = useState('')
-  const [repoFullName, setRepoFullName] = useState('')
   const [repoSearch, setRepoSearch] = useState('')
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
   const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null)
+  const [mdFiles, setMdFiles] = useState<string[]>([])
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false)
+  const [fileDropdownOpen, setFileDropdownOpen] = useState(false)
   const [beneficiary, setBeneficiary] = useState(walletAddress ?? '')
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [registerError, setRegisterError] = useState<string | null>(null)
@@ -434,6 +454,18 @@ function CreateMarkeeModal({
       onSuccess()
     }
   }, [isSuccess, receipt, selectedRepo, fileName, onSuccess])
+
+  // Fetch .md files whenever a repo is selected
+  useEffect(() => {
+    if (!selectedRepo) { setMdFiles([]); return }
+    setIsLoadingFiles(true)
+    setFileName('')
+    fetch(`/api/github/repo-files?repo=${encodeURIComponent(selectedRepo.fullName)}`)
+      .then(r => r.json())
+      .then(data => setMdFiles(data.files ?? []))
+      .catch(() => setMdFiles([]))
+      .finally(() => setIsLoadingFiles(false))
+  }, [selectedRepo])
 
   const handleDisconnect = async () => {
     await fetch('/api/github/me', { method: 'DELETE' })
@@ -647,16 +679,51 @@ function CreateMarkeeModal({
                 <p className="text-[#8A8FBF] text-xs mt-1.5">Repos where you have push access, verified via GitHub.</p>
               </div>
 
-              {/* File name */}
-              <div>
+              {/* File name picker */}
+              <div className="relative">
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">File Name</label>
-                <input
-                  type="text"
-                  value={fileName}
-                  onChange={e => setFileName(e.target.value)}
-                  placeholder="e.g. SKILL.md or README.md"
-                  className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-                />
+                {!selectedRepo ? (
+                  <div className="w-full bg-[#060A2A] border border-[#8A8FBF]/10 rounded-lg px-4 py-3 text-[#8A8FBF]/40 text-sm font-mono cursor-not-allowed">
+                    Select a repo first…
+                  </div>
+                ) : isLoadingFiles ? (
+                  <div className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 flex items-center gap-2 text-[#8A8FBF] text-sm">
+                    <Loader2 size={14} className="animate-spin" />
+                    Loading files…
+                  </div>
+                ) : fileName ? (
+                  <div className="flex items-center justify-between bg-[#060A2A] border border-[#F897FE]/40 rounded-lg px-4 py-3">
+                    <span className="text-[#EDEEFF] text-sm font-mono truncate">{fileName}</span>
+                    <button onClick={() => setFileName('')} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-3 flex-shrink-0">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      onClick={() => setFileDropdownOpen(o => !o)}
+                      className="w-full flex items-center justify-between bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/50 rounded-lg px-4 py-3 text-left transition-colors"
+                    >
+                      <span className="text-[#8A8FBF] text-sm font-mono">
+                        {mdFiles.length ? `${mdFiles.length} .md files found — select one` : 'No .md files found'}
+                      </span>
+                      <ChevronRight size={14} className={`text-[#8A8FBF] flex-shrink-0 transition-transform ${fileDropdownOpen ? 'rotate-90' : ''}`} />
+                    </button>
+                    {fileDropdownOpen && mdFiles.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                        {mdFiles.map(f => (
+                          <button
+                            key={f}
+                            onClick={() => { setFileName(f); setFileDropdownOpen(false) }}
+                            className="w-full flex items-center px-4 py-2.5 hover:bg-[#F897FE]/10 transition-colors text-left"
+                          >
+                            <span className="text-[#EDEEFF] text-sm font-mono truncate">{f}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Treasury */}
