@@ -35,15 +35,15 @@ export const CONTRACTS = {
   [base.id]: {
     fixedPriceStrategies: [
       {
-        name: '(message 1 loading...)',
+        name: '(this is a sign.)',
         address: '0x35BBbF93395501678bAAd5898B73ab0778f5d303' as const,
       },
       {
-        name: '(message 2 loading...)',
+        name: '(anyone can pay to change.)',
         address: '0x279ecAd5167bfa400b2C2bab32668ed6B88a49Dd' as const,
       },
       {
-        name: '(message 3 loading...)',
+        name: '(that funds the internet.)',
         address: '0x4ceAadA2108526A94c3382D3AEE36B8888bCA335' as const,
       },
     ],
