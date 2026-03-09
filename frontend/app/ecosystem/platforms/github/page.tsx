@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, Eye,
+  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, Eye, RefreshCw,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -107,9 +107,12 @@ export default function GithubPlatformPage() {
     }
   }, [])
 
-  const fetchLeaderboards = useCallback(async () => {
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const fetchLeaderboards = useCallback(async (silent = false) => {
     try {
-      setIsLoadingLeaderboards(true)
+      if (!silent) setIsLoadingLeaderboards(true)
+      else setIsRefreshing(true)
       const res = await fetch('/api/github/leaderboards')
       if (res.ok) {
         const data = await res.json()
@@ -120,8 +123,16 @@ export default function GithubPlatformPage() {
       console.error(err)
     } finally {
       setIsLoadingLeaderboards(false)
+      setIsRefreshing(false)
     }
   }, [])
+
+  // Refetch on window focus — always fresh when you tab back
+  useEffect(() => {
+    const onFocus = () => fetchLeaderboards(true)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchLeaderboards])
 
   useEffect(() => {
     fetchGithubUser()
@@ -188,8 +199,21 @@ export default function GithubPlatformPage() {
             <div className="flex items-center gap-2 text-sm">
               <Trophy size={14} className="text-[#7C9CFF]" />
               <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-              <span className="text-[#8A8FBF]">funds raised</span>
+              <span className="text-[#8A8FBF]">total funded</span>
             </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Zap size={14} className="text-[#7C9CFF]" />
+              <span className="text-[#7C9CFF] font-semibold">Agent-native</span>
+              <span className="text-[#8A8FBF]">impressions</span>
+            </div>
+            <button
+              onClick={() => fetchLeaderboards(true)}
+              disabled={isRefreshing}
+              className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
+            >
+              <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+              {isRefreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
           </div>
         </div>
       </section>
