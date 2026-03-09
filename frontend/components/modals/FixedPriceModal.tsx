@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
-import { parseEther, formatEther } from 'viem'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft } from 'lucide-react'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -25,21 +25,9 @@ export function FixedPriceModal({
   const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
 
-  // Get user's ETH balance
   const { data: balanceData } = useBalance({
     address: address,
     chainId: CANONICAL_CHAIN.id,
-  })
-
-  // Read maxMessageLength from contract
-  const { data: maxMessageLength } = useReadContract({
-    address: fixedMarkee?.strategyAddress as `0x${string}`,
-    abi: FixedPriceStrategyABI,
-    functionName: 'maxMessageLength',
-    chainId: CANONICAL_CHAIN.id,
-    query: {
-      enabled: !!fixedMarkee?.strategyAddress,
-    },
   })
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
@@ -58,13 +46,13 @@ export function FixedPriceModal({
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  // Derive price values once — raw BigInt from subgraph wei string, no round-trip through formatEther
+  // All price data comes from the hook — no RPC calls here
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
-  const priceEth: string = formatEther(priceWei)  // "100" for display
+  const priceEth: string = formatEther(priceWei)
   const priceDisplay = priceWei > 0n ? `${priceEth} ETH` : '...'
   const markeeTokens = priceWei > 0n ? parseFloat(priceEth) * 62000 : 0
+  const maxLength = fixedMarkee?.maxMessageLength ?? null
 
-  // Reset modal state when opened
   useEffect(() => {
     if (isOpen && fixedMarkee) {
       setNewMessage('')
@@ -73,7 +61,6 @@ export function FixedPriceModal({
     }
   }, [isOpen, fixedMarkee, reset])
 
-  // Close modal & refresh after success
   useEffect(() => {
     if (isSuccess && isOpen) {
       setTimeout(() => {
@@ -85,13 +72,13 @@ export function FixedPriceModal({
 
   const canAffordMessage = (): boolean => {
     if (!balanceData || priceWei === 0n) return false
-    const estimatedGas = parseEther('0.001')
+    const estimatedGas = 1000000000000000n // 0.001 ETH
     return balanceData.value >= priceWei + estimatedGas
   }
 
   const getInsufficientBalanceMessage = (): string | null => {
     if (!balanceData || priceWei === 0n) return null
-    const estimatedGas = parseEther('0.001')
+    const estimatedGas = 1000000000000000n
     if (balanceData.value < priceWei + estimatedGas) {
       return `You don't have enough ETH to complete this transaction.`
     }
@@ -99,38 +86,20 @@ export function FixedPriceModal({
   }
 
   const handleChangeMessage = async () => {
-    if (!fixedMarkee || !chain) {
-      setError('Please connect your wallet')
+    if (!fixedMarkee || !chain) { setError('Please connect your wallet'); return }
+    if (chain.id !== CANONICAL_CHAIN.id) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
+    if (!newMessage.trim()) { setError('Please enter a message'); return }
+    if (priceWei === 0n) { setError('Unable to load price'); return }
+    if (maxLength && newMessage.length > maxLength) {
+      setError(`Message exceeds maximum length of ${maxLength} characters`)
       return
     }
-
-    if (chain.id !== CANONICAL_CHAIN.id) {
-      setError(`Please switch to ${CANONICAL_CHAIN.name}`)
-      return
-    }
-
-    if (!newMessage.trim()) {
-      setError('Please enter a message')
-      return
-    }
-
-    if (priceWei === 0n) {
-      setError('Unable to load price')
-      return
-    }
-
-    if (maxMessageLength && newMessage.length > Number(maxMessageLength)) {
-      setError(`Message exceeds maximum length of ${maxMessageLength} characters`)
-      return
-    }
-
     if (!canAffordMessage()) {
       setError(getInsufficientBalanceMessage() || 'Insufficient balance')
       return
     }
 
     setError(null)
-
     try {
       writeContract({
         address: fixedMarkee.strategyAddress as `0x${string}`,
@@ -149,9 +118,7 @@ export function FixedPriceModal({
 
   const insufficientBalance = !canAffordMessage()
   const balanceWarning = getInsufficientBalanceMessage()
-
   const currentLength = newMessage.length
-  const maxLength = maxMessageLength ? Number(maxMessageLength) : null
   const isOverLimit = !!(maxLength && currentLength > maxLength)
 
   return (
@@ -160,9 +127,7 @@ export function FixedPriceModal({
 
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
-          <h2 className="text-2xl font-bold text-[#EDEEFF]">
-            Change Message
-          </h2>
+          <h2 className="text-2xl font-bold text-[#EDEEFF]">Change Message</h2>
           <button
             onClick={onClose}
             className="text-[#8A8FBF] hover:text-[#EDEEFF] transition"
@@ -174,22 +139,16 @@ export function FixedPriceModal({
 
         {/* Content */}
         <div className="p-6">
-
-          {/* Wallet State */}
           {!isConnected ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
-              <div className="flex justify-center">
-                <ConnectButton />
-              </div>
+              <div className="flex justify-center"><ConnectButton /></div>
             </div>
           ) : !isCorrectChain ? (
             <div className="text-center py-8">
               <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-              <p className="text-[#B8B6D9] mb-4">
-                Please switch to {CANONICAL_CHAIN.name} to continue
-              </p>
+              <p className="text-[#B8B6D9] mb-4">Please switch to {CANONICAL_CHAIN.name} to continue</p>
               <div className="flex justify-center">
                 <button
                   onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
@@ -204,9 +163,7 @@ export function FixedPriceModal({
             <>
               {/* Current Message */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
-                  Current Message
-                </label>
+                <label className="block text-sm font-medium text-[#B8B6D9] mb-2">Current Message</label>
                 <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30">
                   <p className="text-[#EDEEFF] font-jetbrains">
                     {fixedMarkee.message || 'No message yet'}
@@ -218,9 +175,7 @@ export function FixedPriceModal({
               <div className="mb-6 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-[#B8B6D9] font-medium">Price to Change Message</p>
-                  <p className="text-2xl font-bold text-[#F897FE]">
-                    {priceDisplay}
-                  </p>
+                  <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
                 </div>
                 {balanceData && (
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
@@ -235,9 +190,7 @@ export function FixedPriceModal({
               {/* New Message Input */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-[#B8B6D9]">
-                    New Message
-                  </label>
+                  <label className="block text-sm font-medium text-[#B8B6D9]">New Message</label>
                   {maxLength && (
                     <span className={`text-xs ${isOverLimit ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
                       {currentLength}/{maxLength}
@@ -257,14 +210,12 @@ export function FixedPriceModal({
                 />
               </div>
 
-              {/* Featured MARKEE Token Display */}
+              {/* MARKEE Token Display */}
               {markeeTokens > 0 && (
                 <div className="mb-6 bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
                   <div className="text-center">
                     <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
-                    <p className="text-4xl font-bold text-[#F897FE] mb-2">
-                      {markeeTokens.toLocaleString()}
-                    </p>
+                    <p className="text-4xl font-bold text-[#F897FE] mb-2">{markeeTokens.toLocaleString()}</p>
                     <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
                   </div>
                 </div>
@@ -276,7 +227,6 @@ export function FixedPriceModal({
                 </p>
               </div>
 
-              {/* Insufficient Balance Warning */}
               {insufficientBalance && balanceWarning && !error && !isError && (
                 <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                   <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
@@ -287,17 +237,13 @@ export function FixedPriceModal({
                 </div>
               )}
 
-              {/* Message Too Long Warning */}
               {isOverLimit && !error && !isError && (
                 <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                   <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <p className="text-sm font-medium text-yellow-300">Message Too Long</p>
-                  </div>
+                  <p className="text-sm font-medium text-yellow-300">Message Too Long</p>
                 </div>
               )}
 
-              {/* Error Message */}
               {(error || isError) && (
                 <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg flex items-start gap-2">
                   <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" size={20} />
@@ -305,7 +251,6 @@ export function FixedPriceModal({
                 </div>
               )}
 
-              {/* Success Message */}
               {isSuccess && (
                 <div className="mb-4 p-4 bg-green-900/20 border border-green-500/50 rounded-lg flex items-start gap-2">
                   <CheckCircle2 className="text-green-400 flex-shrink-0 mt-0.5" size={20} />
@@ -316,7 +261,6 @@ export function FixedPriceModal({
                 </div>
               )}
 
-              {/* Action */}
               <button
                 onClick={handleChangeMessage}
                 disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit}
@@ -330,14 +274,9 @@ export function FixedPriceModal({
                     {isPending ? 'Confirm in wallet...' : 'Processing...'}
                   </>
                 ) : isSuccess ? (
-                  <>
-                    <CheckCircle2 size={20} />
-                    Success!
-                  </>
+                  <><CheckCircle2 size={20} />Success!</>
                 ) : (
-                  <>
-                    Change Message ({priceDisplay})
-                  </>
+                  <>Change Message ({priceDisplay})</>
                 )}
               </button>
             </>
