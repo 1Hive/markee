@@ -188,12 +188,7 @@ export default function GithubPlatformPage() {
             <div className="flex items-center gap-2 text-sm">
               <Trophy size={14} className="text-[#7C9CFF]" />
               <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-              <span className="text-[#8A8FBF]">total funded</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Zap size={14} className="text-[#7C9CFF]" />
-              <span className="text-[#7C9CFF] font-semibold">Agent-native</span>
-              <span className="text-[#8A8FBF]">impressions</span>
+              <span className="text-[#8A8FBF]">funds raised</span>
             </div>
           </div>
         </div>
