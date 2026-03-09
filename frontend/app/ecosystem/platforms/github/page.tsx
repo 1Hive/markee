@@ -276,7 +276,7 @@ function LeaderboardCard({
                 <span className="inline-block text-xs bg-[#7C9CFF]/15 border border-[#7C9CFF]/30 text-[#7C9CFF] px-2 py-0.5 rounded font-mono">
                   {leaderboard.filePath}
                 </span>
-                <ShieldCheck size={11} className="text-green-400" title="Repo verified via GitHub OAuth" />
+                <ShieldCheck size={11} className="text-green-400" />
               </div>
             </div>
           ) : (
