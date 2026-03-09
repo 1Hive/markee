@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { CONTRACTS, CANONICAL_CHAIN_ID, SUBGRAPH_URLS } from '@/lib/contracts/addresses'
-import { formatEther } from 'viem'
 
 export type FixedMarkee = {
   name: string
   strategyAddress: string
   markeeAddress: string
   message: string
-  price: string
+  priceWei: string  // raw wei string e.g. "100000000000000000000" — use BigInt() to consume
   owner: string
   chainId: number
 }
@@ -79,7 +78,7 @@ export function useFixedMarkees() {
           strategyAddress: strategyConfig.address,
           markeeAddress: found?.markeeAddress ?? '',
           message: found?.currentMessage ?? '',
-          price: found?.price ? formatEther(BigInt(found.price)) : '0',
+          priceWei: found?.price ?? '0',  // raw wei string — no formatEther here
           owner: found?.owner ?? '',
           chainId: CANONICAL_CHAIN_ID,
         }
