@@ -24,7 +24,7 @@ export function FixedPriceModal({
 }: FixedPriceModalProps) {
   const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
-  
+
   // Get user's ETH balance
   const { data: balanceData } = useBalance({
     address: address,
@@ -42,7 +42,6 @@ export function FixedPriceModal({
     },
   })
 
-  // Check if user is on the correct chain
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
@@ -58,6 +57,12 @@ export function FixedPriceModal({
   } = useWriteContract()
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  // Derive price values once — raw BigInt from subgraph wei string, no round-trip through formatEther
+  const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
+  const priceEth: string = formatEther(priceWei)  // "100" for display
+  const priceDisplay = priceWei > 0n ? `${priceEth} ETH` : '...'
+  const markeeTokens = priceWei > 0n ? parseFloat(priceEth) * 62000 : 0
 
   // Reset modal state when opened
   useEffect(() => {
@@ -78,29 +83,18 @@ export function FixedPriceModal({
     }
   }, [isSuccess, onClose, isOpen])
 
-  // Check if user can afford the message change
-  const canAffordMessage = () => {
-    if (!fixedMarkee?.price || !balanceData) return false
-    
-    const priceWei = parseEther(fixedMarkee.price)
-    const estimatedGas = parseEther('0.001') // Rough estimate for gas
-    const totalNeeded = priceWei + estimatedGas
-    
-    return balanceData.value >= totalNeeded
+  const canAffordMessage = (): boolean => {
+    if (!balanceData || priceWei === 0n) return false
+    const estimatedGas = parseEther('0.001')
+    return balanceData.value >= priceWei + estimatedGas
   }
 
-  const getInsufficientBalanceMessage = () => {
-    if (!fixedMarkee?.price || !balanceData) return null
-    
-    const priceWei = parseEther(fixedMarkee.price)
+  const getInsufficientBalanceMessage = (): string | null => {
+    if (!balanceData || priceWei === 0n) return null
     const estimatedGas = parseEther('0.001')
-    const totalNeeded = priceWei + estimatedGas
-    
-    if (balanceData.value < totalNeeded) {
-      const shortfall = totalNeeded - balanceData.value
+    if (balanceData.value < priceWei + estimatedGas) {
       return `You don't have enough ETH to complete this transaction.`
     }
-    
     return null
   }
 
@@ -120,18 +114,16 @@ export function FixedPriceModal({
       return
     }
 
-    if (!fixedMarkee.price) {
+    if (priceWei === 0n) {
       setError('Unable to load price')
       return
     }
 
-    // Check message length
     if (maxMessageLength && newMessage.length > Number(maxMessageLength)) {
       setError(`Message exceeds maximum length of ${maxMessageLength} characters`)
       return
     }
 
-    // Check balance before attempting transaction
     if (!canAffordMessage()) {
       setError(getInsufficientBalanceMessage() || 'Insufficient balance')
       return
@@ -144,8 +136,8 @@ export function FixedPriceModal({
         address: fixedMarkee.strategyAddress as `0x${string}`,
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
-        args: [newMessage, ''], // Empty string for name
-        value: parseEther(fixedMarkee.price),
+        args: [newMessage, ''],
+        value: priceWei,  // raw BigInt — exact, no precision loss
         chainId: CANONICAL_CHAIN.id,
       })
     } catch (err: any) {
@@ -155,11 +147,9 @@ export function FixedPriceModal({
 
   if (!isOpen || !fixedMarkee) return null
 
-  const priceDisplay = fixedMarkee.price ? `${fixedMarkee.price} ETH` : '...'
-  const markeeTokens = fixedMarkee.price ? parseFloat(fixedMarkee.price) * 62000 : 0
   const insufficientBalance = !canAffordMessage()
   const balanceWarning = getInsufficientBalanceMessage()
-  
+
   const currentLength = newMessage.length
   const maxLength = maxMessageLength ? Number(maxMessageLength) : null
   const isOverLimit = !!(maxLength && currentLength > maxLength)
@@ -167,7 +157,7 @@ export function FixedPriceModal({
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
           <h2 className="text-2xl font-bold text-[#EDEEFF]">
@@ -184,33 +174,33 @@ export function FixedPriceModal({
 
         {/* Content */}
         <div className="p-6">
-          
-           {/* Wallet State */}
-              {!isConnected ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
-                  <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
-                  <div className="flex justify-center">
-                    <ConnectButton />
-                  </div>
-                </div>
-              ) : !isCorrectChain ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-                  <p className="text-[#B8B6D9] mb-4">
-                    Please switch to {CANONICAL_CHAIN.name} to continue
-                  </p>
-                  <div className="flex justify-center">
-                    <button
-                      onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
-                      className="bg-[#FFA94D] text-[#060A2A] px-6 py-3 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
-                    >
-                      <ArrowRightLeft size={20} />
-                      Switch Network to Base
-                    </button>
-                  </div>
-                </div>
-              ) : (
+
+          {/* Wallet State */}
+          {!isConnected ? (
+            <div className="text-center py-8">
+              <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
+              <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
+              <div className="flex justify-center">
+                <ConnectButton />
+              </div>
+            </div>
+          ) : !isCorrectChain ? (
+            <div className="text-center py-8">
+              <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
+              <p className="text-[#B8B6D9] mb-4">
+                Please switch to {CANONICAL_CHAIN.name} to continue
+              </p>
+              <div className="flex justify-center">
+                <button
+                  onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
+                  className="bg-[#FFA94D] text-[#060A2A] px-6 py-3 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
+                >
+                  <ArrowRightLeft size={20} />
+                  Switch Network to Base
+                </button>
+              </div>
+            </div>
+          ) : (
             <>
               {/* Current Message */}
               <div className="mb-6">
