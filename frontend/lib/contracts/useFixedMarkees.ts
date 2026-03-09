@@ -125,12 +125,12 @@ export function useFixedMarkees() {
       const ordered: FixedMarkee[] = fixedStrategies.map((strategyConfig, i) => {
         const b = i * 4
 
-        const markeeAddr  = getResult<`0x${string}`>(strategyResults[b])     ?? ''
-        const priceWei    = getResult<bigint>(strategyResults[b + 1]) != null
+        const markeeAddr = getResult<`0x${string}`>(strategyResults[b]) ?? ''
+        const priceWei   = getResult<bigint>(strategyResults[b + 1]) != null
           ? String(getResult<bigint>(strategyResults[b + 1]))
           : '0'
-        const owner       = getResult<string>(strategyResults[b + 2])         ?? ''
-        const maxMsgLen   = getResult<bigint>(strategyResults[b + 3])
+        const owner      = getResult<string>(strategyResults[b + 2]) ?? ''
+        const maxMsgLen  = getResult<bigint>(strategyResults[b + 3])
         const maxMessageLength = maxMsgLen != null ? Number(maxMsgLen) : 280
 
         let message = ''
@@ -169,9 +169,8 @@ export function useFixedMarkees() {
 
   useEffect(() => {
     fetchMarkees()
-    // 2 multicall requests per 30s — nowhere near rate limit territory
-    const interval = setInterval(fetchMarkees, 30_000)
-    return () => clearInterval(interval)
+    // No polling — data loads once on mount.
+    // refetch() is called manually by onSuccess after a purchase.
   }, [fetchMarkees])
 
   return { markees, isLoading, error, refetch: fetchMarkees }
