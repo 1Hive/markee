@@ -1,88 +1,107 @@
 'use client'
 
-import { useReadContracts } from 'wagmi'
+import { useState, useEffect, useCallback } from 'react'
+import { CONTRACTS, CANONICAL_CHAIN_ID, SUBGRAPH_URLS } from '@/lib/contracts/addresses'
 import { formatEther } from 'viem'
-import { FixedPriceStrategyABI, MarkeeABI } from '@/lib/contracts/abis'
-import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 export type FixedMarkee = {
   name: string
   strategyAddress: string
+  markeeAddress: string
   message: string
   price: string
   owner: string
   chainId: number
 }
 
-const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies ?? []
+const FIXED_STRATEGIES_QUERY = `
+  query GetFixedPriceStrategies($ids: [ID!]!) {
+    fixedPriceStrategies(where: { id_in: $ids }) {
+      id
+      address
+      markeeAddress
+      price
+      owner
+      currentMessage
+      currentName
+    }
+  }
+`
 
 export function useFixedMarkees() {
-  // Phase 1: static data — fetches once, never refetches
-  const phase1Contracts = fixedStrategies.flatMap((s) => [
-    {
-      address: s.address as `0x${string}`,
-      abi: FixedPriceStrategyABI,
-      functionName: 'markeeAddress' as const,
-    },
-    {
-      address: s.address as `0x${string}`,
-      abi: FixedPriceStrategyABI,
-      functionName: 'price' as const,
-    },
-    {
-      address: s.address as `0x${string}`,
-      abi: FixedPriceStrategyABI,
-      functionName: 'owner' as const,
-    },
-  ])
+  const [markees, setMarkees] = useState<FixedMarkee[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
-  const { data: phase1Data, isLoading: isLoadingPhase1 } = useReadContracts({
-    contracts: phase1Contracts,
-    query: { staleTime: Infinity },
-  })
+  const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
+  const subgraphUrl = SUBGRAPH_URLS[CANONICAL_CHAIN_ID]
 
-  const markeeAddresses: (`0x${string}` | null)[] = phase1Data
-    ? fixedStrategies.map((_, i) => (phase1Data[i * 3]?.result as `0x${string}`) ?? null)
-    : fixedStrategies.map(() => null)
+  const fetchMarkees = useCallback(async () => {
+    if (!fixedStrategies.length || !subgraphUrl) {
+      setIsLoading(false)
+      return
+    }
 
-  const allResolved = markeeAddresses.every(Boolean)
+    try {
+      const ids = fixedStrategies.map((s) => s.address.toLowerCase())
 
-  // Phase 2: messages — fetches once on load; call refetch() after a purchase
-  const phase2Contracts = allResolved
-    ? markeeAddresses.map((addr) => ({
-        address: addr as `0x${string}`,
-        abi: MarkeeABI,
-        functionName: 'message' as const,
-      }))
-    : []
+      const response = await fetch(subgraphUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: FIXED_STRATEGIES_QUERY,
+          variables: { ids },
+        }),
+      })
 
-  const { data: phase2Data, refetch } = useReadContracts({
-    contracts: phase2Contracts,
-    query: {
-      enabled: allResolved,
-      staleTime: Infinity,
-    },
-  })
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`)
 
-  const markees: FixedMarkee[] = phase2Data
-    ? fixedStrategies.map((s, i) => {
-        const priceRaw = phase1Data?.[i * 3 + 1]?.result as bigint | undefined
-        const owner = (phase1Data?.[i * 3 + 2]?.result as string) ?? ''
-        const message = (phase2Data[i]?.result as string) ?? ''
+      const result = await response.json()
+      if (result.errors) throw new Error(result.errors[0]?.message || 'GraphQL error')
+
+      const data: Array<{
+        id: string
+        address: string
+        markeeAddress: string
+        price: string
+        owner: string
+        currentMessage: string
+        currentName: string
+      }> = result.data?.fixedPriceStrategies ?? []
+
+      // Preserve ordering from CONTRACTS config
+      const ordered = fixedStrategies.map((strategyConfig) => {
+        const found = data.find(
+          (d) => d.id.toLowerCase() === strategyConfig.address.toLowerCase()
+        )
         return {
-          name: s.name,
-          strategyAddress: s.address,
-          message,
-          price: priceRaw ? formatEther(priceRaw) : '0',
-          owner,
+          name: strategyConfig.name,
+          strategyAddress: strategyConfig.address,
+          markeeAddress: found?.markeeAddress ?? '',
+          message: found?.currentMessage ?? '',
+          price: found?.price ? formatEther(BigInt(found.price)) : '0',
+          owner: found?.owner ?? '',
           chainId: CANONICAL_CHAIN_ID,
         }
       })
-    : []
 
-  return {
-    markees,
-    isLoading: isLoadingPhase1 || !phase2Data,
-    refetch,
-  }
+      setMarkees(ordered)
+      setError(null)
+    } catch (err) {
+      console.error('useFixedMarkees: subgraph fetch failed', err)
+      setError(err instanceof Error ? err : new Error('Unknown error'))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [fixedStrategies, subgraphUrl])
+
+  useEffect(() => {
+    fetchMarkees()
+
+    // Poll every 30s — subgraph updates are not real-time anyway
+    const interval = setInterval(fetchMarkees, 30_000)
+    return () => clearInterval(interval)
+  }, [fetchMarkees])
+
+  return { markees, isLoading, error, refetch: fetchMarkees }
 }
