@@ -45,9 +45,8 @@ export async function GET(request: NextRequest) {
   const [page1, page2] = await Promise.all([fetchPage(1), fetchPage(2)])
   const all = [...page1, ...page2]
 
-  // Filter to repos with push access
-  const pushable = all
-    .filter(r => r.permissions?.push || r.permissions?.admin)
+  // Return all repos — push access check happens server-side at register time
+  const repos = all
     .map(r => ({
       id: r.id,
       fullName: r.full_name,
@@ -59,5 +58,5 @@ export async function GET(request: NextRequest) {
       private: r.private,
     }))
 
-  return NextResponse.json({ repos: pushable })
+  return NextResponse.json({ repos })
 }
