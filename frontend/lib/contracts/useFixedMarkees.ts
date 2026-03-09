@@ -58,7 +58,12 @@ const MARKEE_ABI = [
   },
 ] as const
 
-type MulticallResult = { status: 'success'; result: unknown } | { status: 'failure'; error: unknown }
+// Helper: safely extract result from a multicall entry.
+// Assigning to a named variable is required for TS to narrow the union.
+function getResult<T>(entry: { status: string; result?: unknown; error?: unknown } | undefined): T | undefined {
+  if (!entry || entry.status !== 'success') return undefined
+  return entry.result as T
+}
 
 export type FixedMarkee = {
   name: string
@@ -94,22 +99,20 @@ export function useFixedMarkees() {
         { address: s.address as `0x${string}`, abi: STRATEGY_ABI, functionName: 'maxMessageLength' as const },
       ])
 
-      const strategyResults: MulticallResult[] = await publicClient.multicall({
-        contracts: strategyContracts,
-        allowFailure: true,
-      })
+      const strategyResults = await publicClient.multicall({ contracts: strategyContracts, allowFailure: true })
 
       // Extract markee addresses for pass 2
       const markeeAddresses: (`0x${string}` | null)[] = fixedStrategies.map((_, i) => {
-        const r = strategyResults[i * 4]
-        return r?.status === 'success' ? (r.result as `0x${string}`) : null
+        return getResult<`0x${string}`>(strategyResults[i * 4]) ?? null
       })
 
       // ── Pass 2: read message + name from each Markee contract ───────────────
       // 2 calls × 3 markees = 6 calls, batched into ONE multicall request
       const validMarkeeAddresses = markeeAddresses.filter((a): a is `0x${string}` => !!a)
 
-      let markeeResults: MulticallResult[] = []
+      type MarkeeMulticallResult = Awaited<ReturnType<typeof publicClient.multicall>>
+      let markeeResults: MarkeeMulticallResult = []
+
       if (validMarkeeAddresses.length > 0) {
         const markeeContracts = validMarkeeAddresses.flatMap((addr) => [
           { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
@@ -121,31 +124,24 @@ export function useFixedMarkees() {
       // ── Merge results ───────────────────────────────────────────────────────
       const ordered: FixedMarkee[] = fixedStrategies.map((strategyConfig, i) => {
         const b = i * 4
-        const markeeAddr = strategyResults[b]?.status === 'success'
-          ? (strategyResults[b].result as `0x${string}`)
-          : ''
-        const priceWei = strategyResults[b + 1]?.status === 'success'
-          ? String(strategyResults[b + 1].result as bigint)
+
+        const markeeAddr  = getResult<`0x${string}`>(strategyResults[b])     ?? ''
+        const priceWei    = getResult<bigint>(strategyResults[b + 1]) != null
+          ? String(getResult<bigint>(strategyResults[b + 1]))
           : '0'
-        const owner = strategyResults[b + 2]?.status === 'success'
-          ? (strategyResults[b + 2].result as string)
-          : ''
-        const maxMessageLength = strategyResults[b + 3]?.status === 'success'
-          ? Number(strategyResults[b + 3].result as bigint)
-          : 280
+        const owner       = getResult<string>(strategyResults[b + 2])         ?? ''
+        const maxMsgLen   = getResult<bigint>(strategyResults[b + 3])
+        const maxMessageLength = maxMsgLen != null ? Number(maxMsgLen) : 280
 
         let message = ''
         let markeeName = ''
+
         if (markeeAddr) {
-          const markeeIndex = validMarkeeAddresses.indexOf(markeeAddr as `0x${string}`)
+          const markeeIndex = validMarkeeAddresses.indexOf(markeeAddr)
           if (markeeIndex >= 0) {
             const mBase = markeeIndex * 2
-            message = markeeResults[mBase]?.status === 'success'
-              ? (markeeResults[mBase].result as string)
-              : ''
-            markeeName = markeeResults[mBase + 1]?.status === 'success'
-              ? (markeeResults[mBase + 1].result as string)
-              : ''
+            message    = getResult<string>(markeeResults[mBase])     ?? ''
+            markeeName = getResult<string>(markeeResults[mBase + 1]) ?? ''
           }
         }
 
