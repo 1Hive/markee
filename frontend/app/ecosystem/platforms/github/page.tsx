@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Github, Zap, Trophy, Plus, X, Loader2, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
+import {
+  ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
+  CheckCircle2, AlertCircle, ExternalLink, LogOut, ChevronRight as Arrow,
+} from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
-import { decodeEventLog } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -41,11 +43,25 @@ interface GithubLeaderboard {
   topMessageOwner: string | null
 }
 
+interface GithubUser {
+  connected: boolean
+  uid?: string
+  login?: string
+  avatarUrl?: string
+}
+
 export default function GithubPlatformPage() {
+  const { address: walletAddress } = useAccount()
   const [leaderboards, setLeaderboards] = useState<GithubLeaderboard[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [isLoadingLeaderboards, setIsLoadingLeaderboards] = useState(true)
+  const [githubUser, setGithubUser] = useState<GithubUser>({ connected: false })
   const [createModalOpen, setCreateModalOpen] = useState(false)
+
+  const fetchGithubUser = useCallback(async () => {
+    const res = await fetch('/api/github/me')
+    if (res.ok) setGithubUser(await res.json())
+  }, [])
 
   const fetchLeaderboards = useCallback(async () => {
     try {
@@ -57,15 +73,16 @@ export default function GithubPlatformPage() {
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
       }
     } catch (err) {
-      console.error('Failed to fetch leaderboards:', err)
+      console.error(err)
     } finally {
       setIsLoadingLeaderboards(false)
     }
   }, [])
 
   useEffect(() => {
+    fetchGithubUser()
     fetchLeaderboards()
-  }, [fetchLeaderboards])
+  }, [fetchGithubUser, fetchLeaderboards])
 
   const formatFunds = (eth: string) => {
     const n = parseFloat(eth)
@@ -73,6 +90,11 @@ export default function GithubPlatformPage() {
     if (n < 0.001) return '< 0.001 ETH'
     return `${n.toFixed(4)} ETH`
   }
+
+  // Leaderboards where the connected wallet is admin
+  const myLeaderboards = walletAddress
+    ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
+    : []
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -116,7 +138,6 @@ export default function GithubPlatformPage() {
             </button>
           </div>
 
-          {/* Stats */}
           <div className="flex items-center gap-8 mt-10">
             <div className="flex items-center gap-2 text-sm">
               <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
@@ -142,26 +163,12 @@ export default function GithubPlatformPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              {
-                step: '1',
-                title: 'Create a Markee',
-                body: 'Deploy your sign onchain in seconds. Set a treasury address — 62% of every payment flows there automatically.',
-              },
-              {
-                step: '2',
-                title: 'Connect your repo',
-                body: 'Authorize the Markee GitHub App to write to your SKILL.md and add the MARKEE delimiters.',
-              },
-              {
-                step: '3',
-                title: 'Earn on every bid',
-                body: 'The sign updates automatically. Every AI agent that reads your repo sees the top message.',
-              },
+              { step: '1', title: 'Create a Markee', body: 'Deploy your sign onchain in seconds. Set a treasury address — 62% of every payment flows there automatically.' },
+              { step: '2', title: 'Connect your repo', body: 'Authorize the Markee GitHub App to write to your markdown file and add the MARKEE delimiters.' },
+              { step: '3', title: 'Earn on every bid', body: 'The sign updates automatically. Every AI agent that reads your repo sees the top message.' },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-sm font-bold">
-                  {step}
-                </div>
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-sm font-bold">{step}</div>
                 <div>
                   <h3 className="text-[#EDEEFF] font-semibold mb-1">{title}</h3>
                   <p className="text-[#8A8FBF] text-sm">{body}</p>
@@ -214,8 +221,12 @@ export default function GithubPlatformPage() {
 
       {createModalOpen && (
         <CreateMarkeeModal
+          githubUser={githubUser}
+          myLeaderboards={myLeaderboards}
+          walletAddress={walletAddress}
           onClose={() => setCreateModalOpen(false)}
           onSuccess={fetchLeaderboards}
+          onGithubChange={fetchGithubUser}
         />
       )}
     </div>
@@ -225,9 +236,7 @@ export default function GithubPlatformPage() {
 // ─── Leaderboard Card ─────────────────────────────────────────────────────────
 
 function LeaderboardCard({
-  leaderboard,
-  rank,
-  formatFunds,
+  leaderboard, rank, formatFunds,
 }: {
   leaderboard: GithubLeaderboard
   rank: number
@@ -240,14 +249,23 @@ function LeaderboardCard({
   }
   const rankStyle = rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/30 bg-[#8A8FBF]/10'
 
+  // name is stored as e.g. "my-org/my-repo — SKILL.md"
+  // Split on em dash to show repo + file separately
+  const [repoPart, filePart] = leaderboard.name.split(' — ')
+
   return (
     <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE]/40 transition-all overflow-hidden flex flex-col">
       <div className="p-5 border-b border-[#8A8FBF]/20 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-[#EDEEFF] font-semibold text-sm truncate">{leaderboard.name}</h3>
-          <p className="text-[#8A8FBF] text-xs mt-0.5 font-mono truncate">
-            {leaderboard.address.slice(0, 6)}…{leaderboard.address.slice(-4)}
-          </p>
+          <div className="flex items-center gap-2 mb-0.5">
+            <Github size={13} className="text-[#8A8FBF] flex-shrink-0" />
+            <span className="text-[#EDEEFF] font-semibold text-sm truncate">{repoPart ?? leaderboard.name}</span>
+          </div>
+          {filePart && (
+            <span className="inline-block text-xs bg-[#7C9CFF]/15 border border-[#7C9CFF]/30 text-[#7C9CFF] px-2 py-0.5 rounded font-mono mt-1">
+              {filePart}
+            </span>
+          )}
         </div>
         <span className={`flex-shrink-0 text-xs font-bold px-2 py-1 rounded border ${rankStyle}`}>
           #{rank}
@@ -287,88 +305,85 @@ function LeaderboardCard({
 }
 
 // ─── Create Markee Modal ──────────────────────────────────────────────────────
+// View A: GitHub status + existing signs for this wallet
+// View B: Create form
+
+type ModalView = 'overview' | 'create'
 
 function CreateMarkeeModal({
+  githubUser,
+  myLeaderboards,
+  walletAddress,
   onClose,
   onSuccess,
+  onGithubChange,
 }: {
+  githubUser: GithubUser
+  myLeaderboards: GithubLeaderboard[]
+  walletAddress?: string
   onClose: () => void
   onSuccess: () => void
+  onGithubChange: () => void
 }) {
   const router = useRouter()
-  const { address, isConnected } = useAccount()
-  const [beneficiary, setBeneficiary] = useState(address ?? '')
-  const [customName, setCustomName] = useState('')
+  const [view, setView] = useState<ModalView>('overview')
+  const [fileName, setFileName] = useState('')
+  const [beneficiary, setBeneficiary] = useState(walletAddress ?? '')
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { isConnected } = useAccount()
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // Extract the new leaderboard address from the transaction receipt logs
   useEffect(() => {
     if (isSuccess && receipt) {
-      // The factory emits LeaderboardCreated — the leaderboard address is in the logs
-      // Try to extract from logs; first non-factory address in logs is the new leaderboard
+      // Try to extract leaderboard address from factory logs
       for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== GITHUB_FACTORY_ADDRESS.toLowerCase()) {
-          // This is the leaderboard contract being initialized
-          continue
-        }
-        // The factory log's topics[1] contains the leaderboard address if indexed
-        if (log.topics[1]) {
+        if (
+          log.address.toLowerCase() === GITHUB_FACTORY_ADDRESS.toLowerCase() &&
+          log.topics[1]
+        ) {
           const addr = `0x${log.topics[1].slice(26)}`
           setNewLeaderboardAddress(addr)
           break
         }
       }
-      // Fallback: if we couldn't parse events, just refresh
       onSuccess()
     }
   }, [isSuccess, receipt, onSuccess])
 
+  const handleDisconnect = async () => {
+    await fetch('/api/github/me', { method: 'DELETE' })
+    onGithubChange()
+  }
+
   const handleCreate = () => {
     setError(null)
-    if (!customName.trim()) {
-      setError('Enter a name for your Markee.')
-      return
-    }
+    if (!fileName.trim()) { setError('Enter a file name.'); return }
     if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
-      setError('Enter a valid Ethereum address for your repo treasury.')
+      setError('Enter a valid Ethereum address.')
       return
     }
+    // Name format: "repo — filename" if connected, otherwise just filename
+    const leaderboardName = fileName.trim()
     writeContract({
       address: GITHUB_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
       functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, customName],
+      args: [beneficiary as `0x${string}`, leaderboardName],
     })
-  }
-
-  const goToLeaderboard = () => {
-    if (newLeaderboardAddress) {
-      router.push(`/ecosystem/platforms/github/${newLeaderboardAddress}`)
-    }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+      <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
         <button onClick={onClose} className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors">
           <X size={20} />
         </button>
 
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center">
-            <Plus size={18} className="text-[#F897FE]" />
-          </div>
-          <div>
-            <h2 className="text-[#EDEEFF] font-bold text-lg">Create a Markee</h2>
-            <p className="text-[#8A8FBF] text-xs">GitHub Markdown — deploys on Base</p>
-          </div>
-        </div>
-
+        {/* ── Success state ─────────────────────────────────────────── */}
         {isSuccess ? (
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
@@ -378,39 +393,142 @@ function CreateMarkeeModal({
             </p>
             <div className="flex flex-col gap-3 w-full mt-2">
               <button
-                onClick={goToLeaderboard}
+                onClick={() => newLeaderboardAddress && router.push(`/ecosystem/platforms/github/${newLeaderboardAddress}`)}
                 className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
               >
                 View your Markee →
               </button>
-              <button
-                onClick={() => { window.location.href = '/api/github/connect' }}
-                className="w-full flex items-center justify-center gap-2 text-[#8A8FBF] hover:text-[#EDEEFF] text-sm transition-colors border border-[#8A8FBF]/20 px-6 py-3 rounded-lg hover:border-[#8A8FBF]/40"
-              >
-                <Github size={16} />
-                Connect a repo to auto-sync SKILL.md
-              </button>
+              {!githubUser.connected && (
+                <a
+                  href="/api/github/connect"
+                  className="w-full flex items-center justify-center gap-2 text-[#8A8FBF] hover:text-[#EDEEFF] text-sm transition-colors border border-[#8A8FBF]/20 px-6 py-3 rounded-lg hover:border-[#8A8FBF]/40"
+                >
+                  <Github size={16} />
+                  Connect a repo to auto-sync
+                </a>
+              )}
               <button onClick={onClose} className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center">
                 Skip for now
               </button>
             </div>
           </div>
+
+        /* ── Overview: GitHub status + existing signs ──────────────── */
+        ) : view === 'overview' ? (
+          <>
+            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Create a Markee</h2>
+
+            {/* GitHub connection status */}
+            <div className="mb-6">
+              <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">GitHub Account</div>
+              {githubUser.connected ? (
+                <div className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
+                  <div className="flex items-center gap-3">
+                    {githubUser.avatarUrl && (
+                      <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-7 h-7 rounded-full" />
+                    )}
+                    <div>
+                      <p className="text-[#EDEEFF] text-sm font-semibold">@{githubUser.login}</p>
+                      <p className="text-[#8A8FBF] text-xs">Connected</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleDisconnect}
+                    className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-red-400 transition-colors text-xs"
+                  >
+                    <LogOut size={13} />
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-[#060A2A] rounded-lg px-4 py-4 border border-[#8A8FBF]/15 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[#EDEEFF] text-sm mb-1">No repo connected</p>
+                    <p className="text-[#8A8FBF] text-xs">Connect GitHub to auto-sync your markdown files.</p>
+                  </div>
+                  <a
+                    href="/api/github/connect"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#F897FE] transition-colors whitespace-nowrap"
+                  >
+                    <Github size={13} />
+                    Connect
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Existing signs for this wallet */}
+            {myLeaderboards.length > 0 && (
+              <div className="mb-6">
+                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
+                <div className="space-y-2">
+                  {myLeaderboards.map(lb => {
+                    const [repoPart, filePart] = lb.name.split(' — ')
+                    return (
+                      <div key={lb.address} className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
+                        <div className="min-w-0">
+                          <p className="text-[#EDEEFF] text-sm truncate">{repoPart ?? lb.name}</p>
+                          {filePart && (
+                            <span className="text-xs text-[#7C9CFF] font-mono">{filePart}</span>
+                          )}
+                        </div>
+                        <a
+                          href={`/ecosystem/platforms/github/${lb.address}`}
+                          className="flex-shrink-0 flex items-center gap-1 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
+                        >
+                          Manage
+                          <Arrow size={13} />
+                        </a>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Create new */}
+            {!isConnected ? (
+              <div className="space-y-3">
+                <p className="text-[#8A8FBF] text-sm">Connect your wallet to create a Markee.</p>
+                <ConnectButton />
+              </div>
+            ) : (
+              <button
+                onClick={() => setView('create')}
+                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
+              >
+                <Plus size={18} />
+                Create a new Markee
+              </button>
+            )}
+          </>
+
+        /* ── Create form ──────────────────────────────────────────── */
         ) : (
           <>
+            <button
+              onClick={() => setView('overview')}
+              className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] text-sm mb-5 transition-colors"
+            >
+              ← Back
+            </button>
+            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">New Markee</h2>
+
             <div className="space-y-5">
-              {/* Name */}
+              {/* File name */}
               <div>
-                <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Markee Name</label>
+                <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">File Name</label>
                 <input
                   type="text"
-                  value={customName}
-                  onChange={e => setCustomName(e.target.value)}
-                  placeholder="e.g. my-org/my-repo SKILL.md"
+                  value={fileName}
+                  onChange={e => setFileName(e.target.value)}
+                  placeholder="e.g. SKILL.md or README.md"
                   className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
                 />
+                <p className="text-[#8A8FBF] text-xs mt-1.5">The markdown file this Markee will live in.</p>
               </div>
 
-              {/* Beneficiary */}
+              {/* Treasury address */}
               <div>
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
                   Treasury Address <span className="text-[#F897FE]">*</span>
@@ -422,7 +540,7 @@ function CreateMarkeeModal({
                   placeholder="0x…"
                   className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
                 />
-                <p className="text-[#8A8FBF] text-xs mt-2">
+                <p className="text-[#8A8FBF] text-xs mt-1.5">
                   62% of every payment goes here. Use a multisig or your repo's Juicebox treasury.
                 </p>
               </div>
@@ -431,7 +549,7 @@ function CreateMarkeeModal({
               <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                 <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
                 <div className="flex justify-between">
-                  <span className="text-[#EDEEFF]">Repo treasury</span>
+                  <span className="text-[#EDEEFF]">Your treasury</span>
                   <span className="text-[#F897FE] font-semibold">62%</span>
                 </div>
                 <div className="flex justify-between mt-1.5">
@@ -446,24 +564,18 @@ function CreateMarkeeModal({
                   <span>{error ?? writeError?.message}</span>
                 </div>
               )}
-            </div>
 
-            <div className="mt-6">
-              {!isConnected ? (
-                <ConnectButton />
-              ) : (
-                <button
-                  onClick={handleCreate}
-                  disabled={isPending || isConfirming}
-                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending || isConfirming ? (
-                    <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
-                  ) : (
-                    <><Plus size={18} /> Create Markee</>
-                  )}
-                </button>
-              )}
+              <button
+                onClick={handleCreate}
+                disabled={isPending || isConfirming}
+                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPending || isConfirming ? (
+                  <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
+                ) : (
+                  <><Plus size={18} /> Create Markee</>
+                )}
+              </button>
             </div>
           </>
         )}
