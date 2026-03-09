@@ -164,7 +164,7 @@ export default function GithubPlatformPage() {
               <div>
                 <h1 className="text-3xl font-bold text-[#EDEEFF] mb-2">GitHub — SKILL.md</h1>
                 <p className="text-[#8A8FBF] max-w-xl">
-                  Context window advertising for open source repos. Your SKILL.md gets read by every AI agent that touches your codebase.
+                  Raise funds for your open source project by adding a Markee message to any markdown file in your repository.
                 </p>
               </div>
             </div>
@@ -201,9 +201,9 @@ export default function GithubPlatformPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { step: '1', title: 'Connect GitHub & create a Markee', body: 'Link your repo via OAuth so Markee can verify ownership. Deploy your sign onchain — 62% of payments go to your treasury.' },
-              { step: '2', title: 'Add delimiters to your file', body: 'Drop <!-- MARKEE:START --> and <!-- MARKEE:END --> into any markdown file in your repo.' },
-              { step: '3', title: 'Earn on every bid', body: 'Markee auto-syncs the top message into your file. Every AI agent reading your repo sees it.' },
+              { step: '1', title: 'Connect GitHub & Create a Markee', body: 'Link your repo via OAuth so Markee can verify ownership, then deploy your sign onchain.' },
+              { step: '2', title: 'Add Tags in Github', body: 'Drop <!-- MARKEE:START --> and <!-- MARKEE:END --> into any markdown file in your repo.' },
+              { step: '3', title: 'Start Earning', body: 'Buyers compete to set the message that everyone viewing your file will see - human or agent.' },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-sm font-bold">{step}</div>
