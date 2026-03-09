@@ -58,9 +58,10 @@ const MARKEE_ABI = [
   },
 ] as const
 
-// Helper: safely extract result from a multicall entry.
-// Assigning to a named variable is required for TS to narrow the union.
-function getResult<T>(entry: { status: string; result?: unknown; error?: unknown } | undefined): T | undefined {
+type MulticallEntry = { status: string; result?: unknown; error?: unknown }
+
+// Safely extract result — named variable required for TS to narrow the union
+function getResult<T>(entry: MulticallEntry | undefined): T | undefined {
   if (!entry || entry.status !== 'success') return undefined
   return entry.result as T
 }
@@ -99,7 +100,8 @@ export function useFixedMarkees() {
         { address: s.address as `0x${string}`, abi: STRATEGY_ABI, functionName: 'maxMessageLength' as const },
       ])
 
-      const strategyResults = await publicClient.multicall({ contracts: strategyContracts, allowFailure: true })
+      const strategyRaw = await publicClient.multicall({ contracts: strategyContracts, allowFailure: true })
+      const strategyResults = strategyRaw as MulticallEntry[]
 
       // Extract markee addresses for pass 2
       const markeeAddresses: (`0x${string}` | null)[] = fixedStrategies.map((_, i) => {
@@ -110,15 +112,15 @@ export function useFixedMarkees() {
       // 2 calls × 3 markees = 6 calls, batched into ONE multicall request
       const validMarkeeAddresses = markeeAddresses.filter((a): a is `0x${string}` => !!a)
 
-      type MarkeeMulticallResult = Awaited<ReturnType<typeof publicClient.multicall>>
-      let markeeResults: MarkeeMulticallResult = []
+      let markeeResults: MulticallEntry[] = []
 
       if (validMarkeeAddresses.length > 0) {
         const markeeContracts = validMarkeeAddresses.flatMap((addr) => [
           { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
           { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
         ])
-        markeeResults = await publicClient.multicall({ contracts: markeeContracts, allowFailure: true })
+        const markeeRaw = await publicClient.multicall({ contracts: markeeContracts, allowFailure: true })
+        markeeResults = markeeRaw as MulticallEntry[]
       }
 
       // ── Merge results ───────────────────────────────────────────────────────
