@@ -6,21 +6,27 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const state = searchParams.get('state')
+  const base = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github`
 
   if (!code || !state) {
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github?error=missing_params`
-    )
+    return NextResponse.redirect(`${base}?error=missing_params`)
   }
 
-  const storedState = await kv.get(`github:oauth:state:${state}`)
-  if (!storedState) {
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github?error=invalid_state`
-    )
+  // Atomic get-and-delete — eliminates the race condition where two requests
+  // both read a valid state before either deletes it, causing the second to
+  // see a missing key and return invalid_state.
+  const raw = await kv.getdel(`github:oauth:state:${state}`)
+  if (!raw) {
+    return NextResponse.redirect(`${base}?error=invalid_state`)
   }
 
-  await kv.del(`github:oauth:state:${state}`)
+  let returnTo = ''
+  try {
+    const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
+    returnTo = payload.returnTo ?? ''
+  } catch {
+    // state was stored as plain '1' by old connect route — treat as no returnTo
+  }
 
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -35,9 +41,7 @@ export async function GET(request: NextRequest) {
 
   const tokenData = await tokenRes.json()
   if (tokenData.error || !tokenData.access_token) {
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github?error=token_exchange_failed`
-    )
+    return NextResponse.redirect(`${base}?error=token_exchange_failed`)
   }
 
   const userRes = await fetch('https://api.github.com/user', {
@@ -46,9 +50,7 @@ export async function GET(request: NextRequest) {
   const user = await userRes.json()
 
   if (!user.id) {
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github?error=user_fetch_failed`
-    )
+    return NextResponse.redirect(`${base}?error=user_fetch_failed`)
   }
 
   await kv.set(
@@ -62,8 +64,11 @@ export async function GET(request: NextRequest) {
     { ex: 60 * 60 * 24 * 365 }
   )
 
-  // Set a session cookie so the frontend knows who is connected
-  const redirectUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github`
+  // Redirect back — if the user came from the modal, re-open it
+  const redirectUrl = returnTo === 'modal'
+    ? `${base}?modal=create`
+    : base
+
   const response = NextResponse.redirect(redirectUrl)
   response.cookies.set('github_uid', String(user.id), {
     httpOnly: true,
