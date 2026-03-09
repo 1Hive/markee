@@ -3,12 +3,14 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import Link from 'next/link'
+import { Eye } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { useReactions } from '@/hooks/useReactions'
-import { useViews } from '@/hooks/useViews'                          // NEW
+import { useViews } from '@/hooks/useViews'
+import { useFixedViews } from '@/hooks/useFixedViews'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
@@ -48,16 +50,23 @@ export default function Home() {
     error: reactionsError,
   } = useReactions()
 
-  // ── View tracking ───────────────────────────────────────────────────────────
+  // ── Leaderboard view tracking ────────────────────────────────────────────────
   const { views, trackView } = useViews(markees)
 
-  // Track views for visible leaderboard entries once markees load
   useEffect(() => {
     if (markees.length === 0) return
-    // Track top 10 — adjust slice as needed
     markees.slice(0, 10).forEach(trackView)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markees.map(m => m.address).join(',')])
+
+  // ── Hero readerboard view tracking ──────────────────────────────────────────
+  const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
+
+  useEffect(() => {
+    if (fixedMarkees.length === 0) return
+    fixedMarkees.forEach(trackFixedView)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixedMarkees.map(m => m.strategyAddress).join(',')])
   // ────────────────────────────────────────────────────────────────────────────
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -130,7 +139,7 @@ export default function Home() {
     setSelectedFixedMarkee(null)
   }, [])
 
-  // Helper to get view counts for a markee
+  // Helper to get view counts for a leaderboard markee
   const getViews = (markee: Markee) => {
     const v = views.get(markee.address.toLowerCase())
     return {
@@ -158,23 +167,34 @@ export default function Home() {
                 </div>
               ))
             ) : (
-              fixedMarkees.map((fixedMarkee, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-                  className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
-                >
-                  <div className="readerboard-inner">
-                    <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
-                  </div>
+              fixedMarkees.map((fixedMarkee, index) => {
+                const viewData = fixedViews.get(fixedMarkee.strategyAddress.toLowerCase())
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleFixedMarkeeClick(fixedMarkee)}
+                    className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
+                  >
+                    <div className="readerboard-inner">
+                      {/* View count badge — top-right corner */}
+                      {viewData && viewData.totalViews > 0 && (
+                        <div className="absolute top-2 right-2 flex items-center gap-1 bg-[#060A2A]/70 backdrop-blur-sm text-[#8A8FBF] text-xs px-2 py-1 rounded-full pointer-events-none z-10">
+                          <Eye className="w-3 h-3" />
+                          <span>{viewData.totalViews.toLocaleString()}</span>
+                        </div>
+                      )}
 
-                  <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
-                    <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                      {fixedMarkee.price ? `${fixedMarkee.price} ETH to Change` : 'Change Message'}
+                      <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
                     </div>
-                  </div>
-                </button>
-              ))
+
+                    <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
+                      <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
+                        {fixedMarkee.price ? `${fixedMarkee.price} ETH to Change` : 'Change Message'}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })
             )}
           </div>
         </div>
