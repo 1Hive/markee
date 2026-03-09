@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
+import { kv } from '@vercel/kv'
 
 // GitHub platform factory — deployed on Base
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
@@ -167,17 +168,58 @@ export async function GET() {
     })
 
     // Assemble final leaderboards
-    const leaderboards = leaderboardMeta.map(l => ({
-      address: l.address,
-      name: l.name,
-      totalFunds: formatEther(l.totalFundsRaw),
-      totalFundsRaw: l.totalFundsRaw.toString(),
-      markeeCount: l.markeeCount,
-      admin: l.admin,
-      minimumPrice: formatEther(l.minimumPrice),
-      topMessage: l.topMarkeeAddress ? (messageMap[l.topMarkeeAddress]?.message ?? null) : null,
-      topMessageOwner: l.topMarkeeAddress ? (messageMap[l.topMarkeeAddress]?.name ?? null) : null,
-    }))
+    const leaderboardAddresses = leaderboardMeta.map(l => l.address.toLowerCase())
+
+    // Batch-fetch verified repo metadata from KV for all leaderboards
+    const kvKeys = leaderboardAddresses.map(a => `github:markee:${a}`)
+    const kvResults = kvKeys.length > 0
+      ? await kv.mget<string[]>(...kvKeys)
+      : []
+
+    const repoMetaMap: Record<string, {
+      repoFullName: string
+      repoOwner: string
+      repoName: string
+      repoAvatarUrl: string
+      repoHtmlUrl: string
+      filePath: string
+    } | null> = {}
+
+    leaderboardAddresses.forEach((addr, i) => {
+      const raw = kvResults[i]
+      if (raw) {
+        try {
+          repoMetaMap[addr] = typeof raw === 'string' ? JSON.parse(raw) : raw
+        } catch {
+          repoMetaMap[addr] = null
+        }
+      } else {
+        repoMetaMap[addr] = null
+      }
+    })
+
+    const leaderboards = leaderboardMeta.map(l => {
+      const repoMeta = repoMetaMap[l.address.toLowerCase()] ?? null
+      return {
+        address: l.address,
+        name: l.name,
+        totalFunds: formatEther(l.totalFundsRaw),
+        totalFundsRaw: l.totalFundsRaw.toString(),
+        markeeCount: l.markeeCount,
+        admin: l.admin,
+        minimumPrice: formatEther(l.minimumPrice),
+        topMessage: l.topMarkeeAddress ? (messageMap[l.topMarkeeAddress]?.message ?? null) : null,
+        topMessageOwner: l.topMarkeeAddress ? (messageMap[l.topMarkeeAddress]?.name ?? null) : null,
+        // Verified repo metadata — null if not yet linked via OAuth
+        repoFullName: repoMeta?.repoFullName ?? null,
+        repoOwner: repoMeta?.repoOwner ?? null,
+        repoName: repoMeta?.repoName ?? null,
+        repoAvatarUrl: repoMeta?.repoAvatarUrl ?? null,
+        repoHtmlUrl: repoMeta?.repoHtmlUrl ?? null,
+        filePath: repoMeta?.filePath ?? null,
+        repoVerified: repoMeta !== null,
+      }
+    })
 
     // Sort by totalFunds descending
     leaderboards.sort((a, b) => {
