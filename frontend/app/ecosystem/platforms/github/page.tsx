@@ -66,6 +66,16 @@ export default function GithubPlatformPage() {
   const [githubUser, setGithubUser] = useState<GithubUser>({ connected: false })
   const [createModalOpen, setCreateModalOpen] = useState(false)
 
+  // Auto-open modal when redirected back from GitHub OAuth with ?modal=create
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('modal') === 'create') {
+      setCreateModalOpen(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
   const fetchGithubUser = useCallback(async () => {
     const res = await fetch('/api/github/me')
     if (res.ok) setGithubUser(await res.json())
@@ -454,7 +464,6 @@ function CreateMarkeeModal({
 
             {/* GitHub status */}
             <div className="mb-6">
-              <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">GitHub Account</div>
               {githubUser.connected ? (
                 <div className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
                   <div className="flex items-center gap-3">
@@ -475,14 +484,14 @@ function CreateMarkeeModal({
                   </button>
                 </div>
               ) : (
-                <div className="bg-[#060A2A] rounded-lg px-4 py-4 border border-[#8A8FBF]/15">
-                  <p className="text-[#EDEEFF] text-sm mb-1">Connect GitHub first</p>
-                  <p className="text-[#8A8FBF] text-xs mb-4">
-                    GitHub OAuth lets us verify you own the repo and securely link your Markee to it.
+                <div className="flex flex-col items-center text-center gap-4 py-4">
+                  <Github size={32} className="text-[#8A8FBF]" />
+                  <p className="text-[#8A8FBF] text-sm leading-relaxed">
+                    GitHub OAuth lets us verify your GitHub account and securely link your Markee to it.
                   </p>
                   <a
-                    href="/api/github/connect"
-                    className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
+                    href="/api/github/connect?returnTo=modal"
+                    className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors"
                   >
                     <Github size={15} />
                     Connect GitHub
