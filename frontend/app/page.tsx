@@ -16,6 +16,7 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { formatEther } from 'viem'
 
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
@@ -189,7 +190,9 @@ export default function Home() {
 
                     <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
                       <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                        {fixedMarkee.price ? `${fixedMarkee.price} ETH to Change` : 'Change Message'}
+                        {fixedMarkee.priceWei && fixedMarkee.priceWei !== '0'
+                          ? `${formatEther(BigInt(fixedMarkee.priceWei))} ETH to Change`
+                          : 'Change Message'}
                       </div>
                     </div>
                   </button>
