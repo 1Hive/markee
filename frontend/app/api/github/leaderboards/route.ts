@@ -139,6 +139,10 @@ export async function GET() {
           metaResults[b + 5].status === 'success'
             ? ((metaResults[b + 5].result as [string[], bigint[]])[0][0] ?? null)
             : null,
+        topFundsRaw:
+          metaResults[b + 5].status === 'success'
+            ? ((metaResults[b + 5].result as [string[], bigint[]])[1][0] ?? 0n)
+            : 0n,
       }
     })
 
@@ -208,8 +212,10 @@ export async function GET() {
         markeeCount: l.markeeCount,
         admin: l.admin,
         minimumPrice: formatEther(l.minimumPrice),
+        minimumPriceRaw: l.minimumPrice.toString(),
         topMessage: l.topMarkeeAddress ? (messageMap[l.topMarkeeAddress]?.message ?? null) : null,
         topMessageOwner: l.topMarkeeAddress ? (messageMap[l.topMarkeeAddress]?.name ?? null) : null,
+        topFundsAddedRaw: l.topFundsRaw.toString(),
         // Verified repo metadata — null if not yet linked via OAuth
         repoFullName: repoMeta?.repoFullName ?? null,
         repoOwner: repoMeta?.repoOwner ?? null,
