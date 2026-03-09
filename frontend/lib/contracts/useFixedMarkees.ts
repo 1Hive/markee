@@ -58,6 +58,8 @@ const MARKEE_ABI = [
   },
 ] as const
 
+type MulticallResult = { status: 'success'; result: unknown } | { status: 'failure'; error: unknown }
+
 export type FixedMarkee = {
   name: string
   strategyAddress: string
@@ -92,7 +94,10 @@ export function useFixedMarkees() {
         { address: s.address as `0x${string}`, abi: STRATEGY_ABI, functionName: 'maxMessageLength' as const },
       ])
 
-      const strategyResults = await publicClient.multicall({ contracts: strategyContracts, allowFailure: true })
+      const strategyResults: MulticallResult[] = await publicClient.multicall({
+        contracts: strategyContracts,
+        allowFailure: true,
+      })
 
       // Extract markee addresses for pass 2
       const markeeAddresses: (`0x${string}` | null)[] = fixedStrategies.map((_, i) => {
@@ -104,7 +109,7 @@ export function useFixedMarkees() {
       // 2 calls × 3 markees = 6 calls, batched into ONE multicall request
       const validMarkeeAddresses = markeeAddresses.filter((a): a is `0x${string}` => !!a)
 
-      let markeeResults: Awaited<ReturnType<typeof publicClient.multicall>> = []
+      let markeeResults: MulticallResult[] = []
       if (validMarkeeAddresses.length > 0) {
         const markeeContracts = validMarkeeAddresses.flatMap((addr) => [
           { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
@@ -115,18 +120,18 @@ export function useFixedMarkees() {
 
       // ── Merge results ───────────────────────────────────────────────────────
       const ordered: FixedMarkee[] = fixedStrategies.map((strategyConfig, i) => {
-        const base = i * 4
-        const markeeAddr = strategyResults[base]?.status === 'success'
-          ? (strategyResults[base].result as `0x${string}`)
+        const b = i * 4
+        const markeeAddr = strategyResults[b]?.status === 'success'
+          ? (strategyResults[b].result as `0x${string}`)
           : ''
-        const priceWei = strategyResults[base + 1]?.status === 'success'
-          ? String(strategyResults[base + 1].result as bigint)
+        const priceWei = strategyResults[b + 1]?.status === 'success'
+          ? String(strategyResults[b + 1].result as bigint)
           : '0'
-        const owner = strategyResults[base + 2]?.status === 'success'
-          ? (strategyResults[base + 2].result as string)
+        const owner = strategyResults[b + 2]?.status === 'success'
+          ? (strategyResults[b + 2].result as string)
           : ''
-        const maxMessageLength = strategyResults[base + 3]?.status === 'success'
-          ? Number(strategyResults[base + 3].result as bigint)
+        const maxMessageLength = strategyResults[b + 3]?.status === 'success'
+          ? Number(strategyResults[b + 3].result as bigint)
           : 280
 
         let message = ''
