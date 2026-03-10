@@ -24,11 +24,8 @@ const TokenomicsSimulator = () => {
 
   // Helper: Validate input for digits and one decimal point
   const validateInput = (inputVal) => {
-    // Only allow digits and one decimal point
     if (!/^[0-9]*\.?[0-9]*$/.test(inputVal)) return false;
-    // Check for multiple decimal points
     if ((inputVal.match(/\./g) || []).length > 1) return false;
-    // Check digit count (max 2)
     if (inputVal.replace(/[^0-9]/g, '').length > 2) return false;
     return true;
   };
@@ -98,6 +95,9 @@ const TokenomicsSimulator = () => {
   const priceIncreaseFrequency = 3; // Always 3 months (quarterly)
   const timeHorizon = 120; // Always 10 years (120 months)
   const partnerRevenuePercent = 100; // All revenue is from Platform Partners
+
+  // 38% of all newly minted tokens (from revenue) go to the Cooperative
+  const COOPERATIVE_RESERVE = 0.38;
   
   // Hard-coded price increase schedule
   const getPriceIncreaseRate = (periodNumber) => {
@@ -108,7 +108,7 @@ const TokenomicsSimulator = () => {
     } else if (periodNumber >= 13) {
       return 11.111111; // 11.111111% increase for all periods after
     }
-    return 0; // No increase for period 0 (initial)
+    return 0;
   };
 
   const updateParam = (key, value) => {
@@ -123,19 +123,17 @@ const TokenomicsSimulator = () => {
     
     let growthFundTokens = INITIAL_SUPPLY;
     let cooperativeTokens = 0;
-    let platformTokens = 0;
     let customerTokens = 0;
     let seedFunderTokens = 0;
     let currentPrice = INITIAL_PRICE_MARKEE_PER_ETH;
-    let treasuryBalance = 0; // Start with 0 - auto-issued tokens have no backing
+    let treasuryBalance = 0;
     
-    // Investment amounts per phase (each phase is 3 months = 1 quarter)
     const getPhaseInvestment = (month) => {
-      if (month < 3) return params.phase0Investment / 3; // Phase 0: months 0-2
-      if (month < 6) return params.phase1Investment / 3; // Phase 1: months 3-5
-      if (month < 9) return params.phase2Investment / 3; // Phase 2: months 6-8
-      if (month < 12) return params.phase3Investment / 3; // Phase 3: months 9-11
-      return 0; // No investment after month 12
+      if (month < 3) return params.phase0Investment / 3;
+      if (month < 6) return params.phase1Investment / 3;
+      if (month < 9) return params.phase2Investment / 3;
+      if (month < 12) return params.phase3Investment / 3;
+      return 0;
     };
     
     for (let month = 0; month <= timeHorizon; month++) {
@@ -150,39 +148,37 @@ const TokenomicsSimulator = () => {
       const monthlyInvestment = getPhaseInvestment(month);
       if (monthlyInvestment > 0) {
         const investmentInEth = monthlyInvestment / params.ethPrice;
-        // Only RevNet portion goes to treasury (100% for seed funding, no partner split)
         treasuryBalance += monthlyInvestment;
-        
-        // All seed funding goes to RevNet and mints tokens
         const investmentTokensIssued = investmentInEth * currentPrice;
-        seedFunderTokens += investmentTokensIssued; // All tokens to seed funders
+        seedFunderTokens += investmentTokensIssued;
       }
       
       // Calculate monthly revenue with growth
       const monthlyRevenue = params.initialRevenue * Math.pow(1 + params.revenueGrowthRate / 100, month);
       const revenueInEth = monthlyRevenue / params.ethPrice;
       
-      // Calculate revenue split (100% platform partner revenue)
+      // Revenue split
       const partnerRevenue = revenueInEth * (partnerRevenuePercent / 100);
       const nonPartnerRevenue = revenueInEth * (1 - partnerRevenuePercent / 100);
       
-      // For PARTNER revenue: 62% to partner directly (no tokens), 38% to RevNet (mints tokens)
-      const partnerDirectShare = partnerRevenue * 0.62; // Goes to partner wallet
-      const partnerRevnetShare = partnerRevenue * 0.38; // Goes to RevNet, mints tokens
-      treasuryBalance += (partnerRevnetShare * params.ethPrice); // Only RevNet share adds to treasury
+      // Partner revenue: 62% to partner directly, 38% to RevNet (mints tokens)
+      const partnerRevnetShare = partnerRevenue * 0.38;
+      treasuryBalance += (partnerRevnetShare * params.ethPrice);
       
       const partnerTokensIssued = partnerRevnetShare * currentPrice;
-      customerTokens += partnerTokensIssued; // All tokens from partner payments go to customers
+      cooperativeTokens += partnerTokensIssued * COOPERATIVE_RESERVE;
+      customerTokens += partnerTokensIssued * (1 - COOPERATIVE_RESERVE);
       
-      // For NON-PARTNER revenue: 100% to RevNet (mints tokens)
+      // Non-partner revenue: 100% to RevNet
       treasuryBalance += (nonPartnerRevenue * params.ethPrice);
       const nonPartnerTokensIssued = nonPartnerRevenue * currentPrice;
-      customerTokens += nonPartnerTokensIssued; // All tokens go to customers
+      cooperativeTokens += nonPartnerTokensIssued * COOPERATIVE_RESERVE;
+      customerTokens += nonPartnerTokensIssued * (1 - COOPERATIVE_RESERVE);
       
-      // Calculate total supply BEFORE redemptions
-      const totalSupply = growthFundTokens + cooperativeTokens + platformTokens + customerTokens + seedFunderTokens;
+      // Total supply BEFORE redemptions
+      const totalSupply = growthFundTokens + cooperativeTokens + customerTokens + seedFunderTokens;
       
-      // Calculate Price Floor BEFORE Growth Fund redemptions
+      // Price floor BEFORE Growth Fund redemptions
       const priceFloor = totalSupply > 0 ? treasuryBalance / totalSupply : 0;
       
       // Growth Fund redeems tokens at Price Floor to cover monthly expenses
@@ -194,29 +190,26 @@ const TokenomicsSimulator = () => {
           growthFundTokens -= tokensNeeded;
           treasuryBalance -= params.monthlySpend;
         } else {
-          // Redeem all remaining Growth Fund tokens
           const maxRedemption = growthFundTokens * effectivePriceFloor;
           treasuryBalance -= maxRedemption;
           growthFundTokens = 0;
         }
       }
       
-      // Recalculate total supply AFTER redemptions
-      const finalTotalSupply = growthFundTokens + cooperativeTokens + platformTokens + customerTokens + seedFunderTokens;
-      const priceCeiling = params.ethPrice / currentPrice; // Issuance price (what you pay to mint)
-      const finalPriceFloor = finalTotalSupply > 0 ? treasuryBalance / finalTotalSupply : 0; // Redemption price (treasury backing per token)
-      const marketCapAtFloor = finalPriceFloor * finalTotalSupply; // Market cap if all tokens valued at floor price
+      // Recalculate after redemptions
+      const finalTotalSupply = growthFundTokens + cooperativeTokens + customerTokens + seedFunderTokens;
+      const priceCeiling = params.ethPrice / currentPrice;
+      const finalPriceFloor = finalTotalSupply > 0 ? treasuryBalance / finalTotalSupply : 0;
+      const marketCapAtFloor = finalPriceFloor * finalTotalSupply;
       
       data.push({
         month,
         growthFundPercent: (growthFundTokens / finalTotalSupply) * 100,
         cooperativePercent: (cooperativeTokens / finalTotalSupply) * 100,
-        platformPercent: (platformTokens / finalTotalSupply) * 100,
         customerPercent: (customerTokens / finalTotalSupply) * 100,
         seedFunderPercent: (seedFunderTokens / finalTotalSupply) * 100,
         growthFundTokens,
         cooperativeTokens,
-        platformTokens,
         customerTokens,
         seedFunderTokens,
         totalSupply: finalTotalSupply,
@@ -238,7 +231,6 @@ const TokenomicsSimulator = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column - Parameter Controls */}
         <div className="lg:col-span-4">
-          {/* Parameter Controls */}
           <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
             <h2 className="text-2xl font-bold mb-2 text-[#EDEEFF]">Configuration Parameters</h2>
             <p className="text-sm text-[#B8B6D9] mb-6">
@@ -248,7 +240,7 @@ const TokenomicsSimulator = () => {
             {/* Direct Seed Funding to Revnet Section */}
             <div className="mb-8 bg-[#1A1F4D]/50 rounded-lg p-4 border border-[#FFD93D]/20">
               <h3 className="text-base font-bold text-[#EDEEFF] mb-1">Direct Seed Funding to Revnet</h3>
-              <p className="text-xs text-[#8A8FBF] mb-3">in $USD Millions </p>
+              <p className="text-xs text-[#8A8FBF] mb-3">in $USD Millions</p>
               <div className="space-y-2">
                 <PhaseInput phaseKey="phase0" label="Phase 0" />
                 <PhaseInput phaseKey="phase1" label="Phase 1" />
@@ -260,75 +252,75 @@ const TokenomicsSimulator = () => {
               </div>
             </div>
         
-        <div className="grid grid-cols-1 gap-6">
-          {/* Growth Fund Spending */}
-          <div>
-            <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
-              Growth Fund Monthly Spend (USD): ${params.monthlySpend.toLocaleString()}
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="50000"
-              step="1000"
-              value={params.monthlySpend}
-              onChange={(e) => updateParam('monthlySpend', e.target.value)}
-              className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
-            />
-          </div>
+            <div className="grid grid-cols-1 gap-6">
+              {/* Growth Fund Spending */}
+              <div>
+                <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
+                  Growth Fund Monthly Spend (USD): ${params.monthlySpend.toLocaleString()}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50000"
+                  step="1000"
+                  value={params.monthlySpend}
+                  onChange={(e) => updateParam('monthlySpend', e.target.value)}
+                  className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
+                />
+              </div>
 
-          {/* Initial Platform Revenue */}
-          <div>
-            <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
-              Initial Monthly Platform Revenue (USD): ${params.initialRevenue.toLocaleString()}
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="20000"
-              step="500"
-              value={params.initialRevenue}
-              onChange={(e) => updateParam('initialRevenue', e.target.value)}
-              className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
-            />
-          </div>
+              {/* Initial Platform Revenue */}
+              <div>
+                <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
+                  Initial Monthly Platform Revenue (USD): ${params.initialRevenue.toLocaleString()}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="20000"
+                  step="500"
+                  value={params.initialRevenue}
+                  onChange={(e) => updateParam('initialRevenue', e.target.value)}
+                  className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
+                />
+              </div>
 
-          {/* Revenue Growth Rate */}
-          <div>
-            <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
-              Monthly Revenue Growth Rate: {params.revenueGrowthRate}%
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="20"
-              step="1"
-              value={params.revenueGrowthRate}
-              onChange={(e) => updateParam('revenueGrowthRate', e.target.value)}
-              className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
-            />
-          </div>
+              {/* Revenue Growth Rate */}
+              <div>
+                <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
+                  Monthly Revenue Growth Rate: {params.revenueGrowthRate}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="1"
+                  value={params.revenueGrowthRate}
+                  onChange={(e) => updateParam('revenueGrowthRate', e.target.value)}
+                  className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
+                />
+              </div>
 
-          {/* ETH Price */}
-          <div>
-            <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
-              ETH Price (USD): ${params.ethPrice.toLocaleString()}
-            </label>
-            <input
-              type="range"
-              min="1000"
-              max="10000"
-              step="100"
-              value={params.ethPrice}
-              onChange={(e) => updateParam('ethPrice', e.target.value)}
-              className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
-            />
+              {/* ETH Price */}
+              <div>
+                <label className="block text-base font-semibold text-[#EDEEFF] mb-2">
+                  ETH Price (USD): ${params.ethPrice.toLocaleString()}
+                </label>
+                <input
+                  type="range"
+                  min="1000"
+                  max="10000"
+                  step="100"
+                  value={params.ethPrice}
+                  onChange={(e) => updateParam('ethPrice', e.target.value)}
+                  className="w-full h-2 bg-[#1A1F4D] rounded-lg appearance-none cursor-pointer accent-[#7C9CFF]"
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-        </div>
 
-        {/* Right Column - Charts (Wider, Shorter) */}
+        {/* Right Column - Charts */}
         <div className="lg:col-span-8">
           {/* Ownership Distribution Chart */}
           <div className="bg-[#0F1646] rounded-xl p-6 mb-6 border border-[#7C9CFF]/20">
@@ -336,76 +328,68 @@ const TokenomicsSimulator = () => {
             <p className="text-sm text-[#B8B6D9] mb-4"></p>
             
             <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={simulation}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
-            <XAxis 
-              dataKey="month" 
-              stroke="#B8B6D9"
-              label={{ value: 'Months', position: 'insideBottom', offset: -5, fill: '#B8B6D9' }}
-            />
-            <YAxis 
-              stroke="#B8B6D9"
-              label={{ value: 'Ownership %', angle: -90, position: 'insideLeft', fill: '#B8B6D9' }}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: '#0F1646', 
-                border: '1px solid #7C9CFF',
-                borderRadius: '8px',
-                color: '#EDEEFF'
-              }}
-              formatter={(value) => `${value.toFixed(2)}%`}
-            />
-            <Legend wrapperStyle={{ paddingTop: '10px' }} />
-            <Area 
-              type="monotone" 
-              dataKey="growthFundPercent" 
-              stackId="1" 
-              stroke="#FF6B6B" 
-              fill="#FF6B6B" 
-              name="Growth Fund"
-            />
-            <Area 
-              type="monotone" 
-              dataKey="cooperativePercent" 
-              stackId="1" 
-              stroke="#F897FE" 
-              fill="#F897FE" 
-              name="Cooperative"
-            />
-            <Area 
-              type="monotone" 
-              dataKey="platformPercent" 
-              stackId="1" 
-              stroke="#7C9CFF" 
-              fill="#7C9CFF" 
-              name="Platform Partners"
-            />
-            <Area 
-              type="monotone" 
-              dataKey="customerPercent" 
-              stackId="1" 
-              stroke="#4ECDC4" 
-              fill="#4ECDC4" 
-              name="Customers"
-            />
-            <Area 
-              type="monotone" 
-              dataKey="seedFunderPercent" 
-              stackId="1" 
-              stroke="#FFD93D" 
-              fill="#FFD93D" 
-              name="Seed Funders"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-        
-        <div className="bg-[#1A1F4D]/50 rounded-lg p-3 mt-3 border border-[#7C9CFF]/20">
-          <div className="text-xs text-[#B8B6D9]">
-            This chart ignores token redemptions to the Revnet, which increase token floor price due to the 10% exit tax, and any token swaps outside the Revnet.
+              <AreaChart data={simulation}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#B8B6D9"
+                  label={{ value: 'Months', position: 'insideBottom', offset: -5, fill: '#B8B6D9' }}
+                />
+                <YAxis 
+                  stroke="#B8B6D9"
+                  label={{ value: 'Ownership %', angle: -90, position: 'insideLeft', fill: '#B8B6D9' }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#0F1646', 
+                    border: '1px solid #7C9CFF',
+                    borderRadius: '8px',
+                    color: '#EDEEFF'
+                  }}
+                  formatter={(value) => `${value.toFixed(2)}%`}
+                />
+                <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                <Area 
+                  type="monotone" 
+                  dataKey="growthFundPercent" 
+                  stackId="1" 
+                  stroke="#FF6B6B" 
+                  fill="#FF6B6B" 
+                  name="Growth Fund"
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="cooperativePercent" 
+                  stackId="1" 
+                  stroke="#F897FE" 
+                  fill="#F897FE" 
+                  name="Cooperative"
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="customerPercent" 
+                  stackId="1" 
+                  stroke="#4ECDC4" 
+                  fill="#4ECDC4" 
+                  name="Customers"
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="seedFunderPercent" 
+                  stackId="1" 
+                  stroke="#FFD93D" 
+                  fill="#FFD93D" 
+                  name="Seed Funders"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+            
+            <div className="bg-[#1A1F4D]/50 rounded-lg p-3 mt-3 border border-[#7C9CFF]/20">
+              <div className="text-xs text-[#B8B6D9]">
+                This chart ignores token redemptions to the Revnet, which increase token floor price due to the 10% exit tax, and any token swaps outside the Revnet.
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
           {/* Token Price Chart */}
           <div className="bg-[#0F1646] rounded-xl p-6 mb-6 border border-[#7C9CFF]/20">
@@ -413,53 +397,53 @@ const TokenomicsSimulator = () => {
             <p className="text-sm text-[#B8B6D9] mb-4">Once a secondary market for MARKEE is established, token prices above the ceiling and below the floor can be arbitraged in the Revnet</p>
             
             <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={simulation}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
-            <XAxis 
-              dataKey="month" 
-              stroke="#B8B6D9"
-              label={{ value: 'Months', position: 'insideBottom', offset: -5, fill: '#B8B6D9' }}
-            />
-            <YAxis 
-              stroke="#B8B6D9"
-              label={{ value: 'Price (USD)', angle: -90, position: 'insideLeft', fill: '#B8B6D9' }}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: '#0F1646', 
-                border: '1px solid #7C9CFF',
-                borderRadius: '8px',
-                color: '#EDEEFF'
-              }}
-              formatter={(value) => `$${value.toFixed(4)}`}
-            />
-            <Legend wrapperStyle={{ paddingTop: '10px' }} />
-            <Line 
-              type="stepAfter" 
-              dataKey="priceCeiling" 
-              stroke="#F897FE" 
-              strokeWidth={3}
-              dot={false}
-              name="Price Ceiling (Issuance)"
-            />
-            <Line 
-              type="monotone" 
-              dataKey="priceFloor" 
-              stroke="#4ECDC4" 
-              strokeWidth={3}
-              dot={false}
-              name="Price Floor (Redemption)"
-            />
-          </LineChart>
-        </ResponsiveContainer>
-        
-        <div className="bg-[#1A1F4D]/50 rounded-lg p-3 mt-3 border border-[#7C9CFF]/20">
-          <div className="text-xs text-[#B8B6D9] space-y-1">
-            <div><strong className="text-[#F897FE]">Price Ceiling:</strong> all Platform revenue goes into the Revnet at this issuance price, increasing in locked, pre-scheduled periods</div>
-            <div><strong className="text-[#4ECDC4]">Price Floor:</strong> redemption price of tokens in the Revnet, equal to all revenue ÷ total supply</div>
+              <LineChart data={simulation}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#B8B6D9"
+                  label={{ value: 'Months', position: 'insideBottom', offset: -5, fill: '#B8B6D9' }}
+                />
+                <YAxis 
+                  stroke="#B8B6D9"
+                  label={{ value: 'Price (USD)', angle: -90, position: 'insideLeft', fill: '#B8B6D9' }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#0F1646', 
+                    border: '1px solid #7C9CFF',
+                    borderRadius: '8px',
+                    color: '#EDEEFF'
+                  }}
+                  formatter={(value) => `$${value.toFixed(4)}`}
+                />
+                <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                <Line 
+                  type="stepAfter" 
+                  dataKey="priceCeiling" 
+                  stroke="#F897FE" 
+                  strokeWidth={3}
+                  dot={false}
+                  name="Price Ceiling (Issuance)"
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="priceFloor" 
+                  stroke="#4ECDC4" 
+                  strokeWidth={3}
+                  dot={false}
+                  name="Price Floor (Redemption)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            
+            <div className="bg-[#1A1F4D]/50 rounded-lg p-3 mt-3 border border-[#7C9CFF]/20">
+              <div className="text-xs text-[#B8B6D9] space-y-1">
+                <div><strong className="text-[#F897FE]">Price Ceiling:</strong> all Platform revenue goes into the Revnet at this issuance price, increasing in locked, pre-scheduled periods</div>
+                <div><strong className="text-[#4ECDC4]">Price Floor:</strong> redemption price of tokens in the Revnet, equal to all revenue ÷ total supply</div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
           {/* Market Cap at Price Floor Chart */}
           <div className="bg-[#0F1646] rounded-xl p-6 border border-[#7C9CFF]/20">
@@ -467,62 +451,60 @@ const TokenomicsSimulator = () => {
             <p className="text-sm text-[#B8B6D9] mb-4">Minimum market cap based on platform revenue and the redemption price</p>
             
             <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={simulation}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
-            <XAxis 
-              dataKey="month" 
-              stroke="#B8B6D9"
-              label={{ value: 'Months', position: 'insideBottom', offset: -5, fill: '#B8B6D9' }}
-            />
-            <YAxis 
-              stroke="#7C9CFF"
-              tickFormatter={(value) => {
-                const maxMarketCap = Math.max(...simulation.map(d => d.marketCapAtFloor));
-                if (maxMarketCap >= 1_000_000_000_000) {
-                  return `$${(value / 1_000_000_000_000).toFixed(1)}T`;
-                } else if (maxMarketCap >= 1_000_000_000) {
-                  return `$${(value / 1_000_000_000).toFixed(1)}B`;
-                } else {
-                  return `$${(value / 1_000_000).toFixed(1)}M`;
-                }
-              }}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: '#0F1646', 
-                border: '1px solid #7C9CFF',
-                borderRadius: '8px',
-                color: '#EDEEFF'
-              }}
-              formatter={(value) => {
-                const maxMarketCap = Math.max(...simulation.map(d => d.marketCapAtFloor));
-                if (maxMarketCap >= 1_000_000_000_000) {
-                  return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
-                } else if (maxMarketCap >= 1_000_000_000) {
-                  return `$${(value / 1_000_000_000).toFixed(2)}B`;
-                } else {
-                  return `$${(value / 1_000_000).toFixed(2)}M`;
-                }
-              }}
-            />
-            <Legend wrapperStyle={{ paddingTop: '10px' }} />
-            <Line 
-              type="monotone" 
-              dataKey="marketCapAtFloor" 
-              stroke="#7C9CFF" 
-              strokeWidth={3}
-              dot={false}
-              name="Market Cap at Floor"
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+              <LineChart data={simulation}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1A1F4D" />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#B8B6D9"
+                  label={{ value: 'Months', position: 'insideBottom', offset: -5, fill: '#B8B6D9' }}
+                />
+                <YAxis 
+                  stroke="#7C9CFF"
+                  tickFormatter={(value) => {
+                    const maxMarketCap = Math.max(...simulation.map(d => d.marketCapAtFloor));
+                    if (maxMarketCap >= 1_000_000_000_000) {
+                      return `$${(value / 1_000_000_000_000).toFixed(1)}T`;
+                    } else if (maxMarketCap >= 1_000_000_000) {
+                      return `$${(value / 1_000_000_000).toFixed(1)}B`;
+                    } else {
+                      return `$${(value / 1_000_000).toFixed(1)}M`;
+                    }
+                  }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#0F1646', 
+                    border: '1px solid #7C9CFF',
+                    borderRadius: '8px',
+                    color: '#EDEEFF'
+                  }}
+                  formatter={(value) => {
+                    const maxMarketCap = Math.max(...simulation.map(d => d.marketCapAtFloor));
+                    if (maxMarketCap >= 1_000_000_000_000) {
+                      return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
+                    } else if (maxMarketCap >= 1_000_000_000) {
+                      return `$${(value / 1_000_000_000).toFixed(2)}B`;
+                    } else {
+                      return `$${(value / 1_000_000).toFixed(2)}M`;
+                    }
+                  }}
+                />
+                <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                <Line 
+                  type="monotone" 
+                  dataKey="marketCapAtFloor" 
+                  stroke="#7C9CFF" 
+                  strokeWidth={3}
+                  dot={false}
+                  name="Market Cap at Floor"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
 
           {/* Assumptions Note */}
           <div className="mt-8 text-center text-sm text-[#8A8FBF]">
-            <p>
-              Note: this is a simplified model, for educational purposes only.
-            </p>
+            <p>Note: this is a simplified model, for educational purposes only.</p>
           </div>
         </div>
       </div>
