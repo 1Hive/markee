@@ -146,16 +146,10 @@ export function BuyMessageModal({
   useEffect(() => {
     if (isSuccess) {
       // Fire-and-forget — onchain state is source of truth, this is best-effort
-      const resolvedMessage = isAddFunds ? (existingMarkee?.message ?? '') : message
-      const resolvedName   = isAddFunds ? (existingMarkee?.name   ?? '') : name
       fetch('/api/github/update-markee-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaderboardAddress,
-          message: resolvedMessage,
-          ownerName: resolvedName || null,
-        }),
+        body: JSON.stringify({ leaderboardAddress }),
       }).catch(() => {})
 
       setTimeout(() => { onSuccess(); onClose() }, 2500)
