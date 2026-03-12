@@ -34,7 +34,7 @@ function buildMarkeeBlock(
   return `${START_DELIMITER}
 > 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
 > ${message}${attribution}
-> 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
+> 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
 >
 > *Change this message for ${nextBuyPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
 ${END_DELIMITER}`
