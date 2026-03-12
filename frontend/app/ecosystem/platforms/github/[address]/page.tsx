@@ -48,6 +48,7 @@ export default function GithubLeaderboardPage() {
 
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
+  const [initialMode, setInitialMode] = useState<'create' | 'addFunds' | 'updateMessage' | undefined>(undefined)
   const [copied, setCopied] = useState(false)
   const [githubUser, setGithubUser] = useState<{ login: string; avatarUrl: string } | null>(null)
   const [githubLoading, setGithubLoading] = useState(true)
@@ -286,7 +287,8 @@ export default function GithubLeaderboardPage() {
                   markee={markee}
                   rank={idx + 1}
                   formatFunds={formatFunds}
-                  onAddFunds={() => { setSelectedMarkee(markee); setBuyModalOpen(true) }}
+                  onAddFunds={() => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
+                  onEditMessage={() => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                 />
               ))}
             </div>
@@ -402,7 +404,8 @@ export default function GithubLeaderboardPage() {
           maxMessageLength={Number(maxMessageLength ?? 222n)}
           existingMarkee={selectedMarkee}
           topFundsAdded={markees[0]?.totalFundsAdded}
-          onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null) }}
+          initialMode={initialMode}
+          onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
           onSuccess={refetch}
         />
       )}
@@ -413,12 +416,13 @@ export default function GithubLeaderboardPage() {
 // ─── Markee Row ───────────────────────────────────────────────────────────────
 
 function MarkeeRow({
-  markee, rank, formatFunds, onAddFunds,
+  markee, rank, formatFunds, onAddFunds, onEditMessage,
 }: {
   markee: MarkeeSlot
   rank: number
   formatFunds: (wei: bigint) => string
   onAddFunds: () => void
+  onEditMessage: () => void
 }) {
   const { address } = useAccount()
   const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
@@ -453,6 +457,11 @@ function MarkeeRow({
         <button onClick={onAddFunds} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
           + add funds
         </button>
+        {isOwner && (
+          <button onClick={onEditMessage} className="text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors">
+            edit message
+          </button>
+        )}
       </div>
     </div>
   )
