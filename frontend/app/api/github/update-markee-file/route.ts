@@ -16,6 +16,11 @@ const LEADERBOARD_ABI = [
   },
 ] as const
 
+const MARKEE_ABI = [
+  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+] as const
+
 const START_DELIMITER = '<!-- MARKEE:START -->'
 const END_DELIMITER = '<!-- MARKEE:END -->'
 
@@ -35,10 +40,10 @@ ${END_DELIMITER}`
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
-  const { leaderboardAddress, message, ownerName } = body ?? {}
+  const { leaderboardAddress } = body ?? {}
 
-  if (!leaderboardAddress || !message) {
-    return NextResponse.json({ error: 'Missing leaderboardAddress or message' }, { status: 400 })
+  if (!leaderboardAddress) {
+    return NextResponse.json({ error: 'Missing leaderboardAddress' }, { status: 400 })
   }
 
   const normalizedAddress = (leaderboardAddress as string).toLowerCase()
@@ -61,20 +66,36 @@ export async function POST(request: NextRequest) {
 
   const { accessToken } = typeof userData === 'string' ? JSON.parse(userData) : userData
 
-  // ── Read current top funds from chain to compute next buy price ───────────
+  // ── Read top message + price from chain ──────────────────────────────────
+  let topMessage = ''
+  let topOwnerName: string | null = null
   let nextBuyPriceEth = '0.001'
   try {
-    const [, topFunds] = await client.readContract({
+    const [topAddresses, topFunds] = await client.readContract({
       address: leaderboardAddress as `0x${string}`,
       abi: LEADERBOARD_ABI,
       functionName: 'getTopMarkees',
       args: [1n],
     })
-    const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
+    const topAddr = topAddresses[0]
     const topFund = topFunds[0] ?? 0n
+    const MIN_INCREMENT = BigInt('1000000000000000')
     nextBuyPriceEth = parseFloat(formatEther(topFund + MIN_INCREMENT)).toFixed(4)
+
+    if (topAddr) {
+      const [msg, name] = await Promise.all([
+        client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' }),
+        client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' }),
+      ])
+      topMessage = msg as string
+      topOwnerName = (name as string) || null
+    }
   } catch {
-    // non-fatal — fall back to default
+    // non-fatal — if chain read fails we skip the update
+  }
+
+  if (!topMessage) {
+    return NextResponse.json({ skipped: true, reason: 'No top message on chain yet' })
   }
 
   const leaderboardUrl = `https://markee.xyz/ecosystem/platforms/github/${leaderboardAddress}`
@@ -108,7 +129,7 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Replace content between delimiters ───────────────────────────────────
-  const newBlock = buildMarkeeBlock(message, ownerName ?? null, nextBuyPriceEth, leaderboardUrl)
+  const newBlock = buildMarkeeBlock(topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
   const updatedContent = currentContent.replace(
     new RegExp(`${START_DELIMITER}[\\s\\S]*?${END_DELIMITER}`),
     newBlock
