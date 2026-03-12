@@ -29,6 +29,13 @@ const LEADERBOARD_ABI = [
     stateMutability: 'payable',
     type: 'function',
   },
+  {
+    inputs: [{ name: 'markeeAddress', type: 'address' }, { name: '_message', type: 'string' }],
+    name: 'updateMessage',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
 ] as const
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,6 +54,7 @@ interface BuyMessageModalProps {
   maxMessageLength: number
   existingMarkee: MarkeeSlot | null
   topFundsAdded?: bigint
+  initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onClose: () => void
   onSuccess: () => void
 }
@@ -81,6 +89,7 @@ export function BuyMessageModal({
   maxMessageLength,
   existingMarkee,
   topFundsAdded,
+  initialMode,
   onClose,
   onSuccess,
 }: BuyMessageModalProps) {
@@ -88,7 +97,8 @@ export function BuyMessageModal({
   const { switchChain } = useSwitchChain()
   const { data: balanceData } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
 
-  const isAddFunds = !!existingMarkee
+  const isUpdateMessage = initialMode === 'updateMessage'
+  const isAddFunds = !isUpdateMessage && !!existingMarkee
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
   const [message, setMessage] = useState('')
@@ -161,6 +171,18 @@ export function BuyMessageModal({
 
   const handleSubmit = () => {
     setError(null)
+    if (isUpdateMessage) {
+      if (!message.trim()) { setError('Message cannot be empty.'); return }
+      if (message.length > maxMessageLength) { setError(`Max ${maxMessageLength} characters.`); return }
+      if (!existingMarkee) return
+      writeContract({
+        address: leaderboardAddress,
+        abi: LEADERBOARD_ABI,
+        functionName: 'updateMessage',
+        args: [existingMarkee.address as `0x${string}`, message],
+      })
+      return
+    }
     if (!isAddFunds && !message.trim()) { setError('Message cannot be empty.'); return }
     if (message.length > maxMessageLength) { setError(`Max ${maxMessageLength} characters.`); return }
     if (amountWei <= 0n) { setError('Enter a valid ETH amount.'); return }
@@ -270,16 +292,16 @@ export function BuyMessageModal({
           <div className="flex flex-col items-center gap-4 py-6">
             <CheckCircle2 size={44} className="text-green-400" />
             <p className="text-[#EDEEFF] font-bold text-xl">
-              {isAddFunds ? 'Funds added!' : 'Message live!'}
+              {isUpdateMessage ? 'Message updated!' : isAddFunds ? 'Funds added!' : 'Message live!'}
             </p>
             <p className="text-[#8A8FBF] text-sm text-center">
-              {isAddFunds ? 'Your boost has been recorded onchain.' : 'Your message is now on the leaderboard.'}
+              {isUpdateMessage ? 'Your new message is now live.' : isAddFunds ? 'Your boost has been recorded onchain.' : 'Your message is now on the leaderboard.'}
             </p>
           </div>
         ) : (
           <>
             <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">
-              {isAddFunds ? 'Add Funds' : 'Buy a Message'}
+              {isUpdateMessage ? 'Edit Message' : isAddFunds ? 'Add Funds' : 'Buy a Message'}
             </h2>
 
             {!isConnected ? (
@@ -296,6 +318,49 @@ export function BuyMessageModal({
                 >
                   <ArrowRightLeft size={16} />
                   Switch to Base
+                </button>
+              </div>
+            ) : isUpdateMessage && existingMarkee ? (
+              /* ── Update message ── */
+              <div className="space-y-5">
+                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
+                  <div className="text-[#8A8FBF] text-xs mb-1 uppercase tracking-wider">Current message</div>
+                  <p className="text-[#EDEEFF] font-mono text-sm">{existingMarkee.message}</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[#8A8FBF] text-xs uppercase tracking-wider">New Message</label>
+                    <span className={`text-xs ${message.length > maxMessageLength ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
+                      {message.length}/{maxMessageLength}
+                    </span>
+                  </div>
+                  <textarea
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder="Write your new message…"
+                    rows={3}
+                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors resize-none"
+                  />
+                </div>
+                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-xs text-[#8A8FBF]">
+                  💡 Only the owner can update a message. Anyone can add funds to move it up the leaderboard.
+                </div>
+                {(error || writeError) && (
+                  <div className="flex items-start gap-2 text-red-400 text-sm">
+                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                    <span>{error ?? writeError?.message}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleSubmit}
+                  disabled={isPending || isConfirming || !message.trim()}
+                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isPending || isConfirming ? (
+                    <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
+                  ) : (
+                    'Update Message'
+                  )}
                 </button>
               </div>
             ) : (
