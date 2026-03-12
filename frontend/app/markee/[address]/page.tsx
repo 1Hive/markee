@@ -10,6 +10,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check, Eye, Plus } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkeeDetail } from '@/lib/contracts/useMarkeeDetail'
@@ -187,6 +188,10 @@ export default function MarkeeDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>('funds')
   const [totalViews, setTotalViews] = useState<number | null>(null)
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+
+  const { address } = useAccount()
+  const isOwner = !!(markee && address && markee.owner.toLowerCase() === address.toLowerCase())
 
   // Track this detail page view and fetch current count
   useEffect(() => {
@@ -260,8 +265,17 @@ export default function MarkeeDetailPage() {
               </div>
             </ModeratedContent>
 
-            {/* ── Add Funds Button ───────────────────────────────── */}
-            <div className="flex justify-end">
+            {/* ── Action Buttons ─────────────────────────────────── */}
+            <div className="flex justify-end gap-2">
+              {isOwner && (
+                <button
+                  onClick={() => setIsEditOpen(true)}
+                  className="flex items-center gap-2 border border-[#F897FE]/40 text-[#F897FE] hover:bg-[#F897FE]/10 font-semibold px-5 py-2.5 rounded-lg transition-colors"
+                >
+                  <MessageSquare size={16} />
+                  Edit Message
+                </button>
+              )}
               <button
                 onClick={() => setIsAddFundsOpen(true)}
                 className="flex items-center gap-2 bg-[#F897FE] hover:bg-[#F897FE]/90 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
@@ -492,17 +506,25 @@ export default function MarkeeDetailPage() {
 
       <Footer />
 
-      {/* Add Funds Modal — open to anyone, no userMarkee passed so it shows create flow
-          but initialMode='addFunds' lets the owner add funds if they connect their wallet */}
+      {/* Add Funds Modal */}
       {markee && (
         <TopDawgModal
           isOpen={isAddFundsOpen}
           onClose={() => setIsAddFundsOpen(false)}
           userMarkee={markee as any}
           initialMode="addFunds"
-          onSuccess={() => {
-            setIsAddFundsOpen(false)
-          }}
+          onSuccess={() => setIsAddFundsOpen(false)}
+        />
+      )}
+
+      {/* Edit Message Modal — only reachable by owner via isOwner gate on the button */}
+      {markee && (
+        <TopDawgModal
+          isOpen={isEditOpen}
+          onClose={() => setIsEditOpen(false)}
+          userMarkee={markee as any}
+          initialMode="updateMessage"
+          onSuccess={() => setIsEditOpen(false)}
         />
       )}
     </div>
