@@ -128,6 +128,7 @@ export default function GithubLeaderboardPage() {
     owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
     totalFundsAdded: topFunds[i] ?? 0n,
   }))
+  .filter(m => m.totalFundsAdded > 0n)  // ← hide the seed markee
 
   const refetch = useCallback(() => {
     refetchMeta()
