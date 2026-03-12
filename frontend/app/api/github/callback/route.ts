@@ -12,9 +12,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${base}?error=missing_params`)
   }
 
-  // Atomic get-and-delete — eliminates the race condition where two requests
-  // both read a valid state before either deletes it, causing the second to
-  // see a missing key and return invalid_state.
   const raw = await kv.getdel(`github:oauth:state:${state}`)
   if (!raw) {
     return NextResponse.redirect(`${base}?error=invalid_state`)
@@ -38,7 +35,6 @@ export async function GET(request: NextRequest) {
       redirect_uri: process.env.GITHUB_REDIRECT_URI,
     }),
   })
-
   const tokenData = await tokenRes.json()
   if (tokenData.error || !tokenData.access_token) {
     return NextResponse.redirect(`${base}?error=token_exchange_failed`)
@@ -48,7 +44,6 @@ export async function GET(request: NextRequest) {
     headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: 'application/json' },
   })
   const user = await userRes.json()
-
   if (!user.id) {
     return NextResponse.redirect(`${base}?error=user_fetch_failed`)
   }
@@ -64,12 +59,14 @@ export async function GET(request: NextRequest) {
     { ex: 60 * 60 * 24 * 365 }
   )
 
-  // Redirect back — if the user came from the modal, re-open it
-  const redirectUrl = returnTo === 'modal'
-    ? `${base}?modal=create`
-    : base
+  const response = NextResponse.redirect(
+    returnTo === 'modal'
+      ? `${base}?modal=create`
+      : returnTo
+        ? `${process.env.NEXT_PUBLIC_SITE_URL}${returnTo}`
+        : base
+  )
 
-  const response = NextResponse.redirect(redirectUrl)
   response.cookies.set('github_uid', String(user.id), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
