@@ -142,12 +142,25 @@ export function BuyMessageModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Close after success ───────────────────────────────────────────────────
+  // ── Close after success + trigger GitHub file update ─────────────────────
   useEffect(() => {
     if (isSuccess) {
+      // Fire-and-forget — onchain state is source of truth, this is best-effort
+      const resolvedMessage = isAddFunds ? (existingMarkee?.message ?? '') : message
+      const resolvedName   = isAddFunds ? (existingMarkee?.name   ?? '') : name
+      fetch('/api/github/update-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leaderboardAddress,
+          message: resolvedMessage,
+          ownerName: resolvedName || null,
+        }),
+      }).catch(() => {})
+
       setTimeout(() => { onSuccess(); onClose() }, 2500)
     }
-  }, [isSuccess, onSuccess, onClose])
+  }, [isSuccess, onSuccess, onClose, isAddFunds, existingMarkee, message, name, leaderboardAddress])
 
   const amountWei = (() => { try { return parseEther(amount) } catch { return 0n } })()
   const canAfford = balanceData ? balanceData.value >= amountWei : true
