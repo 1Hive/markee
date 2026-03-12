@@ -4,6 +4,8 @@ import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 
+export const dynamic = 'force-dynamic' 
+
 // GitHub platform factory — deployed on Base
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
