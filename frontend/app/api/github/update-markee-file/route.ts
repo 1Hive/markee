@@ -30,14 +30,13 @@ function buildMarkeeBlock(
   nextBuyPriceEth: string,
   leaderboardUrl: string,
 ): string {
-  const attribution = ownerName ? `\n> — ${ownerName}` : ''
+  const attribution = ownerName ? ` — ${ownerName}` : ''
   return `${START_DELIMITER}
 > 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
->
 > ${message}${attribution}
->
 > 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
-> Change this message for ${nextBuyPriceEth} ETH on the [Markee App](${leaderboardUrl}).
+>
+> *Change this message for ${nextBuyPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
 ${END_DELIMITER}`
 }
 
