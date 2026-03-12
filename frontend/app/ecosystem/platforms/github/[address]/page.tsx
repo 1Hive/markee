@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ChevronRight, Github, Trophy, Plus, Zap, Copy, Check,
+  ChevronRight, Github, Trophy, Plus, Zap, Copy, Check, CheckCircle2,
 } from 'lucide-react'
 import {
   useReadContracts, useAccount,
@@ -49,6 +49,18 @@ export default function GithubLeaderboardPage() {
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
   const [copied, setCopied] = useState(false)
+  const [githubUser, setGithubUser] = useState<{ login: string; avatarUrl: string } | null>(null)
+  const [githubLoading, setGithubLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/github/me')
+      .then(r => r.json())
+      .then(data => {
+        setGithubUser(data.connected ? { login: data.login, avatarUrl: data.avatarUrl } : null)
+      })
+      .catch(() => setGithubUser(null))
+      .finally(() => setGithubLoading(false))
+  }, [])
 
   // ── Read leaderboard metadata ──────────────────────────────────────────────
   const { data: meta, refetch: refetchMeta } = useReadContracts({
@@ -279,18 +291,55 @@ export default function GithubLeaderboardPage() {
             </div>
 
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
-              <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">2</div>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-3 ${
+                githubUser
+                  ? 'bg-green-500/15 border border-green-500/40 text-green-400'
+                  : 'bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE]'
+              }`}>
+                {githubUser ? <CheckCircle2 size={14} /> : '2'}
+              </div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Connect your repo</h4>
-              <p className="text-[#8A8FBF] text-xs mb-4">
-                Authorize the Markee GitHub App so it can write between those delimiters whenever a new top message is set.
-              </p>
-              <a
-                  href={`/api/github/connect?returnTo=/ecosystem/platforms/github/${leaderboardAddress}`}
-                className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
-              >
-                <Github size={14} />
-                Connect on GitHub
-              </a>
+              {githubLoading ? (
+                <p className="text-[#8A8FBF] text-xs">Checking connection…</p>
+              ) : githubUser ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    {githubUser.avatarUrl && (
+                      <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-5 h-5 rounded-full" />
+                    )}
+                    <span className="text-green-400 text-xs font-medium">Connected as @{githubUser.login}</span>
+                  </div>
+                  <p className="text-[#8A8FBF] text-xs">
+                    Select a repo and file to link on the{' '}
+                    <Link href="/ecosystem/platforms/github" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
+                      GitHub platform page
+                    </Link>
+                    .
+                  </p>
+                  <button
+                    onClick={async () => {
+                      await fetch('/api/github/me', { method: 'DELETE' })
+                      setGithubUser(null)
+                    }}
+                    className="text-[#8A8FBF] hover:text-red-400 text-xs transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-[#8A8FBF] text-xs mb-4">
+                    Authorize the Markee GitHub App so it can write between those delimiters whenever a new top message is set.
+                  </p>
+                  <a
+                    href={`/api/github/connect?returnTo=/ecosystem/platforms/github/${leaderboardAddress}`}
+                    className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
+                  >
+                    <Github size={14} />
+                    Connect on GitHub
+                  </a>
+                </>
+              )}
             </div>
 
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
