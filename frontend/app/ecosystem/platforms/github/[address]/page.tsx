@@ -1,19 +1,18 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ChevronRight, Github, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, ArrowRightLeft, ExternalLink,
+  CheckCircle2, AlertCircle, ArrowRightLeft,
   Zap, Copy, Check
 } from 'lucide-react'
 import {
   useReadContracts, useWriteContract, useWaitForTransactionReceipt,
   useAccount, useSwitchChain, useBalance
 } from 'wagmi'
-import { parseEther, formatEther, createPublicClient, http } from 'viem'
-import { base } from 'viem/chains'
+import { parseEther, formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -104,7 +103,6 @@ export default function GithubLeaderboardPage() {
   const totalFunds = meta?.[1]?.result as bigint | undefined
   const markeeCount = meta?.[2]?.result as bigint | undefined
   const minimumPrice = meta?.[3]?.result as bigint | undefined
-  const admin = meta?.[4]?.result as string | undefined
   const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const topResult = meta?.[6]?.result as [string[], bigint[]] | undefined
 
@@ -121,14 +119,15 @@ export default function GithubLeaderboardPage() {
     query: { enabled: topAddresses.length > 0 },
   })
 
-  const markees: MarkeeSlot[] = topAddresses.map((addr, i) => ({
-    address: addr,
-    message: (markeeDetails?.[i * 3]?.result as string) ?? '',
-    name: (markeeDetails?.[i * 3 + 1]?.result as string) ?? '',
-    owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
-    totalFundsAdded: topFunds[i] ?? 0n,
-  }))
-  .filter(m => m.totalFundsAdded > 0n)  // ← hide the seed markee
+  const markees: MarkeeSlot[] = topAddresses
+    .map((addr, i) => ({
+      address: addr,
+      message: (markeeDetails?.[i * 3]?.result as string) ?? '',
+      name: (markeeDetails?.[i * 3 + 1]?.result as string) ?? '',
+      owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
+      totalFundsAdded: topFunds[i] ?? 0n,
+    }))
+    .filter(m => m.totalFundsAdded > 0n)
 
   const refetch = useCallback(() => {
     refetchMeta()
@@ -272,9 +271,7 @@ export default function GithubLeaderboardPage() {
             <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
               <Trophy size={40} className="text-[#8A8FBF] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">No messages yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">
-                Be the first to buy a message on this leaderboard.
-              </p>
+              <p className="text-[#8A8FBF] text-sm mb-6">Be the first to buy a message on this leaderboard.</p>
               <button
                 onClick={() => setBuyModalOpen(true)}
                 className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
@@ -308,7 +305,6 @@ export default function GithubLeaderboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Step 1 */}
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">1</div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Add delimiters to your file</h4>
@@ -319,14 +315,13 @@ export default function GithubLeaderboardPage() {
               </div>
             </div>
 
-            {/* Step 2 */}
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">2</div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Connect your repo</h4>
               <p className="text-[#8A8FBF] text-xs mb-4">
                 Authorize the Markee GitHub App so it can write between those delimiters whenever a new top message is set.
               </p>
-              <a
+              
                 href="/api/github/connect"
                 className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
               >
@@ -335,7 +330,6 @@ export default function GithubLeaderboardPage() {
               </a>
             </div>
 
-            {/* Step 3 */}
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">3</div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">It updates automatically</h4>
@@ -355,13 +349,13 @@ export default function GithubLeaderboardPage() {
 
       <Footer />
 
-      {/* Buy / Add Funds Modal */}
       {buyModalOpen && (
         <BuyMessageModal
           leaderboardAddress={leaderboardAddress}
           minimumPrice={minimumPrice ?? 0n}
           maxMessageLength={Number(maxMessageLength ?? 222n)}
           existingMarkee={selectedMarkee}
+          topFundsAdded={markees[0]?.totalFundsAdded}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null) }}
           onSuccess={refetch}
         />
@@ -373,10 +367,7 @@ export default function GithubLeaderboardPage() {
 // ─── Markee Row ───────────────────────────────────────────────────────────────
 
 function MarkeeRow({
-  markee,
-  rank,
-  formatFunds,
-  onAddFunds,
+  markee, rank, formatFunds, onAddFunds,
 }: {
   markee: MarkeeSlot
   rank: number
@@ -398,7 +389,6 @@ function MarkeeRow({
       <div className={`flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold ${rankStyle}`}>
         {rank}
       </div>
-
       <div className="flex-1 min-w-0">
         <p className="text-[#EDEEFF] font-mono text-sm leading-relaxed line-clamp-2">
           {markee.message || <span className="opacity-40 italic">No message</span>}
@@ -412,13 +402,9 @@ function MarkeeRow({
           )}
         </div>
       </div>
-
       <div className="flex-shrink-0 flex flex-col items-end gap-2">
         <span className="text-[#F897FE] text-sm font-semibold">{formatFunds(markee.totalFundsAdded)}</span>
-        <button
-          onClick={onAddFunds}
-          className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
-        >
+        <button onClick={onAddFunds} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
           + add funds
         </button>
       </div>
@@ -433,6 +419,7 @@ function BuyMessageModal({
   minimumPrice,
   maxMessageLength,
   existingMarkee,
+  topFundsAdded,
   onClose,
   onSuccess,
 }: {
@@ -440,6 +427,7 @@ function BuyMessageModal({
   minimumPrice: bigint
   maxMessageLength: number
   existingMarkee: MarkeeSlot | null
+  topFundsAdded?: bigint
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -450,45 +438,95 @@ function BuyMessageModal({
   const isAddFunds = !!existingMarkee
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
-  const [message, setMessage] = useState(existingMarkee?.message ?? '')
+  const [message, setMessage] = useState('')
   const [name, setName] = useState('')
-  const [amount, setAmount] = useState(
-    minimumPrice > 0n ? formatEther(minimumPrice) : '0.001'
-  )
+  const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const amountWei = (() => {
-    try { return parseEther(amount) } catch { return 0n }
-  })()
+  // ── MARKEE token calculation ──────────────────────────────────────────────
+  const getCurrentPhaseRate = () => {
+    const PHASES = [
+      { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
+      { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
+      { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
+      { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
+      { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
+    ]
+    const now = new Date()
+    for (const phase of PHASES) {
+      if (now < phase.endDate) return phase.rate
+    }
+    return PHASES[PHASES.length - 1].rate
+  }
 
+  const calculateMarkeeTokens = (ethAmount: number) =>
+    ethAmount * getCurrentPhaseRate() * 0.62
+
+  // ── Preset amounts ────────────────────────────────────────────────────────
+  const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
+  const minimumAmount = minimumPrice > 0n ? minimumPrice : parseEther('0.001')
+  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(4)
+
+  // Create tab: topFunds + 0.001, floored at minimumAmount
+  const rawTakeFirst = topFundsAdded && topFundsAdded > 0n
+    ? topFundsAdded + MIN_INCREMENT
+    : null
+  const takeFirstAmount = rawTakeFirst
+    ? (rawTakeFirst >= minimumAmount ? rawTakeFirst : minimumAmount)
+    : null
+  const takeFirstAmountFormatted = takeFirstAmount
+    ? Number(formatEther(takeFirstAmount)).toFixed(4)
+    : null
+
+  // Add funds tab: additional ETH needed to overtake
+  const addFundsRawTakeFirst = topFundsAdded && topFundsAdded > 0n && existingMarkee
+    ? topFundsAdded + MIN_INCREMENT - existingMarkee.totalFundsAdded
+    : null
+  const addFundsTakeFirstAmount = addFundsRawTakeFirst && addFundsRawTakeFirst > 0n
+    ? addFundsRawTakeFirst
+    : null
+  const addFundsTakeFirstFormatted = addFundsTakeFirstAmount
+    ? Number(formatEther(addFundsTakeFirstAmount)).toFixed(4)
+    : null
+
+  const activeTakeFirstFormatted = isAddFunds ? addFundsTakeFirstFormatted : takeFirstAmountFormatted
+  const hasCompetition = isAddFunds
+    ? !!addFundsTakeFirstAmount
+    : !!(takeFirstAmount && takeFirstAmount >= minimumAmount)
+
+  const userIsTopDawg = isAddFunds && existingMarkee && topFundsAdded !== undefined
+    && existingMarkee.totalFundsAdded >= topFundsAdded
+
+  // ── Set default amount on open ────────────────────────────────────────────
+  useEffect(() => {
+    if (hasCompetition && activeTakeFirstFormatted) {
+      setAmount(activeTakeFirstFormatted)
+    } else {
+      setAmount(minimumAmountFormatted)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Close after success ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (isSuccess) {
+      setTimeout(() => { onSuccess(); onClose() }, 2500)
+    }
+  }, [isSuccess, onSuccess, onClose])
+
+  const amountWei = (() => { try { return parseEther(amount) } catch { return 0n } })()
   const canAfford = balanceData ? balanceData.value >= amountWei : true
-  const charCount = message.length
 
   const handleSubmit = () => {
     setError(null)
-    if (!isAddFunds && !message.trim()) {
-      setError('Message cannot be empty.')
-      return
-    }
-    if (charCount > maxMessageLength) {
-      setError(`Message must be ${maxMessageLength} characters or less.`)
-      return
-    }
-    if (amountWei <= 0n) {
-      setError('Enter a valid ETH amount.')
-      return
-    }
-    if (minimumPrice > 0n && amountWei < minimumPrice) {
-      setError(`Minimum is ${formatEther(minimumPrice)} ETH.`)
-      return
-    }
-    if (!canAfford) {
-      setError('Insufficient ETH balance.')
-      return
-    }
+    if (!isAddFunds && !message.trim()) { setError('Message cannot be empty.'); return }
+    if (message.length > maxMessageLength) { setError(`Max ${maxMessageLength} characters.`); return }
+    if (amountWei <= 0n) { setError('Enter a valid ETH amount.'); return }
+    if (amountWei < minimumAmount) { setError(`Minimum is ${formatEther(minimumAmount)} ETH.`); return }
+    if (!canAfford) { setError('Insufficient ETH balance.'); return }
 
     if (isAddFunds && existingMarkee) {
       writeContract({
@@ -509,12 +547,77 @@ function BuyMessageModal({
     }
   }
 
-  // Refetch + keep modal open briefly to show success
-  if (isSuccess) {
-    setTimeout(() => { onSuccess(); onClose() }, 2500)
-  }
+  // ── Amount selector ───────────────────────────────────────────────────────
+  const amountSelectorJSX = (
+    <div className="space-y-3">
+      {userIsTopDawg && (
+        <div className="rounded-xl p-4 border-2 border-[#FFD700]/50 bg-[#FFD700]/10 flex items-start gap-3">
+          <Trophy size={20} className="text-[#FFD700] flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-[#FFD700]">👑 This message holds the top spot!</p>
+            <p className="text-xs text-[#FFD700]/80 mt-0.5">Add more funds to make it harder to overtake.</p>
+          </div>
+        </div>
+      )}
 
-  const presets = ['0.001', '0.005', '0.01', '0.05']
+      <label className="block text-[#8A8FBF] text-xs uppercase tracking-wider">Amount (ETH)</label>
+
+      {!userIsTopDawg && (
+        <div className={`grid ${hasCompetition ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+          {hasCompetition && activeTakeFirstFormatted && (
+            <button
+              type="button"
+              onClick={() => setAmount(activeTakeFirstFormatted)}
+              className={`rounded-lg p-3 border-2 transition-all text-left ${
+                amount === activeTakeFirstFormatted
+                  ? 'border-[#F897FE] bg-[#F897FE]/10'
+                  : 'border-[#F897FE]/30 hover:border-[#F897FE]/60 bg-[#060A2A]'
+              }`}
+            >
+              <div className="flex items-center gap-1 mb-1">
+                <p className="text-xs font-medium text-[#F897FE]">Featured Message</p>
+                <span className="text-[10px]">👑</span>
+              </div>
+              <p className="text-sm font-bold text-[#EDEEFF]">{activeTakeFirstFormatted} ETH</p>
+              <p className="text-[10px] text-[#F897FE] mt-0.5">
+                {isAddFunds ? 'Additional ETH needed to take the top spot' : 'Price to take the top spot'}
+              </p>
+            </button>
+          )}
+          {!isAddFunds && (
+            <button
+              type="button"
+              onClick={() => setAmount(minimumAmountFormatted)}
+              className={`rounded-lg p-3 border-2 transition-all text-left ${
+                amount === minimumAmountFormatted
+                  ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
+                  : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#060A2A]'
+              }`}
+            >
+              <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
+              <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
+              <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
+            </button>
+          )}
+        </div>
+      )}
+
+      <input
+        type="number"
+        value={amount}
+        onChange={e => setAmount(e.target.value)}
+        placeholder={minimumAmountFormatted}
+        step="0.001"
+        min="0"
+        className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
+      />
+      {balanceData && (
+        <p className="text-xs text-[#8A8FBF]">
+          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+        </p>
+      )}
+    </div>
+  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -531,20 +634,18 @@ function BuyMessageModal({
               {isAddFunds ? 'Funds added!' : 'Message live!'}
             </p>
             <p className="text-[#8A8FBF] text-sm text-center">
-              {isAddFunds
-                ? 'Your boost has been recorded onchain.'
-                : 'Your message is now on the leaderboard.'}
+              {isAddFunds ? 'Your boost has been recorded onchain.' : 'Your message is now on the leaderboard.'}
             </p>
           </div>
         ) : (
           <>
             <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">
-              {isAddFunds ? `Add Funds — #${existingMarkee ? '' : ''}` : 'Buy a Message'}
+              {isAddFunds ? 'Add Funds' : 'Buy a Message'}
             </h2>
 
             {!isConnected ? (
               <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Connect your wallet to buy a message.</p>
+                <p className="text-[#8A8FBF] text-sm">Connect your wallet to continue.</p>
                 <ConnectButton />
               </div>
             ) : !isCorrectChain ? (
@@ -560,13 +661,13 @@ function BuyMessageModal({
               </div>
             ) : (
               <div className="space-y-5">
-                {/* Message input — only for new markees */}
+                {/* Message input — create only */}
                 {!isAddFunds && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-[#8A8FBF] text-xs uppercase tracking-wider">Your Message</label>
-                      <span className={`text-xs ${charCount > maxMessageLength ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
-                        {charCount}/{maxMessageLength}
+                      <span className={`text-xs ${message.length > maxMessageLength ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
+                        {message.length}/{maxMessageLength}
                       </span>
                     </div>
                     <textarea
@@ -585,6 +686,7 @@ function BuyMessageModal({
                   </div>
                 )}
 
+                {/* Boosting preview — addFunds */}
                 {isAddFunds && existingMarkee?.message && (
                   <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
                     <div className="text-[#8A8FBF] text-xs mb-1 uppercase tracking-wider">Boosting</div>
@@ -592,51 +694,55 @@ function BuyMessageModal({
                   </div>
                 )}
 
-                {/* Amount */}
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Amount (ETH)</label>
-                  <div className="grid grid-cols-4 gap-2 mb-2">
-                    {presets.map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setAmount(p)}
-                        className={`text-xs py-2 rounded-lg border transition-all ${
-                          amount === p
-                            ? 'border-[#F897FE] bg-[#F897FE]/10 text-[#F897FE]'
-                            : 'border-[#8A8FBF]/20 text-[#8A8FBF] hover:border-[#8A8FBF]/40'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    step="0.001"
-                    min="0"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-                  />
-                  {balanceData && (
-                    <p className="text-[#8A8FBF] text-xs mt-1.5">
-                      Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
-                    </p>
-                  )}
-                </div>
+                {amountSelectorJSX}
 
-                {/* Revenue split */}
-                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
-                  <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
-                  <div className="flex justify-between">
-                    <span className="text-[#EDEEFF]">Repo treasury</span>
-                    <span className="text-[#F897FE] font-semibold">62%</span>
+                {/* MARKEE token display */}
+                {amount && parseFloat(amount) > 0 && (
+                  <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
+                    <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
+                    <p className="text-4xl font-bold text-[#F897FE] mb-1">
+                      {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
+                    </p>
+                    <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
                   </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[#EDEEFF]">Markee Cooperative</span>
-                    <span className="text-[#7C9CFF] font-semibold">38%</span>
+                )}
+
+                {/* Payment info panel */}
+                {isAddFunds && existingMarkee ? (
+                  <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-[#8A8FBF] text-xs">Current funds</span>
+                      <span className="text-xs font-medium text-[#EDEEFF]">{formatEther(existingMarkee.totalFundsAdded)} ETH</span>
+                    </div>
+                    {amount && parseFloat(amount) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-[#8A8FBF] text-xs">Adding</span>
+                        <span className="text-xs font-medium text-[#7C9CFF]">+ {amount} ETH</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-[#8A8FBF]/15 pt-2">
+                      <span className="text-[#8A8FBF] text-xs font-semibold">New total</span>
+                      <span className="text-sm font-bold text-[#F897FE]">
+                        {amount && parseFloat(amount) > 0
+                          ? (parseFloat(formatEther(existingMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(4)
+                          : formatEther(existingMarkee.totalFundsAdded)
+                        } ETH
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
+                    <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
+                    <div className="flex justify-between">
+                      <span className="text-[#EDEEFF]">Repo treasury</span>
+                      <span className="text-[#F897FE] font-semibold">62%</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[#EDEEFF]">Markee Cooperative</span>
+                      <span className="text-[#7C9CFF] font-semibold">38%</span>
+                    </div>
+                  </div>
+                )}
 
                 {(error || writeError) && (
                   <div className="flex items-start gap-2 text-red-400 text-sm">
@@ -653,9 +759,9 @@ function BuyMessageModal({
                   {isPending || isConfirming ? (
                     <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
                   ) : isAddFunds ? (
-                    <><Plus size={18} /> Add {amount} ETH</>
+                    <>Add {amount} ETH</>
                   ) : (
-                    <><Plus size={18} /> Buy for {amount} ETH</>
+                    <>Buy for {amount} ETH</>
                   )}
                 </button>
               </div>
