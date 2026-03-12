@@ -285,7 +285,7 @@ export default function GithubLeaderboardPage() {
                 Authorize the Markee GitHub App so it can write between those delimiters whenever a new top message is set.
               </p>
               <a
-                href="/api/github/connect"
+                  href={`/api/github/connect?returnTo=/ecosystem/platforms/github/${leaderboardAddress}`}
                 className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors w-fit"
               >
                 <Github size={14} />
