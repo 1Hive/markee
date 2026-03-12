@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ChevronRight, Github, Trophy, Plus, Zap, Copy, Check, CheckCircle2,
+  ChevronRight, Github, Trophy, Plus, Zap, Copy, Check, CheckCircle2, Loader2, X,
 } from 'lucide-react'
 import {
   useReadContracts, useAccount,
@@ -51,16 +51,39 @@ export default function GithubLeaderboardPage() {
   const [copied, setCopied] = useState(false)
   const [githubUser, setGithubUser] = useState<{ login: string; avatarUrl: string } | null>(null)
   const [githubLoading, setGithubLoading] = useState(true)
+  const [repoStatus, setRepoStatus] = useState<{
+    linked: boolean
+    repoFullName?: string
+    repoAvatarUrl?: string
+    repoHtmlUrl?: string
+    filePath?: string
+  } | null>(null)
+  const [repos, setRepos] = useState<Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>>([])
+  const [mdFiles, setMdFiles] = useState<string[]>([])
+
+  const fetchRepoStatus = useCallback(async () => {
+    const res = await fetch(`/api/github/repo-status?address=${leaderboardAddress}`)
+    const data = await res.json()
+    setRepoStatus(data)
+  }, [leaderboardAddress])
 
   useEffect(() => {
     fetch('/api/github/me')
       .then(r => r.json())
       .then(data => {
         setGithubUser(data.connected ? { login: data.login, avatarUrl: data.avatarUrl } : null)
+        if (data.connected) {
+          fetch('/api/github/my-repos')
+            .then(r => r.json())
+            .then(d => setRepos(d.repos ?? []))
+            .catch(() => {})
+        }
       })
       .catch(() => setGithubUser(null))
       .finally(() => setGithubLoading(false))
-  }, [])
+
+    fetchRepoStatus()
+  }, [fetchRepoStatus])
 
   // ── Read leaderboard metadata ──────────────────────────────────────────────
   const { data: meta, refetch: refetchMeta } = useReadContracts({
@@ -206,7 +229,7 @@ export default function GithubLeaderboardPage() {
                 #1
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
+                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message — In Context Window</div>
                 <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
                   {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
                 </p>
@@ -292,44 +315,44 @@ export default function GithubLeaderboardPage() {
 
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-3 ${
-                githubUser
+                repoStatus?.linked
                   ? 'bg-green-500/15 border border-green-500/40 text-green-400'
                   : 'bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE]'
               }`}>
-                {githubUser ? <CheckCircle2 size={14} /> : '2'}
+                {repoStatus?.linked ? <CheckCircle2 size={14} /> : '2'}
               </div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Connect your repo</h4>
-              {githubLoading ? (
+
+              {githubLoading || repoStatus === null ? (
                 <p className="text-[#8A8FBF] text-xs">Checking connection…</p>
-              ) : githubUser ? (
-                <div className="space-y-3">
+
+              ) : repoStatus.linked ? (
+                /* ── Already linked ── */
+                <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    {githubUser.avatarUrl && (
-                      <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-5 h-5 rounded-full" />
+                    {repoStatus.repoAvatarUrl && (
+                      <img src={repoStatus.repoAvatarUrl} alt="" className="w-5 h-5 rounded-full" />
                     )}
-                    <span className="text-green-400 text-xs font-medium">Connected as @{githubUser.login}</span>
+                    <a
+                      href={repoStatus.repoHtmlUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#7C9CFF] text-xs font-mono hover:text-[#F897FE] transition-colors"
+                    >
+                      {repoStatus.repoFullName}
+                    </a>
                   </div>
-                  <p className="text-[#8A8FBF] text-xs">
-                    Select a repo and file to link on the{' '}
-                    <Link href="/ecosystem/platforms/github" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
-                      GitHub platform page
-                    </Link>
-                    .
-                  </p>
-                  <button
-                    onClick={async () => {
-                      await fetch('/api/github/me', { method: 'DELETE' })
-                      setGithubUser(null)
-                    }}
-                    className="text-[#8A8FBF] hover:text-red-400 text-xs transition-colors"
-                  >
-                    Disconnect
-                  </button>
+                  {repoStatus.filePath && (
+                    <p className="text-[#8A8FBF] text-xs font-mono">{repoStatus.filePath}</p>
+                  )}
+                  <p className="text-green-400 text-xs">✓ Integration active</p>
                 </div>
-              ) : (
+
+              ) : !githubUser ? (
+                /* ── Not connected to GitHub ── */
                 <>
                   <p className="text-[#8A8FBF] text-xs mb-4">
-                    Authorize the Markee GitHub App so it can write between those delimiters whenever a new top message is set.
+                    Authorize Markee on GitHub so it can write between those delimiters whenever a new top message is set.
                   </p>
                   <a
                     href={`/api/github/connect?returnTo=/ecosystem/platforms/github/${leaderboardAddress}`}
@@ -339,6 +362,17 @@ export default function GithubLeaderboardPage() {
                     Connect on GitHub
                   </a>
                 </>
+
+              ) : (
+                /* ── Connected but not yet linked — show picker ── */
+                <RepoLinker
+                  leaderboardAddress={leaderboardAddress}
+                  githubUser={githubUser}
+                  repos={repos}
+                  mdFiles={mdFiles}
+                  setMdFiles={setMdFiles}
+                  onLinked={fetchRepoStatus}
+                />
               )}
             </div>
 
@@ -420,6 +454,178 @@ function MarkeeRow({
           + add funds
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Repo Linker ──────────────────────────────────────────────────────────────
+
+function RepoLinker({
+  leaderboardAddress,
+  githubUser,
+  repos,
+  mdFiles,
+  setMdFiles,
+  onLinked,
+}: {
+  leaderboardAddress: string
+  githubUser: { login: string; avatarUrl: string }
+  repos: Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>
+  mdFiles: string[]
+  setMdFiles: (files: string[]) => void
+  onLinked: () => void
+}) {
+  const [repoSearch, setRepoSearch] = useState('')
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
+  const [selectedRepo, setSelectedRepo] = useState<typeof repos[0] | null>(null)
+  const [selectedFile, setSelectedFile] = useState('')
+  const [fileDropdownOpen, setFileDropdownOpen] = useState(false)
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selectedRepo) { setMdFiles([]); setSelectedFile(''); return }
+    setIsLoadingFiles(true)
+    fetch(`/api/github/repo-files?repo=${encodeURIComponent(selectedRepo.fullName)}`)
+      .then(r => r.json())
+      .then(d => setMdFiles(d.files ?? []))
+      .catch(() => setMdFiles([]))
+      .finally(() => setIsLoadingFiles(false))
+  }, [selectedRepo, setMdFiles])
+
+  const handleLink = async () => {
+    if (!selectedRepo || !selectedFile) return
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch('/api/github/register-markee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leaderboardAddress,
+          repoFullName: selectedRepo.fullName,
+          filePath: selectedFile,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        onLinked()
+      } else {
+        setSaveError(data.error ?? 'Could not link repo')
+      }
+    } catch {
+      setSaveError('Network error — try again')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const filteredRepos = repos.filter(r =>
+    r.fullName.toLowerCase().includes(repoSearch.toLowerCase())
+  )
+
+  return (
+    <div className="space-y-3 mt-1">
+      <div className="flex items-center gap-2 mb-1">
+        {githubUser.avatarUrl && (
+          <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-4 h-4 rounded-full" />
+        )}
+        <span className="text-[#8A8FBF] text-xs">@{githubUser.login}</span>
+      </div>
+
+      {/* Repo picker */}
+      <div className="relative">
+        {selectedRepo ? (
+          <div className="flex items-center justify-between bg-[#0A0F3D] border border-[#F897FE]/40 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <img src={selectedRepo.avatarUrl} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />
+              <span className="text-[#EDEEFF] text-xs font-mono truncate">{selectedRepo.fullName}</span>
+            </div>
+            <button onClick={() => { setSelectedRepo(null); setRepoSearch(''); setSelectedFile('') }} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-2 flex-shrink-0">
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={repoSearch}
+              onChange={e => { setRepoSearch(e.target.value); setRepoDropdownOpen(true) }}
+              onFocus={() => setRepoDropdownOpen(true)}
+              placeholder="Search repos…"
+              className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-3 py-2 text-[#EDEEFF] text-xs font-mono outline-none transition-colors"
+            />
+            {repoDropdownOpen && filteredRepos.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                {filteredRepos.slice(0, 20).map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => { setSelectedRepo(r); setRepoSearch(''); setRepoDropdownOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#F897FE]/10 transition-colors text-left"
+                  >
+                    <img src={r.avatarUrl} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />
+                    <span className="text-[#EDEEFF] text-xs font-mono truncate">{r.fullName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* File picker */}
+      {selectedRepo && (
+        <div className="relative">
+          {isLoadingFiles ? (
+            <div className="flex items-center gap-2 text-[#8A8FBF] text-xs px-3 py-2">
+              <Loader2 size={12} className="animate-spin" /> Loading files…
+            </div>
+          ) : selectedFile ? (
+            <div className="flex items-center justify-between bg-[#0A0F3D] border border-[#F897FE]/40 rounded-lg px-3 py-2">
+              <span className="text-[#EDEEFF] text-xs font-mono truncate">{selectedFile}</span>
+              <button onClick={() => setSelectedFile('')} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-2 flex-shrink-0">
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={() => setFileDropdownOpen(o => !o)}
+                className="w-full flex items-center justify-between bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/50 rounded-lg px-3 py-2 text-left transition-colors"
+              >
+                <span className="text-[#8A8FBF] text-xs font-mono">
+                  {mdFiles.length ? `${mdFiles.length} files — pick one` : 'No .md files found'}
+                </span>
+                <ChevronRight size={12} className={`text-[#8A8FBF] flex-shrink-0 transition-transform ${fileDropdownOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {fileDropdownOpen && mdFiles.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                  {mdFiles.map(f => (
+                    <button
+                      key={f}
+                      onClick={() => { setSelectedFile(f); setFileDropdownOpen(false) }}
+                      className="w-full flex items-center px-3 py-2 hover:bg-[#F897FE]/10 transition-colors text-left"
+                    >
+                      <span className="text-[#EDEEFF] text-xs font-mono truncate">{f}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {saveError && <p className="text-red-400 text-xs">{saveError}</p>}
+
+      <button
+        onClick={handleLink}
+        disabled={!selectedRepo || !selectedFile || isSaving}
+        className="w-full flex items-center justify-center gap-1.5 bg-[#F897FE] text-[#060A2A] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {isSaving ? <><Loader2 size={12} className="animate-spin" /> Linking…</> : 'Link repo & file'}
+      </button>
     </div>
   )
 }
