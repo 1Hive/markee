@@ -206,7 +206,7 @@ export default function GithubLeaderboardPage() {
                 #1
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message — In Context Window</div>
+                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
                 <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
                   {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
                 </p>
