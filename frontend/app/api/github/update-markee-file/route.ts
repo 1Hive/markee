@@ -33,7 +33,11 @@ function buildMarkeeBlock(
   const attribution = ownerName ? ` — ${ownerName}` : ''
   return `${START_DELIMITER}
 > 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
-> ${message}${attribution}
+>
+> ${message}
+> 
+> ${attribution}
+>
 > 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
 >
 > *Change this message for ${nextBuyPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
