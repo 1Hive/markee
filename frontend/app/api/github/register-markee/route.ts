@@ -1,10 +1,7 @@
 // app/api/github/register-markee/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
-
-const MARKEE_START = '<!-- MARKEE:START -->'
-const MARKEE_END   = '<!-- MARKEE:END -->'
+import { getLinkedFiles, saveLinkedFiles, startDelimiter, endDelimiter, type LinkedFile } from '@/lib/github/linkedFiles'
 
 async function getGithubToken(uid: string): Promise<string | null> {
   const raw = await kv.get(`github:user:${uid}`)
@@ -13,7 +10,12 @@ async function getGithubToken(uid: string): Promise<string | null> {
   return data?.accessToken ?? null
 }
 
-async function checkDelimiters(token: string, repoFullName: string, filePath: string): Promise<boolean> {
+async function checkDelimiters(
+  token: string,
+  repoFullName: string,
+  filePath: string,
+  leaderboardAddress: string,
+): Promise<boolean> {
   try {
     const res = await fetch(
       `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
@@ -21,7 +23,8 @@ async function checkDelimiters(token: string, repoFullName: string, filePath: st
     )
     if (!res.ok) return false
     const content = await res.text()
-    return content.includes(MARKEE_START) && content.includes(MARKEE_END)
+    return content.includes(startDelimiter(leaderboardAddress)) &&
+           content.includes(endDelimiter(leaderboardAddress))
   } catch {
     return false
   }
@@ -54,7 +57,8 @@ export async function POST(request: NextRequest) {
     if (!repoData.permissions?.push)
       return NextResponse.json({ error: `You need push access to ${repoFullName}` }, { status: 403 })
 
-    const verified = await checkDelimiters(token, repoData.full_name, filePath)
+    // Check for address-specific delimiters
+    const verified = await checkDelimiters(token, repoData.full_name, filePath, leaderboardAddress)
 
     const newEntry: LinkedFile = {
       repoFullName:  repoData.full_name,
