@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ChevronRight, Github, Trophy, Plus, Zap, Copy, Check, Loader2, X,
-  ShieldCheck, ShieldAlert, RefreshCw, Trash2, ExternalLink,
+  ShieldCheck, ShieldAlert, RefreshCw, Trash2, ExternalLink, Eye,
 } from 'lucide-react'
 import {
   useReadContracts, useAccount,
@@ -15,6 +15,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { useGithubTraffic } from '@/hooks/useGithubTraffic'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,8 @@ export default function GithubLeaderboardPage() {
   const [linkedFiles, setLinkedFiles] = useState<LinkedFile[]>([])
   const [linkedFilesLoading, setLinkedFilesLoading] = useState(true)
   const [repos, setRepos] = useState<Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>>([])
+
+  const { traffic, status: trafficStatus, errorMessage: trafficError, refresh: refreshTraffic } = useGithubTraffic(leaderboardAddress)
 
   const fetchLinkedFiles = useCallback(async () => {
     setLinkedFilesLoading(true)
@@ -150,7 +153,6 @@ export default function GithubLeaderboardPage() {
 
   const handlePurchaseSuccess = useCallback(() => {
     refetch()
-    // Wait a few seconds for the new block to propagate before reading chain state
     setTimeout(() => {
       fetch('/api/github/update-markee-file', {
         method: 'POST',
@@ -252,6 +254,16 @@ export default function GithubLeaderboardPage() {
                 <span className="text-[#8A8FBF]">live {liveFiles.length === 1 ? 'integration' : 'integrations'}</span>
               </div>
             )}
+            {trafficStatus === 'success' && traffic && (
+              <div className="flex items-center gap-2 text-sm">
+                <Eye size={14} className="text-[#8A8FBF]" />
+                <span className="text-[#EDEEFF] font-semibold">{traffic.count.toLocaleString()}</span>
+                <span className="text-[#8A8FBF]">GitHub views</span>
+                <span className="text-[#8A8FBF]/50">·</span>
+                <span className="text-[#EDEEFF] font-semibold">{traffic.uniques.toLocaleString()}</span>
+                <span className="text-[#8A8FBF]">unique</span>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -342,6 +354,10 @@ export default function GithubLeaderboardPage() {
             linkedFilesLoading={linkedFilesLoading}
             repos={repos}
             onFilesUpdated={setLinkedFiles}
+            traffic={traffic}
+            trafficStatus={trafficStatus}
+            trafficError={trafficError}
+            refreshTraffic={refreshTraffic}
           />
         </div>
       </section>
@@ -420,8 +436,12 @@ function MarkeeRow({
 
 // ─── Integrations Section (top-level state router) ───────────────────────────
 
+type TrafficData = { count: number; uniques: number; views: { timestamp: string; count: number; uniques: number }[]; cached: boolean } | null
+type TrafficStatus = 'idle' | 'loading' | 'success' | 'error' | 'not_linked'
+
 function IntegrationsSection({
   leaderboardAddress, githubUser, githubLoading, linkedFiles, linkedFilesLoading, repos, onFilesUpdated,
+  traffic, trafficStatus, trafficError, refreshTraffic,
 }: {
   leaderboardAddress: string
   githubUser: { login: string; avatarUrl: string } | null
@@ -430,6 +450,10 @@ function IntegrationsSection({
   linkedFilesLoading: boolean
   repos: Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>
   onFilesUpdated: (files: LinkedFile[]) => void
+  traffic: TrafficData
+  trafficStatus: TrafficStatus
+  trafficError: string | null
+  refreshTraffic: () => void
 }) {
   const liveFiles = linkedFiles.filter(f => f.verified)
   const isLoading = githubLoading || linkedFilesLoading
@@ -498,6 +522,10 @@ function IntegrationsSection({
       repos={repos}
       linkedFiles={linkedFiles}
       onFilesUpdated={onFilesUpdated}
+      traffic={traffic}
+      trafficStatus={trafficStatus}
+      trafficError={trafficError}
+      refreshTraffic={refreshTraffic}
     />
   )
 }
@@ -595,12 +623,17 @@ function SetupFlow({
 
 function RepoFileManager({
   leaderboardAddress, githubUser, repos, linkedFiles, onFilesUpdated,
+  traffic, trafficStatus, trafficError, refreshTraffic,
 }: {
   leaderboardAddress: string
   githubUser: { login: string; avatarUrl: string }
   repos: Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>
   linkedFiles: LinkedFile[]
   onFilesUpdated: (files: LinkedFile[]) => void
+  traffic: TrafficData
+  trafficStatus: TrafficStatus
+  trafficError: string | null
+  refreshTraffic: () => void
 }) {
   const [actionKey, setActionKey]     = useState<string | null>(null)
   const [showAddFile, setShowAddFile] = useState(false)
@@ -737,9 +770,63 @@ function RepoFileManager({
         </div>
       )}
 
+      {/* GitHub Traffic */}
+      <div className="mt-5 pt-5 border-t border-[#8A8FBF]/15">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Eye size={14} className="text-[#8A8FBF]" />
+            <span className="text-[#8A8FBF] text-xs uppercase tracking-wider">GitHub Traffic (last 14 days)</span>
+            {traffic?.cached && (
+              <span className="text-[#8A8FBF]/50 text-xs">· cached</span>
+            )}
+          </div>
+          <button
+            onClick={refreshTraffic}
+            disabled={trafficStatus === 'loading'}
+            className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#7C9CFF] transition-colors text-xs disabled:opacity-40"
+          >
+            <RefreshCw size={11} className={trafficStatus === 'loading' ? 'animate-spin' : ''} />
+            {trafficStatus === 'loading' ? 'Loading…' : trafficStatus === 'idle' ? 'Load' : 'Refresh'}
+          </button>
+        </div>
+
+        {trafficStatus === 'idle' && (
+          <p className="text-[#8A8FBF] text-xs">Load GitHub view counts for this repo's traffic.</p>
+        )}
+
+        {trafficStatus === 'success' && traffic && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#060A2A] rounded-lg p-3 border border-[#8A8FBF]/10">
+              <div className="text-[#F897FE] font-semibold text-xl">{traffic.count.toLocaleString()}</div>
+              <div className="text-[#8A8FBF] text-xs mt-0.5">total views</div>
+            </div>
+            <div className="bg-[#060A2A] rounded-lg p-3 border border-[#8A8FBF]/10">
+              <div className="text-[#7C9CFF] font-semibold text-xl">{traffic.uniques.toLocaleString()}</div>
+              <div className="text-[#8A8FBF] text-xs mt-0.5">unique visitors</div>
+            </div>
+          </div>
+        )}
+
+        {trafficStatus === 'not_linked' && (
+          <p className="text-[#8A8FBF] text-xs">No GitHub repo is linked to this sign yet.</p>
+        )}
+
+        {trafficStatus === 'error' && trafficError && (
+          <div className="flex items-start gap-1.5 text-red-400 text-xs">
+            <span className="mt-0.5">⚠</span>
+            <span>
+              {trafficError}
+              {trafficError.includes('reconnect') && (
+                <> — <a href="/ecosystem/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</a></>
+              )}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* "Add file" inline panel */}
       {showAddFile && (
-        <div className="mt-2 border border-[#8A8FBF]/20 rounded-xl overflow-hidden">
+        <div className="mt-4 border border-[#8A8FBF]/20 rounded-xl overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div className="bg-[#060A2A] p-5 border-b md:border-b-0 md:border-r border-[#8A8FBF]/15">
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Tags for this sign</h4>
@@ -779,11 +866,10 @@ function FileRow({
   file: LinkedFile
   variant: 'live' | 'awaiting'
   isActing?: boolean
-  onRefresh?: () => void  // live only — re-checks delimiters
-  onCheck?:   () => void  // awaiting only — checks for delimiters
-  onRemove?:  () => void  // awaiting only — removes from KV
+  onRefresh?: () => void
+  onCheck?:   () => void
+  onRemove?:  () => void
 }) {
-  // Link to the specific file on GitHub using HEAD ref (resolves to default branch)
   const fileUrl = `${file.repoHtmlUrl}/blob/HEAD/${file.filePath}`
 
   return (
@@ -811,19 +897,17 @@ function FileRow({
         </div>
       </div>
 
-      {/* Live: Refresh button only */}
       {variant === 'live' && onRefresh && (
         <button
           onClick={onRefresh}
           disabled={isActing}
           className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#7C9CFF] transition-colors text-xs flex-shrink-0 disabled:opacity-40"
-          title="Re-check delimiters (use this after removing them to deactivate)"
+          title="Re-check delimiters"
         >
           <RefreshCw size={11} className={isActing ? 'animate-spin' : ''} />
         </button>
       )}
 
-      {/* Awaiting: Check + Remove buttons */}
       {variant === 'awaiting' && (
         <div className="flex items-center gap-2 flex-shrink-0">
           {onCheck && (
@@ -886,7 +970,6 @@ function RepoFilePicker({
       .finally(() => setIsLoadingFiles(false))
   }, [selectedRepo])
 
-  // Filter out already-linked files for this repo
   const linkedPathsForRepo = new Set(
     existingLinks
       .filter(l => selectedRepo && l.repoFullName === selectedRepo.fullName)
@@ -927,7 +1010,6 @@ function RepoFilePicker({
 
   return (
     <div className="space-y-2">
-      {/* Repo picker */}
       <div className="relative">
         {selectedRepo ? (
           <div className="flex items-center justify-between bg-[#0A0F3D] border border-[#F897FE]/40 rounded-lg px-3 py-2">
@@ -967,7 +1049,6 @@ function RepoFilePicker({
         )}
       </div>
 
-      {/* File picker */}
       {selectedRepo && (
         <div className="relative">
           {isLoadingFiles ? (
