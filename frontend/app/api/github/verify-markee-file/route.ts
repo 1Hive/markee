@@ -1,10 +1,7 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles } from '@/lib/github/linkedFiles'
-
-const MARKEE_START = '<!-- MARKEE:START -->'
-const MARKEE_END   = '<!-- MARKEE:END -->'
+import { getLinkedFiles, saveLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linkedFiles'
 
 async function getGithubToken(uid: string): Promise<string | null> {
   const raw = await kv.get(`github:user:${uid}`)
@@ -36,7 +33,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Could not fetch file from GitHub (${fileRes.status})` }, { status: 400 })
 
     const content = await fileRes.text()
-    const verified = content.includes(MARKEE_START) && content.includes(MARKEE_END)
+    // Check for address-specific delimiters
+    const verified =
+      content.includes(startDelimiter(leaderboardAddress)) &&
+      content.includes(endDelimiter(leaderboardAddress))
 
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoFullName && e.filePath === filePath)
