@@ -1,8 +1,9 @@
-// frontend/app/api/github/update-markee-file/route.ts
+// app/api/github/update-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
+import { getLinkedFiles } from '../register-markee/route'
 
 const client = createPublicClient({ chain: base, transport: http() })
 
@@ -18,11 +19,11 @@ const LEADERBOARD_ABI = [
 
 const MARKEE_ABI = [
   { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'name',    outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
 ] as const
 
 const START_DELIMITER = '<!-- MARKEE:START -->'
-const END_DELIMITER = '<!-- MARKEE:END -->'
+const END_DELIMITER   = '<!-- MARKEE:END -->'
 
 function buildMarkeeBlock(
   message: string,
@@ -44,9 +45,15 @@ function buildMarkeeBlock(
 ${END_DELIMITER}`
 }
 
+// ── POST /api/github/update-markee-file ──────────────────────────────────────
+//
+// Called by a webhook or cron whenever the top message on a leaderboard changes.
+// Writes the current top message between the MARKEE delimiters in every verified
+// linked file for this leaderboard.
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
-  const { leaderboardAddress } = body ?? {}
+  const { leaderboardAddress } = (body ?? {}) as { leaderboardAddress?: string }
 
   if (!leaderboardAddress) {
     return NextResponse.json({ error: 'Missing leaderboardAddress' }, { status: 400 })
@@ -54,28 +61,26 @@ export async function POST(request: NextRequest) {
 
   const normalizedAddress = (leaderboardAddress as string).toLowerCase()
 
-  // ── Look up verified repo metadata ────────────────────────────────────────
-  const repoMeta = await kv.get<string>(`github:markee:${normalizedAddress}`)
-  if (!repoMeta) {
-    return NextResponse.json({ error: 'No verified repo linked to this leaderboard' }, { status: 404 })
+  // ── Load linked files ───────────────────────────────────────────────────────
+  //
+  // getLinkedFiles handles both the legacy single-object KV format and the new
+  // LinkedFile[] array format, so this works regardless of when the leaderboard
+  // was registered.
+  const linkedFiles = await getLinkedFiles(normalizedAddress)
+  const verifiedFiles = linkedFiles.filter(f => f.verified)
+
+  if (verifiedFiles.length === 0) {
+    return NextResponse.json(
+      { error: 'No verified files linked to this leaderboard' },
+      { status: 404 }
+    )
   }
 
-  const { repoFullName, filePath, linkedByUid } = typeof repoMeta === 'string'
-    ? JSON.parse(repoMeta)
-    : repoMeta
-
-  // ── Look up the access token of whoever registered the repo ───────────────
-  const userData = await kv.get<string>(`github:user:${linkedByUid}`)
-  if (!userData) {
-    return NextResponse.json({ error: 'GitHub session expired for repo owner' }, { status: 401 })
-  }
-
-  const { accessToken } = typeof userData === 'string' ? JSON.parse(userData) : userData
-
-  // ── Read top message + price from chain ──────────────────────────────────
+  // ── Read top message + price from chain ─────────────────────────────────────
   let topMessage = ''
   let topOwnerName: string | null = null
   let nextBuyPriceEth = '0.001'
+
   try {
     const [topAddresses, topFunds] = await client.readContract({
       address: leaderboardAddress as `0x${string}`,
@@ -85,84 +90,140 @@ export async function POST(request: NextRequest) {
     })
     const topAddr = topAddresses[0]
     const topFund = topFunds[0] ?? 0n
-    const MIN_INCREMENT = BigInt('1000000000000000')
-    nextBuyPriceEth = parseFloat(formatEther(topFund + MIN_INCREMENT)).toFixed(4)
 
     if (topAddr) {
       const [msg, name] = await Promise.all([
         client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' }),
         client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' }),
       ])
-      topMessage = msg as string
-      topOwnerName = (name as string) || null
+      topMessage   = msg  ?? ''
+      topOwnerName = name || null
+
+      const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+      nextBuyPriceEth = formatEther(topFund + minIncrement)
     }
-  } catch {
-    // non-fatal — if chain read fails we skip the update
+  } catch (err) {
+    console.error('[update-markee-file] chain read error:', err)
   }
 
   if (!topMessage) {
-    return NextResponse.json({ skipped: true, reason: 'No top message on chain yet' })
+    return NextResponse.json({ error: 'No top message to write' }, { status: 400 })
   }
 
-  const leaderboardUrl = `https://markee.xyz/ecosystem/platforms/github/${leaderboardAddress}`
+  const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github/${leaderboardAddress}`
+  const markeeBlock = buildMarkeeBlock(topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
 
-  // ── Fetch current file from GitHub ────────────────────────────────────────
-  const fileRes = await fetch(
-    `https://api.github.com/repos/${repoFullName}/contents/${filePath}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/vnd.github+json',
-      },
+  // ── Write to each verified file ─────────────────────────────────────────────
+  const results: Array<{ filePath: string; repoFullName: string; success: boolean; error?: string }> = []
+
+  for (const file of verifiedFiles) {
+    // Resolve the GitHub token: prefer the token of whoever linked this specific
+    // file (linkedByUid). Fall back to any available token if uid is blank
+    // (legacy entries from before multi-file support).
+    const uid = file.linkedByUid
+    let accessToken: string | null = null
+
+    if (uid) {
+      const raw = await kv.get(`github:user:${uid}`)
+      if (raw) {
+        const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, string>)
+        accessToken = data?.accessToken ?? null
+      }
     }
-  )
 
-  if (!fileRes.ok) {
-    const err = await fileRes.text()
-    return NextResponse.json({ error: `GitHub file fetch failed: ${err}` }, { status: 502 })
-  }
-
-  const fileData = await fileRes.json()
-  const currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
-  const sha = fileData.sha
-
-  // ── Check delimiters exist ────────────────────────────────────────────────
-  if (!currentContent.includes(START_DELIMITER) || !currentContent.includes(END_DELIMITER)) {
-    return NextResponse.json(
-      { error: `Delimiters not found in ${filePath}. Add <!-- MARKEE:START --> and <!-- MARKEE:END --> to your file.` },
-      { status: 422 }
-    )
-  }
-
-  // ── Replace content between delimiters ───────────────────────────────────
-  const newBlock = buildMarkeeBlock(topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
-  const updatedContent = currentContent.replace(
-    new RegExp(`${START_DELIMITER}[\\s\\S]*?${END_DELIMITER}`),
-    newBlock
-  )
-
-  // ── Push commit ───────────────────────────────────────────────────────────
-  const pushRes = await fetch(
-    `https://api.github.com/repos/${repoFullName}/contents/${filePath}`,
-    {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: `chore: update Markee message in ${filePath}`,
-        content: Buffer.from(updatedContent).toString('base64'),
-        sha,
-      }),
+    if (!accessToken) {
+      results.push({
+        repoFullName: file.repoFullName,
+        filePath: file.filePath,
+        success: false,
+        error: 'GitHub token not found for this file',
+      })
+      continue
     }
-  )
 
-  if (!pushRes.ok) {
-    const err = await pushRes.text()
-    return NextResponse.json({ error: `GitHub push failed: ${err}` }, { status: 502 })
+    try {
+      // Get the file's current content + SHA (needed for the PUT)
+      const fileRes = await fetch(
+        `https://api.github.com/repos/${file.repoFullName}/contents/${encodeURIComponent(file.filePath)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/vnd.github+json',
+          },
+        }
+      )
+
+      if (!fileRes.ok) {
+        results.push({
+          repoFullName: file.repoFullName,
+          filePath: file.filePath,
+          success: false,
+          error: `Could not fetch file (${fileRes.status})`,
+        })
+        continue
+      }
+
+      const fileData = await fileRes.json()
+      const currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
+      const fileSha = fileData.sha
+
+      // Replace content between delimiters
+      const startIdx = currentContent.indexOf(START_DELIMITER)
+      const endIdx   = currentContent.indexOf(END_DELIMITER)
+
+      if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+        results.push({
+          repoFullName: file.repoFullName,
+          filePath: file.filePath,
+          success: false,
+          error: 'Delimiters not found in file',
+        })
+        continue
+      }
+
+      const before  = currentContent.slice(0, startIdx)
+      const after   = currentContent.slice(endIdx + END_DELIMITER.length)
+      const updated = before + markeeBlock + after
+
+      // Write the updated file back
+      const putRes = await fetch(
+        `https://api.github.com/repos/${file.repoFullName}/contents/${encodeURIComponent(file.filePath)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: `markee: update sponsored message`,
+            content: Buffer.from(updated).toString('base64'),
+            sha:     fileSha,
+          }),
+        }
+      )
+
+      if (!putRes.ok) {
+        const errBody = await putRes.text()
+        results.push({
+          repoFullName: file.repoFullName,
+          filePath: file.filePath,
+          success: false,
+          error: `GitHub write failed (${putRes.status}): ${errBody.slice(0, 200)}`,
+        })
+      } else {
+        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: true })
+      }
+    } catch (err) {
+      results.push({
+        repoFullName: file.repoFullName,
+        filePath: file.filePath,
+        success: false,
+        error: String(err),
+      })
+    }
   }
 
-  return NextResponse.json({ success: true, nextBuyPriceEth })
+  const anySuccess = results.some(r => r.success)
+  return NextResponse.json({ success: anySuccess, results })
 }
