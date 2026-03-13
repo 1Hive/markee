@@ -148,6 +148,16 @@ export default function GithubLeaderboardPage() {
     refetchDetails()
   }, [refetchMeta, refetchDetails])
 
+  const handlePurchaseSuccess = useCallback(() => {
+    refetch()
+    // Fire-and-forget: push updated top message to all verified linked files
+    fetch('/api/github/update-markee-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leaderboardAddress }),
+    }).catch(err => console.error('[update-markee-file] failed:', err))
+  }, [leaderboardAddress, refetch])
+
   const formatFunds = (wei: bigint) => {
     const eth = parseFloat(formatEther(wei))
     if (eth === 0) return '0 ETH'
@@ -421,7 +431,7 @@ export default function GithubLeaderboardPage() {
           topFundsAdded={markees[0]?.totalFundsAdded}
           initialMode={initialMode}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
-          onSuccess={refetch}
+          onSuccess={handlePurchaseSuccess}
         />
       )}
     </div>
