@@ -1,9 +1,4 @@
 // lib/github/linkedFiles.ts
-//
-// Shared helpers for reading/writing the LinkedFile[] array in Vercel KV.
-// Imported by register-markee, repo-status, verify-markee-file, and update-markee-file.
-// Lives outside the api/ directory so Next.js doesn't treat it as a route.
-
 import { kv } from '@vercel/kv'
 
 export interface LinkedFile {
@@ -18,41 +13,34 @@ export interface LinkedFile {
   linkedAt: string
 }
 
-// ── getLinkedFiles ────────────────────────────────────────────────────────────
-//
-// Reads the LinkedFile[] array from KV, migrating the legacy single-object
-// format stored by the old register-markee route.
-//
-// Legacy entries are treated as verified=true because the old route already
-// verified push access before saving — the only thing the new format adds is
-// delimiter verification, which we can't retroactively check.
+// ── Delimiter helpers ─────────────────────────────────────────────────────────
+
+export function startDelimiter(leaderboardAddress: string): string {
+  return `<!-- MARKEE:START:${leaderboardAddress.toLowerCase()} -->`
+}
+
+export function endDelimiter(leaderboardAddress: string): string {
+  return `<!-- MARKEE:END:${leaderboardAddress.toLowerCase()} -->`
+}
+
+// ── KV helpers ────────────────────────────────────────────────────────────────
 
 export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
   const kvKey = `github:markee:${leaderboardAddress.toLowerCase()}`
-
-  // @vercel/kv auto-parses JSON, so raw will be an object/array, not a string
   const raw = await kv.get(kvKey)
   if (!raw) return []
-
-  // New array format
   if (Array.isArray(raw)) return raw as LinkedFile[]
-
-  // Legacy single-object (auto-parsed by @vercel/kv)
+  // Legacy single-object migration — treat as verified since old route verified push access
   if (typeof raw === 'object' && raw !== null) {
     return legacyToArray(raw as Record<string, unknown>)
   }
-
-  // Paranoia: if somehow stored as a raw string, parse manually
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) return parsed as LinkedFile[]
-      if (typeof parsed === 'object' && parsed !== null) {
-        return legacyToArray(parsed as Record<string, unknown>)
-      }
+      if (typeof parsed === 'object' && parsed !== null) return legacyToArray(parsed as Record<string, unknown>)
     } catch { /* ignore */ }
   }
-
   return []
 }
 
@@ -71,15 +59,10 @@ function legacyToArray(obj: Record<string, unknown>): LinkedFile[] {
   }]
 }
 
-// ── saveLinkedFiles ───────────────────────────────────────────────────────────
-
-export async function saveLinkedFiles(
-  leaderboardAddress: string,
-  files: LinkedFile[],
-): Promise<void> {
+export async function saveLinkedFiles(leaderboardAddress: string, files: LinkedFile[]): Promise<void> {
   await kv.set(
     `github:markee:${leaderboardAddress.toLowerCase()}`,
     files,
-    { ex: 60 * 60 * 24 * 365 * 5 }, // 5 years
+    { ex: 60 * 60 * 24 * 365 * 5 },
   )
 }
