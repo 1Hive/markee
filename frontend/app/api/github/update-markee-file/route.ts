@@ -5,7 +5,10 @@ import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linkedFiles'
 
-const client = createPublicClient({ chain: base, transport: http() })
+const client = createPublicClient({
+  chain: base,
+  transport: http(process.env.RPC_URL_BASE ?? undefined),
+})
 
 const LEADERBOARD_ABI = [
   {
@@ -44,15 +47,30 @@ function buildMarkeeBlock(
 ${endDelimiter(leaderboardAddress)}`
 }
 
+function buildEmptyBlock(
+  leaderboardAddress: string,
+  minimumPriceEth: string,
+  leaderboardUrl: string,
+): string {
+  return `${startDelimiter(leaderboardAddress)}
+> 🪧 **[Markee](${leaderboardUrl})** — *This space is available.*
+>
+> *Be the first to buy a message for ${minimumPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
+${endDelimiter(leaderboardAddress)}`
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const { leaderboardAddress } = (body ?? {}) as { leaderboardAddress?: string }
   if (!leaderboardAddress) return NextResponse.json({ error: 'Missing leaderboardAddress' }, { status: 400 })
 
   const normalizedAddress = leaderboardAddress.toLowerCase()
+  console.log(`[update-markee-file] triggered for ${normalizedAddress}`)
 
   const linkedFiles = await getLinkedFiles(normalizedAddress)
   const verifiedFiles = linkedFiles.filter(f => f.verified)
+  console.log(`[update-markee-file] linkedFiles=${linkedFiles.length} verified=${verifiedFiles.length}`)
+
   if (verifiedFiles.length === 0)
     return NextResponse.json({ error: 'No verified files linked to this leaderboard' }, { status: 404 })
 
@@ -69,6 +87,7 @@ export async function POST(request: NextRequest) {
     })
     const topAddr = topAddresses[0]
     const topFund = topFunds[0] ?? 0n
+    console.log(`[update-markee-file] topAddr=${topAddr} topFund=${topFund}`)
     if (topAddr) {
       const [msg, name] = await Promise.all([
         client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' }),
@@ -77,15 +96,17 @@ export async function POST(request: NextRequest) {
       topMessage      = msg  ?? ''
       topOwnerName    = name || null
       nextBuyPriceEth = formatEther(topFund + BigInt('1000000000000000'))
+      console.log(`[update-markee-file] topMessage="${topMessage.slice(0, 60)}"`)
     }
   } catch (err) {
     console.error('[update-markee-file] chain read error:', err)
+    return NextResponse.json({ error: `Chain read failed: ${String(err)}` }, { status: 500 })
   }
 
-  if (!topMessage) return NextResponse.json({ error: 'No top message to write' }, { status: 400 })
-
   const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github/${leaderboardAddress}`
-  const markeeBlock = buildMarkeeBlock(leaderboardAddress, topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
+  const markeeBlock = topMessage
+    ? buildMarkeeBlock(leaderboardAddress, topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
+    : buildEmptyBlock(leaderboardAddress, nextBuyPriceEth, leaderboardUrl)
 
   const START = startDelimiter(leaderboardAddress)
   const END   = endDelimiter(leaderboardAddress)
@@ -93,6 +114,7 @@ export async function POST(request: NextRequest) {
   const results: Array<{ filePath: string; repoFullName: string; success: boolean; error?: string }> = []
 
   for (const file of verifiedFiles) {
+    console.log(`[update-markee-file] processing ${file.repoFullName}/${file.filePath} linkedByUid=${file.linkedByUid || '(empty)'}`)
     let accessToken: string | null = null
     if (file.linkedByUid) {
       const raw = await kv.get(`github:user:${file.linkedByUid}`)
@@ -100,10 +122,13 @@ export async function POST(request: NextRequest) {
         const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, string>)
         accessToken = data?.accessToken ?? null
       }
+      console.log(`[update-markee-file] token lookup uid=${file.linkedByUid} found=${!!accessToken}`)
+    } else {
+      console.warn(`[update-markee-file] linkedByUid is empty for ${file.repoFullName}/${file.filePath} — cannot look up token`)
     }
 
     if (!accessToken) {
-      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'GitHub token not found' })
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `GitHub token not found (linkedByUid="${file.linkedByUid || ''}")` })
       continue
     }
 
