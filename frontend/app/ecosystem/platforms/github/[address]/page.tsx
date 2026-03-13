@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ChevronRight, Github, Trophy, Plus, Zap, Copy, Check, CheckCircle2, Loader2, X,
+  ShieldCheck, ShieldAlert, RefreshCw,
 } from 'lucide-react'
 import {
   useReadContracts, useAccount,
@@ -14,6 +15,19 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface LinkedFile {
+  repoFullName: string
+  repoOwner: string
+  repoName: string
+  repoAvatarUrl: string
+  repoHtmlUrl: string
+  filePath: string
+  verified: boolean
+  linkedAt: string
+}
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -52,20 +66,21 @@ export default function GithubLeaderboardPage() {
   const [copied, setCopied] = useState(false)
   const [githubUser, setGithubUser] = useState<{ login: string; avatarUrl: string } | null>(null)
   const [githubLoading, setGithubLoading] = useState(true)
-  const [repoStatus, setRepoStatus] = useState<{
-    linked: boolean
-    repoFullName?: string
-    repoAvatarUrl?: string
-    repoHtmlUrl?: string
-    filePath?: string
-  } | null>(null)
+  const [linkedFiles, setLinkedFiles] = useState<LinkedFile[]>([])
+  const [linkedFilesLoading, setLinkedFilesLoading] = useState(true)
   const [repos, setRepos] = useState<Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>>([])
-  const [mdFiles, setMdFiles] = useState<string[]>([])
 
-  const fetchRepoStatus = useCallback(async () => {
-    const res = await fetch(`/api/github/repo-status?address=${leaderboardAddress}`)
-    const data = await res.json()
-    setRepoStatus(data)
+  const fetchLinkedFiles = useCallback(async () => {
+    setLinkedFilesLoading(true)
+    try {
+      const res = await fetch(`/api/github/repo-status?address=${leaderboardAddress}`)
+      const data = await res.json()
+      setLinkedFiles(data.linkedFiles ?? [])
+    } catch {
+      setLinkedFiles([])
+    } finally {
+      setLinkedFilesLoading(false)
+    }
   }, [leaderboardAddress])
 
   useEffect(() => {
@@ -83,8 +98,8 @@ export default function GithubLeaderboardPage() {
       .catch(() => setGithubUser(null))
       .finally(() => setGithubLoading(false))
 
-    fetchRepoStatus()
-  }, [fetchRepoStatus])
+    fetchLinkedFiles()
+  }, [fetchLinkedFiles])
 
   // ── Read leaderboard metadata ──────────────────────────────────────────────
   const { data: meta, refetch: refetchMeta } = useReadContracts({
@@ -147,6 +162,8 @@ export default function GithubLeaderboardPage() {
   }
 
   const topMarkee = markees[0]
+  const liveFiles = linkedFiles.filter(f => f.verified)
+  const awaitingFiles = linkedFiles.filter(f => !f.verified)
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -215,6 +232,13 @@ export default function GithubLeaderboardPage() {
               <div className="flex items-center gap-2 text-sm">
                 <Zap size={14} className="text-[#8A8FBF]" />
                 <span className="text-[#8A8FBF]">min {formatFunds(minimumPrice)}</span>
+              </div>
+            )}
+            {liveFiles.length > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <ShieldCheck size={14} className="text-green-400" />
+                <span className="text-green-400 font-semibold">{liveFiles.length}</span>
+                <span className="text-[#8A8FBF]">live {liveFiles.length === 1 ? 'integration' : 'integrations'}</span>
               </div>
             )}
           </div>
@@ -305,6 +329,7 @@ export default function GithubLeaderboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Step 1 */}
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">1</div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Add delimiters to your file</h4>
@@ -315,43 +340,22 @@ export default function GithubLeaderboardPage() {
               </div>
             </div>
 
+            {/* Step 2 — linked files manager */}
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-3 ${
-                repoStatus?.linked
+                liveFiles.length > 0
                   ? 'bg-green-500/15 border border-green-500/40 text-green-400'
                   : 'bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE]'
               }`}>
-                {repoStatus?.linked ? <CheckCircle2 size={14} /> : '2'}
+                {liveFiles.length > 0 ? <CheckCircle2 size={14} /> : '2'}
               </div>
-              <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Connect your repo</h4>
+              <h4 className="text-[#EDEEFF] font-semibold text-sm mb-3">Connect your repo</h4>
 
-              {githubLoading || repoStatus === null ? (
-                <p className="text-[#8A8FBF] text-xs">Checking connection…</p>
-
-              ) : repoStatus.linked ? (
-                /* ── Already linked ── */
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {repoStatus.repoAvatarUrl && (
-                      <img src={repoStatus.repoAvatarUrl} alt="" className="w-5 h-5 rounded-full" />
-                    )}
-                    <a
-                      href={repoStatus.repoHtmlUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#7C9CFF] text-xs font-mono hover:text-[#F897FE] transition-colors"
-                    >
-                      {repoStatus.repoFullName}
-                    </a>
-                  </div>
-                  {repoStatus.filePath && (
-                    <p className="text-[#8A8FBF] text-xs font-mono">{repoStatus.filePath}</p>
-                  )}
-                  <p className="text-green-400 text-xs">✓ Integration active</p>
-                </div>
-
+              {githubLoading || linkedFilesLoading ? (
+                <p className="text-[#8A8FBF] text-xs flex items-center gap-2">
+                  <Loader2 size={12} className="animate-spin" /> Checking connection…
+                </p>
               ) : !githubUser ? (
-                /* ── Not connected to GitHub ── */
                 <>
                   <p className="text-[#8A8FBF] text-xs mb-4">
                     Authorize Markee on GitHub so it can write between those delimiters whenever a new top message is set.
@@ -364,20 +368,18 @@ export default function GithubLeaderboardPage() {
                     Connect on GitHub
                   </a>
                 </>
-
               ) : (
-                /* ── Connected but not yet linked — show picker ── */
-                <RepoLinker
+                <RepoFileManager
                   leaderboardAddress={leaderboardAddress}
                   githubUser={githubUser}
                   repos={repos}
-                  mdFiles={mdFiles}
-                  setMdFiles={setMdFiles}
-                  onLinked={fetchRepoStatus}
+                  linkedFiles={linkedFiles}
+                  onFilesUpdated={setLinkedFiles}
                 />
               )}
             </div>
 
+            {/* Step 3 */}
             <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
               <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">3</div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">It updates automatically</h4>
@@ -467,28 +469,201 @@ function MarkeeRow({
   )
 }
 
-// ─── Repo Linker ──────────────────────────────────────────────────────────────
+// ─── Repo File Manager ────────────────────────────────────────────────────────
 
-function RepoLinker({
+function RepoFileManager({
   leaderboardAddress,
   githubUser,
   repos,
-  mdFiles,
-  setMdFiles,
-  onLinked,
+  linkedFiles,
+  onFilesUpdated,
 }: {
   leaderboardAddress: string
   githubUser: { login: string; avatarUrl: string }
   repos: Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>
-  mdFiles: string[]
-  setMdFiles: (files: string[]) => void
-  onLinked: () => void
+  linkedFiles: LinkedFile[]
+  onFilesUpdated: (files: LinkedFile[]) => void
+}) {
+  const [showPicker, setShowPicker] = useState(linkedFiles.length === 0)
+  const [verifyingKey, setVerifyingKey] = useState<string | null>(null)
+
+  const liveFiles = linkedFiles.filter(f => f.verified)
+  const awaitingFiles = linkedFiles.filter(f => !f.verified)
+
+  const handleVerify = async (file: LinkedFile) => {
+    const key = `${file.repoFullName}:${file.filePath}`
+    setVerifyingKey(key)
+    try {
+      const res = await fetch('/api/github/verify-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leaderboardAddress,
+          repoFullName: file.repoFullName,
+          filePath: file.filePath,
+        }),
+      })
+      const data = await res.json()
+      if (data.linkedFiles) {
+        onFilesUpdated(data.linkedFiles)
+      }
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setVerifyingKey(null)
+    }
+  }
+
+  const handleNewFileLinked = (updatedFiles: LinkedFile[]) => {
+    onFilesUpdated(updatedFiles)
+    setShowPicker(false)
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* User context */}
+      <div className="flex items-center gap-2 mb-1">
+        {githubUser.avatarUrl && (
+          <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-4 h-4 rounded-full" />
+        )}
+        <span className="text-[#8A8FBF] text-xs">@{githubUser.login}</span>
+      </div>
+
+      {/* Live files */}
+      {liveFiles.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="flex items-center gap-1.5 bg-green-500/15 border border-green-500/30 text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Live
+            </span>
+            <span className="text-[#8A8FBF] text-xs">{liveFiles.length} {liveFiles.length === 1 ? 'file' : 'files'}</span>
+          </div>
+          <div className="space-y-1.5">
+            {liveFiles.map(file => (
+              <FileRow key={`${file.repoFullName}:${file.filePath}`} file={file} variant="live" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Awaiting files */}
+      {awaitingFiles.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="flex items-center gap-1.5 bg-[#8A8FBF]/15 border border-[#8A8FBF]/30 text-[#8A8FBF] text-xs font-semibold px-2 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#8A8FBF]" />
+              Awaiting Integration
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {awaitingFiles.map(file => {
+              const key = `${file.repoFullName}:${file.filePath}`
+              return (
+                <FileRow
+                  key={key}
+                  file={file}
+                  variant="awaiting"
+                  isVerifying={verifyingKey === key}
+                  onVerify={() => handleVerify(file)}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Picker toggle */}
+      {!showPicker && (
+        <button
+          onClick={() => setShowPicker(true)}
+          className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors mt-1"
+        >
+          <Plus size={12} />
+          Link another file
+        </button>
+      )}
+
+      {/* File picker */}
+      {showPicker && (
+        <div className="border-t border-[#8A8FBF]/15 pt-3 mt-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[#8A8FBF] text-xs uppercase tracking-wider">Link a file</span>
+            {linkedFiles.length > 0 && (
+              <button onClick={() => setShowPicker(false)} className="text-[#8A8FBF] hover:text-[#EDEEFF]">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <RepoFilePicker
+            leaderboardAddress={leaderboardAddress}
+            repos={repos}
+            existingLinks={linkedFiles}
+            onLinked={handleNewFileLinked}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── File Row ─────────────────────────────────────────────────────────────────
+
+function FileRow({
+  file, variant, isVerifying, onVerify,
+}: {
+  file: LinkedFile
+  variant: 'live' | 'awaiting'
+  isVerifying?: boolean
+  onVerify?: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2 bg-[#0A0F3D] rounded-lg px-3 py-2 border border-[#8A8FBF]/10">
+      {file.repoAvatarUrl && (
+        <img src={file.repoAvatarUrl} alt={file.repoOwner} className="w-4 h-4 rounded-full flex-shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="text-[#EDEEFF] text-xs truncate">{file.repoFullName}</span>
+          {variant === 'live' && <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />}
+          {variant === 'awaiting' && <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />}
+        </div>
+        <span className="text-[#7C9CFF] text-xs font-mono truncate block">{file.filePath}</span>
+      </div>
+      {variant === 'awaiting' && onVerify && (
+        <button
+          onClick={onVerify}
+          disabled={isVerifying}
+          className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#F897FE] transition-colors text-xs flex-shrink-0 disabled:opacity-40"
+          title="Check if delimiters have been added"
+        >
+          <RefreshCw size={11} className={isVerifying ? 'animate-spin' : ''} />
+          {isVerifying ? '' : 'Check'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── Repo File Picker ─────────────────────────────────────────────────────────
+
+function RepoFilePicker({
+  leaderboardAddress,
+  repos,
+  existingLinks,
+  onLinked,
+}: {
+  leaderboardAddress: string
+  repos: Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>
+  existingLinks: LinkedFile[]
+  onLinked: (files: LinkedFile[]) => void
 }) {
   const [repoSearch, setRepoSearch] = useState('')
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
   const [selectedRepo, setSelectedRepo] = useState<typeof repos[0] | null>(null)
   const [selectedFile, setSelectedFile] = useState('')
   const [fileDropdownOpen, setFileDropdownOpen] = useState(false)
+  const [mdFiles, setMdFiles] = useState<string[]>([])
   const [isLoadingFiles, setIsLoadingFiles] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -501,7 +676,15 @@ function RepoLinker({
       .then(d => setMdFiles(d.files ?? []))
       .catch(() => setMdFiles([]))
       .finally(() => setIsLoadingFiles(false))
-  }, [selectedRepo, setMdFiles])
+  }, [selectedRepo])
+
+  // Filter out already-linked files for this repo
+  const linkedPathsForRepo = new Set(
+    existingLinks
+      .filter(l => selectedRepo && l.repoFullName === selectedRepo.fullName)
+      .map(l => l.filePath)
+  )
+  const availableFiles = mdFiles.filter(f => !linkedPathsForRepo.has(f))
 
   const handleLink = async () => {
     if (!selectedRepo || !selectedFile) return
@@ -518,10 +701,10 @@ function RepoLinker({
         }),
       })
       const data = await res.json()
-      if (data.success) {
-        onLinked()
+      if (data.success && data.linkedFiles) {
+        onLinked(data.linkedFiles)
       } else {
-        setSaveError(data.error ?? 'Could not link repo')
+        setSaveError(data.error ?? 'Could not link file')
       }
     } catch {
       setSaveError('Network error — try again')
@@ -535,14 +718,7 @@ function RepoLinker({
   )
 
   return (
-    <div className="space-y-3 mt-1">
-      <div className="flex items-center gap-2 mb-1">
-        {githubUser.avatarUrl && (
-          <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-4 h-4 rounded-full" />
-        )}
-        <span className="text-[#8A8FBF] text-xs">@{githubUser.login}</span>
-      </div>
-
+    <div className="space-y-2">
       {/* Repo picker */}
       <div className="relative">
         {selectedRepo ? (
@@ -604,13 +780,17 @@ function RepoLinker({
                 className="w-full flex items-center justify-between bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/50 rounded-lg px-3 py-2 text-left transition-colors"
               >
                 <span className="text-[#8A8FBF] text-xs font-mono">
-                  {mdFiles.length ? `${mdFiles.length} files — pick one` : 'No .md files found'}
+                  {availableFiles.length
+                    ? `${availableFiles.length} file${availableFiles.length === 1 ? '' : 's'} available`
+                    : mdFiles.length
+                      ? 'All files already linked'
+                      : 'No .md files found'}
                 </span>
                 <ChevronRight size={12} className={`text-[#8A8FBF] flex-shrink-0 transition-transform ${fileDropdownOpen ? 'rotate-90' : ''}`} />
               </button>
-              {fileDropdownOpen && mdFiles.length > 0 && (
+              {fileDropdownOpen && availableFiles.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                  {mdFiles.map(f => (
+                  {availableFiles.map(f => (
                     <button
                       key={f}
                       onClick={() => { setSelectedFile(f); setFileDropdownOpen(false) }}
@@ -633,7 +813,7 @@ function RepoLinker({
         disabled={!selectedRepo || !selectedFile || isSaving}
         className="w-full flex items-center justify-center gap-1.5 bg-[#F897FE] text-[#060A2A] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        {isSaving ? <><Loader2 size={12} className="animate-spin" /> Linking…</> : 'Link repo & file'}
+        {isSaving ? <><Loader2 size={12} className="animate-spin" /> Linking…</> : 'Link file'}
       </button>
     </div>
   )
