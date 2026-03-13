@@ -224,7 +224,7 @@ export default function GithubPlatformPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { step: '1', title: 'Connect GitHub & Create a Markee', body: 'Link your repo via OAuth so Markee can verify ownership, then deploy your sign onchain.' },
-              { step: '2', title: 'Add Tags in Github', body: 'Drop <!-- MARKEE:START --> and <!-- MARKEE:END --> into any markdown file in your repo.' },
+              { step: '2', title: 'Add Tags in Github', body: 'Drop the address-specific <!-- MARKEE:START:0x… --> and <!-- MARKEE:END:0x… --> tags into any markdown file — shown on your sign\'s page.' },
               { step: '3', title: 'Start Earning', body: 'Buyers compete to set the message that everyone viewing your file will see - human or agent.' },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
