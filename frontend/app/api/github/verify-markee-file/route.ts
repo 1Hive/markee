@@ -1,7 +1,7 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import type { LinkedFile } from '../register-markee/route'
+import { getLinkedFiles } from '../register-markee/route'
 
 const MARKEE_START = '<!-- MARKEE:START -->'
 const MARKEE_END = '<!-- MARKEE:END -->'
@@ -13,34 +13,14 @@ async function getGithubToken(uid: string): Promise<string | null> {
   return data?.accessToken ?? null
 }
 
-async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
-  const kvKey = `github:markee:${leaderboardAddress.toLowerCase()}`
-  const raw = await kv.get(kvKey)
-  if (!raw) return []
-  if (Array.isArray(raw)) return raw as LinkedFile[]
-  return []
-}
-
 // ── POST /api/github/verify-markee-file ──────────────────────────────────────
 //
 // Re-checks whether <!-- MARKEE:START --> / <!-- MARKEE:END --> exist in the
-// specified file and updates the `verified` flag in KV accordingly.
-// Called by the "Check again" button on unverified entries.
+// specified file and flips `verified` in KV. Called by the "Check" button on
+// awaiting entries.
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { leaderboardAddress, repoFullName, filePath } = body as {
-      leaderboardAddress?: string
-      repoFullName?: string
-      filePath?: string
-    }
-
-    if (!leaderboardAddress || !repoFullName || !filePath) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-    }
-
-    // Auth
     const uid = request.cookies.get('github_uid')?.value
     if (!uid) {
       return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
@@ -48,7 +28,21 @@ export async function POST(request: NextRequest) {
 
     const token = await getGithubToken(uid)
     if (!token) {
-      return NextResponse.json({ error: 'GitHub token not found — please reconnect' }, { status: 401 })
+      return NextResponse.json(
+        { error: 'GitHub token not found — please reconnect' },
+        { status: 401 }
+      )
+    }
+
+    const body = await request.json().catch(() => null)
+    const { leaderboardAddress, repoFullName, filePath } = (body ?? {}) as {
+      leaderboardAddress?: string
+      repoFullName?: string
+      filePath?: string
+    }
+
+    if (!leaderboardAddress || !repoFullName || !filePath) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
     // Fetch file content and check for delimiters
@@ -73,18 +67,25 @@ export async function POST(request: NextRequest) {
     const verified = content.includes(MARKEE_START) && content.includes(MARKEE_END)
 
     // Update the specific entry in the array
-    const kvKey = `github:markee:${leaderboardAddress.toLowerCase()}`
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(
       e => e.repoFullName === repoFullName && e.filePath === filePath
     )
 
     if (idx < 0) {
-      return NextResponse.json({ error: 'File not found in linked files list' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'File not found in linked files list' },
+        { status: 404 }
+      )
     }
 
     existing[idx] = { ...existing[idx], verified }
-    await kv.set(kvKey, existing)
+
+    await kv.set(
+      `github:markee:${leaderboardAddress.toLowerCase()}`,
+      existing,
+      { ex: 60 * 60 * 24 * 365 * 5 }
+    )
 
     return NextResponse.json({ success: true, verified, linkedFiles: existing })
   } catch (err) {
