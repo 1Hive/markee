@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
-import { getLinkedFiles } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linkedFiles'
 
 const client = createPublicClient({ chain: base, transport: http() })
 
@@ -22,22 +22,26 @@ const MARKEE_ABI = [
   { inputs: [], name: 'name',    outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
 ] as const
 
-const START_DELIMITER = '<!-- MARKEE:START -->'
-const END_DELIMITER   = '<!-- MARKEE:END -->'
-
-function buildMarkeeBlock(message: string, ownerName: string | null, nextBuyPriceEth: string, leaderboardUrl: string): string {
+function buildMarkeeBlock(
+  leaderboardAddress: string,
+  message: string,
+  ownerName: string | null,
+  nextBuyPriceEth: string,
+  leaderboardUrl: string,
+): string {
   const attribution = ownerName ? ` — ${ownerName}` : ''
-  return `${START_DELIMITER}
+  // Uses address-specific delimiters so multiple blocks can coexist in the same file
+  return `${startDelimiter(leaderboardAddress)}
 > 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
 >
 > ${message}
-> 
+>
 > ${attribution}
 >
 > 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
 >
 > *Change this message for ${nextBuyPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
-${END_DELIMITER}`
+${endDelimiter(leaderboardAddress)}`
 }
 
 export async function POST(request: NextRequest) {
@@ -70,8 +74,8 @@ export async function POST(request: NextRequest) {
         client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' }),
         client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' }),
       ])
-      topMessage   = msg  ?? ''
-      topOwnerName = name || null
+      topMessage      = msg  ?? ''
+      topOwnerName    = name || null
       nextBuyPriceEth = formatEther(topFund + BigInt('1000000000000000'))
     }
   } catch (err) {
@@ -81,12 +85,14 @@ export async function POST(request: NextRequest) {
   if (!topMessage) return NextResponse.json({ error: 'No top message to write' }, { status: 400 })
 
   const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github/${leaderboardAddress}`
-  const markeeBlock = buildMarkeeBlock(topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
+  const markeeBlock = buildMarkeeBlock(leaderboardAddress, topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
+
+  const START = startDelimiter(leaderboardAddress)
+  const END   = endDelimiter(leaderboardAddress)
 
   const results: Array<{ filePath: string; repoFullName: string; success: boolean; error?: string }> = []
 
   for (const file of verifiedFiles) {
-    // Resolve access token from the user who linked this file
     let accessToken: string | null = null
     if (file.linkedByUid) {
       const raw = await kv.get(`github:user:${file.linkedByUid}`)
@@ -113,15 +119,16 @@ export async function POST(request: NextRequest) {
 
       const fileData = await fileRes.json()
       const currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
-      const startIdx = currentContent.indexOf(START_DELIMITER)
-      const endIdx   = currentContent.indexOf(END_DELIMITER)
+
+      const startIdx = currentContent.indexOf(START)
+      const endIdx   = currentContent.indexOf(END)
 
       if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Delimiters not found in file' })
+        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Address-specific delimiters not found in file' })
         continue
       }
 
-      const updated = currentContent.slice(0, startIdx) + markeeBlock + currentContent.slice(endIdx + END_DELIMITER.length)
+      const updated = currentContent.slice(0, startIdx) + markeeBlock + currentContent.slice(endIdx + END.length)
 
       const putRes = await fetch(
         `https://api.github.com/repos/${file.repoFullName}/contents/${encodeURIComponent(file.filePath)}`,
