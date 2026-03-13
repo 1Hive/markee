@@ -6,7 +6,7 @@ import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
 
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
-const client = createPublicClient({ chain: base, transport: http() })
+const client = createPublicClient({ chain: base, transport: http(process.env.RPC_URL_BASE ?? undefined) })
 
 // ── ABIs ──────────────────────────────────────────────────────────────────────
 
