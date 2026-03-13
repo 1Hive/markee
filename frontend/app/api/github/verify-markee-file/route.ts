@@ -45,6 +45,16 @@ export async function POST(request: NextRequest) {
     existing[idx] = { ...existing[idx], verified }
     await saveLinkedFiles(leaderboardAddress, existing)
 
+    // If this flip made the file Live, immediately write the current top message
+    if (verified) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
+      fetch(`${siteUrl}/api/github/update-markee-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress }),
+      }).catch(err => console.error('[verify-markee-file] update-markee-file trigger failed:', err))
+    }
+
     return NextResponse.json({ success: true, verified, linkedFiles: existing })
   } catch (err) {
     console.error('[verify-markee-file] error:', err)
