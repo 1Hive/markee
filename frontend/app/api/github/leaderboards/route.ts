@@ -2,8 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
-import { kv } from '@vercel/kv'
-import type { LinkedFile } from '../register-markee/route'
+import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
 
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
@@ -54,36 +53,6 @@ const MARKEE_ABI = [
   { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
 ] as const
-
-// ── KV helpers ────────────────────────────────────────────────────────────────
-
-async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
-  try {
-    const raw = await kv.get(`github:markee:${leaderboardAddress.toLowerCase()}`)
-    if (!raw) return []
-    // New array format
-    if (Array.isArray(raw)) return raw as LinkedFile[]
-    // Legacy single-object format — migrate on read
-    if (typeof raw === 'object' && raw !== null) {
-      const obj = raw as Record<string, unknown>
-      if (obj.repoFullName) {
-        return [{
-          repoFullName: obj.repoFullName as string,
-          repoOwner: (obj.repoOwner ?? '') as string,
-          repoName: (obj.repoName ?? '') as string,
-          repoAvatarUrl: (obj.repoAvatarUrl ?? '') as string,
-          repoHtmlUrl: (obj.repoHtmlUrl ?? '') as string,
-          filePath: (obj.filePath ?? '') as string,
-          verified: (obj.repoVerified ?? false) as boolean,
-          linkedAt: (obj.linkedAt ?? '') as string,
-        }]
-      }
-    }
-    return []
-  } catch {
-    return []
-  }
-}
 
 // ── GET /api/github/leaderboards ─────────────────────────────────────────────
 
