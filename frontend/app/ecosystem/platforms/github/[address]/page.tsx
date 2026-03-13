@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ChevronRight, Github, Trophy, Plus, Zap, Copy, Check, CheckCircle2, Loader2, X,
-  ShieldCheck, ShieldAlert, RefreshCw,
+  ShieldCheck, ShieldAlert, RefreshCw, Trash2, ExternalLink,
 } from 'lucide-react'
 import {
   useReadContracts, useAccount,
@@ -150,12 +150,14 @@ export default function GithubLeaderboardPage() {
 
   const handlePurchaseSuccess = useCallback(() => {
     refetch()
-    // Fire-and-forget: push updated top message to all verified linked files
-    fetch('/api/github/update-markee-file', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leaderboardAddress }),
-    }).catch(err => console.error('[update-markee-file] failed:', err))
+    // Wait a few seconds for the new block to propagate before reading chain state
+    setTimeout(() => {
+      fetch('/api/github/update-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress }),
+      }).catch(err => console.error('[update-markee-file] failed:', err))
+    }, 5000)
   }, [leaderboardAddress, refetch])
 
   const formatFunds = (wei: bigint) => {
@@ -508,14 +510,15 @@ function RepoFileManager({
   onFilesUpdated: (files: LinkedFile[]) => void
 }) {
   const [showPicker, setShowPicker] = useState(linkedFiles.length === 0)
-  const [verifyingKey, setVerifyingKey] = useState<string | null>(null)
+  const [actionKey, setActionKey] = useState<string | null>(null)
 
-  const liveFiles = linkedFiles.filter(f => f.verified)
+  const liveFiles    = linkedFiles.filter(f => f.verified)
   const awaitingFiles = linkedFiles.filter(f => !f.verified)
 
+  // Shared verify call — used by both "Check" (awaiting) and "Refresh" (live)
   const handleVerify = async (file: LinkedFile) => {
     const key = `${file.repoFullName}:${file.filePath}`
-    setVerifyingKey(key)
+    setActionKey(key)
     try {
       const res = await fetch('/api/github/verify-markee-file', {
         method: 'POST',
@@ -527,13 +530,31 @@ function RepoFileManager({
         }),
       })
       const data = await res.json()
-      if (data.linkedFiles) {
-        onFilesUpdated(data.linkedFiles)
-      }
+      if (data.linkedFiles) onFilesUpdated(data.linkedFiles)
     } catch {
-      // silently fail — user can retry
+      // user can retry
     } finally {
-      setVerifyingKey(null)
+      setActionKey(null)
+    }
+  }
+
+  // Only available on awaiting (verified: false) entries
+  const handleRemove = async (file: LinkedFile) => {
+    const key = `${file.repoFullName}:${file.filePath}`
+    setActionKey(key)
+    try {
+      const params = new URLSearchParams({
+        address: leaderboardAddress,
+        repo:    file.repoFullName,
+        file:    file.filePath,
+      })
+      const res  = await fetch(`/api/github/unlink-markee-file?${params}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.linkedFiles) onFilesUpdated(data.linkedFiles)
+    } catch {
+      // user can retry
+    } finally {
+      setActionKey(null)
     }
   }
 
@@ -564,7 +585,13 @@ function RepoFileManager({
           </div>
           <div className="space-y-1.5">
             {liveFiles.map(file => (
-              <FileRow key={`${file.repoFullName}:${file.filePath}`} file={file} variant="live" />
+              <FileRow
+                key={`${file.repoFullName}:${file.filePath}`}
+                file={file}
+                variant="live"
+                isActing={actionKey === `${file.repoFullName}:${file.filePath}`}
+                onRefresh={() => handleVerify(file)}
+              />
             ))}
           </div>
         </div>
@@ -587,8 +614,9 @@ function RepoFileManager({
                   key={key}
                   file={file}
                   variant="awaiting"
-                  isVerifying={verifyingKey === key}
-                  onVerify={() => handleVerify(file)}
+                  isActing={actionKey === key}
+                  onCheck={() => handleVerify(file)}
+                  onRemove={() => handleRemove(file)}
                 />
               )
             })}
@@ -633,13 +661,18 @@ function RepoFileManager({
 // ─── File Row ─────────────────────────────────────────────────────────────────
 
 function FileRow({
-  file, variant, isVerifying, onVerify,
+  file, variant, isActing, onRefresh, onCheck, onRemove,
 }: {
   file: LinkedFile
   variant: 'live' | 'awaiting'
-  isVerifying?: boolean
-  onVerify?: () => void
+  isActing?: boolean
+  onRefresh?: () => void  // live only — re-checks delimiters
+  onCheck?:   () => void  // awaiting only — checks for delimiters
+  onRemove?:  () => void  // awaiting only — removes from KV
 }) {
+  // Link to the specific file on GitHub using HEAD ref (resolves to default branch)
+  const fileUrl = `${file.repoHtmlUrl}/blob/HEAD/${file.filePath}`
+
   return (
     <div className="flex items-center gap-2 bg-[#0A0F3D] rounded-lg px-3 py-2 border border-[#8A8FBF]/10">
       {file.repoAvatarUrl && (
@@ -648,21 +681,60 @@ function FileRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 min-w-0">
           <span className="text-[#EDEEFF] text-xs truncate">{file.repoFullName}</span>
-          {variant === 'live' && <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />}
+          {variant === 'live'    && <ShieldCheck  size={10} className="text-green-400 flex-shrink-0" />}
           {variant === 'awaiting' && <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />}
         </div>
-        <span className="text-[#7C9CFF] text-xs font-mono truncate block">{file.filePath}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[#7C9CFF] text-xs font-mono truncate">{file.filePath}</span>
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
+            title="Open file on GitHub"
+          >
+            <ExternalLink size={10} />
+          </a>
+        </div>
       </div>
-      {variant === 'awaiting' && onVerify && (
+
+      {/* Live: Refresh button only */}
+      {variant === 'live' && onRefresh && (
         <button
-          onClick={onVerify}
-          disabled={isVerifying}
-          className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#F897FE] transition-colors text-xs flex-shrink-0 disabled:opacity-40"
-          title="Check if delimiters have been added"
+          onClick={onRefresh}
+          disabled={isActing}
+          className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#7C9CFF] transition-colors text-xs flex-shrink-0 disabled:opacity-40"
+          title="Re-check delimiters (use this after removing them to deactivate)"
         >
-          <RefreshCw size={11} className={isVerifying ? 'animate-spin' : ''} />
-          {isVerifying ? '' : 'Check'}
+          <RefreshCw size={11} className={isActing ? 'animate-spin' : ''} />
         </button>
+      )}
+
+      {/* Awaiting: Check + Remove buttons */}
+      {variant === 'awaiting' && (
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {onCheck && (
+            <button
+              onClick={onCheck}
+              disabled={isActing}
+              className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#F897FE] transition-colors text-xs disabled:opacity-40"
+              title="Check if delimiters have been added"
+            >
+              <RefreshCw size={11} className={isActing ? 'animate-spin' : ''} />
+              {!isActing && 'Check'}
+            </button>
+          )}
+          {onRemove && (
+            <button
+              onClick={onRemove}
+              disabled={isActing}
+              className="text-[#8A8FBF] hover:text-red-400 transition-colors disabled:opacity-40"
+              title="Remove this file link"
+            >
+              <Trash2 size={11} />
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
