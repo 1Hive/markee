@@ -5,13 +5,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, Eye, RefreshCw,
+  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, ShieldAlert, RefreshCw,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import type { LinkedFile } from './[address]/page'
 
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
@@ -43,14 +44,16 @@ interface GithubLeaderboard {
   topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
-  // Verified repo metadata
+  // Multi-file array (new)
+  linkedFiles: LinkedFile[]
+  // Legacy compat fields (derived from primary verified file)
+  repoVerified: boolean
   repoFullName: string | null
   repoOwner: string | null
   repoName: string | null
   repoAvatarUrl: string | null
   repoHtmlUrl: string | null
   filePath: string | null
-  repoVerified: boolean
 }
 
 interface GithubUser {
@@ -90,15 +93,6 @@ export default function GithubPlatformPage() {
     }
   }, [])
 
-  const fetchGithubUser = useCallback(async () => {
-    const res = await fetch('/api/github/me')
-    if (res.ok) {
-      const data = await res.json()
-      setGithubUser(data)
-      if (data.connected) fetchRepos()
-    }
-  }, []) // fetchRepos added below via ref pattern — avoids circular dep
-
   const fetchRepos = useCallback(async () => {
     const res = await fetch('/api/github/my-repos')
     if (res.ok) {
@@ -106,6 +100,15 @@ export default function GithubPlatformPage() {
       setRepos(data.repos ?? [])
     }
   }, [])
+
+  const fetchGithubUser = useCallback(async () => {
+    const res = await fetch('/api/github/me')
+    if (res.ok) {
+      const data = await res.json()
+      setGithubUser(data)
+      if (data.connected) fetchRepos()
+    }
+  }, [fetchRepos])
 
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -127,7 +130,6 @@ export default function GithubPlatformPage() {
     }
   }, [])
 
-  // Refetch on window focus — always fresh when you tab back
   useEffect(() => {
     const onFocus = () => fetchLeaderboards(true)
     window.addEventListener('focus', onFocus)
@@ -149,6 +151,10 @@ export default function GithubPlatformPage() {
   const myLeaderboards = walletAddress
     ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
     : []
+
+  // Separate into live (any verified file) vs not yet live
+  const liveLeaderboards = leaderboards.filter(l => l.linkedFiles.some(f => f.verified))
+  const unliveLeaderboards = leaderboards.filter(l => !l.linkedFiles.some(f => f.verified))
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -235,11 +241,6 @@ export default function GithubPlatformPage() {
 
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3 mb-8">
-            <Trophy size={20} className="text-[#F897FE]" />
-            <h2 className="text-2xl font-bold text-[#EDEEFF]">Top Markee Signs</h2>
-            <span className="text-[#8A8FBF] text-sm">ranked by total funds</span>
-          </div>
 
           {isLoadingLeaderboards ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -261,10 +262,43 @@ export default function GithubPlatformPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {leaderboards.map((lb, idx) => (
-                <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} />
-              ))}
+            <div className="space-y-12">
+              {/* Live Integrations */}
+              {liveLeaderboards.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <Trophy size={20} className="text-[#F897FE]" />
+                    <h2 className="text-2xl font-bold text-[#EDEEFF]">Live Integrations</h2>
+                    <span className="flex items-center gap-1.5 bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE] text-xs font-semibold px-3 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#F897FE] animate-pulse" />
+                      Live
+                    </span>
+                    <span className="text-[#8A8FBF] text-sm">ranked by total funds</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {liveLeaderboards.map((lb, idx) => (
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Awaiting Integration */}
+              {unliveLeaderboards.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <h2 className="text-2xl font-bold text-[#EDEEFF]">Awaiting Integration</h2>
+                    <span className="bg-[#8A8FBF]/15 border border-[#8A8FBF]/30 text-[#8A8FBF] text-xs font-semibold px-3 py-1 rounded-full">
+                      Setup Needed
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80">
+                    {unliveLeaderboards.map((lb, idx) => (
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -290,6 +324,7 @@ export default function GithubPlatformPage() {
 // ─── Leaderboard Card ─────────────────────────────────────────────────────────
 
 const GITHUB_LOGO = 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'
+const MAX_FILES_SHOWN = 3
 
 function LeaderboardCard({
   leaderboard, formatFunds,
@@ -307,52 +342,68 @@ function LeaderboardCard({
   const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
   const buyPriceFormatted = Number(buyPrice) / 1e18
 
-  const title = leaderboard.repoVerified
-    ? (leaderboard.repoName ?? leaderboard.repoFullName ?? leaderboard.name)
-    : leaderboard.name
+  // Use the first verified file's repo data for the card header, fall back to first linked
+  const primaryFile = leaderboard.linkedFiles.find(f => f.verified) ?? leaderboard.linkedFiles[0] ?? null
+  const title = primaryFile?.repoName ?? leaderboard.name
+  const avatarUrl = primaryFile?.repoAvatarUrl ?? GITHUB_LOGO
+  const repoHtmlUrl = primaryFile?.repoHtmlUrl ?? null
 
-  const subtitle = leaderboard.repoVerified && leaderboard.filePath
-    ? leaderboard.filePath
-    : `${leaderboard.address.slice(0, 6)}…${leaderboard.address.slice(-4)}`
+  const liveFiles = leaderboard.linkedFiles.filter(f => f.verified)
+  const awaitingFiles = leaderboard.linkedFiles.filter(f => !f.verified)
+  const allFiles = [...liveFiles, ...awaitingFiles]
+  const shownFiles = allFiles.slice(0, MAX_FILES_SHOWN)
+  const overflowCount = allFiles.length - MAX_FILES_SHOWN
 
   return (
     <div className="relative">
-      {/* Repo link tab — same pattern as ecosystem Live Integrations */}
-      {leaderboard.repoVerified && leaderboard.repoHtmlUrl ? (
+      {/* Repo link tab */}
+      {repoHtmlUrl ? (
         <a
-          href={leaderboard.repoHtmlUrl}
+          href={repoHtmlUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
           onClick={e => e.stopPropagation()}
         >
           <ExternalLink size={12} />
-          {leaderboard.repoHtmlUrl.replace(/^https?:\/\//, '')}
+          {repoHtmlUrl.replace(/^https?:\/\//, '')}
         </a>
       ) : null}
 
-      {/* Card body — matches PartnerMarkeeCard exactly */}
       <div
         onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
         className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
-          leaderboard.repoVerified && leaderboard.repoHtmlUrl
-            ? 'rounded-t-none rounded-b-lg border-t-0'
-            : 'rounded-lg'
+          repoHtmlUrl ? 'rounded-t-none rounded-b-lg border-t-0' : 'rounded-lg'
         }`}
       >
-        {/* Header: logo + repo name */}
+        {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           <img
-            src={leaderboard.repoAvatarUrl ?? GITHUB_LOGO}
+            src={avatarUrl}
             alt={title}
             className="h-12 w-12 object-contain rounded-lg"
           />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{title}</h3>
-            {leaderboard.repoVerified && leaderboard.filePath && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[#7C9CFF] text-xs font-mono truncate">{subtitle}</span>
-                <ShieldCheck size={11} className="text-green-400 flex-shrink-0" />
+
+            {/* File list — live then awaiting, capped at MAX_FILES_SHOWN */}
+            {allFiles.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {shownFiles.map(file => (
+                  <div key={`${file.repoFullName}:${file.filePath}`} className="flex items-center gap-1.5">
+                    {file.verified ? (
+                      <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />
+                    ) : (
+                      <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />
+                    )}
+                    <span className={`text-xs font-mono truncate ${file.verified ? 'text-[#7C9CFF]' : 'text-[#8A8FBF]'}`}>
+                      {file.filePath}
+                    </span>
+                  </div>
+                ))}
+                {overflowCount > 0 && (
+                  <span className="text-[#8A8FBF] text-xs">+{overflowCount} more</span>
+                )}
               </div>
             )}
           </div>
@@ -430,7 +481,6 @@ function CreateMarkeeModal({
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // After tx confirms: extract leaderboard address, then register in KV
   useEffect(() => {
     if (!isSuccess || !receipt) return
 
@@ -447,7 +497,6 @@ function CreateMarkeeModal({
 
     setNewLeaderboardAddress(foundAddress)
 
-    // Register the verified repo link server-side
     if (foundAddress && selectedRepo && fileName) {
       fetch('/api/github/register-markee', {
         method: 'POST',
@@ -469,7 +518,6 @@ function CreateMarkeeModal({
     }
   }, [isSuccess, receipt, selectedRepo, fileName, onSuccess])
 
-  // Fetch .md files whenever a repo is selected
   useEffect(() => {
     if (!selectedRepo) { setMdFiles([]); return }
     setIsLoadingFiles(true)
@@ -514,14 +562,14 @@ function CreateMarkeeModal({
           <X size={20} />
         </button>
 
-        {/* ── Success ───────────────────────────────────────────────── */}
+        {/* Success */}
         {isSuccess ? (
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
             <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
             {registerError ? (
               <div className="w-full bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-xs">
-                ⚠ Repo link could not be verified: {registerError}. The Markee is live but won't show a verified repo badge until you re-link it from the Markee page.
+                ⚠ Repo link could not be verified: {registerError}. The Markee is live but the delimiter check will show "Awaiting Integration" until you add the tags.
               </div>
             ) : (
               <p className="text-[#8A8FBF] text-sm text-center">
@@ -541,12 +589,11 @@ function CreateMarkeeModal({
             </div>
           </div>
 
-        /* ── Overview ─────────────────────────────────────────────── */
+        /* Overview */
         ) : view === 'overview' ? (
           <>
             <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Create a Markee</h2>
 
-            {/* GitHub status */}
             <div className="mb-6">
               {githubUser.connected ? (
                 <div className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
@@ -584,38 +631,49 @@ function CreateMarkeeModal({
               )}
             </div>
 
-            {/* Existing signs */}
+            {/* Existing signs — show file count badges */}
             {myLeaderboards.length > 0 && (
               <div className="mb-6">
                 <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
                 <div className="space-y-2">
-                  {myLeaderboards.map(lb => (
-                    <div key={lb.address} className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
-                      <div className="min-w-0 flex-1">
-                        {lb.repoVerified ? (
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {lb.repoAvatarUrl && <img src={lb.repoAvatarUrl} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />}
-                            <span className="text-[#EDEEFF] text-sm truncate">{lb.repoFullName}</span>
-                            <span className="text-[#7C9CFF] text-xs font-mono flex-shrink-0">{lb.filePath}</span>
-                            <ShieldCheck size={11} className="text-green-400 flex-shrink-0" />
+                  {myLeaderboards.map(lb => {
+                    const live = lb.linkedFiles.filter(f => f.verified).length
+                    const awaiting = lb.linkedFiles.filter(f => !f.verified).length
+                    return (
+                      <div key={lb.address} className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[#EDEEFF] text-sm truncate">
+                            {lb.repoFullName ?? lb.name}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {live > 0 && (
+                              <span className="flex items-center gap-1 text-green-400 text-xs">
+                                <ShieldCheck size={10} /> {live} live
+                              </span>
+                            )}
+                            {awaiting > 0 && (
+                              <span className="flex items-center gap-1 text-[#8A8FBF] text-xs">
+                                <ShieldAlert size={10} /> {awaiting} awaiting
+                              </span>
+                            )}
+                            {lb.linkedFiles.length === 0 && (
+                              <span className="text-[#8A8FBF] text-xs">No files linked</span>
+                            )}
                           </div>
-                        ) : (
-                          <p className="text-[#EDEEFF] text-sm truncate">{lb.name}</p>
-                        )}
+                        </div>
+                        <a
+                          href={`/ecosystem/platforms/github/${lb.address}`}
+                          className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
+                        >
+                          Manage →
+                        </a>
                       </div>
-                      <a
-                        href={`/ecosystem/platforms/github/${lb.address}`}
-                        className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
-                      >
-                        Manage →
-                      </a>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Only show create button if GitHub is connected */}
             {githubUser.connected && (
               isConnected ? (
                 <button
@@ -633,7 +691,7 @@ function CreateMarkeeModal({
             )}
           </>
 
-        /* ── Create form ──────────────────────────────────────────── */
+        /* Create form */
         ) : (
           <>
             <button
@@ -755,7 +813,7 @@ function CreateMarkeeModal({
                 <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
               </div>
 
-              {/* Split */}
+              {/* Revenue split */}
               <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                 <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
                 <div className="flex justify-between">
