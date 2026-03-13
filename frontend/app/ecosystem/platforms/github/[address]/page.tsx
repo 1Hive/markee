@@ -334,9 +334,22 @@ export default function GithubLeaderboardPage() {
               <div className="w-7 h-7 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold mb-3">1</div>
               <h4 className="text-[#EDEEFF] font-semibold text-sm mb-2">Add delimiters to your file</h4>
               <p className="text-[#8A8FBF] text-xs mb-3">Paste these two comments where you want the Markee block to appear:</p>
-              <div className="bg-[#0A0F3D] rounded-lg p-3 font-mono text-xs text-[#7C9CFF] leading-relaxed border border-[#8A8FBF]/10">
-                {'<!-- MARKEE:START -->'}<br />
-                {'<!-- MARKEE:END -->'}
+              <div className="relative bg-[#0A0F3D] rounded-lg p-3 font-mono text-xs text-[#7C9CFF] leading-relaxed border border-[#8A8FBF]/10">
+                {`<!-- MARKEE:START:${leaderboardAddress.toLowerCase()} -->`}<br />
+                {`<!-- MARKEE:END:${leaderboardAddress.toLowerCase()} -->`}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `<!-- MARKEE:START:${leaderboardAddress.toLowerCase()} -->\n<!-- MARKEE:END:${leaderboardAddress.toLowerCase()} -->`
+                    )
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }}
+                  className="absolute top-2 right-2 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors"
+                  title="Copy delimiters"
+                >
+                  {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                </button>
               </div>
             </div>
 
