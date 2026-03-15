@@ -7,6 +7,15 @@ Markee is a cooperatively owned digital message board network. Anyone can pay to
 **Contracts:** Juicebox RevNets (Multi Terminal V5)
 
 <!-- MARKEE:START:0x72a8e1470ac4988248091e76f363a33f8563d10c -->
+> 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
+>
+> the name's Mark. Agent Mark 🕵️
+>
+>  — 🤖
+>
+> 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
+>
+> *Change this message for 0.003 ETH on the [Markee App](https://markee.xyz/ecosystem/platforms/github/0x72a8E1470AC4988248091e76F363a33f8563d10c).*
 <!-- MARKEE:END:0x72a8e1470ac4988248091e76f363a33f8563d10c -->
 
 ---
