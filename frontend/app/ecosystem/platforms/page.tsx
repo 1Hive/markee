@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronRight, Github } from 'lucide-react'
+import { ChevronRight, Github, Zap } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 
@@ -11,8 +11,18 @@ const PLATFORMS = [
     name: 'GitHub — SKILL.md',
     description: 'Context window advertising for open source repos. Your SKILL.md gets read by every AI agent that touches your codebase.',
     icon: Github,
+    iconColor: 'text-[#EDEEFF]',
     status: 'live' as const,
     detail: 'Agent-native impressions',
+  },
+  {
+    slug: 'superfluid',
+    name: 'Superfluid — Season 5',
+    description: 'Superfluid ecosystem projects earn rewards by hosting a Markee sign. No setup required — deploy in seconds.',
+    icon: Zap,
+    iconColor: 'text-[#1DB227]',
+    status: 'live' as const,
+    detail: 'Ecosystem rewards',
   },
 ]
 
@@ -58,7 +68,7 @@ export default function PlatformsPage() {
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
-                      <Icon size={24} className="text-[#EDEEFF]" />
+                      <Icon size={24} className={platform.iconColor} />
                     </div>
                     {platform.status === 'live' && (
                       <span className="flex items-center gap-1.5 bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE] text-xs font-semibold px-2.5 py-1 rounded-full">
