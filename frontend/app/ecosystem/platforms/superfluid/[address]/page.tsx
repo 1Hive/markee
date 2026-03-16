@@ -274,6 +274,7 @@ export default function SuperfluidLeaderboardPage() {
           existingMarkee={selectedMarkee}
           topFundsAdded={markees[0]?.totalFundsAdded}
           initialMode={initialMode}
+          platformId="superfluid"
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
           onSuccess={refetch}
         />
