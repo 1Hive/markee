@@ -1,73 +1,118 @@
 /**
  * useSuperfluidPoints
  *
- * Lightweight client-side hook for triggering Superfluid rewards events
- * via the internal /api/superfluid/track proxy.
+ * Client-side hook for triggering Superfluid rewards events via the
+ * internal API proxy routes. Never touches API keys directly.
+ *
+ * ── ETH-based events (BUY_MESSAGE / ADD_FUNDS) ──────────────────────────────
+ * Pass `amountWei` as a BigInt string. Points are calculated server-side:
+ * 1 point per 0.0001 ETH (1e14 wei), minimum 1 point.
  *
  * Usage in BuyMessageModal / TopDawgModal:
  *
- *   const { trackBuyMessage, trackAddFunds, trackFarcasterFollow } = useSuperfluidPoints()
+ *   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
  *
  *   useEffect(() => {
  *     if (!isConfirmed || !receipt || !address) return
- *     trackBuyMessage(address, receipt.transactionHash)
+ *     trackBuyMessage(address, amountWei.toString(), receipt.transactionHash)
  *   }, [isConfirmed, receipt, address])
+ *
+ * ── Farcaster follow ─────────────────────────────────────────────────────────
+ * Calls /api/superfluid/farcaster-follow which verifies via Neynar first.
+ * Safe to call on button click — idempotent, deduped by FID.
+ *
+ *   const { trackFarcasterFollow } = useSuperfluidPoints()
+ *   await trackFarcasterFollow(address)
  */
 
 import { useCallback } from 'react'
 
 type TrackResult = {
   success: boolean
+  points?: number
   pushRequestId?: number
   message?: string
+  alreadyClaimed?: boolean
 }
 
-async function post(
-  event: string,
+// ─── ETH events ───────────────────────────────────────────────────────────────
+
+async function postTrack(
+  event: 'BUY_MESSAGE' | 'ADD_FUNDS',
   account: string,
-  txHash?: string,
-  pointsOverride?: number,
+  amountWei: string,
+  txHash: string,
 ): Promise<TrackResult> {
   try {
     const res = await fetch('/api/superfluid/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event, account, txHash, pointsOverride }),
+      body: JSON.stringify({ event, account, amountWei, txHash }),
     })
     return await res.json()
   } catch (e: any) {
-    console.error('[useSuperfluidPoints] fetch error:', e)
+    console.error('[useSuperfluidPoints] track error:', e)
     return { success: false, message: e.message }
   }
 }
 
+// ─── Farcaster follow ─────────────────────────────────────────────────────────
+
+async function postFarcasterFollow(account: string): Promise<TrackResult> {
+  try {
+    const res = await fetch('/api/superfluid/farcaster-follow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account }),
+    })
+    return await res.json()
+  } catch (e: any) {
+    console.error('[useSuperfluidPoints] farcaster-follow error:', e)
+    return { success: false, message: e.message }
+  }
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export function useSuperfluidPoints() {
   /**
-   * New message purchased on the Superfluid Markee.
-   * txHash is used as uniqueId — safe to call multiple times for same tx.
+   * New message purchased. Pass amountWei as BigInt.toString().
+   * txHash is used as uniqueId — safe to call multiple times for the same tx.
+   *
+   * @example
+   * trackBuyMessage(address, amountWei.toString(), receipt.transactionHash)
    */
   const trackBuyMessage = useCallback(
-    (account: string, txHash: string, pointsOverride?: number) =>
-      post('BUY_MESSAGE', account, txHash, pointsOverride),
+    (account: string, amountWei: string, txHash: string) =>
+      postTrack('BUY_MESSAGE', account, amountWei, txHash),
     []
   )
 
   /**
-   * Funds added to an existing message.
-   * txHash is used as uniqueId — safe to call multiple times for same tx.
+   * Funds added to an existing message. Pass amountWei as BigInt.toString().
+   *
+   * @example
+   * trackAddFunds(address, amountWei.toString(), receipt.transactionHash)
    */
   const trackAddFunds = useCallback(
-    (account: string, txHash: string, pointsOverride?: number) =>
-      post('ADD_FUNDS', account, txHash, pointsOverride),
+    (account: string, amountWei: string, txHash: string) =>
+      postTrack('ADD_FUNDS', account, amountWei, txHash),
     []
   )
 
   /**
-   * Farcaster follow (small one-time bonus).
-   * No txHash — dedup is handled server-side via KV if needed.
+   * Farcaster follow (1 point, verified via Neynar, deduped by FID).
+   * Safe to call on button click — will return { alreadyClaimed: true } if
+   * this wallet has already received the bonus.
+   *
+   * @example
+   * const result = await trackFarcasterFollow(address)
+   * if (!result.success && !result.alreadyClaimed) {
+   *   // Show "follow Markee on Farcaster first" message
+   * }
    */
   const trackFarcasterFollow = useCallback(
-    (account: string) => post('FARCASTER_FOLLOW', account),
+    (account: string) => postFarcasterFollow(account),
     []
   )
 
