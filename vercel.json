@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/superfluid-points",
-      "schedule": "0 * * * *"
-    }
-  ]
-}
