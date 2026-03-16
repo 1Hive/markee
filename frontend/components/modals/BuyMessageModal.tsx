@@ -11,6 +11,7 @@ import {
 import { parseEther, formatEther } from 'viem'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 
 // ─── ABI (only the functions this modal calls) ────────────────────────────────
 
@@ -57,6 +58,11 @@ interface BuyMessageModalProps {
   initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onClose: () => void
   onSuccess: () => void
+  /** Controls platform-specific side-effects on purchase success.
+   *  - 'github'     → writes to SKILL.md via /api/github/update-markee-file (default)
+   *  - 'superfluid' → tracks Superfluid points via useSuperfluidPoints; skips GitHub write
+   */
+  platformId?: 'github' | 'superfluid'
 }
 
 // ─── MARKEE token helpers ─────────────────────────────────────────────────────
@@ -92,10 +98,12 @@ export function BuyMessageModal({
   initialMode,
   onClose,
   onSuccess,
+  platformId,
 }: BuyMessageModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const { data: balanceData } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
+  const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
 
   const isUpdateMessage = initialMode === 'updateMessage'
   const isAddFunds = !isUpdateMessage && !!existingMarkee
@@ -107,7 +115,7 @@ export function BuyMessageModal({
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   // ── Preset amounts ────────────────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
@@ -152,19 +160,34 @@ export function BuyMessageModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Close after success + trigger GitHub file update ─────────────────────
+  // ── Platform-specific success side-effects ────────────────────────────────
   useEffect(() => {
-    if (isSuccess) {
-      // Fire-and-forget — onchain state is source of truth, this is best-effort
+    if (!isSuccess) return
+
+    if (platformId === 'superfluid') {
+      // Track points — skip for updateMessage (no ETH transferred)
+      if (!isUpdateMessage && address && receipt) {
+        const amountWei = (() => { try { return parseEther(amount).toString() } catch { return '0' } })()
+        const txHash = receipt.transactionHash
+        if (isAddFunds) {
+          trackAddFunds(address, amountWei, txHash).catch(console.error)
+        } else {
+          trackBuyMessage(address, amountWei, txHash).catch(console.error)
+        }
+      }
+    } else {
+      // Default: GitHub — fire best-effort SKILL.md write
       fetch('/api/github/update-markee-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leaderboardAddress }),
       }).catch(() => {})
-
-      setTimeout(() => { onSuccess(); onClose() }, 2500)
     }
-  }, [isSuccess, onSuccess, onClose, isAddFunds, existingMarkee, message, name, leaderboardAddress])
+
+    setTimeout(() => { onSuccess(); onClose() }, 2500)
+  // amount is captured at confirmation time — intentionally excluded from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
 
   const amountWei = (() => { try { return parseEther(amount) } catch { return 0n } })()
   const canAfford = balanceData ? balanceData.value >= amountWei : true
@@ -438,7 +461,7 @@ export function BuyMessageModal({
                   <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                     <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
                     <div className="flex justify-between">
-                      <span className="text-[#EDEEFF]">Repo treasury</span>
+                      <span className="text-[#EDEEFF]">Project treasury</span>
                       <span className="text-[#F897FE] font-semibold">62%</span>
                     </div>
                     <div className="flex justify-between mt-1">
