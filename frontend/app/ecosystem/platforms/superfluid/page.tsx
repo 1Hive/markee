@@ -361,7 +361,7 @@ function CreateMarkeeModal({
   const router = useRouter()
   const { isConnected } = useAccount()
   const [leaderboardName, setLeaderboardName] = useState('')
-  const [beneficiary, setBeneficiary] = useState(walletAddress ?? '')
+  const [beneficiary, setBeneficiary] = useState('')
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
