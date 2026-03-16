@@ -15,14 +15,14 @@ const BASE_URL = 'https://cms.superfluid.pro'
 export function getCampaignId(): number {
   const id =
     process.env.SUPERFLUID_ENV === 'production'
-      ? process.env.SUPERFLUID_CAMPAIGN_ID_PROD
-      : process.env.SUPERFLUID_CAMPAIGN_ID_TEST
+      ? process.env.SUPERFLUID_CAMPAIGN_ID
+      : process.env.TEST_SUPERFLUID_CAMPAIGN_ID
 
   if (!id) {
     const name =
       process.env.SUPERFLUID_ENV === 'production'
-        ? 'SUPERFLUID_CAMPAIGN_ID_PROD'
-        : 'SUPERFLUID_CAMPAIGN_ID_TEST'
+        ? 'SUPERFLUID_CAMPAIGN_ID'
+        : 'TEST_SUPERFLUID_CAMPAIGN_ID'
     throw new Error(`${name} env var is not set`)
   }
 
@@ -34,14 +34,14 @@ export function getCampaignId(): number {
 function getApiKey(): string {
   const key =
     process.env.SUPERFLUID_ENV === 'production'
-      ? process.env.SUPERFLUID_API_KEY_PROD
-      : process.env.SUPERFLUID_API_KEY_TEST
+      ? process.env.SUPERFLUID_POINTS_API_KEY
+      : process.env.TEST_SUPERFLUID_POINTS_API_KEY
 
   if (!key) {
     const name =
       process.env.SUPERFLUID_ENV === 'production'
-        ? 'SUPERFLUID_API_KEY_PROD'
-        : 'SUPERFLUID_API_KEY_TEST'
+        ? 'SUPERFLUID_POINTS_API_KEY'
+        : 'TEST_SUPERFLUID_POINTS_API_KEY'
     throw new Error(`${name} env var is not set`)
   }
   return key
@@ -144,7 +144,7 @@ export async function pushEvent(input: PushEventInput): Promise<PushEventResult>
 
     // Error responses use { message } per the spec (changed from { error } on 2026-01-26)
     const err = await res.json().catch(() => ({ message: res.statusText }))
-    const context = process.env.SUPERFLUID_ENV === 'production' ? 'prod' : 'test'
+    const context = process.env.SUPERFLUID_ENV === 'production' ? 'S5' : 'test'
     console.error(`[Superfluid Points][${context}] pushEvent ${res.status}:`, err.message)
     return { success: false, error: `HTTP ${res.status}: ${err.message}` }
   } catch (e: any) {
