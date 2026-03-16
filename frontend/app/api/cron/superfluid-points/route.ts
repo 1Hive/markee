@@ -1,7 +1,7 @@
 /**
  * GET /api/cron/superfluid-points
  *
- * Vercel cron job — runs every hour.
+ * Vercel cron job — runs every hour
  * Authoritative source of truth for Superfluid campaign points.
  * Works regardless of which frontend the user transacted on.
  *
