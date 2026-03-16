@@ -7,7 +7,15 @@ import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy } from 'l
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import type { Markee } from '@/types'
+
+// Strategies where fund events earn Superfluid campaign points.
+// Any other partner strategy is ignored.
+const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
+  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg
+  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // LeaderboardFactory
+])
 
 interface TopDawgModalProps {
   isOpen: boolean
@@ -43,7 +51,9 @@ export function TopDawgModal({
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+
+  const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
 
   // Get user's ETH balance
   const { data: balanceData } = useBalance({
@@ -198,9 +208,6 @@ export function TopDawgModal({
   // ---------------------------------------------------------------------------
 
   // Reset form state when modal opens/closes or mode changes.
-  // IMPORTANT: intentionally excludes hasCompetition/takeFirstAmountFormatted/minimumAmountFormatted
-  // from deps — including them caused the amount field to reset while the user was typing
-  // because those values recompute whenever topFundsAdded refreshes.
   useEffect(() => {
     if (!isOpen) return
     if (initialMode) {
@@ -217,7 +224,6 @@ export function TopDawgModal({
   }, [userMarkee, initialMode, isOpen, reset])
 
   // Set the default amount only when the modal first opens.
-  // Runs once on open, not on every data refresh.
   useEffect(() => {
     if (!isOpen) return
     if (hasCompetition && takeFirstAmountFormatted) {
@@ -242,6 +248,26 @@ export function TopDawgModal({
       }, 2000)
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
+
+  // Track Superfluid points after confirmed transaction.
+  // Only fires for the two Superfluid strategy addresses — other partners are ignored.
+  useEffect(() => {
+    if (!isSuccess || !receipt || !address || !strategyAddress || activeTab === 'updateMessage') return
+
+    const normalised = strategyAddress.toLowerCase()
+    if (!SUPERFLUID_STRATEGY_ADDRESSES.has(normalised)) return
+
+    const txHash = receipt.transactionHash
+    const amountWei = parseEther(amount).toString()
+
+    if (activeTab === 'addFunds') {
+      trackAddFunds(address, amountWei, txHash).catch(console.error)
+    } else {
+      trackBuyMessage(address, amountWei, txHash).catch(console.error)
+    }
+  // amount is intentionally captured at confirmation time — do not add to deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, receipt, address])
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -476,8 +502,8 @@ export function TopDawgModal({
           </h2>
           <button
             onClick={onClose}
-            className="text-[#8A8FBF] hover:text-[#EDEEFF] transition"
             disabled={isPending || isConfirming}
+            className="text-[#8A8FBF] hover:text-[#EDEEFF] transition"
           >
             <X size={24} />
           </button>
@@ -639,8 +665,6 @@ export function TopDawgModal({
               {/* Add Funds */}
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
-
-
                   {amountSelectorJSX}
 
                   {/* Token/Partner Distribution Display */}
