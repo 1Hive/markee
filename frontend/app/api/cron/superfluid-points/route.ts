@@ -41,8 +41,8 @@ const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY
 const MARKEE_FARCASTER_FID = process.env.MARKEE_FARCASTER_FID
 
 // KV keys
-const KV_LAST_BLOCK = 'superfluid:cron:lastBlock'          // last processed block number
-const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'    // superfluid:farcaster:fid:{fid} → address
+const KV_LAST_BLOCK = 'superfluid:cron:lastBlock'       // last processed block number
+const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:' // superfluid:farcaster:fid:{fid} → address
 
 const API_BATCH_SIZE = 100 // Superfluid API max per push request
 const SUBGRAPH_PAGE_SIZE = 1000
@@ -90,10 +90,16 @@ async function fetchNewFundsEvents(afterBlock: number): Promise<FundsAddedEvent[
   const all: FundsAddedEvent[] = []
   let skip = 0
 
+  // Build headers once — include Graph auth token if available
+  const subgraphHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (process.env.NEXT_PUBLIC_GRAPH_TOKEN) {
+    subgraphHeaders['Authorization'] = `Bearer ${process.env.NEXT_PUBLIC_GRAPH_TOKEN}`
+  }
+
   while (true) {
     const res = await fetch(SUBGRAPH_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: subgraphHeaders,
       body: JSON.stringify({
         query: FUNDS_ADDED_QUERY,
         variables: {
@@ -225,10 +231,8 @@ export async function GET(req: NextRequest) {
 
     if (events.length > 0) {
       const pushInputs: PushEventInput[] = events.map(e => ({
-        // Classify as buy_message (initial creation) or add_funds.
-        // Both earn identical points so the label is for CMS reporting only.
         // We use add_funds for all since buy_message isn't distinguishable here
-        // without joining against MarkeeCreated events.
+        // without joining against MarkeeCreated events. Both earn identical points.
         event: 'ADD_FUNDS' as const,
         account: e.addedBy.toLowerCase(),
         points: ethToPoints(e.amount),
@@ -275,7 +279,7 @@ export async function GET(req: NextRequest) {
           account: address,
           points: 1,
           // FID-scoped uniqueId: if they unfollow and refollow,
-          // the Superfluid API will deduplicate using this uniqueId.
+          // the Superfluid API deduplicates using this.
           uniqueId: `fid:${follower.fid}`,
         })
 
