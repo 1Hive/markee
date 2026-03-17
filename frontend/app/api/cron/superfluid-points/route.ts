@@ -219,6 +219,8 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
   const followers: WarpcastFollower[] = []
   let cursor: string | undefined
 
+  console.log(`[cron] Farcaster: API key present: ${!!FARCASTER_API_KEY}, FID: ${MARKEE_FARCASTER_FID}`)
+
   while (true) {
     const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
     const res = await fetch(url, {
