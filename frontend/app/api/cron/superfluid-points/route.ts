@@ -228,7 +228,7 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
   let cursor: string | undefined
 
   while (true) {
-    const url = `https://api.warpcast.com/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
+    const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
     const res = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
@@ -256,8 +256,13 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
 async function fetchUserAddress(fid: number): Promise<string | null> {
   try {
     const res = await fetch(
-      `https://api.warpcast.com/v2/user-by-fid?fid=${fid}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      `https://api.farcaster.xyz/v2/user-by-fid?fid=${fid}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(FARCASTER_API_KEY ? { 'Authorization': `Bearer ${FARCASTER_API_KEY}` } : {}),
+        },
+      }
     )
     if (!res.ok) return null
 
