@@ -208,7 +208,7 @@ async function fetchRpcEvents(
   return all
 }
 
-// ─── 3. Farcaster (Warpcast public API, no key required) ─────────────────────
+// ─── 3. Farcaster (api.farcaster.xyz — requires FARCASTER_API_KEY) ───────────
 //
 // Two-step process:
 //   1. GET /v2/followers → returns FIDs + usernames (no wallet addresses)
@@ -324,7 +324,7 @@ export async function GET(req: NextRequest) {
     const lastBlockRaw = await kv.get<number | string>(KV_SUBGRAPH_LAST_BLOCK)
     const lastBlock = lastBlockRaw ? Number(lastBlockRaw) : 0
     console.log(`[cron] Legacy: fetching after block ${lastBlock}`)
-    
+
     const events = await fetchSubgraphEvents(lastBlock)
     results.legacy.fetched = events.length
     console.log(`[cron] Legacy: found ${events.length} events`)
