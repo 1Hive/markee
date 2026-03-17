@@ -150,6 +150,11 @@ function getRpcClient() {
   return createPublicClient({ chain: base, transport: http(ALCHEMY_URL) })
 }
 
+// Public Base RPC for getLogs — no block range restrictions unlike Alchemy free tier
+function getLogsClient() {
+  return createPublicClient({ chain: base, transport: http('https://mainnet.base.org') })
+}
+
 async function fetchLeaderboardAddresses(): Promise<string[]> {
   const client = getRpcClient()
   const addresses = await client.readContract({
@@ -175,39 +180,26 @@ async function fetchRpcEvents(
   toBlock: bigint,
 ): Promise<RpcFundsEvent[]> {
   if (leaderboardAddresses.length === 0) return []
-  const client = getRpcClient()
 
-  // Alchemy free tier limits eth_getLogs to a small block range per request.
-  // Chunk into 2000-block pages to stay within limits.
-  const CHUNK_SIZE = 2000n
-  const all: RpcFundsEvent[] = []
-  let start = fromBlock
+  // Use public Base RPC for getLogs — no block range restrictions
+  const client = getLogsClient()
 
-  while (start <= toBlock) {
-    const end = start + CHUNK_SIZE - 1n > toBlock ? toBlock : start + CHUNK_SIZE - 1n
+  const logs = await client.getLogs({
+    address: leaderboardAddresses as `0x${string}`[],
+    event: FUNDS_ADDED_EVENT,
+    fromBlock,
+    toBlock,
+  })
 
-    const logs = await client.getLogs({
-      address: leaderboardAddresses as `0x${string}`[],
-      event: FUNDS_ADDED_EVENT,
-      fromBlock: start,
-      toBlock: end,
-    })
-
-    const events = logs
-      .filter(log => log.transactionHash && log.blockNumber !== null)
-      .map(log => ({
-        addedBy: ((log.args as any).addedBy as string).toLowerCase(),
-        amount: (log.args as any).amount as bigint,
-        transactionHash: log.transactionHash!,
-        blockNumber: log.blockNumber!,
-        logIndex: log.logIndex ?? 0,
-      }))
-
-    all.push(...events)
-    start = end + 1n
-  }
-
-  return all
+  return logs
+    .filter(log => log.transactionHash && log.blockNumber !== null)
+    .map(log => ({
+      addedBy: ((log.args as any).addedBy as string).toLowerCase(),
+      amount: (log.args as any).amount as bigint,
+      transactionHash: log.transactionHash!,
+      blockNumber: log.blockNumber!,
+      logIndex: log.logIndex ?? 0,
+    }))
 }
 
 // ─── 3. Farcaster (Warpcast public API, no key required) ─────────────────────
@@ -361,7 +353,7 @@ export async function GET(req: NextRequest) {
       console.log(`[cron] Factory: ${leaderboardAddresses.length} leaderboard(s)`)
 
       if (leaderboardAddresses.length > 0) {
-        const client = getRpcClient()
+        const client = getLogsClient()
         const latestBlock = await client.getBlockNumber()
 
         const storedBlock = await kv.get<string>(KV_RPC_LAST_BLOCK)
