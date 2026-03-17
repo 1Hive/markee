@@ -177,22 +177,37 @@ async function fetchRpcEvents(
   if (leaderboardAddresses.length === 0) return []
   const client = getRpcClient()
 
-  const logs = await client.getLogs({
-    address: leaderboardAddresses as `0x${string}`[],
-    event: FUNDS_ADDED_EVENT,
-    fromBlock,
-    toBlock,
-  })
+  // Alchemy free tier limits eth_getLogs to a small block range per request.
+  // Chunk into 2000-block pages to stay within limits.
+  const CHUNK_SIZE = 2000n
+  const all: RpcFundsEvent[] = []
+  let start = fromBlock
 
-  return logs
-    .filter(log => log.transactionHash && log.blockNumber !== null)
-    .map(log => ({
-      addedBy: ((log.args as any).addedBy as string).toLowerCase(),
-      amount: (log.args as any).amount as bigint,
-      transactionHash: log.transactionHash!,
-      blockNumber: log.blockNumber!,
-      logIndex: log.logIndex ?? 0,
-    }))
+  while (start <= toBlock) {
+    const end = start + CHUNK_SIZE - 1n > toBlock ? toBlock : start + CHUNK_SIZE - 1n
+
+    const logs = await client.getLogs({
+      address: leaderboardAddresses as `0x${string}`[],
+      event: FUNDS_ADDED_EVENT,
+      fromBlock: start,
+      toBlock: end,
+    })
+
+    const events = logs
+      .filter(log => log.transactionHash && log.blockNumber !== null)
+      .map(log => ({
+        addedBy: ((log.args as any).addedBy as string).toLowerCase(),
+        amount: (log.args as any).amount as bigint,
+        transactionHash: log.transactionHash!,
+        blockNumber: log.blockNumber!,
+        logIndex: log.logIndex ?? 0,
+      }))
+
+    all.push(...events)
+    start = end + 1n
+  }
+
+  return all
 }
 
 // ─── 3. Farcaster (Warpcast public API, no key required) ─────────────────────
