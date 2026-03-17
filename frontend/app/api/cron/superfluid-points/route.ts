@@ -36,12 +36,6 @@ const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
 // Block the LeaderboardFactory was deployed — avoids scanning from genesis
 const FACTORY_DEPLOY_BLOCK = 43452028n
 
-// Contract addresses that appear as addedBy in events but should never earn points
-const EXCLUDED_ADDRESSES = new Set([
-  LEGACY_TOPDAWG_ADDRESS,
-  LEADERBOARD_FACTORY_ADDRESS,
-])
-
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const SUBGRAPH_URL =
@@ -50,6 +44,7 @@ const SUBGRAPH_URL =
 
 const ALCHEMY_URL = process.env.ALCHEMY_BASE_URL
 const MARKEE_FARCASTER_FID = process.env.MARKEE_FARCASTER_FID
+const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY
 
 // ─── KV keys ─────────────────────────────────────────────────────────────────
 
@@ -223,6 +218,7 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (compatible; Markee/1.0; +https://markee.xyz)',
+        ...(FARCASTER_API_KEY ? { 'Authorization': `Bearer ${FARCASTER_API_KEY}` } : {}),
       },
     })
 
@@ -316,7 +312,7 @@ export async function GET(req: NextRequest) {
 
     if (events.length > 0) {
       const pushInputs: PushEventInput[] = events
-        .filter(e => !EXCLUDED_ADDRESSES.has(e.addedBy.toLowerCase()))
+        .filter(e => e.addedBy.toLowerCase() !== e.markee.pricingStrategy.toLowerCase())
         .map(e => ({
           event: 'ADD_FUNDS' as const,
           account: e.addedBy.toLowerCase(),
@@ -360,7 +356,7 @@ export async function GET(req: NextRequest) {
 
         if (events.length > 0) {
           const pushInputs: PushEventInput[] = events
-            .filter(e => !EXCLUDED_ADDRESSES.has(e.addedBy))
+            .filter(e => !leaderboardAddresses.includes(e.addedBy))
             .map(e => ({
               event: 'ADD_FUNDS' as const,
               account: e.addedBy,
