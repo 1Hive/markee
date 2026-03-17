@@ -321,9 +321,10 @@ export async function GET(req: NextRequest) {
   // ── 1. Legacy TopDawg via subgraph ────────────────────────────────────────
 
   try {
-    const lastBlock = (await kv.get<number>(KV_SUBGRAPH_LAST_BLOCK)) ?? 0
+    const lastBlockRaw = await kv.get<number | string>(KV_SUBGRAPH_LAST_BLOCK)
+    const lastBlock = lastBlockRaw ? Number(lastBlockRaw) : 0
     console.log(`[cron] Legacy: fetching after block ${lastBlock}`)
-
+    
     const events = await fetchSubgraphEvents(lastBlock)
     results.legacy.fetched = events.length
     console.log(`[cron] Legacy: found ${events.length} events`)
