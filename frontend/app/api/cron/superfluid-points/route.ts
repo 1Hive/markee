@@ -181,25 +181,36 @@ async function fetchRpcEvents(
 ): Promise<RpcFundsEvent[]> {
   if (leaderboardAddresses.length === 0) return []
 
-  // Use public Base RPC for getLogs — no block range restrictions
   const client = getLogsClient()
+  const CHUNK_SIZE = 9000n
+  const all: RpcFundsEvent[] = []
+  let start = fromBlock
 
-  const logs = await client.getLogs({
-    address: leaderboardAddresses as `0x${string}`[],
-    event: FUNDS_ADDED_EVENT,
-    fromBlock,
-    toBlock,
-  })
+  while (start <= toBlock) {
+    const end = start + CHUNK_SIZE - 1n > toBlock ? toBlock : start + CHUNK_SIZE - 1n
 
-  return logs
-    .filter(log => log.transactionHash && log.blockNumber !== null)
-    .map(log => ({
-      addedBy: ((log.args as any).addedBy as string).toLowerCase(),
-      amount: (log.args as any).amount as bigint,
-      transactionHash: log.transactionHash!,
-      blockNumber: log.blockNumber!,
-      logIndex: log.logIndex ?? 0,
-    }))
+    const logs = await client.getLogs({
+      address: leaderboardAddresses as `0x${string}`[],
+      event: FUNDS_ADDED_EVENT,
+      fromBlock: start,
+      toBlock: end,
+    })
+
+    all.push(...logs
+      .filter(log => log.transactionHash && log.blockNumber !== null)
+      .map(log => ({
+        addedBy: ((log.args as any).addedBy as string).toLowerCase(),
+        amount: (log.args as any).amount as bigint,
+        transactionHash: log.transactionHash!,
+        blockNumber: log.blockNumber!,
+        logIndex: log.logIndex ?? 0,
+      }))
+    )
+
+    start = end + 1n
+  }
+
+  return all
 }
 
 // ─── 3. Farcaster (Warpcast public API, no key required) ─────────────────────
@@ -219,15 +230,13 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
   const followers: WarpcastFollower[] = []
   let cursor: string | undefined
 
-  console.log(`[cron] Farcaster: API key present: ${!!FARCASTER_API_KEY}, FID: ${MARKEE_FARCASTER_FID}`)
-
   while (true) {
     const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
     const res = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (compatible; Markee/1.0; +https://markee.xyz)',
-        ...(FARCASTER_API_KEY ? { 'Authorization': `Bearer ${FARCASTER_API_KEY}` } : {}),
+        ...(FARCASTER_API_KEY ? { 'Authorization': FARCASTER_API_KEY } : {}),
       },
     })
 
@@ -254,7 +263,7 @@ async function fetchUserAddress(fid: number): Promise<string | null> {
       {
         headers: {
           'Content-Type': 'application/json',
-          ...(FARCASTER_API_KEY ? { 'Authorization': `Bearer ${FARCASTER_API_KEY}` } : {}),
+          ...(FARCASTER_API_KEY ? { 'Authorization': FARCASTER_API_KEY } : {}),
         },
       }
     )
