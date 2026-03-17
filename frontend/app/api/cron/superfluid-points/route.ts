@@ -201,17 +201,20 @@ async function fetchRpcEvents(
 }
 
 // ─── 3. Farcaster (Warpcast public API, no key required) ─────────────────────
+//
+// Two-step process:
+//   1. GET /v2/followers → returns FIDs + usernames (no wallet addresses)
+//   2. GET /v2/user-by-fid per FID → returns verifiedAddresses + custodyAddress
 
-interface WarpcastUser {
+interface WarpcastFollower {
   fid: number
-  custodyAddress: string
-  verifications: string[]
+  username: string
 }
 
-async function fetchMarkeeFollowers(): Promise<WarpcastUser[]> {
+async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
   if (!MARKEE_FARCASTER_FID) return []
 
-  const followers: WarpcastUser[] = []
+  const followers: WarpcastFollower[] = []
   let cursor: string | undefined
 
   while (true) {
@@ -219,13 +222,13 @@ async function fetchMarkeeFollowers(): Promise<WarpcastUser[]> {
     const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } })
 
     if (!res.ok) {
-      console.error('[cron/superfluid-points] Warpcast error:', res.status)
+      console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
       break
     }
 
     const data = await res.json()
-    const users: WarpcastUser[] = data?.result?.users ?? []
-    followers.push(...users)
+    const users = data?.result?.users ?? []
+    followers.push(...users.map((u: any) => ({ fid: u.fid, username: u.username ?? '' })))
 
     cursor = data?.result?.next?.cursor
     if (!cursor) break
@@ -234,10 +237,27 @@ async function fetchMarkeeFollowers(): Promise<WarpcastUser[]> {
   return followers
 }
 
-function primaryAddressForFollower(user: WarpcastUser): string | null {
-  if (user.verifications?.length > 0) return user.verifications[0].toLowerCase()
-  if (user.custodyAddress?.startsWith('0x')) return user.custodyAddress.toLowerCase()
-  return null
+async function fetchUserAddress(fid: number): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://api.warpcast.com/v2/user-by-fid?fid=${fid}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    )
+    if (!res.ok) return null
+
+    const data = await res.json()
+    const user = data?.result?.user ?? {}
+
+    // Prefer verified ETH addresses, fall back to custody address
+    const verified: string[] = user.verifiedAddresses?.eth_addresses ?? user.verifications ?? []
+    if (verified.length > 0) return verified[0].toLowerCase()
+    if (typeof user.custodyAddress === 'string' && user.custodyAddress.startsWith('0x')) {
+      return user.custodyAddress.toLowerCase()
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 // ─── Batch push helper ────────────────────────────────────────────────────────
@@ -362,19 +382,20 @@ export async function GET(req: NextRequest) {
 
   if (MARKEE_FARCASTER_FID) {
     try {
-      const followers = await fetchMarkeeFollowers()
+      const followers = await fetchMarkeeFollowerFids()
       results.farcaster.followers = followers.length
       console.log(`[cron] Farcaster: ${followers.length} followers`)
 
       const followPushInputs: PushEventInput[] = []
 
       for (const follower of followers) {
-        const address = primaryAddressForFollower(follower)
-        if (!address) continue
-
         const kvKey = `${KV_FARCASTER_PREFIX}${follower.fid}`
         const alreadyAwarded = await kv.get(kvKey)
         if (alreadyAwarded) continue
+
+        // Fetch wallet address for this FID
+        const address = await fetchUserAddress(follower.fid)
+        if (!address) continue
 
         followPushInputs.push({
           event: 'FARCASTER_FOLLOW' as const,
@@ -383,7 +404,11 @@ export async function GET(req: NextRequest) {
           uniqueId: `fid:${follower.fid}`,
         })
 
+        // Mark as awarded — permanent, survives unfollow/refollow
         await kv.set(kvKey, address, { ex: 60 * 60 * 24 * 365 })
+
+        // Small delay to avoid hammering Warpcast
+        await new Promise(r => setTimeout(r, 100))
       }
 
       if (followPushInputs.length > 0) {
