@@ -125,17 +125,17 @@ async function fetchNewFundsEvents(afterBlock: number): Promise<FundsAddedEvent[
 
 // ─── Farcaster helpers ────────────────────────────────────────────────────────
 
-interface NeynarFollower {
+interface WarpcastUser {
   fid: number
-  custody_address: string
-  verified_addresses: { eth_addresses: string[] }
+  custodyAddress: string
+  verifications: string[]
 }
 
-async function fetchMarkeeFollowers(): Promise<NeynarFollower[]> {
-  if (!NEYNAR_API_KEY || !MARKEE_FARCASTER_FID) return []
+async function fetchMarkeeFollowers(): Promise<WarpcastUser[]> {
+  if (!MARKEE_FARCASTER_FID) return []
 
-  const followers: NeynarFollower[] = []
-  let cursor: string | null = null
+  const followers: WarpcastUser[] = []
+  let cursor: string | undefined
 
   while (true) {
     const params = new URLSearchParams({
@@ -145,20 +145,20 @@ async function fetchMarkeeFollowers(): Promise<NeynarFollower[]> {
     if (cursor) params.set('cursor', cursor)
 
     const res = await fetch(
-      `https://api.neynar.com/v2/farcaster/followers?${params}`,
-      { headers: { 'x-api-key': NEYNAR_API_KEY } }
+      `https://api.warpcast.com/v2/followers?${params}`,
+      { headers: { 'Content-Type': 'application/json' } }
     )
 
     if (!res.ok) {
-      console.error('[cron/superfluid-points] Neynar followers error:', res.status)
+      console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
       break
     }
 
     const data = await res.json()
-    const users: NeynarFollower[] = data?.users ?? []
+    const users: WarpcastUser[] = data?.result?.users ?? []
     followers.push(...users)
 
-    cursor = data?.next?.cursor ?? null
+    cursor = data?.result?.next?.cursor
     if (!cursor) break
   }
 
@@ -166,13 +166,12 @@ async function fetchMarkeeFollowers(): Promise<NeynarFollower[]> {
 }
 
 /**
- * Pick the best wallet address from a Neynar follower.
- * Prefers the first verified ETH address, falls back to custody address.
+ * Pick the best wallet address from a Warpcast user.
+ * Prefers the first verified address, falls back to custody address.
  */
-function primaryAddressForFollower(follower: NeynarFollower): string | null {
-  const verified = follower.verified_addresses?.eth_addresses ?? []
-  if (verified.length > 0) return verified[0].toLowerCase()
-  if (follower.custody_address?.startsWith('0x')) return follower.custody_address.toLowerCase()
+function primaryAddressForFollower(user: WarpcastUser): string | null {
+  if (user.verifications?.length > 0) return user.verifications[0].toLowerCase()
+  if (user.custodyAddress?.startsWith('0x')) return user.custodyAddress.toLowerCase()
   return null
 }
 
