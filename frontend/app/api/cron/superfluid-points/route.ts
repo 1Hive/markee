@@ -1,53 +1,66 @@
 /**
  * GET /api/cron/superfluid-points
  *
- * Vercel cron job — runs every hour
+ * Vercel cron job — runs every hour.
  * Authoritative source of truth for Superfluid campaign points.
  * Works regardless of which frontend the user transacted on.
  *
- * What it does each run:
- *   1. Fetch new FundsAdded events from the subgraph since last run
- *      (cursor stored in KV as the last processed block number)
- *   2. Push points to the Superfluid API — 1 pt per 0.0001 ETH
- *      (txHash as uniqueId — safe to reprocess, API deduplicates)
- *   3. Fetch current followers of Markee on Farcaster via Neynar
- *   4. Award 1 point per unique follower FID not yet awarded
- *      (FID stored in KV to prevent re-awarding on unfollow/refollow)
+ * Two data sources:
  *
- * Scoped strategy contracts (Base):
- *   Legacy TopDawg:       0x7A6CE4d457AC1A31513BDEFf924FF942150D293E
- *   LeaderboardFactory:   0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d
+ * 1. Legacy TopDawg (0x7A6CE4d457AC1A31513BDEFf924FF942150D293E)
+ *    → Subgraph (already indexed, reliable)
+ *
+ * 2. LeaderboardFactory (0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d)
+ *    → RPC via Alchemy: call getLeaderboards() on factory to get child
+ *      strategy addresses, then getLogs for FundsAdded events on each.
+ *      Scales automatically as new leaderboards are created.
+ *
+ * Farcaster: fetch followers of Markee FID via Warpcast public API,
+ * award 1 point per unique FID (deduped in KV, permanent).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
+import { createPublicClient, http, parseAbiItem, type Log } from 'viem'
+import { base } from 'viem/chains'
 import { pushBatch, ethToPoints, type PushEventInput } from '@/lib/superfluid/points'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300 // 5 min — enough for subgraph pagination + Neynar
+export const maxDuration = 300
+
+// ─── Contract addresses ───────────────────────────────────────────────────────
+
+const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
+const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
+
+// Block the LeaderboardFactory was deployed — avoids scanning from genesis
+const FACTORY_DEPLOY_BLOCK = 43452028n
+
+// Contract addresses that appear as addedBy in events but should never earn points
+const EXCLUDED_ADDRESSES = new Set([
+  LEGACY_TOPDAWG_ADDRESS,
+  LEADERBOARD_FACTORY_ADDRESS,
+])
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-
-const SUPERFLUID_STRATEGY_ADDRESSES = [
-  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg
-  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // LeaderboardFactory
-]
 
 const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
   process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE_STUDIO
 
-const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY
+const ALCHEMY_URL = process.env.ALCHEMY_BASE_URL
 const MARKEE_FARCASTER_FID = process.env.MARKEE_FARCASTER_FID
 
-// KV keys
-const KV_LAST_BLOCK = 'superfluid:cron:lastBlock'       // last processed block number
-const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:' // superfluid:farcaster:fid:{fid} → address
+// ─── KV keys ─────────────────────────────────────────────────────────────────
 
-const API_BATCH_SIZE = 100 // Superfluid API max per push request
+const KV_SUBGRAPH_LAST_BLOCK = 'superfluid:cron:lastBlock'    // Legacy TopDawg cursor
+const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'      // LeaderboardFactory cursor
+const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'
+
+const API_BATCH_SIZE = 100
 const SUBGRAPH_PAGE_SIZE = 1000
 
-// ─── Subgraph query ───────────────────────────────────────────────────────────
+// ─── 1. Subgraph (Legacy TopDawg) ────────────────────────────────────────────
 
 const FUNDS_ADDED_QUERY = `
   query FundsAddedSince($strategies: [String!]!, $afterBlock: BigInt!, $skip: Int!) {
@@ -66,44 +79,38 @@ const FUNDS_ADDED_QUERY = `
       amount
       transactionHash
       blockNumber
-      timestamp
-      markee {
-        pricingStrategy
-      }
+      markee { pricingStrategy }
     }
   }
 `
 
-interface FundsAddedEvent {
+interface SubgraphFundsEvent {
   id: string
   addedBy: string
   amount: string
   transactionHash: string
   blockNumber: string
-  timestamp: string
   markee: { pricingStrategy: string }
 }
 
-async function fetchNewFundsEvents(afterBlock: number): Promise<FundsAddedEvent[]> {
+async function fetchSubgraphEvents(afterBlock: number): Promise<SubgraphFundsEvent[]> {
   if (!SUBGRAPH_URL) throw new Error('NEXT_PUBLIC_SUBGRAPH_URL_BASE is not set')
 
-  const all: FundsAddedEvent[] = []
-  let skip = 0
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const graphToken = process.env.GRAPH_TOKEN || process.env.NEXT_PUBLIC_GRAPH_TOKEN
+  if (graphToken) headers['Authorization'] = `Bearer ${graphToken}`
 
-  // Build headers once — include Graph auth token if available
-  const subgraphHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (process.env.NEXT_PUBLIC_GRAPH_TOKEN) {
-    subgraphHeaders['Authorization'] = `Bearer ${process.env.NEXT_PUBLIC_GRAPH_TOKEN}`
-  }
+  const all: SubgraphFundsEvent[] = []
+  let skip = 0
 
   while (true) {
     const res = await fetch(SUBGRAPH_URL, {
       method: 'POST',
-      headers: subgraphHeaders,
+      headers,
       body: JSON.stringify({
         query: FUNDS_ADDED_QUERY,
         variables: {
-          strategies: SUPERFLUID_STRATEGY_ADDRESSES,
+          strategies: [LEGACY_TOPDAWG_ADDRESS],
           afterBlock: String(afterBlock),
           skip,
         },
@@ -113,7 +120,7 @@ async function fetchNewFundsEvents(afterBlock: number): Promise<FundsAddedEvent[
     const json = await res.json()
     if (json.errors) throw new Error(`Subgraph error: ${json.errors[0].message}`)
 
-    const page: FundsAddedEvent[] = json.data?.fundsAddeds ?? []
+    const page: SubgraphFundsEvent[] = json.data?.fundsAddeds ?? []
     all.push(...page)
 
     if (page.length < SUBGRAPH_PAGE_SIZE) break
@@ -123,7 +130,77 @@ async function fetchNewFundsEvents(afterBlock: number): Promise<FundsAddedEvent[
   return all
 }
 
-// ─── Farcaster helpers ────────────────────────────────────────────────────────
+// ─── 2. RPC (LeaderboardFactory children) ────────────────────────────────────
+
+// New Leaderboard.sol FundsAdded signature — different from legacy Markee.sol
+const FUNDS_ADDED_EVENT = parseAbiItem(
+  'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
+)
+
+const FACTORY_ABI = [
+  {
+    inputs: [
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
+    ],
+    name: 'getLeaderboards',
+    outputs: [{ name: 'result', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
+function getRpcClient() {
+  if (!ALCHEMY_URL) throw new Error('ALCHEMY_BASE_URL is not set')
+  return createPublicClient({ chain: base, transport: http(ALCHEMY_URL) })
+}
+
+async function fetchLeaderboardAddresses(): Promise<string[]> {
+  const client = getRpcClient()
+  const addresses = await client.readContract({
+    address: LEADERBOARD_FACTORY_ADDRESS as `0x${string}`,
+    abi: FACTORY_ABI,
+    functionName: 'getLeaderboards',
+    args: [0n, 1000n],
+  })
+  return (addresses as string[]).map(a => a.toLowerCase())
+}
+
+interface RpcFundsEvent {
+  addedBy: string
+  amount: bigint
+  transactionHash: string
+  blockNumber: bigint
+  logIndex: number
+}
+
+async function fetchRpcEvents(
+  leaderboardAddresses: string[],
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<RpcFundsEvent[]> {
+  if (leaderboardAddresses.length === 0) return []
+  const client = getRpcClient()
+
+  const logs: Log[] = await client.getLogs({
+    address: leaderboardAddresses as `0x${string}`[],
+    event: FUNDS_ADDED_EVENT,
+    fromBlock,
+    toBlock,
+  })
+
+  return logs
+    .filter(log => log.transactionHash && log.blockNumber !== null)
+    .map(log => ({
+      addedBy: ((log.args as any).addedBy as string).toLowerCase(),
+      amount: (log.args as any).amount as bigint,
+      transactionHash: log.transactionHash!,
+      blockNumber: log.blockNumber!,
+      logIndex: log.logIndex ?? 0,
+    }))
+}
+
+// ─── 3. Farcaster (Warpcast public API, no key required) ─────────────────────
 
 interface WarpcastUser {
   fid: number
@@ -138,19 +215,11 @@ async function fetchMarkeeFollowers(): Promise<WarpcastUser[]> {
   let cursor: string | undefined
 
   while (true) {
-    const params = new URLSearchParams({
-      fid: MARKEE_FARCASTER_FID,
-      limit: '100',
-    })
-    if (cursor) params.set('cursor', cursor)
-
-    const res = await fetch(
-      `https://api.warpcast.com/v2/followers?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
-    )
+    const url = `https://api.warpcast.com/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
+    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } })
 
     if (!res.ok) {
-      console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
+      console.error('[cron/superfluid-points] Warpcast error:', res.status)
       break
     }
 
@@ -165,10 +234,6 @@ async function fetchMarkeeFollowers(): Promise<WarpcastUser[]> {
   return followers
 }
 
-/**
- * Pick the best wallet address from a Warpcast user.
- * Prefers the first verified address, falls back to custody address.
- */
 function primaryAddressForFollower(user: WarpcastUser): string | null {
   if (user.verifications?.length > 0) return user.verifications[0].toLowerCase()
   if (user.custodyAddress?.startsWith('0x')) return user.custodyAddress.toLowerCase()
@@ -177,10 +242,7 @@ function primaryAddressForFollower(user: WarpcastUser): string | null {
 
 // ─── Batch push helper ────────────────────────────────────────────────────────
 
-async function pushInBatches(events: PushEventInput[]): Promise<{
-  pushed: number
-  failed: number
-}> {
+async function pushInBatches(events: PushEventInput[]): Promise<{ pushed: number; failed: number }> {
   let pushed = 0
   let failed = 0
 
@@ -193,7 +255,6 @@ async function pushInBatches(events: PushEventInput[]): Promise<{
       failed += batch.length
       console.error('[cron/superfluid-points] Batch push failed:', result.error)
     }
-    // Small delay between batches to be a good API citizen
     if (i + API_BATCH_SIZE < events.length) {
       await new Promise(r => setTimeout(r, 300))
     }
@@ -202,10 +263,9 @@ async function pushInBatches(events: PushEventInput[]): Promise<{
   return { pushed, failed }
 }
 
-// ─── Cron handler ─────────────────────────────────────────────────────────────
+// ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  // Vercel cron authentication
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -213,54 +273,98 @@ export async function GET(req: NextRequest) {
 
   const startTime = Date.now()
   const results = {
-    fundsEvents: { fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
+    legacy: { fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
+    factory: { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
     farcaster: { followers: 0, newAwards: 0, failed: 0 },
     durationMs: 0,
   }
 
-  // ── 1. Fund events ──────────────────────────────────────────────────────────
+  // ── 1. Legacy TopDawg via subgraph ────────────────────────────────────────
 
   try {
-    const lastBlock = (await kv.get<number>(KV_LAST_BLOCK)) ?? 0
-    console.log(`[cron/superfluid-points] Fetching FundsAdded events after block ${lastBlock}`)
+    const lastBlock = (await kv.get<number>(KV_SUBGRAPH_LAST_BLOCK)) ?? 0
+    console.log(`[cron] Legacy: fetching after block ${lastBlock}`)
 
-    const events = await fetchNewFundsEvents(lastBlock)
-    results.fundsEvents.fetched = events.length
-    console.log(`[cron/superfluid-points] Found ${events.length} new events`)
+    const events = await fetchSubgraphEvents(lastBlock)
+    results.legacy.fetched = events.length
+    console.log(`[cron] Legacy: found ${events.length} events`)
 
     if (events.length > 0) {
-      const pushInputs: PushEventInput[] = events.map(e => ({
-        // We use add_funds for all since buy_message isn't distinguishable here
-        // without joining against MarkeeCreated events. Both earn identical points.
-        event: 'ADD_FUNDS' as const,
-        account: e.addedBy.toLowerCase(),
-        points: ethToPoints(e.amount),
-        // txHash + logIndex suffix guarantees uniqueness within a tx that emits
-        // multiple FundsAdded events (e.g. batch operations)
-        uniqueId: `${e.transactionHash}-${e.id.split('-').pop()}`,
-      }))
+      const pushInputs: PushEventInput[] = events
+        .filter(e => !EXCLUDED_ADDRESSES.has(e.addedBy.toLowerCase()))
+        .map(e => ({
+          event: 'ADD_FUNDS' as const,
+          account: e.addedBy.toLowerCase(),
+          points: ethToPoints(e.amount),
+          uniqueId: `${e.transactionHash}-${e.id.split('-').pop()}`,
+        }))
 
       const { pushed, failed } = await pushInBatches(pushInputs)
-      results.fundsEvents.pushed = pushed
-      results.fundsEvents.failed = failed
+      results.legacy.pushed = pushed
+      results.legacy.failed = failed
 
-      // Advance cursor to the highest block we processed
       const highestBlock = Math.max(...events.map(e => parseInt(e.blockNumber, 10)))
-      await kv.set(KV_LAST_BLOCK, highestBlock)
-      results.fundsEvents.newHighBlock = highestBlock
+      await kv.set(KV_SUBGRAPH_LAST_BLOCK, highestBlock)
+      results.legacy.newHighBlock = highestBlock
     }
   } catch (e: any) {
-    console.error('[cron/superfluid-points] Fund events error:', e.message)
-    // Don't return early — still try Farcaster
+    console.error('[cron] Legacy subgraph error:', e.message)
   }
 
-  // ── 2. Farcaster follows ────────────────────────────────────────────────────
+  // ── 2. LeaderboardFactory children via RPC ────────────────────────────────
 
-  if (NEYNAR_API_KEY && MARKEE_FARCASTER_FID) {
+  if (ALCHEMY_URL) {
+    try {
+      const leaderboardAddresses = await fetchLeaderboardAddresses()
+      results.factory.leaderboards = leaderboardAddresses.length
+      console.log(`[cron] Factory: ${leaderboardAddresses.length} leaderboard(s)`)
+
+      if (leaderboardAddresses.length > 0) {
+        const client = getRpcClient()
+        const latestBlock = await client.getBlockNumber()
+
+        const storedBlock = await kv.get<string>(KV_RPC_LAST_BLOCK)
+        const fromBlock = storedBlock ? BigInt(storedBlock) : FACTORY_DEPLOY_BLOCK
+        const toBlock = latestBlock
+
+        console.log(`[cron] Factory: getLogs from ${fromBlock} to ${toBlock}`)
+
+        const events = await fetchRpcEvents(leaderboardAddresses, fromBlock, toBlock)
+        results.factory.fetched = events.length
+        console.log(`[cron] Factory: found ${events.length} events`)
+
+        if (events.length > 0) {
+          const pushInputs: PushEventInput[] = events
+            .filter(e => !EXCLUDED_ADDRESSES.has(e.addedBy))
+            .map(e => ({
+              event: 'ADD_FUNDS' as const,
+              account: e.addedBy,
+              points: ethToPoints(e.amount),
+              uniqueId: `${e.transactionHash}-${e.logIndex}`,
+            }))
+
+          const { pushed, failed } = await pushInBatches(pushInputs)
+          results.factory.pushed = pushed
+          results.factory.failed = failed
+        }
+
+        await kv.set(KV_RPC_LAST_BLOCK, toBlock.toString())
+        results.factory.newHighBlock = Number(toBlock)
+      }
+    } catch (e: any) {
+      console.error('[cron] Factory RPC error:', e.message)
+    }
+  } else {
+    console.log('[cron] Skipping factory — ALCHEMY_BASE_URL not set')
+  }
+
+  // ── 3. Farcaster follows ──────────────────────────────────────────────────
+
+  if (MARKEE_FARCASTER_FID) {
     try {
       const followers = await fetchMarkeeFollowers()
       results.farcaster.followers = followers.length
-      console.log(`[cron/superfluid-points] ${followers.length} Markee followers on Farcaster`)
+      console.log(`[cron] Farcaster: ${followers.length} followers`)
 
       const followPushInputs: PushEventInput[] = []
 
@@ -268,7 +372,6 @@ export async function GET(req: NextRequest) {
         const address = primaryAddressForFollower(follower)
         if (!address) continue
 
-        // Check if this FID has already been awarded
         const kvKey = `${KV_FARCASTER_PREFIX}${follower.fid}`
         const alreadyAwarded = await kv.get(kvKey)
         if (alreadyAwarded) continue
@@ -277,30 +380,27 @@ export async function GET(req: NextRequest) {
           event: 'FARCASTER_FOLLOW' as const,
           account: address,
           points: 1,
-          // FID-scoped uniqueId: if they unfollow and refollow,
-          // the Superfluid API deduplicates using this.
           uniqueId: `fid:${follower.fid}`,
         })
 
-        // Mark as awarded in KV (1 year TTL — effectively permanent)
         await kv.set(kvKey, address, { ex: 60 * 60 * 24 * 365 })
       }
 
       if (followPushInputs.length > 0) {
-        console.log(`[cron/superfluid-points] Awarding ${followPushInputs.length} new Farcaster followers`)
+        console.log(`[cron] Farcaster: awarding ${followPushInputs.length} new followers`)
         const { pushed, failed } = await pushInBatches(followPushInputs)
         results.farcaster.newAwards = pushed
         results.farcaster.failed = failed
       }
     } catch (e: any) {
-      console.error('[cron/superfluid-points] Farcaster error:', e.message)
+      console.error('[cron] Farcaster error:', e.message)
     }
   } else {
-    console.log('[cron/superfluid-points] Skipping Farcaster — NEYNAR_API_KEY or MARKEE_FARCASTER_FID not set')
+    console.log('[cron] Skipping Farcaster — MARKEE_FARCASTER_FID not set')
   }
 
   results.durationMs = Date.now() - startTime
-  console.log('[cron/superfluid-points] Done:', results)
+  console.log('[cron] Done:', results)
 
   return NextResponse.json({ ok: true, ...results })
 }
