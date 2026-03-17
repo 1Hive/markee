@@ -219,7 +219,12 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
 
   while (true) {
     const url = `https://api.warpcast.com/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
-    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } })
+    const res = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; Markee/1.0; +https://markee.xyz)',
+      },
+    })
 
     if (!res.ok) {
       console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
@@ -369,7 +374,7 @@ export async function GET(req: NextRequest) {
         }
 
         await kv.set(KV_RPC_LAST_BLOCK, toBlock.toString())
-        results.factory.newHighBlock = Number(toBlock)
+        results.factory.newHighBlock = Number(toBlock.toString())
       }
     } catch (e: any) {
       console.error('[cron] Factory RPC error:', e.message)
