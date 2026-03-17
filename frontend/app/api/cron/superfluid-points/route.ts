@@ -150,11 +150,6 @@ function getRpcClient() {
   return createPublicClient({ chain: base, transport: http(ALCHEMY_URL) })
 }
 
-// Public Base RPC for getLogs — no block range restrictions unlike Alchemy free tier
-function getLogsClient() {
-  return createPublicClient({ chain: base, transport: http('https://mainnet.base.org') })
-}
-
 async function fetchLeaderboardAddresses(): Promise<string[]> {
   const client = getRpcClient()
   const addresses = await client.readContract({
@@ -181,7 +176,7 @@ async function fetchRpcEvents(
 ): Promise<RpcFundsEvent[]> {
   if (leaderboardAddresses.length === 0) return []
 
-  const client = getLogsClient()
+  const client = getRpcClient()
   const CHUNK_SIZE = 9000n
   const all: RpcFundsEvent[] = []
   let start = fromBlock
@@ -231,7 +226,7 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
   let cursor: string | undefined
 
   while (true) {
-    const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=50${cursor ? `&cursor=${cursor}` : ''}`
+    const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
     const res = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
@@ -239,10 +234,9 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
         ...(FARCASTER_API_KEY ? { 'Authorization': FARCASTER_API_KEY } : {}),
       },
     })
-    
+
     if (!res.ok) {
-      const body = await res.text()
-      console.error('[cron/superfluid-points] Warpcast followers error:', res.status, body)
+      console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
       break
     }
 
@@ -365,7 +359,7 @@ export async function GET(req: NextRequest) {
       console.log(`[cron] Factory: ${leaderboardAddresses.length} leaderboard(s)`)
 
       if (leaderboardAddresses.length > 0) {
-        const client = getLogsClient()
+        const client = getRpcClient()
         const latestBlock = await client.getBlockNumber()
 
         const storedBlock = await kv.get<string>(KV_RPC_LAST_BLOCK)
