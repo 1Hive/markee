@@ -21,7 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { createPublicClient, http, parseAbiItem, type Log } from 'viem'
+import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { pushBatch, ethToPoints, type PushEventInput } from '@/lib/superfluid/points'
 
@@ -182,7 +182,7 @@ async function fetchRpcEvents(
   if (leaderboardAddresses.length === 0) return []
   const client = getRpcClient()
 
-  const logs: Log[] = await client.getLogs({
+  const logs = await client.getLogs({
     address: leaderboardAddresses as `0x${string}`[],
     event: FUNDS_ADDED_EVENT,
     fromBlock,
