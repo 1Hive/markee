@@ -231,7 +231,7 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
   let cursor: string | undefined
 
   while (true) {
-    const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=100${cursor ? `&cursor=${cursor}` : ''}`
+    const url = `https://api.farcaster.xyz/v2/followers?fid=${MARKEE_FARCASTER_FID}&limit=50${cursor ? `&cursor=${cursor}` : ''}`
     const res = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
