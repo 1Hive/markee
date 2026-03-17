@@ -239,9 +239,10 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
         ...(FARCASTER_API_KEY ? { 'Authorization': FARCASTER_API_KEY } : {}),
       },
     })
-
+    
     if (!res.ok) {
-      console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
+      const body = await res.text()
+      console.error('[cron/superfluid-points] Warpcast followers error:', res.status, body)
       break
     }
 
