@@ -77,7 +77,7 @@ export async function GET() {
     })
 
     if (count === 0n) {
-      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' })
+      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
     }
 
     // Fetch all leaderboard addresses
@@ -89,7 +89,7 @@ export async function GET() {
     })
 
     if (!addresses || addresses.length === 0) {
-      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' })
+      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
     }
 
     // Multicall — read on-chain metadata for each leaderboard
@@ -190,6 +190,8 @@ export async function GET() {
     return NextResponse.json({
       leaderboards,
       totalPlatformFunds: formatEther(totalPlatformFundsWei),
+    }, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
     })
   } catch (err) {
     console.error('[leaderboards] error:', err)
