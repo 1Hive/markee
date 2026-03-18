@@ -304,7 +304,6 @@ export default function GithubPlatformPage() {
           githubUser={githubUser}
           myLeaderboards={myLeaderboards}
           repos={repos}
-          walletAddress={walletAddress}
           onClose={() => setCreateModalOpen(false)}
           onSuccess={fetchLeaderboards}
           onGithubChange={() => { fetchGithubUser(); fetchRepos() }}
@@ -336,7 +335,8 @@ function LeaderboardCard({
   const buyPriceFormatted = Number(buyPrice) / 1e18
 
   const primaryFile = leaderboard.linkedFiles.find(f => f.verified) ?? leaderboard.linkedFiles[0] ?? null
-  const title = primaryFile?.repoName ?? leaderboard.name
+  // Strip " — filename" suffix from leaderboard name for display
+  const title = primaryFile?.repoName ?? leaderboard.name.split(' — ')[0]
   const avatarUrl = primaryFile?.repoAvatarUrl ?? GITHUB_LOGO
   const repoHtmlUrl = primaryFile?.repoHtmlUrl ?? null
 
@@ -345,6 +345,9 @@ function LeaderboardCard({
   const allFiles = [...liveFiles, ...awaitingFiles]
   const shownFiles = allFiles.slice(0, MAX_FILES_SHOWN)
   const overflowCount = allFiles.length - MAX_FILES_SHOWN
+
+  // Subtract 1 for the seed markee (created at deploy with 0 funds)
+  const displayMessageCount = Math.max(0, leaderboard.markeeCount - 1)
 
   return (
     <div className="relative">
@@ -415,7 +418,7 @@ function LeaderboardCard({
             {formatFunds(leaderboard.totalFunds)} total raised.
           </span>
           <span className="text-[#8A8FBF]">
-            {leaderboard.markeeCount} {leaderboard.markeeCount === 1 ? 'message' : 'messages'}
+            {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
           </span>
         </div>
 
@@ -436,28 +439,22 @@ function LeaderboardCard({
 type ModalView = 'overview' | 'create'
 
 function CreateMarkeeModal({
-  githubUser, myLeaderboards, repos, walletAddress, onClose, onSuccess, onGithubChange,
+  githubUser, myLeaderboards, repos, onClose, onSuccess, onGithubChange,
 }: {
   githubUser: GithubUser
   myLeaderboards: GithubLeaderboard[]
   repos: GithubRepo[]
-  walletAddress?: string
   onClose: () => void
   onSuccess: () => void
   onGithubChange: () => void
 }) {
   const router = useRouter()
   const [view, setView] = useState<ModalView>('overview')
-  const [fileName, setFileName] = useState('')
   const [repoSearch, setRepoSearch] = useState('')
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
   const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null)
-  const [mdFiles, setMdFiles] = useState<string[]>([])
-  const [isLoadingFiles, setIsLoadingFiles] = useState(false)
-  const [fileDropdownOpen, setFileDropdownOpen] = useState(false)
-  const [beneficiary, setBeneficiary] = useState(walletAddress ?? '')
+  const [beneficiary, setBeneficiary] = useState('')
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
-  const [registerError, setRegisterError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { isConnected } = useAccount()
 
@@ -479,38 +476,8 @@ function CreateMarkeeModal({
     }
 
     setNewLeaderboardAddress(foundAddress)
-
-    if (foundAddress && selectedRepo && fileName) {
-      fetch('/api/github/register-markee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaderboardAddress: foundAddress,
-          repoFullName: selectedRepo.fullName,
-          filePath: fileName,
-        }),
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (!data.success) setRegisterError(data.error ?? 'Could not verify repo link')
-          onSuccess()
-        })
-        .catch(() => setRegisterError('Could not reach server to verify repo'))
-    } else {
-      onSuccess()
-    }
-  }, [isSuccess, receipt, selectedRepo, fileName, onSuccess])
-
-  useEffect(() => {
-    if (!selectedRepo) { setMdFiles([]); return }
-    setIsLoadingFiles(true)
-    setFileName('')
-    fetch(`/api/github/repo-files?repo=${encodeURIComponent(selectedRepo.fullName)}`)
-      .then(r => r.json())
-      .then(data => setMdFiles(data.files ?? []))
-      .catch(() => setMdFiles([]))
-      .finally(() => setIsLoadingFiles(false))
-  }, [selectedRepo])
+    onSuccess()
+  }, [isSuccess, receipt, onSuccess])
 
   const handleDisconnect = async () => {
     await fetch('/api/github/me', { method: 'DELETE' })
@@ -520,7 +487,6 @@ function CreateMarkeeModal({
   const handleCreate = () => {
     setError(null)
     if (!selectedRepo) { setError('Select a repo.'); return }
-    if (!fileName.trim()) { setError('Enter a file name.'); return }
     if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
       setError('Enter a valid Ethereum address.')
       return
@@ -529,7 +495,7 @@ function CreateMarkeeModal({
       address: GITHUB_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
       functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, `${selectedRepo.fullName} — ${fileName}`],
+      args: [beneficiary as `0x${string}`, selectedRepo.fullName],
     })
   }
 
@@ -549,21 +515,15 @@ function CreateMarkeeModal({
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
             <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
-            {registerError ? (
-              <div className="w-full bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-xs">
-                ⚠ Repo link could not be verified: {registerError}. The Markee is live but the delimiter check will show "Awaiting Integration" until you add the tags.
-              </div>
-            ) : (
-              <p className="text-[#8A8FBF] text-sm text-center">
-                Linked to <span className="text-[#EDEEFF] font-mono">{selectedRepo?.fullName}</span> — <span className="text-[#7C9CFF] font-mono">{fileName}</span>
-              </p>
-            )}
+            <p className="text-[#8A8FBF] text-sm text-center">
+              Your sign for <span className="text-[#EDEEFF] font-mono">{selectedRepo?.fullName}</span> is live. Add a file integration from the sign's page.
+            </p>
             <div className="flex flex-col gap-3 w-full mt-2">
               <button
                 onClick={() => newLeaderboardAddress && router.push(`/ecosystem/platforms/github/${newLeaderboardAddress}`)}
                 className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
               >
-                View your Markee →
+                Set up integration →
               </button>
               <button onClick={onClose} className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center">
                 Close
@@ -727,52 +687,6 @@ function CreateMarkeeModal({
                   </div>
                 )}
                 <p className="text-[#8A8FBF] text-xs mt-1.5">Repos where you have push access, verified via GitHub.</p>
-              </div>
-
-              <div className="relative">
-                <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">File Name</label>
-                {!selectedRepo ? (
-                  <div className="w-full bg-[#060A2A] border border-[#8A8FBF]/10 rounded-lg px-4 py-3 text-[#8A8FBF]/40 text-sm font-mono cursor-not-allowed">
-                    Select a repo first…
-                  </div>
-                ) : isLoadingFiles ? (
-                  <div className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 flex items-center gap-2 text-[#8A8FBF] text-sm">
-                    <Loader2 size={14} className="animate-spin" />
-                    Loading files…
-                  </div>
-                ) : fileName ? (
-                  <div className="flex items-center justify-between bg-[#060A2A] border border-[#F897FE]/40 rounded-lg px-4 py-3">
-                    <span className="text-[#EDEEFF] text-sm font-mono truncate">{fileName}</span>
-                    <button onClick={() => setFileName('')} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-3 flex-shrink-0">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <button
-                      onClick={() => setFileDropdownOpen(o => !o)}
-                      className="w-full flex items-center justify-between bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/50 rounded-lg px-4 py-3 text-left transition-colors"
-                    >
-                      <span className="text-[#8A8FBF] text-sm font-mono">
-                        {mdFiles.length ? `${mdFiles.length} .md files found — select one` : 'No .md files found'}
-                      </span>
-                      <ChevronRight size={14} className={`text-[#8A8FBF] flex-shrink-0 transition-transform ${fileDropdownOpen ? 'rotate-90' : ''}`} />
-                    </button>
-                    {fileDropdownOpen && mdFiles.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-52 overflow-y-auto">
-                        {mdFiles.map(f => (
-                          <button
-                            key={f}
-                            onClick={() => { setFileName(f); setFileDropdownOpen(false) }}
-                            className="w-full flex items-center px-4 py-2.5 hover:bg-[#F897FE]/10 transition-colors text-left"
-                          >
-                            <span className="text-[#EDEEFF] text-sm font-mono truncate">{f}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               <div>
