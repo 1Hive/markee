@@ -133,18 +133,7 @@ export default function SuperfluidPlatformPage() {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
-      }
-
-      // Fetch featured legacy TopDawg message via server-side proxy to avoid
-      // client-side env var issues with the subgraph URL
-      try {
-        const featRes = await fetch('/api/superfluid/featured-message')
-        if (featRes.ok) {
-          const featData = await featRes.json()
-          if (featData.message) setFeaturedMessage(featData)
-        }
-      } catch (e) {
-        console.error('[superfluid] featured message fetch failed', e)
+        if (data.featuredMessage) setFeaturedMessage(data.featuredMessage)
       }
     } catch (err) {
       console.error(err)
@@ -246,11 +235,11 @@ export default function SuperfluidPlatformPage() {
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt per 0.0001 ETH</span>
+                <span className="text-[#1DB227] font-semibold">1 pt / 0.0001 ETH</span>
                 <span className="text-[#8A8FBF]">funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt per follow</span>
+                <span className="text-[#1DB227] font-semibold">1 pt / follow</span>
                 <span className="text-[#8A8FBF]">on Markee Farcaster</span>
                 <a
                   href="https://farcaster.xyz/markee"
