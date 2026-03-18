@@ -347,13 +347,13 @@ function LeaderboardCard({
   const overflowCount = allFiles.length - MAX_FILES_SHOWN
 
   return (
-    <div className="relative">
+    <div className="group relative">
       {repoHtmlUrl ? (
         <a
           href={repoHtmlUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 group-hover:border-[#F897FE] text-[#8A8FBF] group-hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
           onClick={e => e.stopPropagation()}
         >
           <ExternalLink size={12} />
@@ -363,7 +363,7 @@ function LeaderboardCard({
 
       <div
         onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
-        className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
+        className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 group-hover:border-[#F897FE] transition-colors cursor-pointer ${
           repoHtmlUrl ? 'rounded-t-none rounded-b-lg border-t-0' : 'rounded-lg'
         }`}
       >
