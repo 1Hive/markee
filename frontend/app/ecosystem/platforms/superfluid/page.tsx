@@ -237,11 +237,11 @@ export default function SuperfluidPlatformPage() {
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt per 0.0001 ETH</span>
+                <span className="text-[#1DB227] font-semibold">1 pt / 0.0001 ETH</span>
                 <span className="text-[#8A8FBF]">funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt per follow</span>
+                <span className="text-[#1DB227] font-semibold">1 pt / follow</span>
                 <span className="text-[#8A8FBF]">on Markee Farcaster</span>
                 <a
                   href="https://farcaster.xyz/markee"
@@ -332,7 +332,7 @@ export default function SuperfluidPlatformPage() {
               <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
                 <div
                   className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
-                  onClick={() => window.open('https://www.markee.xyz/ecosystem/superfluid', '_blank')}
+                  onClick={() => window.location.href = 'https://www.markee.xyz/ecosystem/superfluid'}
                 >
                   {/* Message box */}
                   <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
