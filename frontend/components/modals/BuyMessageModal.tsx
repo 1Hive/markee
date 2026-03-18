@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import {
   useWriteContract, useWaitForTransactionReceipt,
-  useAccount, useSwitchChain, useBalance,
+  useAccount, useSwitchChain, useBalance, useReadContract,
 } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -37,6 +37,13 @@ const LEADERBOARD_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  {
+    inputs: [],
+    name: 'beneficiaryAddress',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,8 +70,6 @@ interface BuyMessageModalProps {
    *  - 'superfluid' → tracks Superfluid points via useSuperfluidPoints; skips GitHub write
    */
   platformId?: 'github' | 'superfluid'
-  /** The address that receives 62% of ETH. Shown in the split panel with a Basescan link. */
-  beneficiaryAddress: `0x${string}`
 }
 
 // ─── MARKEE token helpers ─────────────────────────────────────────────────────
@@ -103,12 +108,18 @@ export function BuyMessageModal({
   onClose,
   onSuccess,
   platformId,
-  beneficiaryAddress,
 }: BuyMessageModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const { data: balanceData } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
+
+  const { data: beneficiaryAddress } = useReadContract({
+    address: leaderboardAddress,
+    abi: LEADERBOARD_ABI,
+    functionName: 'beneficiaryAddress',
+    chainId: CANONICAL_CHAIN.id,
+  })
 
   const isUpdateMessage = initialMode === 'updateMessage'
   const isAddFunds = !isUpdateMessage && !!existingMarkee
@@ -309,11 +320,15 @@ export function BuyMessageModal({
   )
 
   // ── Token + beneficiary split display ────────────────────────────────────
-  const shortBeneficiary = `${beneficiaryAddress.slice(0, 6)}…${beneficiaryAddress.slice(-4)}`
-  const basescanUrl = `https://basescan.org/address/${beneficiaryAddress}`
+  const shortBeneficiary = beneficiaryAddress
+    ? `${beneficiaryAddress.slice(0, 6)}…${beneficiaryAddress.slice(-4)}`
+    : null
+  const basescanUrl = beneficiaryAddress
+    ? `https://basescan.org/address/${beneficiaryAddress}`
+    : null
 
   const tokenDisplayJSX = amount && parseFloat(amount) > 0 ? (
-    <div className="grid grid-cols-2 gap-4">
+    <div className={`grid ${beneficiaryAddress ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
       <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
         <p className="text-sm text-[#F897FE] font-medium mb-2">You&apos;ll receive</p>
         <p className="text-4xl font-bold text-[#F897FE] mb-1">
@@ -322,18 +337,20 @@ export function BuyMessageModal({
         <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
       </div>
 
-      <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
-        <p className="text-sm text-[#FFA94D] font-medium mb-2">Beneficiary receives</p>
-        <p className="text-4xl font-bold text-[#FFA94D] mb-1">
-          {(() => {
-            const value = parseFloat(amount) * 0.62
-            if (value === 0) return '0'
-            if (value < 0.00001) return '< 0.00001'
-            return Number(value.toFixed(5)).toString()
-          })()}
-        </p>
-        <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-      </div>
+      {beneficiaryAddress && (
+        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
+          <p className="text-sm text-[#FFA94D] font-medium mb-2">Beneficiary receives</p>
+          <p className="text-4xl font-bold text-[#FFA94D] mb-1">
+            {(() => {
+              const value = parseFloat(amount) * 0.62
+              if (value === 0) return '0'
+              if (value < 0.00001) return '< 0.00001'
+              return Number(value.toFixed(5)).toString()
+            })()}
+          </p>
+          <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
+        </div>
+      )}
     </div>
   ) : null
 
@@ -342,15 +359,19 @@ export function BuyMessageModal({
     <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
       <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
       <div className="flex justify-between items-center">
-        <a
-          href={basescanUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[#EDEEFF] hover:text-[#FFA94D] transition-colors font-mono text-xs"
-        >
-          {shortBeneficiary}
-          <ExternalLink size={11} className="opacity-60" />
-        </a>
+        {beneficiaryAddress && shortBeneficiary && basescanUrl ? (
+          <a
+            href={basescanUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[#EDEEFF] hover:text-[#FFA94D] transition-colors font-mono text-xs"
+          >
+            {shortBeneficiary}
+            <ExternalLink size={11} className="opacity-60" />
+          </a>
+        ) : (
+          <span className="text-[#EDEEFF]">Project treasury</span>
+        )}
         <span className="text-[#FFA94D] font-semibold">62%</span>
       </div>
       <div className="flex justify-between mt-1">
