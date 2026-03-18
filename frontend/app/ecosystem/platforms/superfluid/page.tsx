@@ -311,6 +311,7 @@ export default function SuperfluidPlatformPage() {
         const topFunds = BigInt(featuredMessage.totalFundsAdded ?? '0')
         const buyPrice = topFunds + minIncrement
         const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
+        const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(4)
 
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
@@ -326,13 +327,13 @@ export default function SuperfluidPlatformPage() {
                 markee.xyz/ecosystem/superfluid
               </a>
 
-              {/* Card — inverted bg to distinguish from grid cards */}
-              <div className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-t-0 border-[#8A8FBF]/20 p-5">
+              {/* Card — full card clickable, pink border on hover */}
+              <div
+                onClick={() => setFeaturedModalOpen(true)}
+                className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-t-0 border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
+              >
                 {/* Message box */}
-                <div
-                  className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[80px] cursor-pointer"
-                  onClick={() => setFeaturedModalOpen(true)}
-                >
+                <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
                   <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
                     {featuredMessage.message}
                   </p>
@@ -346,20 +347,22 @@ export default function SuperfluidPlatformPage() {
                 {/* Stats row */}
                 <div className="flex items-center justify-between text-xs mb-4">
                   <span className="text-[#7C9CFF] font-medium">
-                    {formatFunds(featuredMessage.totalFunds ?? '0')} total raised.
+                    {totalFundsEth} ETH total raised.
                   </span>
                   <span className="text-[#8A8FBF]">
                     {featuredMessage.markeeCount ?? 0} {featuredMessage.markeeCount === 1 ? 'message' : 'messages'}
                   </span>
                 </div>
 
-                {/* CTA */}
-                <button
-                  onClick={() => setFeaturedModalOpen(true)}
-                  className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
-                >
-                  {buyPriceFormatted} ETH to change
-                </button>
+                {/* CTA — centered, half-width */}
+                <div className="flex justify-center">
+                  <button
+                    onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
+                    className="bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
+                  >
+                    {buyPriceFormatted} ETH to change
+                  </button>
+                </div>
               </div>
             </div>
           </section>
