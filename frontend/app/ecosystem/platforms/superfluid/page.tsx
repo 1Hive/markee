@@ -130,7 +130,7 @@ export default function SuperfluidPlatformPage() {
       if (!silent) setIsLoadingLeaderboards(true)
       else setIsRefreshing(true)
 
-      const res = await fetch('/api/superfluid/leaderboards')
+      const res = await fetch('/api/superfluid/leaderboards', { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
