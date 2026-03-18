@@ -198,8 +198,6 @@ export default function SuperfluidPlatformPage() {
           <div className="flex items-center gap-2 text-sm">
             <Link href="/ecosystem" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Ecosystem</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <Link href="/ecosystem/platforms" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Platforms</Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
             <span className="text-[#EDEEFF]">Superfluid</span>
           </div>
         </div>
