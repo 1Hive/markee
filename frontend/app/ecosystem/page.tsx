@@ -18,6 +18,11 @@ import type { Markee } from '@/types'
 
 // ─── Platform cards ───────────────────────────────────────────────────────────
 
+interface PlatformStats {
+  signs: number
+  totalFunds: string
+}
+
 const PLATFORMS = [
   {
     slug: 'github',
@@ -25,6 +30,7 @@ const PLATFORMS = [
     description: 'Add a Markee message to your README, agent SKILL file, or any markdown file in your project.',
     logoType: 'icon' as const,
     cta: 'See Markees on Github',
+    statsApi: '/api/github/leaderboards',
   },
   {
     slug: 'superfluid',
@@ -33,6 +39,7 @@ const PLATFORMS = [
     logoType: 'image' as const,
     logoSrc: '/partners/superfluid.png',
     cta: 'See Markees on Superfluid',
+    statsApi: '/api/superfluid/leaderboards',
   },
 ]
 
@@ -42,8 +49,35 @@ export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
   const [selectedPartnerSlug, setSelectedPartnerSlug] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [platformStats, setPlatformStats] = useState<Record<string, PlatformStats>>({})
 
   const selectedPartner = partnerData.find(p => p.partner.slug === selectedPartnerSlug)
+
+  // ── Fetch platform stats ───────────────────────────────────────────
+  useEffect(() => {
+    Promise.all(
+      PLATFORMS.map(async p => {
+        try {
+          const res = await fetch(p.statsApi)
+          if (!res.ok) return [p.slug, null] as const
+          const data = await res.json()
+          const leaderboards: any[] = data.leaderboards ?? []
+          return [p.slug, {
+            signs: leaderboards.length,
+            totalFunds: data.totalPlatformFunds ?? '0',
+          }] as const
+        } catch {
+          return [p.slug, null] as const
+        }
+      })
+    ).then(entries => {
+      const stats: Record<string, PlatformStats> = {}
+      for (const [slug, val] of entries) {
+        if (val) stats[slug] = val
+      }
+      setPlatformStats(stats)
+    })
+  }, [])
 
   // ── View tracking ──────────────────────────────────────────────────
   const winningMarkees: Markee[] = partnerData
@@ -78,6 +112,13 @@ export default function EcosystemPage() {
     // Data will refresh on page navigation/reload
   }
 
+  const formatFunds = (eth: string) => {
+    const n = parseFloat(eth)
+    if (n === 0) return '0 ETH'
+    if (n < 0.001) return '< 0.001 ETH'
+    return `${n.toFixed(4)} ETH`
+  }
+
   const livePartners = partnerData
     .filter(({ partner }) => !!partner.liveUrl)
     .sort((a, b) => (b.totalFunds > a.totalFunds ? 1 : -1))
@@ -96,7 +137,7 @@ export default function EcosystemPage() {
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Raise funds with Markee</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
-            Explore the Universe of Markee messages expanding across the internet.
+            Explore the Universe of Markee messages expanding across the internet ✨
           </p>
         </div>
       </section>
@@ -104,39 +145,56 @@ export default function EcosystemPage() {
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          {/* Platform cards */}
+          {/* Platform cards — 2 column, horizontal layout */}
           <div className="mb-16">
             <h2 className="text-lg font-semibold text-[#8A8FBF] mb-5">Raise Funding for Your:</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {PLATFORMS.map(platform => (
-                <Link
-                  key={platform.slug}
-                  href={`/ecosystem/platforms/${platform.slug}`}
-                  className="group flex items-start gap-4 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 transition-all p-5"
-                >
-                  <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden">
-                    {platform.logoType === 'image' ? (
-                      <img
-                        src={(platform as { logoSrc: string }).logoSrc}
-                        alt={platform.name}
-                        className="w-6 h-6 object-contain"
-                      />
-                    ) : (
-                      <Github size={20} className="text-[#EDEEFF]" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[#EDEEFF] font-semibold text-sm mb-1 group-hover:text-[#F897FE] transition-colors">
-                      {platform.name}
-                    </h3>
-                    <p className="text-[#8A8FBF] text-xs mb-3 leading-relaxed">{platform.description}</p>
-                    <div className="flex items-center gap-1 text-[#7C9CFF] text-xs group-hover:text-[#F897FE] transition-colors">
-                      {platform.cta}
-                      <ChevronRight size={13} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {PLATFORMS.map(platform => {
+                const stats = platformStats[platform.slug]
+                return (
+                  <Link
+                    key={platform.slug}
+                    href={`/ecosystem/platforms/${platform.slug}`}
+                    className="group flex items-center gap-5 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 transition-all p-5"
+                  >
+                    {/* Logo */}
+                    <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden">
+                      {platform.logoType === 'image' ? (
+                        <img
+                          src={(platform as { logoSrc: string }).logoSrc}
+                          alt={platform.name}
+                          className="w-9 h-9 object-contain"
+                        />
+                      ) : (
+                        <Github size={26} className="text-[#EDEEFF]" />
+                      )}
                     </div>
-                  </div>
-                </Link>
-              ))}
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <h3 className="text-[#EDEEFF] font-semibold text-sm group-hover:text-[#F897FE] transition-colors">
+                          {platform.name}
+                        </h3>
+                        {stats && (
+                          <div className="flex items-center gap-2 text-xs flex-shrink-0">
+                            <span className="text-[#F897FE] font-semibold">{stats.signs}</span>
+                            <span className="text-[#8A8FBF]">signs</span>
+                            <span className="text-[#8A8FBF]/40">·</span>
+                            <span className="text-[#7C9CFF] font-semibold">{formatFunds(stats.totalFunds)}</span>
+                            <span className="text-[#8A8FBF]">raised</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[#8A8FBF] text-xs mb-3 leading-relaxed">{platform.description}</p>
+                      <div className="flex items-center gap-1 text-[#7C9CFF] text-xs group-hover:text-[#F897FE] transition-colors">
+                        {platform.cta}
+                        <ChevronRight size={13} />
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           </div>
 
