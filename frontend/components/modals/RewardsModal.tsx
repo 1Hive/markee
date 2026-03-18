@@ -150,7 +150,7 @@ export function RewardsModal({
       else setIsRefreshing(true)
       setError(null)
 
-      const res = await fetch(`/api/superfluid/leaderboard?page=${p}&limit=50`)
+      const res = await fetch(`/api/superfluid/rewards?page=${p}&limit=50`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData(await res.json())
     } catch {
