@@ -128,12 +128,6 @@ export default function GithubPlatformPage() {
   }, [])
 
   useEffect(() => {
-    const onFocus = () => fetchLeaderboards(true)
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [fetchLeaderboards])
-
-  useEffect(() => {
     fetchGithubUser()
     fetchLeaderboards()
   }, [fetchGithubUser, fetchLeaderboards])
