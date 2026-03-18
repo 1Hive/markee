@@ -14,6 +14,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Image from 'next/image'
 import { RewardsModal } from '@/components/modals/RewardsModal'
+import { TopDawgModal } from '@/components/modals/TopDawgModal'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ interface SuperfluidLeaderboard {
 interface FeaturedMessage {
   message: string
   owner: string
+  totalFundsAdded: string
 }
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
@@ -119,6 +121,7 @@ export default function SuperfluidPlatformPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [rewardsModalOpen, setRewardsModalOpen] = useState(false)
   const [featuredMessage, setFeaturedMessage] = useState<FeaturedMessage | null>(null)
+  const [featuredModalOpen, setFeaturedModalOpen] = useState(false)
 
   const fetchLeaderboards = useCallback(async (silent = false) => {
     try {
@@ -132,32 +135,16 @@ export default function SuperfluidPlatformPage() {
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
       }
 
-      // Fetch featured legacy TopDawg message
-      const subgraphUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE
-      if (subgraphUrl) {
-        try {
-          const featRes = await fetch(subgraphUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              query: `{
-                markees(
-                  where: { pricingStrategy: "${LEGACY_TOPDAWG_ADDRESS}" }
-                  orderBy: totalFundsAdded
-                  orderDirection: desc
-                  first: 1
-                ) { message owner { id } }
-              }`,
-            }),
-          })
-          const featJson = await featRes.json()
-          const m = featJson.data?.markees?.[0]
-          if (m?.message) {
-            setFeaturedMessage({ message: m.message, owner: m.owner?.id ?? '' })
-          }
-        } catch (e) {
-          console.error('[superfluid] featured message fetch failed', e)
+      // Fetch featured legacy TopDawg message via server-side proxy to avoid
+      // client-side env var issues with the subgraph URL
+      try {
+        const featRes = await fetch('/api/superfluid/featured-message')
+        if (featRes.ok) {
+          const featData = await featRes.json()
+          if (featData.message) setFeaturedMessage(featData)
         }
+      } catch (e) {
+        console.error('[superfluid] featured message fetch failed', e)
       }
     } catch (err) {
       console.error(err)
@@ -259,12 +246,12 @@ export default function SuperfluidPlatformPage() {
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#7C9CFF] font-semibold">1 pt</span>
-                <span className="text-[#8A8FBF]">/ 0.0001 ETH funded</span>
+                <span className="text-[#1DB227] font-semibold">1 pt per 0.0001 ETH</span>
+                <span className="text-[#8A8FBF]">funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#7C9CFF] font-semibold">1 pt</span>
-                <span className="text-[#8A8FBF]">/ follow Markee on Farcaster</span>
+                <span className="text-[#1DB227] font-semibold">1 pt per follow</span>
+                <span className="text-[#8A8FBF]">on Markee Farcaster</span>
                 <a
                   href="https://farcaster.xyz/markee"
                   target="_blank"
@@ -327,7 +314,7 @@ export default function SuperfluidPlatformPage() {
         </div>
       </section>
 
-      {/* Featured Message */}
+      {/* Featured Message — Legacy TopDawg */}
       {featuredMessage?.message && (
         <section className="py-10 bg-[#060A2A] border-b border-[#8A8FBF]/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -340,9 +327,17 @@ export default function SuperfluidPlatformPage() {
               <p className="text-[#EDEEFF] font-mono text-sm break-words mb-3">
                 {featuredMessage.message}
               </p>
-              <p className="text-[#8A8FBF] text-xs text-right">
-                — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-[#8A8FBF] text-xs">
+                  — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+                </p>
+                <button
+                  onClick={() => setFeaturedModalOpen(true)}
+                  className="flex items-center gap-1.5 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
+                >
+                  Buy this message →
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -408,6 +403,14 @@ export default function SuperfluidPlatformPage() {
         onClose={() => setRewardsModalOpen(false)}
         title="Season 5 SUP Rewards"
         description="Earn points by buying messages and adding funds to any Superfluid message."
+      />
+
+      <TopDawgModal
+        isOpen={featuredModalOpen}
+        onClose={() => setFeaturedModalOpen(false)}
+        onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true) }}
+        strategyAddress={LEGACY_TOPDAWG_ADDRESS as `0x${string}`}
+        topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
       />
     </div>
   )
