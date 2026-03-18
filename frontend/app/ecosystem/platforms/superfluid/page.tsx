@@ -18,6 +18,7 @@ import { RewardsModal } from '@/components/modals/RewardsModal'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
+const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 
 const FACTORY_ABI = [
   {
@@ -51,6 +52,11 @@ interface SuperfluidLeaderboard {
   topMessageOwner: string | null
 }
 
+interface FeaturedMessage {
+  message: string
+  owner: string
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SuperfluidPlatformPage() {
@@ -61,6 +67,7 @@ export default function SuperfluidPlatformPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [rewardsModalOpen, setRewardsModalOpen] = useState(false)
+  const [featuredMessage, setFeaturedMessage] = useState<FeaturedMessage | null>(null)
 
   const fetchLeaderboards = useCallback(async (silent = false) => {
     try {
@@ -71,6 +78,34 @@ export default function SuperfluidPlatformPage() {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
+      }
+
+      // Fetch featured legacy TopDawg message
+      const subgraphUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE
+      if (subgraphUrl) {
+        try {
+          const featRes = await fetch(subgraphUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: `{
+                markees(
+                  where: { pricingStrategy: "${LEGACY_TOPDAWG_ADDRESS}" }
+                  orderBy: totalFundsAdded
+                  orderDirection: desc
+                  first: 1
+                ) { message owner { id } }
+              }`,
+            }),
+          })
+          const featJson = await featRes.json()
+          const m = featJson.data?.markees?.[0]
+          if (m?.message) {
+            setFeaturedMessage({ message: m.message, owner: m.owner?.id ?? '' })
+          }
+        } catch (e) {
+          console.error('[superfluid] featured message fetch failed', e)
+        }
       }
     } catch (err) {
       console.error(err)
@@ -170,15 +205,17 @@ export default function SuperfluidPlatformPage() {
               <span className="text-[#8A8FBF]">total funded</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-[#1DB227] font-semibold">1 pt / 0.0001 ETH funded</span>
+              <span className="text-[#7C9CFF] font-semibold">1 pt</span>
+              <span className="text-[#8A8FBF]">/ 0.0001 ETH funded</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-[#1DB227] font-semibold">1 pt / Farcaster follow</span>
+              <span className="text-[#7C9CFF] font-semibold">1 pt</span>
+              <span className="text-[#8A8FBF]">/ follow Markee on Farcaster</span>
               <a
                 href="https://farcaster.xyz/markee"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[#1DB227] hover:text-[#F897FE] transition-colors"
+                className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
                 aria-label="Follow Markee on Farcaster"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -235,6 +272,27 @@ export default function SuperfluidPlatformPage() {
         </div>
       </section>
 
+      {/* Featured Message */}
+      {featuredMessage?.message && (
+        <section className="py-10 bg-[#060A2A] border-b border-[#8A8FBF]/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Zap size={16} className="text-[#F897FE]" />
+              <span className="text-[#EDEEFF] font-semibold">Featured Message</span>
+              <span className="text-[#8A8FBF] text-sm">Top message across all Superfluid signs</span>
+            </div>
+            <div className="bg-[#0A0F3D] rounded-xl p-6 border border-[#F897FE]/30 max-w-2xl">
+              <p className="text-[#EDEEFF] font-mono text-sm break-words mb-3">
+                {featuredMessage.message}
+              </p>
+              <p className="text-[#8A8FBF] text-xs text-right">
+                — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Signs grid */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -262,7 +320,7 @@ export default function SuperfluidPlatformPage() {
               <div className="flex items-center gap-3 mb-6">
                 <Trophy size={20} className="text-[#F897FE]" />
                 <h2 className="text-2xl font-bold text-[#EDEEFF]">Active Signs</h2>
-                <span className="text-[#8A8FBF] text-sm">ranked by total funds added added</span>
+                <span className="text-[#8A8FBF] text-sm">ranked by total funds added</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {leaderboards.map((lb, idx) => (
