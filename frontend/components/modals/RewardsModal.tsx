@@ -134,8 +134,8 @@ function RewardsRow({
 export function RewardsModal({
   isOpen,
   onClose,
-  title = 'S5 Rewards',
-  description = 'Earn points by buying messages and adding funds. 1 point per 0.0001 ETH spent.',
+  title = 'Season 5 SUP Rewards',
+  description = 'Earn points by buying messages and adding funds to any Superfluid message.',
 }: RewardsModalProps) {
   const { address } = useAccount()
   const [data, setData] = useState<RewardsData | null>(null)
@@ -234,18 +234,14 @@ export function RewardsModal({
             <div className="flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-[#F897FE]" />
               <span className="text-[#F897FE] font-semibold">{data.pagination.totalDocs.toLocaleString()}</span>
-              <span className="text-[#8A8FBF]">participants</span>
+              <span className="text-[#8A8FBF]">eligible addresses</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
               <Zap size={11} className="text-[#7C9CFF]" />
               <span className="text-[#7C9CFF] font-semibold">{totalAwarded.toLocaleString()}</span>
               <span className="text-[#8A8FBF]">points awarded</span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs">
-              <Star size={11} className="text-[#1DB227]" />
-              <span className="text-[#1DB227] font-semibold">{data.campaignTotals.farcasterFollow.toLocaleString()}</span>
-              <span className="text-[#8A8FBF]">from Farcaster</span>
-            </div>
+
           </div>
         )}
 
@@ -324,9 +320,8 @@ export function RewardsModal({
         <div className="flex-shrink-0 border-t border-[#8A8FBF]/20 px-6 py-4 bg-[#060A2A]/40">
           <p className="text-[#8A8FBF] text-[10px] uppercase tracking-wider mb-2 font-semibold">How to earn</p>
           <div className="flex flex-wrap gap-3 text-xs text-[#8A8FBF]">
-            <span>🪧 Buy a message — 1pt / 0.0001 ETH</span>
-            <span>💰 Add funds — 1pt / 0.0001 ETH</span>
-            <span>🟣 Follow @markee on Farcaster — 1pt</span>
+            <span>🪧 Buy a message 1pt / 0.0001 ETH</span>
+            <span>💰 Add funds 1pt / 0.0001 ETH</span>
           </div>
         </div>
       </div>
