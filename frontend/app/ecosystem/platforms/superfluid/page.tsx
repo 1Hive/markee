@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, RefreshCw, Star,
+  CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -235,11 +235,11 @@ export default function SuperfluidPlatformPage() {
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt / 0.0001 ETH</span>
+                <span className="text-[#1DB227] font-semibold">1 pt per 0.0001 ETH</span>
                 <span className="text-[#8A8FBF]">funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt / follow</span>
+                <span className="text-[#1DB227] font-semibold">1 pt per follow</span>
                 <span className="text-[#8A8FBF]">on Markee Farcaster</span>
                 <a
                   href="https://farcaster.xyz/markee"
@@ -306,27 +306,60 @@ export default function SuperfluidPlatformPage() {
       {/* Featured Message — Legacy TopDawg */}
       {featuredMessage?.message && (
         <section className="py-10 bg-[#060A2A] border-b border-[#8A8FBF]/20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3 mb-4">
-              <Zap size={16} className="text-[#F897FE]" />
-              <span className="text-[#EDEEFF] font-semibold">Featured Message</span>
-              <span className="text-[#8A8FBF] text-sm">Top message across all Superfluid signs</span>
-            </div>
-            <div className="bg-[#0A0F3D] rounded-xl p-6 border border-[#F897FE]/30 max-w-2xl">
-              <p className="text-[#EDEEFF] font-mono text-sm break-words mb-3">
-                {featuredMessage.message}
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-[#8A8FBF] text-xs">
-                  — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
-                </p>
-                <button
-                  onClick={() => setFeaturedModalOpen(true)}
-                  className="flex items-center gap-1.5 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
-                >
-                  Buy this message →
-                </button>
+          <div className="max-w-sm mx-auto px-4">
+            {/* External link tab */}
+            <a
+              href="https://campaigns.superfluid.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+            >
+              <ExternalLink size={12} />
+              campaigns.superfluid.org
+            </a>
+
+            {/* Card */}
+            <div className="bg-[#0A0F3D] rounded-t-none rounded-b-lg border border-t-0 border-[#F897FE]/20 p-6">
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden flex-shrink-0">
+                  <Image src="/partners/superfluid.png" alt="Superfluid" width={32} height={32} className="object-contain" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-[#EDEEFF] text-base">Superfluid</h3>
+                  <p className="text-[#8A8FBF] text-xs">campaigns.superfluid.org</p>
+                </div>
               </div>
+
+              {/* Message box */}
+              <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[100px] flex flex-col">
+                <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
+                  {featuredMessage.message}
+                </p>
+                {featuredMessage.owner && (
+                  <p className="text-[#8A8FBF] text-xs text-right mt-2">
+                    — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+                  </p>
+                )}
+              </div>
+
+              {/* Stats */}
+              <div className="flex items-center justify-between text-xs mb-4">
+                <span className="text-[#7C9CFF] font-medium">
+                  {featuredMessage.totalFundsAdded
+                    ? `${(Number(featuredMessage.totalFundsAdded) / 1e18).toFixed(4)} ETH raised`
+                    : 'Top funded message'}
+                </span>
+                <span className="text-[#8A8FBF]">Legacy TopDawg</span>
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={() => setFeaturedModalOpen(true)}
+                className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
+              >
+                Buy this message
+              </button>
             </div>
           </div>
         </section>
