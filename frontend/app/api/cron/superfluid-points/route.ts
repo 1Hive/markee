@@ -15,7 +15,7 @@
  *      strategy addresses, then getLogs for FundsAdded events on each.
  *      Scales automatically as new leaderboards are created.
  *
- * Farcaster: fetch followers of Markee FID via Warpcast public API,
+ * Farcaster: fetch followers of Markee FID via api.farcaster.xyz,
  * award 1 point per unique FID (deduped in KV, permanent).
  */
 
@@ -133,7 +133,6 @@ async function fetchSubgraphEvents(afterBlock: number): Promise<SubgraphFundsEve
 
 // ─── 2. RPC (LeaderboardFactory children) ────────────────────────────────────
 
-// New Leaderboard.sol FundsAdded signature — different from legacy Markee.sol
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
 )
@@ -215,10 +214,6 @@ async function fetchRpcEvents(
 }
 
 // ─── 3. Farcaster (api.farcaster.xyz — requires FARCASTER_API_KEY) ───────────
-//
-// Two-step process:
-//   1. GET /v2/followers → returns FIDs + usernames (no wallet addresses)
-//   2. GET /v2/user-by-fid per FID → returns verifiedAddresses + custodyAddress
 
 interface WarpcastFollower {
   fid: number
@@ -242,13 +237,12 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
     })
 
     if (!res.ok) {
-      console.error('[cron/superfluid-points] Warpcast followers error:', res.status)
+      console.error('[cron] Warpcast followers error:', res.status)
       break
     }
 
     const data = await res.json()
     const users = data?.result?.users ?? []
-    console.log(`[cron] FID ${fid} user keys: ${Object.keys(user).join(', ')}`)
     followers.push(...users.map((u: any) => ({ fid: u.fid, username: u.username ?? '' })))
 
     cursor = data?.result?.next?.cursor
@@ -269,19 +263,25 @@ async function fetchUserAddress(fid: number): Promise<string | null> {
         },
       }
     )
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.error(`[cron] user-by-fid ${fid} HTTP ${res.status}`)
+      return null
+    }
 
     const data = await res.json()
     const user = data?.result?.user ?? {}
 
-    // Prefer verified ETH addresses, fall back to custody address
+    // debug
+    console.log(`[cron] FID ${fid} user keys: ${Object.keys(user).join(', ')}`)
+
     const verified: string[] = user.verifiedAddresses?.eth_addresses ?? user.verifications ?? []
     if (verified.length > 0) return verified[0].toLowerCase()
     if (typeof user.custodyAddress === 'string' && user.custodyAddress.startsWith('0x')) {
       return user.custodyAddress.toLowerCase()
     }
     return null
-  } catch {
+  } catch (e: any) {
+    console.error(`[cron] fetchUserAddress ${fid} error:`, e.message)
     return null
   }
 }
@@ -299,7 +299,7 @@ async function pushInBatches(events: PushEventInput[]): Promise<{ pushed: number
       pushed += result.eventCount ?? batch.length
     } else {
       failed += batch.length
-      console.error('[cron/superfluid-points] Batch push failed:', result.error)
+      console.error('[cron] Batch push failed:', result.error)
     }
     if (i + API_BATCH_SIZE < events.length) {
       await new Promise(r => setTimeout(r, 300))
@@ -420,7 +420,6 @@ export async function GET(req: NextRequest) {
         const alreadyAwarded = await kv.get(kvKey)
         if (alreadyAwarded) continue
 
-        // Fetch wallet address for this FID
         const address = await fetchUserAddress(follower.fid)
         if (!address) continue
 
@@ -431,10 +430,7 @@ export async function GET(req: NextRequest) {
           uniqueId: `fid:${follower.fid}`,
         })
 
-        // Mark as awarded — permanent, survives unfollow/refollow
         await kv.set(kvKey, address, { ex: 60 * 60 * 24 * 365 })
-
-        // Small delay to avoid hammering Warpcast
         await new Promise(r => setTimeout(r, 100))
       }
 
