@@ -133,7 +133,7 @@ export async function GET() {
     async function chunkedMulticall(contracts: Parameters<typeof client.multicall>[0]['contracts']) {
       const results = []
       for (let i = 0; i < contracts.length; i += CHUNK_SIZE) {
-        const chunk = contracts.slice(i, i + CHUNK_SIZE)
+        const chunk = contracts.slice(i, i + CHUNK_SIZE) as Parameters<typeof client.multicall>[0]['contracts']
         const chunkResults = await client.multicall({ contracts: chunk })
         results.push(...chunkResults)
       }
