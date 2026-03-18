@@ -132,11 +132,11 @@ export default function SuperfluidPlatformPage() {
                   <h1 className="text-3xl font-bold text-[#EDEEFF]">Superfluid</h1>
                   <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-1 rounded-full">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#1DB227] animate-pulse" />
-                    Season 5
+                    Season 5 Rewards Active
                   </span>
                 </div>
                 <p className="text-[#8A8FBF] max-w-xl">
-                  A digital sign for your Superfluid project. Anyone can pay to set the message — your treasury earns 62% of every payment, and buyers earn MARKEE tokens.
+                  A digital sign for your Superfluid project anyone can pay to edit. Most funds added gets the top spot in each Markee message.
                 </p>
               </div>
             </div>
@@ -146,7 +146,7 @@ export default function SuperfluidPlatformPage() {
                 className="flex items-center gap-2 bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-5 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/10 transition-colors whitespace-nowrap"
               >
                 <Star size={16} />
-                S5 Rewards
+                View SUP Rewards
               </button>
               <button
                 onClick={() => setCreateModalOpen(true)}
@@ -188,18 +188,18 @@ export default function SuperfluidPlatformPage() {
             {[
               {
                 step: '1',
-                title: 'Fund your treasury passively',
-                body: 'Your project treasury receives 62% of every payment made on your sign. No active management required — it runs onchain, forever.',
+                title: 'Raise Funds for Your Project',
+                body: 'Create a Markee and set a beneficiary to receive funds from all paid messages.',
               },
               {
                 step: '2',
-                title: 'Build mindshare in the ecosystem',
-                body: 'Your sign surfaces your project to the entire Markee network. Buyers compete to hold the top message, keeping attention on your community.',
+                title: 'Buy Messages from Top Superfluid Projects',
+                body: 'Featured messages get the most impressions and go towards funding your favorite projects.',
               },
               {
                 step: '3',
-                title: 'Grow the Markee Cooperative',
-                body: 'Every purchase mints MARKEE tokens for the buyer. The 38% that goes to the Cooperative funds the protocol that runs your sign.',
+                title: 'Get Rewarded',
+                body: 'Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid\'s Season 5 Rewards campaign.',
               },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
@@ -274,8 +274,8 @@ export default function SuperfluidPlatformPage() {
       <RewardsModal
         isOpen={rewardsModalOpen}
         onClose={() => setRewardsModalOpen(false)}
-        title="S5 Rewards"
-        description="Earn points by buying messages and adding funds on the Superfluid Markee."
+        title="Season 5 SUP Rewards"
+        description="Earn points by buying messages and adding funds to any Superfluid message."
       />
     </div>
   )
@@ -456,7 +456,7 @@ function CreateMarkeeModal({
               </div>
               <div>
                 <h2 className="text-[#EDEEFF] font-bold text-lg">Create a Markee</h2>
-                <p className="text-[#8A8FBF] text-xs">Superfluid — Season 5</p>
+                <p className="text-[#8A8FBF] text-xs">Superfluid Season 5</p>
               </div>
             </div>
 
