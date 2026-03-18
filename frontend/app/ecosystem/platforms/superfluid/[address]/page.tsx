@@ -138,6 +138,11 @@ export default function SuperfluidLeaderboardPage() {
   const topAddresses = topResult?.[0] ?? []
   const topFunds = topResult?.[1] ?? []
 
+  // Subtract 1 for the seed markee (created at deploy with 0 funds)
+  const displayMessageCount = markeeCount !== undefined
+    ? (markeeCount > 0n ? markeeCount - 1n : 0n)
+    : undefined
+
   const { data: markeeDetails, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContracts({
     contracts: topAddresses.flatMap(addr => [
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
@@ -249,7 +254,7 @@ export default function SuperfluidLeaderboardPage() {
             <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
                 <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{markeeCount?.toString() ?? '—'}</span>
+                <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? '—'}</span>
                 <span className="text-[#8A8FBF]">messages</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
