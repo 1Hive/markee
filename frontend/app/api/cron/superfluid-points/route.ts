@@ -95,6 +95,9 @@ async function fetchSubgraphEvents(afterBlock: number): Promise<SubgraphFundsEve
   const graphToken = process.env.GRAPH_TOKEN || process.env.NEXT_PUBLIC_GRAPH_TOKEN
   if (graphToken) headers['Authorization'] = `Bearer ${graphToken}`
 
+  // debug
+  console.log(`[cron] Subgraph URL: ${SUBGRAPH_URL?.slice(0, 60)} Token: ${graphToken ? graphToken.slice(0, 8) + '...' : 'MISSING'}`)
+
   const all: SubgraphFundsEvent[] = []
   let skip = 0
 
