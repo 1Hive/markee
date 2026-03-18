@@ -248,6 +248,7 @@ async function fetchMarkeeFollowerFids(): Promise<WarpcastFollower[]> {
 
     const data = await res.json()
     const users = data?.result?.users ?? []
+    console.log(`[cron] FID ${fid} user keys: ${Object.keys(user).join(', ')}`)
     followers.push(...users.map((u: any) => ({ fid: u.fid, username: u.username ?? '' })))
 
     cursor = data?.result?.next?.cursor
