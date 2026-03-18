@@ -367,7 +367,6 @@ export default function SuperfluidPlatformPage() {
                   </div>
                 </div>
               </div>
-              </div>
             </div>
           </section>
         )
