@@ -17,6 +17,7 @@
  *
  * Farcaster: fetch followers of Markee FID via api.farcaster.xyz,
  * award 1 point per unique FID (deduped in KV, permanent).
+ * Wallet address pulled from extras.ethWallets / extras.custodyAddress.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -265,12 +266,23 @@ async function fetchUserAddress(fid: number): Promise<string | null> {
     }
 
     const data = await res.json()
-    const user = data?.result?.user ?? {}
+    const extras = data?.result?.extras ?? {}
 
-    // connectedAccounts contains ethereum addresses for this API shape
-    const connected: any[] = user.connectedAccounts ?? []
-    const ethAccount = connected.find((a: any) => a.platform === 'ethereum')
-    if (ethAccount?.address?.startsWith('0x')) return ethAccount.address.toLowerCase()
+    // Prefer wallet labeled "primary" (user's chosen primary wallet in Warpcast)
+    const walletLabels: any[] = extras.walletLabels ?? []
+    const primaryLabel = walletLabels.find(
+      (w: any) => w.labels?.includes('primary') && typeof w.address === 'string' && w.address.startsWith('0x')
+    )
+    if (primaryLabel?.address) return primaryLabel.address.toLowerCase()
+
+    // Fall back to first ethWallet
+    const ethWallets: string[] = extras.ethWallets ?? []
+    if (ethWallets.length > 0) return ethWallets[0].toLowerCase()
+
+    // Last resort: custody address
+    if (typeof extras.custodyAddress === 'string' && extras.custodyAddress.startsWith('0x')) {
+      return extras.custodyAddress.toLowerCase()
+    }
 
     return null
   } catch (e: any) {
