@@ -5,13 +5,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, RefreshCw,
+  CheckCircle2, AlertCircle, RefreshCw, Star,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { RewardsModal } from '@/components/modals/RewardsModal'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export default function SuperfluidPlatformPage() {
   const [isLoadingLeaderboards, setIsLoadingLeaderboards] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [rewardsModalOpen, setRewardsModalOpen] = useState(false)
 
   const fetchLeaderboards = useCallback(async (silent = false) => {
     try {
@@ -137,13 +139,22 @@ export default function SuperfluidPlatformPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setCreateModalOpen(true)}
-              className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-            >
-              <Plus size={18} />
-              Create a Markee
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setRewardsModalOpen(true)}
+                className="flex items-center gap-2 bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-5 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/10 transition-colors whitespace-nowrap"
+              >
+                <Star size={16} />
+                S5 Rewards
+              </button>
+              <button
+                onClick={() => setCreateModalOpen(true)}
+                className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
+              >
+                <Plus size={18} />
+                Create a Markee
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-8 mt-10">
@@ -204,7 +215,7 @@ export default function SuperfluidPlatformPage() {
         </div>
       </section>
 
-      {/* Leaderboard grid */}
+      {/* Signs grid */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {isLoadingLeaderboards ? (
@@ -258,13 +269,18 @@ export default function SuperfluidPlatformPage() {
           onSuccess={fetchLeaderboards}
         />
       )}
+
+      <RewardsModal
+        isOpen={rewardsModalOpen}
+        onClose={() => setRewardsModalOpen(false)}
+        title="S5 Rewards"
+        description="Earn points by buying messages and adding funds on the Superfluid Markee."
+      />
     </div>
   )
 }
 
 // ─── Leaderboard Card ─────────────────────────────────────────────────────────
-
-const SUPERFLUID_LOGO = 'https://avatars.githubusercontent.com/u/60355960'
 
 function LeaderboardCard({
   leaderboard,
@@ -289,7 +305,6 @@ function LeaderboardCard({
       onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
       className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
     >
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
           <Zap size={22} className="text-[#1DB227]" />
@@ -302,7 +317,6 @@ function LeaderboardCard({
         </div>
       </div>
 
-      {/* Top message */}
       {leaderboard.topMessage ? (
         <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
           <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
@@ -321,7 +335,6 @@ function LeaderboardCard({
         </div>
       )}
 
-      {/* Stats */}
       <div className="flex items-center justify-between text-xs mb-4">
         <span className="text-[#7C9CFF] font-medium">
           {formatFunds(leaderboard.totalFunds)} total raised.
@@ -331,7 +344,6 @@ function LeaderboardCard({
         </span>
       </div>
 
-      {/* CTA */}
       <button
         onClick={e => {
           e.stopPropagation()
@@ -410,7 +422,6 @@ function CreateMarkeeModal({
           <X size={20} />
         </button>
 
-        {/* Success */}
         {isSuccess ? (
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
@@ -448,7 +459,6 @@ function CreateMarkeeModal({
               </div>
             </div>
 
-            {/* Existing signs */}
             {myLeaderboards.length > 0 && (
               <div className="mb-6">
                 <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
@@ -478,7 +488,6 @@ function CreateMarkeeModal({
               </div>
             ) : (
               <div className="space-y-5">
-                {/* Name */}
                 <div>
                   <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
                     Sign Name <span className="text-[#F897FE]">*</span>
@@ -493,7 +502,6 @@ function CreateMarkeeModal({
                   <p className="text-[#8A8FBF] text-xs mt-1.5">Shown publicly on the platform.</p>
                 </div>
 
-                {/* Treasury */}
                 <div>
                   <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
                     Treasury Address <span className="text-[#F897FE]">*</span>
@@ -508,7 +516,6 @@ function CreateMarkeeModal({
                   <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
                 </div>
 
-                {/* Revenue split */}
                 <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                   <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
                   <div className="flex justify-between">
