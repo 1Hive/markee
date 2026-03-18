@@ -119,10 +119,12 @@ export default function GithubLeaderboardPage() {
 
   const leaderboardName = meta?.[0]?.result as string | undefined
   const totalFunds = meta?.[1]?.result as bigint | undefined
-  const markeeCount = meta?.[2]?.result as bigint | undefined
   const minimumPrice = meta?.[3]?.result as bigint | undefined
   const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const topResult = meta?.[6]?.result as [string[], bigint[]] | undefined
+
+  // Strip " — filename" suffix from leaderboard name — only show repo name
+  const displayName = leaderboardName ? leaderboardName.split(' — ')[0] : undefined
 
   const topAddresses = topResult?.[0] ?? []
   const topFunds = topResult?.[1] ?? []
@@ -190,7 +192,7 @@ export default function GithubLeaderboardPage() {
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <Link href="/ecosystem/platforms/github" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">GitHub</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? 'Loading…'}</span>
+            <span className="text-[#EDEEFF] truncate max-w-xs">{displayName ?? 'Loading…'}</span>
           </div>
         </div>
       </section>
@@ -206,7 +208,7 @@ export default function GithubLeaderboardPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-[#EDEEFF] mb-1">
-                  {leaderboardName ?? <span className="opacity-40">Loading…</span>}
+                  {displayName ?? <span className="opacity-40">Loading…</span>}
                 </h1>
                 <button
                   onClick={copyAddress}
@@ -227,11 +229,11 @@ export default function GithubLeaderboardPage() {
             </button>
           </div>
 
-          {/* Stats */}
+          {/* Stats — use markees.length to exclude seed markee from count */}
           <div className="flex flex-wrap items-center gap-8 mt-8">
             <div className="flex items-center gap-2 text-sm">
               <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-              <span className="text-[#F897FE] font-semibold">{markeeCount?.toString() ?? '—'}</span>
+              <span className="text-[#F897FE] font-semibold">{markees.length}</span>
               <span className="text-[#8A8FBF]">messages</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
@@ -467,7 +469,6 @@ function IntegrationsSection({
     )
   }
 
-  // No GitHub session — read-only view + connect CTA
   if (!githubUser) {
     return (
       <div>
@@ -501,7 +502,6 @@ function IntegrationsSection({
     )
   }
 
-  // Connected, no files yet — setup flow
   if (linkedFiles.length === 0) {
     return (
       <SetupFlow
@@ -514,7 +514,6 @@ function IntegrationsSection({
     )
   }
 
-  // Connected, files exist — management view
   return (
     <RepoFileManager
       leaderboardAddress={leaderboardAddress}
@@ -530,7 +529,7 @@ function IntegrationsSection({
   )
 }
 
-// ─── Read-only file row (unauthenticated visitors) ────────────────────────────
+// ─── Read-only file row ────────────────────────────────────────────────────────
 
 function ReadOnlyFileRow({ file }: { file: LinkedFile }) {
   const fileUrl = `${file.repoHtmlUrl}/blob/HEAD/${file.filePath}`
@@ -557,7 +556,7 @@ function ReadOnlyFileRow({ file }: { file: LinkedFile }) {
   )
 }
 
-// ─── Setup Flow (connected, no files yet) ────────────────────────────────────
+// ─── Setup Flow ───────────────────────────────────────────────────────────────
 
 function SetupFlow({
   leaderboardAddress, githubUser, repos, linkedFiles, onFilesUpdated,
@@ -579,7 +578,6 @@ function SetupFlow({
         <h3 className="text-[#EDEEFF] font-bold text-lg">Add to a GitHub File</h3>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Step 1 */}
         <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-6 h-6 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold">1</div>
@@ -590,14 +588,13 @@ function SetupFlow({
             {startTag}<br />{endTag}
             <button
               onClick={() => { navigator.clipboard.writeText(`${startTag}\n${endTag}`); setDelimCopied(true); setTimeout(() => setDelimCopied(false), 2000) }}
-              className="absolute top-2 right-2 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors" title="Copy tags"
+              className="absolute top-2 right-2 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors"
             >
               {delimCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
             </button>
           </div>
           <p className="text-[#8A8FBF] text-xs mt-3">Markee writes the #1 message here automatically on every purchase.</p>
         </div>
-        {/* Step 2 */}
         <div className="bg-[#060A2A] rounded-xl p-5 border border-[#8A8FBF]/15">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-6 h-6 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold">2</div>
@@ -619,7 +616,7 @@ function SetupFlow({
   )
 }
 
-// ─── Repo File Manager (connected, files exist) ───────────────────────────────
+// ─── Repo File Manager ────────────────────────────────────────────────────────
 
 function RepoFileManager({
   leaderboardAddress, githubUser, repos, linkedFiles, onFilesUpdated,
@@ -650,7 +647,7 @@ function RepoFileManager({
     const key = `${file.repoFullName}:${file.filePath}`
     setActionKey(key)
     try {
-      const res  = await fetch('/api/github/verify-markee-file', {
+      const res = await fetch('/api/github/verify-markee-file', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leaderboardAddress, repoFullName: file.repoFullName, filePath: file.filePath }),
       })
@@ -664,8 +661,8 @@ function RepoFileManager({
     setActionKey(key)
     try {
       const params = new URLSearchParams({ address: leaderboardAddress, repo: file.repoFullName, file: file.filePath })
-      const res    = await fetch(`/api/github/unlink-markee-file?${params}`, { method: 'DELETE' })
-      const data   = await res.json()
+      const res = await fetch(`/api/github/unlink-markee-file?${params}`, { method: 'DELETE' })
+      const data = await res.json()
       if (data.linkedFiles) onFilesUpdated(data.linkedFiles)
     } catch { /* retry */ } finally { setActionKey(null) }
   }
@@ -673,7 +670,7 @@ function RepoFileManager({
   const handleSync = async () => {
     setIsSyncing(true); setSyncResult(null)
     try {
-      const res  = await fetch('/api/github/update-markee-file', {
+      const res = await fetch('/api/github/update-markee-file', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leaderboardAddress }),
       })
@@ -694,7 +691,6 @@ function RepoFileManager({
 
   return (
     <div>
-      {/* Section header */}
       <div className="flex items-center gap-3 mb-5">
         <Github size={18} className="text-[#F897FE]" />
         <h3 className="text-[#EDEEFF] font-bold text-lg">GitHub Integrations</h3>
@@ -719,7 +715,6 @@ function RepoFileManager({
         </div>
       </div>
 
-      {/* Live files */}
       {liveFiles.length > 0 && (
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-2">
@@ -730,7 +725,6 @@ function RepoFileManager({
             <button
               onClick={handleSync} disabled={isSyncing}
               className="ml-auto flex items-center gap-1 text-[#8A8FBF] hover:text-[#7C9CFF] transition-colors text-xs disabled:opacity-40"
-              title="Write current top message to all live files now"
             >
               <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
               {isSyncing ? 'Syncing…' : 'Sync now'}
@@ -749,7 +743,6 @@ function RepoFileManager({
         </div>
       )}
 
-      {/* Awaiting files */}
       {awaitingFiles.length > 0 && (
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-2">
@@ -770,15 +763,12 @@ function RepoFileManager({
         </div>
       )}
 
-      {/* GitHub Traffic */}
       <div className="mt-5 pt-5 border-t border-[#8A8FBF]/15">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Eye size={14} className="text-[#8A8FBF]" />
             <span className="text-[#8A8FBF] text-xs uppercase tracking-wider">GitHub Traffic (last 14 days)</span>
-            {traffic?.cached && (
-              <span className="text-[#8A8FBF]/50 text-xs">· cached</span>
-            )}
+            {traffic?.cached && <span className="text-[#8A8FBF]/50 text-xs">· cached</span>}
           </div>
           <button
             onClick={refreshTraffic}
@@ -793,7 +783,6 @@ function RepoFileManager({
         {trafficStatus === 'idle' && (
           <p className="text-[#8A8FBF] text-xs">Load GitHub view counts for this repo's traffic.</p>
         )}
-
         {trafficStatus === 'success' && traffic && (
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-[#060A2A] rounded-lg p-3 border border-[#8A8FBF]/10">
@@ -806,11 +795,9 @@ function RepoFileManager({
             </div>
           </div>
         )}
-
         {trafficStatus === 'not_linked' && (
           <p className="text-[#8A8FBF] text-xs">No GitHub repo is linked to this sign yet.</p>
         )}
-
         {trafficStatus === 'error' && trafficError && (
           <div className="flex items-start gap-1.5 text-red-400 text-xs">
             <span className="mt-0.5">⚠</span>
@@ -824,7 +811,6 @@ function RepoFileManager({
         )}
       </div>
 
-      {/* "Add file" inline panel */}
       {showAddFile && (
         <div className="mt-4 border border-[#8A8FBF]/20 rounded-xl overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-2">
@@ -835,7 +821,7 @@ function RepoFileManager({
                 {startTag}<br />{endTag}
                 <button
                   onClick={() => { navigator.clipboard.writeText(`${startTag}\n${endTag}`); setDelimCopied(true); setTimeout(() => setDelimCopied(false), 2000) }}
-                  className="absolute top-2 right-2 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors" title="Copy tags"
+                  className="absolute top-2 right-2 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors"
                 >
                   {delimCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
                 </button>
@@ -880,30 +866,21 @@ function FileRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 min-w-0">
           <span className="text-[#EDEEFF] text-xs truncate">{file.repoFullName}</span>
-          {variant === 'live'    && <ShieldCheck  size={10} className="text-green-400 flex-shrink-0" />}
+          {variant === 'live'     && <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />}
           {variant === 'awaiting' && <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />}
         </div>
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[#7C9CFF] text-xs font-mono truncate">{file.filePath}</span>
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-            title="Open file on GitHub"
-          >
+          <a href={fileUrl} target="_blank" rel="noopener noreferrer"
+            className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0">
             <ExternalLink size={10} />
           </a>
         </div>
       </div>
 
       {variant === 'live' && onRefresh && (
-        <button
-          onClick={onRefresh}
-          disabled={isActing}
-          className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#7C9CFF] transition-colors text-xs flex-shrink-0 disabled:opacity-40"
-          title="Re-check delimiters"
-        >
+        <button onClick={onRefresh} disabled={isActing}
+          className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#7C9CFF] transition-colors text-xs flex-shrink-0 disabled:opacity-40">
           <RefreshCw size={11} className={isActing ? 'animate-spin' : ''} />
         </button>
       )}
@@ -911,23 +888,15 @@ function FileRow({
       {variant === 'awaiting' && (
         <div className="flex items-center gap-2 flex-shrink-0">
           {onCheck && (
-            <button
-              onClick={onCheck}
-              disabled={isActing}
-              className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#F897FE] transition-colors text-xs disabled:opacity-40"
-              title="Check if delimiters have been added"
-            >
+            <button onClick={onCheck} disabled={isActing}
+              className="flex items-center gap-1 text-[#8A8FBF] hover:text-[#F897FE] transition-colors text-xs disabled:opacity-40">
               <RefreshCw size={11} className={isActing ? 'animate-spin' : ''} />
               {!isActing && 'Check'}
             </button>
           )}
           {onRemove && (
-            <button
-              onClick={onRemove}
-              disabled={isActing}
-              className="text-[#8A8FBF] hover:text-red-400 transition-colors disabled:opacity-40"
-              title="Remove this file link"
-            >
+            <button onClick={onRemove} disabled={isActing}
+              className="text-[#8A8FBF] hover:text-red-400 transition-colors disabled:opacity-40">
               <Trash2 size={11} />
             </button>
           )}
@@ -940,10 +909,7 @@ function FileRow({
 // ─── Repo File Picker ─────────────────────────────────────────────────────────
 
 function RepoFilePicker({
-  leaderboardAddress,
-  repos,
-  existingLinks,
-  onLinked,
+  leaderboardAddress, repos, existingLinks, onLinked,
 }: {
   leaderboardAddress: string
   repos: Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>
@@ -971,25 +937,18 @@ function RepoFilePicker({
   }, [selectedRepo])
 
   const linkedPathsForRepo = new Set(
-    existingLinks
-      .filter(l => selectedRepo && l.repoFullName === selectedRepo.fullName)
-      .map(l => l.filePath)
+    existingLinks.filter(l => selectedRepo && l.repoFullName === selectedRepo.fullName).map(l => l.filePath)
   )
   const availableFiles = mdFiles.filter(f => !linkedPathsForRepo.has(f))
 
   const handleLink = async () => {
     if (!selectedRepo || !selectedFile) return
-    setIsSaving(true)
-    setSaveError(null)
+    setIsSaving(true); setSaveError(null)
     try {
       const res = await fetch('/api/github/register-markee', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaderboardAddress,
-          repoFullName: selectedRepo.fullName,
-          filePath: selectedFile,
-        }),
+        body: JSON.stringify({ leaderboardAddress, repoFullName: selectedRepo.fullName, filePath: selectedFile }),
       })
       const data = await res.json()
       if (data.success && data.linkedFiles) {
@@ -1004,9 +963,7 @@ function RepoFilePicker({
     }
   }
 
-  const filteredRepos = repos.filter(r =>
-    r.fullName.toLowerCase().includes(repoSearch.toLowerCase())
-  )
+  const filteredRepos = repos.filter(r => r.fullName.toLowerCase().includes(repoSearch.toLowerCase()))
 
   return (
     <div className="space-y-2">
@@ -1017,15 +974,12 @@ function RepoFilePicker({
               <img src={selectedRepo.avatarUrl} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />
               <span className="text-[#EDEEFF] text-xs font-mono truncate">{selectedRepo.fullName}</span>
             </div>
-            <button onClick={() => { setSelectedRepo(null); setRepoSearch(''); setSelectedFile('') }} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-2 flex-shrink-0">
-              <X size={12} />
-            </button>
+            <button onClick={() => { setSelectedRepo(null); setRepoSearch(''); setSelectedFile('') }}
+              className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-2 flex-shrink-0"><X size={12} /></button>
           </div>
         ) : (
           <>
-            <input
-              type="text"
-              value={repoSearch}
+            <input type="text" value={repoSearch}
               onChange={e => { setRepoSearch(e.target.value); setRepoDropdownOpen(true) }}
               onFocus={() => setRepoDropdownOpen(true)}
               placeholder="Search repos…"
@@ -1034,11 +988,9 @@ function RepoFilePicker({
             {repoDropdownOpen && filteredRepos.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-40 overflow-y-auto">
                 {filteredRepos.slice(0, 20).map(r => (
-                  <button
-                    key={r.id}
+                  <button key={r.id}
                     onClick={() => { setSelectedRepo(r); setRepoSearch(''); setRepoDropdownOpen(false) }}
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#F897FE]/10 transition-colors text-left"
-                  >
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#F897FE]/10 transition-colors text-left">
                     <img src={r.avatarUrl} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />
                     <span className="text-[#EDEEFF] text-xs font-mono truncate">{r.fullName}</span>
                   </button>
@@ -1058,33 +1010,24 @@ function RepoFilePicker({
           ) : selectedFile ? (
             <div className="flex items-center justify-between bg-[#0A0F3D] border border-[#F897FE]/40 rounded-lg px-3 py-2">
               <span className="text-[#EDEEFF] text-xs font-mono truncate">{selectedFile}</span>
-              <button onClick={() => setSelectedFile('')} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-2 flex-shrink-0">
-                <X size={12} />
-              </button>
+              <button onClick={() => setSelectedFile('')} className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-2 flex-shrink-0"><X size={12} /></button>
             </div>
           ) : (
             <>
-              <button
-                onClick={() => setFileDropdownOpen(o => !o)}
-                className="w-full flex items-center justify-between bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/50 rounded-lg px-3 py-2 text-left transition-colors"
-              >
+              <button onClick={() => setFileDropdownOpen(o => !o)}
+                className="w-full flex items-center justify-between bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/50 rounded-lg px-3 py-2 text-left transition-colors">
                 <span className="text-[#8A8FBF] text-xs font-mono">
                   {availableFiles.length
                     ? `${availableFiles.length} file${availableFiles.length === 1 ? '' : 's'} available`
-                    : mdFiles.length
-                      ? 'All files already linked'
-                      : 'No .md files found'}
+                    : mdFiles.length ? 'All files already linked' : 'No .md files found'}
                 </span>
                 <ChevronRight size={12} className={`text-[#8A8FBF] flex-shrink-0 transition-transform ${fileDropdownOpen ? 'rotate-90' : ''}`} />
               </button>
               {fileDropdownOpen && availableFiles.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-40 overflow-y-auto">
                   {availableFiles.map(f => (
-                    <button
-                      key={f}
-                      onClick={() => { setSelectedFile(f); setFileDropdownOpen(false) }}
-                      className="w-full flex items-center px-3 py-2 hover:bg-[#F897FE]/10 transition-colors text-left"
-                    >
+                    <button key={f} onClick={() => { setSelectedFile(f); setFileDropdownOpen(false) }}
+                      className="w-full flex items-center px-3 py-2 hover:bg-[#F897FE]/10 transition-colors text-left">
                       <span className="text-[#EDEEFF] text-xs font-mono truncate">{f}</span>
                     </button>
                   ))}
@@ -1097,11 +1040,8 @@ function RepoFilePicker({
 
       {saveError && <p className="text-red-400 text-xs">{saveError}</p>}
 
-      <button
-        onClick={handleLink}
-        disabled={!selectedRepo || !selectedFile || isSaving}
-        className="w-full flex items-center justify-center gap-1.5 bg-[#F897FE] text-[#060A2A] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      >
+      <button onClick={handleLink} disabled={!selectedRepo || !selectedFile || isSaving}
+        className="w-full flex items-center justify-center gap-1.5 bg-[#F897FE] text-[#060A2A] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
         {isSaving ? <><Loader2 size={12} className="animate-spin" /> Linking…</> : 'Link file'}
       </button>
     </div>
