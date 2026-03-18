@@ -346,7 +346,7 @@ export default function SuperfluidPlatformPage() {
                       {totalFundsEth} ETH total raised.
                     </span>
                     <span className="text-[#8A8FBF]">
-                      {featuredMessage.markeeCount ?? 0} {featuredMessage.markeeCount === 1 ? 'message' : 'messages'}
+                      {Math.max(0, (featuredMessage.markeeCount ?? 0) - 1)} {(featuredMessage.markeeCount ?? 0) - 1 === 1 ? 'message' : 'messages'}
                     </span>
                   </div>
 
@@ -501,7 +501,7 @@ function LeaderboardCard({
           {formatFunds(leaderboard.totalFunds)} total raised.
         </span>
         <span className="text-[#8A8FBF]">
-          {leaderboard.markeeCount} {leaderboard.markeeCount === 1 ? 'message' : 'messages'}
+          {Math.max(0, leaderboard.markeeCount - 1)} {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
         </span>
       </div>
 
