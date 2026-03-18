@@ -328,8 +328,8 @@ export default function SuperfluidPlatformPage() {
                 campaigns.superfluid.org
               </a>
 
-              {/* overflow-hidden clips the card's border at the junction */}
-              <div className="rounded-t-none rounded-b-lg overflow-hidden">
+              {/* overflow-hidden + border-t-0 kills top seam, matches ecosystem page pattern */}
+              <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
                 <div
                   className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
                   onClick={() => window.open('https://www.markee.xyz/ecosystem/superfluid', '_blank')}
