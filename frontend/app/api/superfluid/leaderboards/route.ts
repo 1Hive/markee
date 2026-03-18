@@ -128,6 +128,18 @@ export async function GET() {
       })
     }
 
+    // Chunk multicalls into batches of 50 to avoid Alchemy limits
+    const CHUNK_SIZE = 50
+    async function chunkedMulticall(contracts: Parameters<typeof client.multicall>[0]['contracts']) {
+      const results = []
+      for (let i = 0; i < contracts.length; i += CHUNK_SIZE) {
+        const chunk = contracts.slice(i, i + CHUNK_SIZE)
+        const chunkResults = await client.multicall({ contracts: chunk })
+        results.push(...chunkResults)
+      }
+      return results
+    }
+
     // 2. Multicall — fetch metadata for each leaderboard
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
@@ -138,7 +150,7 @@ export async function GET() {
       { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] },
     ])
 
-    const metaResults = await client.multicall({ contracts: metaCalls as Parameters<typeof client.multicall>[0]['contracts'] })
+    const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
     // 3. Extract top markee addresses, then fetch their messages
     const topMarkeeAddresses: (`0x${string}` | null)[] = addresses.map((_, i) => {
@@ -156,7 +168,7 @@ export async function GET() {
     )
 
     const markeeResults = markeeCalls.length > 0
-      ? await client.multicall({ contracts: markeeCalls as Parameters<typeof client.multicall>[0]['contracts'] })
+      ? await chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
       : []
 
     // 4. Assemble response
