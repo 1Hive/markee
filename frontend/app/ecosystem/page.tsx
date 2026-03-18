@@ -1,7 +1,8 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { ChevronRight, Github } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -15,6 +16,28 @@ import { ModerationProvider } from '@/components/moderation'
 import { ExternalLink } from 'lucide-react'
 import type { Markee } from '@/types'
 
+// ─── Platform cards ───────────────────────────────────────────────────────────
+
+const PLATFORMS = [
+  {
+    slug: 'github',
+    name: 'Github Repo',
+    description: 'Add a Markee message to your README, agent SKILL file, or any markdown file in your project.',
+    logoType: 'icon' as const,
+    cta: 'See Markees on Github',
+  },
+  {
+    slug: 'superfluid',
+    name: 'Superfluid Project',
+    description: 'For builders in the Superfluid ecosystem — create a Markee message and earn SUP rewards.',
+    logoType: 'image' as const,
+    logoSrc: '/partners/superfluid.png',
+    cta: 'See Markees on Superfluid',
+  },
+]
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function EcosystemPage() {
   const { partnerData, isLoading, error } = usePartnerMarkees()
   const [selectedPartnerSlug, setSelectedPartnerSlug] = useState<string | null>(null)
@@ -23,14 +46,12 @@ export default function EcosystemPage() {
   const selectedPartner = partnerData.find(p => p.partner.slug === selectedPartnerSlug)
 
   // ── View tracking ──────────────────────────────────────────────────
-  // Collect all winning markees so useViews can batch-fetch their counts
   const winningMarkees: Markee[] = partnerData
     .filter(({ winningMarkee }) => !!winningMarkee)
     .map(({ winningMarkee }) => winningMarkee as Markee)
 
   const { views, trackView } = useViews(winningMarkees)
 
-  // Track views for all visible winning markees once data loads
   useEffect(() => {
     if (winningMarkees.length === 0) return
     winningMarkees.forEach(trackView)
@@ -69,13 +90,13 @@ export default function EcosystemPage() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
 
+      {/* Hero */}
       <section className="relative py-24 overflow-hidden">
         <HeroBackground />
-        
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Raise funds with Markee</h1>
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
-            Join the waitlist and become part of our growing ecosystem
+            Explore the Universe of Markee messages expanding across the internet.
           </p>
         </div>
       </section>
@@ -83,6 +104,43 @@ export default function EcosystemPage() {
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
+          {/* Platform cards */}
+          <div className="mb-16">
+            <h2 className="text-lg font-semibold text-[#8A8FBF] mb-5">Raise Funding for Your:</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {PLATFORMS.map(platform => (
+                <Link
+                  key={platform.slug}
+                  href={`/ecosystem/platforms/${platform.slug}`}
+                  className="group flex items-start gap-4 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 transition-all p-5"
+                >
+                  <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden">
+                    {platform.logoType === 'image' ? (
+                      <img
+                        src={(platform as { logoSrc: string }).logoSrc}
+                        alt={platform.name}
+                        className="w-6 h-6 object-contain"
+                      />
+                    ) : (
+                      <Github size={20} className="text-[#EDEEFF]" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[#EDEEFF] font-semibold text-sm mb-1 group-hover:text-[#F897FE] transition-colors">
+                      {platform.name}
+                    </h3>
+                    <p className="text-[#8A8FBF] text-xs mb-3 leading-relaxed">{platform.description}</p>
+                    <div className="flex items-center gap-1 text-[#7C9CFF] text-xs group-hover:text-[#F897FE] transition-colors">
+                      {platform.cta}
+                      <ChevronRight size={13} />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Partner markees */}
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5].map(i => (
@@ -171,7 +229,7 @@ export default function EcosystemPage() {
           )}
 
           {/* Partner Reserve Distributor */}
-          <PartnerReserveDistributor 
+          <PartnerReserveDistributor
             partners={partnerData.map(({ partner }) => ({
               name: partner.name,
               strategyAddress: partner.strategyAddress,
