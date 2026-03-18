@@ -514,6 +514,10 @@ export default function MarkeeDetailPage() {
           userMarkee={markee as any}
           initialMode="addFunds"
           onSuccess={() => setIsAddFundsOpen(false)}
+          strategyAddress={markee.pricingStrategy as `0x${string}`}
+          partnerName={markee.isPartnerStrategy ? markee.strategyName : undefined}
+          partnerSplitPercentage={markee.isPartnerStrategy ? markee.partnerPercentage : undefined}
+          topFundsAdded={markee.totalFundsAdded}
         />
       )}
 
@@ -525,6 +529,7 @@ export default function MarkeeDetailPage() {
           userMarkee={markee as any}
           initialMode="updateMessage"
           onSuccess={() => setIsEditOpen(false)}
+          strategyAddress={markee.pricingStrategy as `0x${string}`}
         />
       )}
     </div>
