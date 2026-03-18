@@ -316,25 +316,25 @@ export default function SuperfluidPlatformPage() {
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
             <div className="max-w-2xl mx-auto px-4">
-              {/* group wrapper — hover border spans tab + card as one unit */}
-              <div
-                className="group cursor-pointer"
-                onClick={() => window.open('https://www.markee.xyz/ecosystem/superfluid', '_blank')}
-              >
+              {/* Tab + card as separate hover targets; -mt-px on card collapses double border */}
+              <div>
                 {/* External link tab — campaigns.superfluid.org */}
                 <a
                   href="https://campaigns.superfluid.org"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={e => e.stopPropagation()}
-                  className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 group-hover:border-[#F897FE] text-[#8A8FBF] group-hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+                  className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE] text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
                 >
                   <ExternalLink size={12} />
                   campaigns.superfluid.org
                 </a>
 
-                {/* Card */}
-                <div className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-t-0 border-[#8A8FBF]/20 group-hover:border-[#F897FE] transition-colors p-5">
+                {/* Card — -mt-px collapses double border; hover is independent from tab */}
+                <div
+                  className="bg-[#060A2A] -mt-px rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
+                  onClick={() => window.open('https://www.markee.xyz/ecosystem/superfluid', '_blank')}
+                >
                   {/* Message box */}
                   <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
                     <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
