@@ -361,7 +361,7 @@ function LeaderboardCard({
         </a>
       ) : null}
 
-      <div className={repoHtmlUrl ? 'rounded-t-none rounded-b-lg overflow-hidden' : ''}>
+      <div className={repoHtmlUrl ? 'rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20' : ''}>
         <div
           onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
           className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
