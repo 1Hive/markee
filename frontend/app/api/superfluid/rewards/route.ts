@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (e: any) {
-    console.error('[/api/superfluid/leaderboard]', e.message)
+    console.error('[/api/superfluid/rewards]', e.message)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
