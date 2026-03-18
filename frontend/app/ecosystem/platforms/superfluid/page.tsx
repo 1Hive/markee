@@ -146,12 +146,6 @@ export default function SuperfluidPlatformPage() {
   }, [])
 
   useEffect(() => {
-    const onFocus = () => fetchLeaderboards(true)
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [fetchLeaderboards])
-
-  useEffect(() => {
     fetchLeaderboards()
   }, [fetchLeaderboards])
 
@@ -312,7 +306,6 @@ export default function SuperfluidPlatformPage() {
         const buyPrice = topFunds + minIncrement
         const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
         const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(4)
-        const displayMessageCount = Math.max(0, (featuredMessage.markeeCount ?? 0) - 1)
 
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
@@ -353,7 +346,7 @@ export default function SuperfluidPlatformPage() {
                       {totalFundsEth} ETH total raised.
                     </span>
                     <span className="text-[#8A8FBF]">
-                      {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
+                      {featuredMessage.markeeCount ?? 0} {featuredMessage.markeeCount === 1 ? 'message' : 'messages'}
                     </span>
                   </div>
 
@@ -468,9 +461,6 @@ function LeaderboardCard({
   const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
   const buyPriceFormatted = Number(buyPrice) / 1e18
 
-  // Subtract 1 for the seed markee (created at deploy with 0 funds)
-  const displayMessageCount = Math.max(0, leaderboard.markeeCount - 1)
-
   return (
     <div
       onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
@@ -511,7 +501,7 @@ function LeaderboardCard({
           {formatFunds(leaderboard.totalFunds)} total raised.
         </span>
         <span className="text-[#8A8FBF]">
-          {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
+          {leaderboard.markeeCount} {leaderboard.markeeCount === 1 ? 'message' : 'messages'}
         </span>
       </div>
 
