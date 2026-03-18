@@ -12,6 +12,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import Image from 'next/image'
 import { RewardsModal } from '@/components/modals/RewardsModal'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -123,8 +124,8 @@ export default function SuperfluidPlatformPage() {
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
             <div className="flex items-center gap-6">
-              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-[#0A0F3D] border border-[#8A8FBF]/30">
-                <Zap size={32} className="text-[#1DB227]" />
+              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-[#0A0F3D] border border-[#8A8FBF]/30 overflow-hidden flex-shrink-0">
+                <Image src="/partners/superfluid.png" alt="Superfluid" width={48} height={48} className="object-contain" />
               </div>
               <div>
                 <div className="flex items-center gap-3 mb-1">
@@ -135,7 +136,7 @@ export default function SuperfluidPlatformPage() {
                   </span>
                 </div>
                 <p className="text-[#8A8FBF] max-w-xl">
-                  Superfluid ecosystem projects earn rewards by hosting a Markee sign. Every payment funds your project treasury and earns MARKEE tokens.
+                  A digital sign for your Superfluid project. Anyone can pay to set the message — your treasury earns 62% of every payment, and buyers earn MARKEE tokens.
                 </p>
               </div>
             </div>
@@ -187,18 +188,18 @@ export default function SuperfluidPlatformPage() {
             {[
               {
                 step: '1',
-                title: 'Create a Markee for your project',
-                body: 'Deploy a sign onchain in seconds — just a name and a treasury address. No OAuth required.',
+                title: 'Fund your treasury passively',
+                body: 'Your project treasury receives 62% of every payment made on your sign. No active management required — it runs onchain, forever.',
               },
               {
                 step: '2',
-                title: 'Buyers compete for your sign',
-                body: 'Anyone can pay to set the message displayed on your sign. The highest bidder holds the top spot.',
+                title: 'Build mindshare in the ecosystem',
+                body: 'Your sign surfaces your project to the entire Markee network. Buyers compete to hold the top message, keeping attention on your community.',
               },
               {
                 step: '3',
-                title: 'Earn rewards in Season 5',
-                body: 'Your treasury receives 62% of every payment. Superfluid ecosystem projects may also qualify for additional Season 5 rewards.',
+                title: 'Grow the Markee Cooperative',
+                body: 'Every purchase mints MARKEE tokens for the buyer. The 38% that goes to the Cooperative funds the protocol that runs your sign.',
               },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
