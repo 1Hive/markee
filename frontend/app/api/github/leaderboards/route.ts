@@ -2,14 +2,21 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
-import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFiles } from '@/lib/github/linkedFiles'
 
 // Disable Next.js static caching — this route reads live KV data on every request
 export const dynamic = 'force-dynamic'
 
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
-const client = createPublicClient({ chain: base, transport: http(process.env.RPC_URL_BASE ?? undefined) })
+// Client instantiated inside handler so env vars are always resolved at runtime.
+// Uses ALCHEMY_BASE_URL (same as superfluid route) to avoid mainnet.base.org rate limits.
+function getClient() {
+  return createPublicClient({
+    chain: base,
+    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org'),
+  })
+}
 
 // ── ABIs ──────────────────────────────────────────────────────────────────────
 
@@ -61,6 +68,8 @@ const MARKEE_ABI = [
 
 export async function GET() {
   try {
+    const client = getClient()
+
     const count = await client.readContract({
       address: GITHUB_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
@@ -93,7 +102,7 @@ export async function GET() {
       { address: addr as `0x${string}`, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] },
     ])
 
-    const metaResults = await client.multicall({ contracts: metaCalls })
+    const metaResults = await client.multicall({ contracts: metaCalls as Parameters<typeof client.multicall>[0]['contracts'] })
 
     // For each leaderboard, get the top markee address so we can read its message
     const topMarkeeAddresses: (string | null)[] = addresses.map((_, i) => {
@@ -111,7 +120,7 @@ export async function GET() {
       ])
 
     const markeeResults = markeeCalls.length > 0
-      ? await client.multicall({ contracts: markeeCalls })
+      ? await client.multicall({ contracts: markeeCalls as Parameters<typeof client.multicall>[0]['contracts'] })
       : []
 
     // Build a map: markeeAddress → { message, name, totalFundsAdded }
@@ -136,13 +145,13 @@ export async function GET() {
     // Assemble leaderboard objects
     let totalPlatformFundsWei = 0n
     const leaderboards = addresses.map((addr, i) => {
-      const base = i * 6
-      const name = (metaResults[base]?.result as string) ?? ''
-      const totalFundsWei = (metaResults[base + 1]?.result as bigint) ?? 0n
-      const markeeCount = Number((metaResults[base + 2]?.result as bigint) ?? 0n)
-      const admin = (metaResults[base + 3]?.result as string) ?? ''
-      const minimumPrice = (metaResults[base + 4]?.result as bigint) ?? 0n
-      const topResult = metaResults[base + 5]?.result as [string[], bigint[]] | undefined
+      const b = i * 6
+      const name = (metaResults[b]?.result as string) ?? ''
+      const totalFundsWei = (metaResults[b + 1]?.result as bigint) ?? 0n
+      const markeeCount = Number((metaResults[b + 2]?.result as bigint) ?? 0n)
+      const admin = (metaResults[b + 3]?.result as string) ?? ''
+      const minimumPrice = (metaResults[b + 4]?.result as bigint) ?? 0n
+      const topResult = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
       const topMarkeeAddr = topResult?.[0]?.[0]
       const topFundsRaw = topResult?.[1]?.[0] ?? 0n
       const topMarkee = topMarkeeAddr ? markeeMap.get(topMarkeeAddr.toLowerCase()) : undefined
@@ -150,7 +159,6 @@ export async function GET() {
       totalPlatformFundsWei += totalFundsWei
 
       const linkedFiles = linkedFilesMap[i]
-      // Derive legacy compat fields from first verified file, or first file
       const primaryFile = linkedFiles.find(f => f.verified) ?? linkedFiles[0] ?? null
 
       return {
@@ -165,9 +173,7 @@ export async function GET() {
         topFundsAddedRaw: topFundsRaw.toString(),
         topMessage: topMarkee?.message || null,
         topMessageOwner: topMarkee?.name || null,
-        // Multi-file array (new)
         linkedFiles,
-        // Legacy single-file compat fields (derived from primary file)
         repoVerified: !!primaryFile?.verified,
         repoFullName: primaryFile?.repoFullName ?? null,
         repoOwner: primaryFile?.repoOwner ?? null,
