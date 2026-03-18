@@ -316,52 +316,56 @@ export default function SuperfluidPlatformPage() {
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
             <div className="max-w-2xl mx-auto px-4">
-              {/* External link tab */}
-              <a
-                href="https://www.markee.xyz/ecosystem/superfluid"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-              >
-                <ExternalLink size={12} />
-                markee.xyz/ecosystem/superfluid
-              </a>
-
-              {/* Card — full card clickable, pink border on hover */}
+              {/* group wrapper — hover border spans tab + card as one unit */}
               <div
-                onClick={() => setFeaturedModalOpen(true)}
-                className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-t-0 border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
+                className="group cursor-pointer"
+                onClick={() => window.open('https://www.markee.xyz/ecosystem/superfluid', '_blank')}
               >
-                {/* Message box */}
-                <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
-                  <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
-                    {featuredMessage.message}
-                  </p>
-                  {featuredMessage.owner && (
-                    <p className="text-[#8A8FBF] text-xs text-right mt-2">
-                      — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+                {/* External link tab — campaigns.superfluid.org */}
+                <a
+                  href="https://campaigns.superfluid.org"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 group-hover:border-[#F897FE] text-[#8A8FBF] group-hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+                >
+                  <ExternalLink size={12} />
+                  campaigns.superfluid.org
+                </a>
+
+                {/* Card */}
+                <div className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-t-0 border-[#8A8FBF]/20 group-hover:border-[#F897FE] transition-colors p-5">
+                  {/* Message box */}
+                  <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
+                    <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
+                      {featuredMessage.message}
                     </p>
-                  )}
-                </div>
+                    {featuredMessage.owner && (
+                      <p className="text-[#8A8FBF] text-xs text-right mt-2">
+                        — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+                      </p>
+                    )}
+                  </div>
 
-                {/* Stats row */}
-                <div className="flex items-center justify-between text-xs mb-4">
-                  <span className="text-[#7C9CFF] font-medium">
-                    {totalFundsEth} ETH total raised.
-                  </span>
-                  <span className="text-[#8A8FBF]">
-                    {featuredMessage.markeeCount ?? 0} {featuredMessage.markeeCount === 1 ? 'message' : 'messages'}
-                  </span>
-                </div>
+                  {/* Stats row */}
+                  <div className="flex items-center justify-between text-xs mb-4">
+                    <span className="text-[#7C9CFF] font-medium">
+                      {totalFundsEth} ETH total raised.
+                    </span>
+                    <span className="text-[#8A8FBF]">
+                      {featuredMessage.markeeCount ?? 0} {featuredMessage.markeeCount === 1 ? 'message' : 'messages'}
+                    </span>
+                  </div>
 
-                {/* CTA — centered, half-width */}
-                <div className="flex justify-center">
-                  <button
-                    onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
-                    className="bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
-                  >
-                    {buyPriceFormatted} ETH to change
-                  </button>
+                  {/* CTA — full width on mobile, centered natural width on sm+ */}
+                  <div className="flex justify-center">
+                    <button
+                      onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
+                      className="w-full sm:w-auto bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
+                    >
+                      {buyPriceFormatted} ETH to change
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
