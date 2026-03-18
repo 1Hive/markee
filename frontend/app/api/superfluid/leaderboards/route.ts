@@ -71,6 +71,10 @@ async function fetchFeaturedMessage() {
       headers,
       body: JSON.stringify({
         query: `{
+          topDawgPartnerStrategy(id: "${LEGACY_TOPDAWG_ADDRESS}") {
+            totalFundsRaised
+            totalMarkeesCreated
+          }
           markees(
             where: { pricingStrategy: "${LEGACY_TOPDAWG_ADDRESS}" }
             orderBy: totalFundsAdded
@@ -86,11 +90,14 @@ async function fetchFeaturedMessage() {
     })
     const json = await res.json()
     const m = json.data?.markees?.[0]
+    const strategy = json.data?.topDawgPartnerStrategy
     if (!m?.message) return null
     return {
       message: m.message as string,
       owner: (m.owner?.id ?? '') as string,
       totalFundsAdded: (m.totalFundsAdded ?? '0') as string,
+      totalFunds: (strategy?.totalFundsRaised ?? '0') as string,
+      markeeCount: Number(strategy?.totalMarkeesCreated ?? 0),
     }
   } catch (e: any) {
     console.error('[superfluid/leaderboards] featured message error:', e.message)
