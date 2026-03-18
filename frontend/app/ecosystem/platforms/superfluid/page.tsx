@@ -441,7 +441,7 @@ export default function SuperfluidPlatformPage() {
         onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true) }}
         strategyAddress={LEGACY_TOPDAWG_ADDRESS as `0x${string}`}
         partnerName="Superfluid"
-        partnerSplitPercentage={0.62}
+        partnerSplitPercentage={62}
         topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
       />
     </div>
