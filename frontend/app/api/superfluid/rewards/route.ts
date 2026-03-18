@@ -5,7 +5,6 @@
  * Returns ranked accounts with total points — public endpoint, no auth needed.
  * Also fetches per-event breakdowns for the top N accounts.
  */
-
 import { NextRequest, NextResponse } from 'next/server'
 import { getCampaignId } from '@/lib/superfluid/points'
 
@@ -23,7 +22,8 @@ export async function GET(req: NextRequest) {
 
     // Fetch ranked accounts
     const accountsRes = await fetch(
-      `${BASE_URL}/points/accounts?campaignId=${campaignId}&orderBy=totalPoints&order=desc&page=${page}&limit=${limit}`
+      `${BASE_URL}/points/accounts?campaignId=${campaignId}&orderBy=totalPoints&order=desc&page=${page}&limit=${limit}`,
+      { cache: 'no-store' }
     )
 
     if (!accountsRes.ok) {
@@ -35,13 +35,11 @@ export async function GET(req: NextRequest) {
 
     const data = await accountsRes.json()
 
-    // Fetch per-event totals for breakdown (campaign-wide, not per-account)
-    // We fetch these in parallel to show what percentage of points came from each activity
     const [fundsTotal, farcasterTotal] = await Promise.all([
-      fetch(`${BASE_URL}/points/event-balance?campaignId=${campaignId}&eventName=add_funds`)
+      fetch(`${BASE_URL}/points/event-balance?campaignId=${campaignId}&eventName=add_funds`, { cache: 'no-store' })
         .then(r => r.ok ? r.json() : { points: 0 })
         .catch(() => ({ points: 0 })),
-      fetch(`${BASE_URL}/points/event-balance?campaignId=${campaignId}&eventName=farcaster_follow`)
+      fetch(`${BASE_URL}/points/event-balance?campaignId=${campaignId}&eventName=farcaster_follow`, { cache: 'no-store' })
         .then(r => r.ok ? r.json() : { points: 0 })
         .catch(() => ({ points: 0 })),
     ])
