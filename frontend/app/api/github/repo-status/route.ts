@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getLinkedFiles } from '@/lib/github/linkedFiles'
 
+// Disable Next.js static caching — this route reads live KV data on every request
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
