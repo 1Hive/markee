@@ -113,7 +113,7 @@ export default function GithubPlatformPage() {
     try {
       if (!silent) setIsLoadingLeaderboards(true)
       else setIsRefreshing(true)
-      const res = await fetch('/api/github/leaderboards')
+      const res = await fetch('/api/github/leaderboards', { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
