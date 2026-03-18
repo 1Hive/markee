@@ -123,7 +123,9 @@ export async function GET() {
     ])
 
     if (!addresses || addresses.length === 0) {
-      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage })
+      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage }, {
+        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+      })
     }
 
     // 2. Multicall — fetch metadata for each leaderboard
@@ -206,6 +208,8 @@ export async function GET() {
       leaderboards,
       totalPlatformFunds: formatEther(totalFundsRaw),
       featuredMessage,
+    }, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
     })
   } catch (err) {
     console.error('[superfluid/leaderboards] Error:', err)
