@@ -347,13 +347,13 @@ function LeaderboardCard({
   const overflowCount = allFiles.length - MAX_FILES_SHOWN
 
   return (
-    <div className="group rounded-lg overflow-hidden border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors">
+    <div className="relative">
       {repoHtmlUrl ? (
         <a
           href={repoHtmlUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border-b border-[#8A8FBF]/20 group-hover:border-[#F897FE]/40 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 transition-all"
+          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
           onClick={e => e.stopPropagation()}
         >
           <ExternalLink size={12} />
@@ -361,10 +361,13 @@ function LeaderboardCard({
         </a>
       ) : null}
 
-      <div
-        onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
-        className="bg-[#0A0F3D] p-6 cursor-pointer"
-      >
+      <div className={repoHtmlUrl ? 'rounded-t-none rounded-b-lg overflow-hidden' : ''}>
+        <div
+          onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
+          className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
+            repoHtmlUrl ? 'rounded-t-none rounded-b-lg' : 'rounded-lg'
+          }`}
+        >
         <div className="flex items-center gap-3 mb-3">
           <img src={avatarUrl} alt={title} className="h-12 w-12 object-contain rounded-lg" />
           <div className="flex-1 min-w-0">
@@ -422,6 +425,7 @@ function LeaderboardCard({
         >
           {buyPriceFormatted.toFixed(3)} ETH to change
         </button>
+      </div>
       </div>
     </div>
   )
