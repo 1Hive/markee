@@ -199,7 +199,7 @@ export default function SuperfluidPlatformPage() {
               {
                 step: '3',
                 title: 'Get Rewarded',
-                body: 'Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid\'s Season 5 Rewards campaign.',
+                body: 'Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid\'s Season 5 Rewards.',
               },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
