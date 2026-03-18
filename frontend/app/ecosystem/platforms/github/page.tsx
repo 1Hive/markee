@@ -44,9 +44,7 @@ interface GithubLeaderboard {
   topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
-  // Multi-file array (new)
   linkedFiles: LinkedFile[]
-  // Legacy compat fields (derived from primary verified file)
   repoVerified: boolean
   repoFullName: string | null
   repoOwner: string | null
@@ -83,7 +81,6 @@ export default function GithubPlatformPage() {
   const [repos, setRepos] = useState<GithubRepo[]>([])
   const [createModalOpen, setCreateModalOpen] = useState(false)
 
-  // Auto-open modal when redirected back from GitHub OAuth with ?modal=create
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
@@ -152,7 +149,6 @@ export default function GithubPlatformPage() {
     ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
     : []
 
-  // Separate into live (any verified file) vs not yet live
   const liveLeaderboards = leaderboards.filter(l => l.linkedFiles.some(f => f.verified))
   const unliveLeaderboards = leaderboards.filter(l => !l.linkedFiles.some(f => f.verified))
 
@@ -160,12 +156,11 @@ export default function GithubPlatformPage() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
 
+      {/* Breadcrumbs */}
       <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm">
             <Link href="/ecosystem" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Ecosystem</Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <Link href="/ecosystem/platforms" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Platforms</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <span className="text-[#EDEEFF]">GitHub</span>
           </div>
@@ -263,7 +258,6 @@ export default function GithubPlatformPage() {
             </div>
           ) : (
             <div className="space-y-12">
-              {/* Live Integrations */}
               {liveLeaderboards.length > 0 && (
                 <div>
                   <div className="flex items-center gap-3 mb-6">
@@ -283,7 +277,6 @@ export default function GithubPlatformPage() {
                 </div>
               )}
 
-              {/* Awaiting Integration */}
               {unliveLeaderboards.length > 0 && (
                 <div>
                   <div className="flex items-center gap-3 mb-6">
@@ -335,14 +328,13 @@ function LeaderboardCard({
 }) {
   const router = useRouter()
 
-  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+  const minIncrement = BigInt('1000000000000000')
   const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
   const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
   const rawBuyPrice = topFunds + minIncrement
   const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
   const buyPriceFormatted = Number(buyPrice) / 1e18
 
-  // Use the first verified file's repo data for the card header, fall back to first linked
   const primaryFile = leaderboard.linkedFiles.find(f => f.verified) ?? leaderboard.linkedFiles[0] ?? null
   const title = primaryFile?.repoName ?? leaderboard.name
   const avatarUrl = primaryFile?.repoAvatarUrl ?? GITHUB_LOGO
@@ -356,7 +348,6 @@ function LeaderboardCard({
 
   return (
     <div className="relative">
-      {/* Repo link tab */}
       {repoHtmlUrl ? (
         <a
           href={repoHtmlUrl}
@@ -376,17 +367,10 @@ function LeaderboardCard({
           repoHtmlUrl ? 'rounded-t-none rounded-b-lg border-t-0' : 'rounded-lg'
         }`}
       >
-        {/* Header */}
         <div className="flex items-center gap-3 mb-3">
-          <img
-            src={avatarUrl}
-            alt={title}
-            className="h-12 w-12 object-contain rounded-lg"
-          />
+          <img src={avatarUrl} alt={title} className="h-12 w-12 object-contain rounded-lg" />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{title}</h3>
-
-            {/* File list — live then awaiting, capped at MAX_FILES_SHOWN */}
             {allFiles.length > 0 && (
               <div className="mt-1 space-y-0.5">
                 {shownFiles.map(file => (
@@ -409,7 +393,6 @@ function LeaderboardCard({
           </div>
         </div>
 
-        {/* Top message box */}
         {leaderboard.topMessage ? (
           <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
             <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
@@ -426,7 +409,6 @@ function LeaderboardCard({
           </div>
         )}
 
-        {/* Stats */}
         <div className="flex items-center justify-between text-xs mb-4">
           <span className="text-[#7C9CFF] font-medium">
             {formatFunds(leaderboard.totalFunds)} total raised.
@@ -436,7 +418,6 @@ function LeaderboardCard({
           </span>
         </div>
 
-        {/* CTA */}
         <button
           onClick={e => { e.stopPropagation(); router.push(`/ecosystem/platforms/github/${leaderboard.address}`) }}
           className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
@@ -562,7 +543,6 @@ function CreateMarkeeModal({
           <X size={20} />
         </button>
 
-        {/* Success */}
         {isSuccess ? (
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
@@ -589,7 +569,6 @@ function CreateMarkeeModal({
             </div>
           </div>
 
-        /* Overview */
         ) : view === 'overview' ? (
           <>
             <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Create a Markee</h2>
@@ -631,7 +610,6 @@ function CreateMarkeeModal({
               )}
             </div>
 
-            {/* Existing signs — show file count badges */}
             {myLeaderboards.length > 0 && (
               <div className="mb-6">
                 <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
@@ -691,7 +669,6 @@ function CreateMarkeeModal({
             )}
           </>
 
-        /* Create form */
         ) : (
           <>
             <button
@@ -704,7 +681,6 @@ function CreateMarkeeModal({
             <p className="text-[#8A8FBF] text-xs mb-6">as @{githubUser.login}</p>
 
             <div className="space-y-5">
-              {/* Repo picker */}
               <div className="relative">
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Repo</label>
                 {selectedRepo ? (
@@ -751,7 +727,6 @@ function CreateMarkeeModal({
                 <p className="text-[#8A8FBF] text-xs mt-1.5">Repos where you have push access, verified via GitHub.</p>
               </div>
 
-              {/* File name picker */}
               <div className="relative">
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">File Name</label>
                 {!selectedRepo ? (
@@ -798,7 +773,6 @@ function CreateMarkeeModal({
                 )}
               </div>
 
-              {/* Treasury */}
               <div>
                 <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
                   Treasury Address <span className="text-[#F897FE]">*</span>
@@ -813,7 +787,6 @@ function CreateMarkeeModal({
                 <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
               </div>
 
-              {/* Revenue split */}
               <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                 <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
                 <div className="flex justify-between">
