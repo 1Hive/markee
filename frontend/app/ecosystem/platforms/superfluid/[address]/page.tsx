@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ChevronRight, Zap, Trophy, Plus, Copy, Check, Loader2,
+  ChevronRight, Zap, Trophy, Plus, Copy, Check,
 } from 'lucide-react'
 import { useReadContracts, useAccount } from 'wagmi'
 import { formatEther } from 'viem'
@@ -38,6 +38,72 @@ const MARKEE_ABI = [
   { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
 ] as const
 
+// ─── Skeletons ────────────────────────────────────────────────────────────────
+
+function SkeletonBar({ className = '' }: { className?: string }) {
+  return (
+    <div className={`bg-[#1A1F4D] rounded animate-pulse ${className}`} />
+  )
+}
+
+function MetaStatsSkeleton() {
+  return (
+    <div className="flex flex-wrap items-center gap-8 mt-8">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="flex items-center gap-2">
+          <SkeletonBar className="w-4 h-4 rounded-full" />
+          <SkeletonBar className="w-8 h-3.5" />
+          <SkeletonBar className="w-16 h-3.5" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TopMessageSkeleton() {
+  return (
+    <section className="bg-[#0A0F3D] border-y border-[#8A8FBF]/20 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-start gap-4">
+          <SkeletonBar className="flex-shrink-0 w-8 h-8 rounded-full" />
+          <div className="flex-1 min-w-0 space-y-3">
+            <SkeletonBar className="w-24 h-3" />
+            <SkeletonBar className="w-3/4 h-5" />
+            <SkeletonBar className="w-1/2 h-4" />
+            <div className="flex gap-4 pt-1">
+              <SkeletonBar className="w-16 h-3" />
+              <SkeletonBar className="w-20 h-3" />
+              <SkeletonBar className="w-16 h-3" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function MarkeeRowSkeleton({ rank }: { rank: number }) {
+  // Vary the widths a bit so rows don't look identical
+  const messageWidths = ['w-4/5', 'w-3/4', 'w-2/3', 'w-5/6', 'w-1/2']
+  const nameWidths = ['w-24', 'w-20', 'w-28', 'w-16', 'w-24']
+  const mw = messageWidths[rank % messageWidths.length]
+  const nw = nameWidths[rank % nameWidths.length]
+
+  return (
+    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 px-5 py-4 flex items-start gap-4">
+      <SkeletonBar className="flex-shrink-0 w-8 h-8 rounded-full" />
+      <div className="flex-1 min-w-0 space-y-2.5 pt-0.5">
+        <SkeletonBar className={`h-4 ${mw}`} />
+        <SkeletonBar className={`h-3 ${nw}`} />
+      </div>
+      <div className="flex-shrink-0 flex flex-col items-end gap-2.5 pt-0.5">
+        <SkeletonBar className="w-20 h-4" />
+        <SkeletonBar className="w-14 h-3" />
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SuperfluidLeaderboardPage() {
@@ -50,7 +116,7 @@ export default function SuperfluidLeaderboardPage() {
   const [copied, setCopied] = useState(false)
 
   // ── Read leaderboard metadata ──────────────────────────────────────────────
-  const { data: meta, refetch: refetchMeta } = useReadContracts({
+  const { data: meta, isLoading: isMetaLoading, refetch: refetchMeta } = useReadContracts({
     contracts: [
       { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' },
       { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' },
@@ -72,7 +138,7 @@ export default function SuperfluidLeaderboardPage() {
   const topAddresses = topResult?.[0] ?? []
   const topFunds = topResult?.[1] ?? []
 
-  const { data: markeeDetails, refetch: refetchDetails } = useReadContracts({
+  const { data: markeeDetails, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContracts({
     contracts: topAddresses.flatMap(addr => [
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
@@ -80,6 +146,9 @@ export default function SuperfluidLeaderboardPage() {
     ]),
     query: { enabled: topAddresses.length > 0 },
   })
+
+  // Loading state: meta still fetching, or addresses loaded but markee details still fetching
+  const isLoading = isMetaLoading || (topAddresses.length > 0 && isDetailsLoading)
 
   const markees: MarkeeSlot[] = topAddresses
     .map((addr, i) => ({
@@ -123,7 +192,10 @@ export default function SuperfluidLeaderboardPage() {
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <Link href="/ecosystem/platforms/superfluid" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Superfluid</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? 'Loading…'}</span>
+            {isMetaLoading
+              ? <SkeletonBar className="w-32 h-3.5" />
+              : <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? '—'}</span>
+            }
           </div>
         </div>
       </section>
@@ -139,12 +211,17 @@ export default function SuperfluidLeaderboardPage() {
               </div>
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <h1 className="text-2xl font-bold text-[#EDEEFF]">
-                    {leaderboardName ?? <span className="opacity-40">Loading…</span>}
-                  </h1>
-                  <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                    Superfluid S5
-                  </span>
+                  {isMetaLoading
+                    ? <SkeletonBar className="w-48 h-7" />
+                    : (
+                      <>
+                        <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? '—'}</h1>
+                        <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                          Superfluid S5
+                        </span>
+                      </>
+                    )
+                  }
                 </div>
                 <button
                   onClick={copyAddress}
@@ -166,59 +243,66 @@ export default function SuperfluidLeaderboardPage() {
           </div>
 
           {/* Stats */}
-          <div className="flex flex-wrap items-center gap-8 mt-8">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-              <span className="text-[#F897FE] font-semibold">{markeeCount?.toString() ?? '—'}</span>
-              <span className="text-[#8A8FBF]">messages</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Trophy size={14} className="text-[#7C9CFF]" />
-              <span className="text-[#7C9CFF] font-semibold">
-                {totalFunds !== undefined ? formatFunds(totalFunds) : '—'}
-              </span>
-              <span className="text-[#8A8FBF]">total funded</span>
-            </div>
-            {minimumPrice !== undefined && minimumPrice > 0n && (
+          {isMetaLoading ? (
+            <MetaStatsSkeleton />
+          ) : (
+            <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
-                <Zap size={14} className="text-[#8A8FBF]" />
-                <span className="text-[#8A8FBF]">min {formatFunds(minimumPrice)}</span>
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <span className="text-[#F897FE] font-semibold">{markeeCount?.toString() ?? '—'}</span>
+                <span className="text-[#8A8FBF]">messages</span>
               </div>
-            )}
-          </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Trophy size={14} className="text-[#7C9CFF]" />
+                <span className="text-[#7C9CFF] font-semibold">
+                  {totalFunds !== undefined ? formatFunds(totalFunds) : '—'}
+                </span>
+                <span className="text-[#8A8FBF]">total funded</span>
+              </div>
+              {minimumPrice !== undefined && minimumPrice > 0n && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Zap size={14} className="text-[#8A8FBF]" />
+                  <span className="text-[#8A8FBF]">min {formatFunds(minimumPrice)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
       {/* Top message spotlight */}
-      {topMarkee && (
-        <section className="bg-[#0A0F3D] border-y border-[#8A8FBF]/20 py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#FFD700] text-xs font-bold">
-                #1
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
-                <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
-                  {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
-                </p>
-                <div className="flex items-center gap-4 mt-3">
-                  {topMarkee.name && (
-                    <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
-                  )}
-                  <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
-                  <button
-                    onClick={() => { setSelectedMarkee(topMarkee); setBuyModalOpen(true) }}
-                    className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
-                  >
-                    Add funds →
-                  </button>
+      {isLoading
+        ? <TopMessageSkeleton />
+        : topMarkee && (
+          <section className="bg-[#0A0F3D] border-y border-[#8A8FBF]/20 py-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#FFD700] text-xs font-bold">
+                  #1
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
+                  <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
+                    {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
+                  </p>
+                  <div className="flex items-center gap-4 mt-3">
+                    {topMarkee.name && (
+                      <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
+                    )}
+                    <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
+                    <button
+                      onClick={() => { setSelectedMarkee(topMarkee); setBuyModalOpen(true) }}
+                      className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
+                    >
+                      Add funds →
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )
+      }
 
       {/* All Messages */}
       <section className="py-12 bg-[#060A2A]">
@@ -234,7 +318,13 @@ export default function SuperfluidLeaderboardPage() {
             </button>
           </div>
 
-          {markees.length === 0 ? (
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map(i => (
+                <MarkeeRowSkeleton key={i} rank={i} />
+              ))}
+            </div>
+          ) : markees.length === 0 ? (
             <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
               <Trophy size={40} className="text-[#8A8FBF] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">No messages yet</p>
