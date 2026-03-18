@@ -318,10 +318,21 @@ export function RewardsModal({
 
         {/* How points work footer */}
         <div className="flex-shrink-0 border-t border-[#8A8FBF]/20 px-6 py-4 bg-[#060A2A]/40">
-          <p className="text-[#8A8FBF] text-[10px] uppercase tracking-wider mb-2 font-semibold">How to earn</p>
-          <div className="flex flex-wrap gap-3 text-xs text-[#8A8FBF]">
-            <span>🪧 Buy a message 1pt / 0.0001 ETH</span>
-            <span>💰 Add funds 1pt / 0.0001 ETH</span>
+          <p className="text-[#8A8FBF] text-[10px] uppercase tracking-wider mb-2 font-semibold">How to Earn Points</p>
+          <div className="flex flex-col gap-1.5 text-xs text-[#8A8FBF]">
+            <span>🪧 Buy a message or add funds to an existing message: 10k pts per ETH</span>
+            <span>
+              🟣 Follow{' '}
+              <a
+                href="https://farcaster.xyz/markee"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#F897FE] hover:underline"
+              >
+                @markee on Farcaster
+              </a>
+              : 1pt
+            </span>
           </div>
         </div>
       </div>
