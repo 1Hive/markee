@@ -33,7 +33,6 @@ export const maxDuration = 300
 const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
 
-// Block the LeaderboardFactory was deployed — avoids scanning from genesis
 const FACTORY_DEPLOY_BLOCK = 43452028n
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -48,8 +47,8 @@ const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY
 
 // ─── KV keys ─────────────────────────────────────────────────────────────────
 
-const KV_SUBGRAPH_LAST_BLOCK = 'superfluid:cron:lastBlock'    // Legacy TopDawg cursor
-const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'      // LeaderboardFactory cursor
+const KV_SUBGRAPH_LAST_BLOCK = 'superfluid:cron:lastBlock'
+const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'
 const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'
 
 const API_BATCH_SIZE = 100
@@ -94,9 +93,6 @@ async function fetchSubgraphEvents(afterBlock: number): Promise<SubgraphFundsEve
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const graphToken = process.env.GRAPH_TOKEN || process.env.NEXT_PUBLIC_GRAPH_TOKEN
   if (graphToken) headers['Authorization'] = `Bearer ${graphToken}`
-
-  // debug
-  console.log(`[cron] Subgraph URL: ${SUBGRAPH_URL?.slice(0, 60)} Token: ${graphToken ? graphToken.slice(0, 8) + '...' : 'MISSING'}`)
 
   const all: SubgraphFundsEvent[] = []
   let skip = 0
@@ -271,14 +267,11 @@ async function fetchUserAddress(fid: number): Promise<string | null> {
     const data = await res.json()
     const user = data?.result?.user ?? {}
 
-    // debug
-    console.log(`[cron] FID ${fid} user keys: ${Object.keys(user).join(', ')}`)
+    // connectedAccounts contains ethereum addresses for this API shape
+    const connected: any[] = user.connectedAccounts ?? []
+    const ethAccount = connected.find((a: any) => a.platform === 'ethereum')
+    if (ethAccount?.address?.startsWith('0x')) return ethAccount.address.toLowerCase()
 
-    const verified: string[] = user.verifiedAddresses?.eth_addresses ?? user.verifications ?? []
-    if (verified.length > 0) return verified[0].toLowerCase()
-    if (typeof user.custodyAddress === 'string' && user.custodyAddress.startsWith('0x')) {
-      return user.custodyAddress.toLowerCase()
-    }
     return null
   } catch (e: any) {
     console.error(`[cron] fetchUserAddress ${fid} error:`, e.message)
