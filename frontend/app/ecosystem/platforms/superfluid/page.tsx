@@ -57,6 +57,8 @@ interface FeaturedMessage {
   message: string
   owner: string
   totalFundsAdded: string
+  totalFunds: string
+  markeeCount: number
 }
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
@@ -304,50 +306,65 @@ export default function SuperfluidPlatformPage() {
       </section>
 
       {/* Featured Message — Legacy TopDawg */}
-      {featuredMessage?.message && (
-        <section className="py-10 bg-[#060A2A] border-b border-[#8A8FBF]/20">
-          <div className="max-w-2xl mx-auto px-4">
-            {/* External link tab */}
-            <a
-              href="https://www.markee.xyz/ecosystem/superfluid"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-            >
-              <ExternalLink size={12} />
-              markee.xyz/ecosystem/superfluid
-            </a>
+      {featuredMessage?.message && (() => {
+        const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+        const topFunds = BigInt(featuredMessage.totalFundsAdded ?? '0')
+        const buyPrice = topFunds + minIncrement
+        const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
 
-            {/* Card */}
-            <div className="bg-[#0A0F3D] rounded-t-none rounded-b-lg border border-t-0 border-[#1DB227]/30 p-5">
-              {/* Message box */}
-              <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col">
-                <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
-                  {featuredMessage.message}
-                </p>
-                {featuredMessage.owner && (
-                  <p className="text-[#8A8FBF] text-xs text-right mt-2">
-                    — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+        return (
+          <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
+            <div className="max-w-2xl mx-auto px-4">
+              {/* External link tab */}
+              <a
+                href="https://www.markee.xyz/ecosystem/superfluid"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+              >
+                <ExternalLink size={12} />
+                markee.xyz/ecosystem/superfluid
+              </a>
+
+              {/* Card — inverted bg to distinguish from grid cards */}
+              <div className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-t-0 border-[#8A8FBF]/20 p-5">
+                {/* Message box */}
+                <div
+                  className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[80px] cursor-pointer"
+                  onClick={() => setFeaturedModalOpen(true)}
+                >
+                  <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
+                    {featuredMessage.message}
                   </p>
-                )}
-              </div>
+                  {featuredMessage.owner && (
+                    <p className="text-[#8A8FBF] text-xs text-right mt-2">
+                      — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+                    </p>
+                  )}
+                </div>
 
-              {/* Stats + CTA */}
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-[#7C9CFF] font-medium text-xs">
-                  {formatFunds(totalPlatformFunds)} total raised across all Superfluid signs
-                </span>
+                {/* Stats row */}
+                <div className="flex items-center justify-between text-xs mb-4">
+                  <span className="text-[#7C9CFF] font-medium">
+                    {formatFunds(featuredMessage.totalFunds ?? '0')} total raised.
+                  </span>
+                  <span className="text-[#8A8FBF]">
+                    {featuredMessage.markeeCount ?? 0} {featuredMessage.markeeCount === 1 ? 'message' : 'messages'}
+                  </span>
+                </div>
+
+                {/* CTA */}
                 <button
                   onClick={() => setFeaturedModalOpen(true)}
-                  className="flex-shrink-0 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
+                  className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
                 >
-                  Buy this message
+                  {buyPriceFormatted} ETH to change
                 </button>
               </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )
+      })()}
 
       {/* Signs grid */}
       <section className="py-16 bg-[#060A2A]">
@@ -416,6 +433,8 @@ export default function SuperfluidPlatformPage() {
         onClose={() => setFeaturedModalOpen(false)}
         onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true) }}
         strategyAddress={LEGACY_TOPDAWG_ADDRESS as `0x${string}`}
+        partnerName="Superfluid"
+        partnerSplitPercentage={0.62}
         topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
       />
     </div>
