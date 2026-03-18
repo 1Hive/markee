@@ -113,7 +113,10 @@ async function fetchSubgraphEvents(afterBlock: number): Promise<SubgraphFundsEve
     })
 
     const json = await res.json()
-    if (json.errors) throw new Error(`Subgraph error: ${json.errors[0].message}`)
+    if (!res.ok || json.errors) {
+      console.error(`[cron] Subgraph HTTP ${res.status}:`, json.errors?.[0]?.message ?? JSON.stringify(json))
+      throw new Error(`Subgraph error: ${json.errors?.[0]?.message ?? res.status}`)
+    }
 
     const page: SubgraphFundsEvent[] = json.data?.fundsAddeds ?? []
     all.push(...page)
