@@ -9,18 +9,16 @@ export const dynamic = 'force-dynamic'
 
 const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
 
-// Adjust this event ABI to match the actual LeaderboardFactory.sol event signature.
-// Common pattern — verify against your deployed contract.
-const FACTORY_EVENTS_ABI = [
+const FACTORY_ABI = [
   {
-    type: 'event',
-    name: 'LeaderboardCreated',
     inputs: [
-      { name: 'leaderboard', type: 'address', indexed: true },
-      { name: 'seedMarkee', type: 'address', indexed: true },
-      { name: 'admin', type: 'address', indexed: false },
-      { name: 'name', type: 'string', indexed: false },
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
     ],
+    name: 'getLeaderboards',
+    outputs: [{ name: 'result', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
   },
 ] as const
 
@@ -49,7 +47,7 @@ const MARKEE_ABI = [
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL ?? 'https://mainnet.base.org'),
+    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org'),
   })
 }
 
@@ -59,29 +57,19 @@ export async function GET() {
   try {
     const client = getClient()
 
-    // 1. Fetch all LeaderboardCreated events from the Superfluid factory
-    const logs = await client.getLogs({
+    // 1. Read all leaderboard addresses from the factory registry
+    const addresses = await client.readContract({
       address: SUPERFLUID_FACTORY_ADDRESS,
-      event: FACTORY_EVENTS_ABI[0],
-      fromBlock: 0n,
-      toBlock: 'latest',
-    })
+      abi: FACTORY_ABI,
+      functionName: 'getLeaderboards',
+      args: [0n, 1000n],
+    }) as `0x${string}`[]
 
-    if (logs.length === 0) {
+    if (!addresses || addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' })
     }
 
-    // Extract leaderboard addresses from indexed topic[1]
-    const addresses = logs.map(log => {
-      // args.leaderboard from the parsed log
-      return (log.args as { leaderboard?: string }).leaderboard as `0x${string}`
-    }).filter(Boolean)
-
-    if (addresses.length === 0) {
-      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' })
-    }
-
-    // 2. Multicall to fetch metadata for each leaderboard
+    // 2. Multicall — fetch metadata for each leaderboard
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
       { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },
@@ -93,7 +81,7 @@ export async function GET() {
 
     const metaResults = await client.multicall({ contracts: metaCalls as Parameters<typeof client.multicall>[0]['contracts'] })
 
-    // 3. For each leaderboard, pull the top markee address then fetch its message
+    // 3. Extract top markee addresses, then fetch their messages
     const topMarkeeAddresses: (`0x${string}` | null)[] = addresses.map((_, i) => {
       const topResult = metaResults[i * 6 + 5]?.result as [string[], bigint[]] | undefined
       return (topResult?.[0]?.[0] ?? null) as `0x${string}` | null
@@ -117,14 +105,14 @@ export async function GET() {
     let markeeCallIndex = 0
 
     const leaderboards = addresses.map((addr, i) => {
-      const base = i * 6
-      const name           = (metaResults[base]?.result as string) ?? addr
-      const totalFunds     = (metaResults[base + 1]?.result as bigint) ?? 0n
-      const markeeCount    = (metaResults[base + 2]?.result as bigint) ?? 0n
-      const minimumPrice   = (metaResults[base + 3]?.result as bigint) ?? 0n
-      const admin          = (metaResults[base + 4]?.result as string) ?? ''
-      const topResult      = metaResults[base + 5]?.result as [string[], bigint[]] | undefined
-      const topFunds0      = topResult?.[1]?.[0] ?? 0n
+      const b = i * 6
+      const name         = (metaResults[b]?.result as string) ?? addr
+      const totalFunds   = (metaResults[b + 1]?.result as bigint) ?? 0n
+      const markeeCount  = (metaResults[b + 2]?.result as bigint) ?? 0n
+      const minimumPrice = (metaResults[b + 3]?.result as bigint) ?? 0n
+      const admin        = (metaResults[b + 4]?.result as string) ?? ''
+      const topResult    = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
+      const topFunds0    = topResult?.[1]?.[0] ?? 0n
 
       totalFundsRaw += totalFunds
 
@@ -132,8 +120,8 @@ export async function GET() {
       let topMessageOwner: string | null = null
 
       if (topMarkeeAddresses[i]) {
-        topMessage      = (markeeResults[markeeCallIndex]?.result as string) ?? null
-        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) ?? null
+        topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
+        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
         markeeCallIndex += 2
       }
 
@@ -147,12 +135,11 @@ export async function GET() {
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFunds0.toString(),
-        topMessage: topMessage || null,
-        topMessageOwner: topMessageOwner || null,
+        topMessage,
+        topMessageOwner,
       }
     })
 
-    // Sort by total funds descending
     leaderboards.sort((a, b) => {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return diff > 0n ? 1 : diff < 0n ? -1 : 0
