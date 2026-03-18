@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import {
-  Trophy, X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Plus,
+  Trophy, X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Plus, ExternalLink,
 } from 'lucide-react'
 import {
   useWriteContract, useWaitForTransactionReceipt,
@@ -63,10 +63,8 @@ interface BuyMessageModalProps {
    *  - 'superfluid' → tracks Superfluid points via useSuperfluidPoints; skips GitHub write
    */
   platformId?: 'github' | 'superfluid'
-  /** Partner/project display name shown in the ETH split panel */
-  partnerName?: string
-  /** Percentage of ETH going to the partner treasury (e.g. 62). Affects token calc and split display. */
-  partnerSplitPercentage?: number
+  /** The address that receives 62% of ETH. Shown in the split panel with a Basescan link. */
+  beneficiaryAddress: `0x${string}`
 }
 
 // ─── MARKEE token helpers ─────────────────────────────────────────────────────
@@ -87,14 +85,10 @@ function getCurrentPhaseRate(): number {
   return PHASES[PHASES.length - 1].rate
 }
 
-function calculateMarkeeTokens(ethAmount: number, partnerSplitPercentage?: number): number {
-  const baseRate = getCurrentPhaseRate()
-  const USER_PERCENT = 0.62
-  if (partnerSplitPercentage) {
-    const revnetPercentage = (100 - partnerSplitPercentage) / 100
-    return ethAmount * baseRate * revnetPercentage * USER_PERCENT
-  }
-  return ethAmount * baseRate * USER_PERCENT
+function calculateMarkeeTokens(ethAmount: number): number {
+  // 62% of ETH goes to the beneficiary; only 38% reaches RevNet for token issuance.
+  // The buyer receives 62% of the tokens issued against that 38%.
+  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -109,8 +103,7 @@ export function BuyMessageModal({
   onClose,
   onSuccess,
   platformId,
-  partnerName,
-  partnerSplitPercentage,
+  beneficiaryAddress,
 }: BuyMessageModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -315,31 +308,32 @@ export function BuyMessageModal({
     </div>
   )
 
-  // ── Token + partner split display ─────────────────────────────────────────
+  // ── Token + beneficiary split display ────────────────────────────────────
+  const shortBeneficiary = `${beneficiaryAddress.slice(0, 6)}…${beneficiaryAddress.slice(-4)}`
+  const basescanUrl = `https://basescan.org/address/${beneficiaryAddress}`
+
   const tokenDisplayJSX = amount && parseFloat(amount) > 0 ? (
-    <div className={`grid ${partnerName && partnerSplitPercentage ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+    <div className="grid grid-cols-2 gap-4">
       <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
         <p className="text-sm text-[#F897FE] font-medium mb-2">You&apos;ll receive</p>
         <p className="text-4xl font-bold text-[#F897FE] mb-1">
-          {calculateMarkeeTokens(parseFloat(amount), partnerSplitPercentage).toLocaleString()}
+          {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
         </p>
         <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
       </div>
 
-      {partnerName && partnerSplitPercentage && (
-        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
-          <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
-          <p className="text-4xl font-bold text-[#FFA94D] mb-1">
-            {(() => {
-              const value = parseFloat(amount) * (partnerSplitPercentage / 100)
-              if (value === 0) return '0'
-              if (value < 0.00001) return '< 0.00001'
-              return Number(value.toFixed(5)).toString()
-            })()}
-          </p>
-          <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-        </div>
-      )}
+      <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
+        <p className="text-sm text-[#FFA94D] font-medium mb-2">Beneficiary receives</p>
+        <p className="text-4xl font-bold text-[#FFA94D] mb-1">
+          {(() => {
+            const value = parseFloat(amount) * 0.62
+            if (value === 0) return '0'
+            if (value < 0.00001) return '< 0.00001'
+            return Number(value.toFixed(5)).toString()
+          })()}
+        </p>
+        <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
+      </div>
     </div>
   ) : null
 
@@ -347,29 +341,22 @@ export function BuyMessageModal({
   const revenueSplitJSX = (
     <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
       <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
-      {partnerName && partnerSplitPercentage ? (
-        <>
-          <div className="flex justify-between">
-            <span className="text-[#EDEEFF]">{partnerName}</span>
-            <span className="text-[#FFA94D] font-semibold">{partnerSplitPercentage}%</span>
-          </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-[#EDEEFF]">Markee Cooperative</span>
-            <span className="text-[#7C9CFF] font-semibold">{100 - partnerSplitPercentage}%</span>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="flex justify-between">
-            <span className="text-[#EDEEFF]">Project treasury</span>
-            <span className="text-[#F897FE] font-semibold">62%</span>
-          </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-[#EDEEFF]">Markee Cooperative</span>
-            <span className="text-[#7C9CFF] font-semibold">38%</span>
-          </div>
-        </>
-      )}
+      <div className="flex justify-between items-center">
+        <a
+          href={basescanUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[#EDEEFF] hover:text-[#FFA94D] transition-colors font-mono text-xs"
+        >
+          {shortBeneficiary}
+          <ExternalLink size={11} className="opacity-60" />
+        </a>
+        <span className="text-[#FFA94D] font-semibold">62%</span>
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-[#EDEEFF]">Markee Cooperative</span>
+        <span className="text-[#7C9CFF] font-semibold">38%</span>
+      </div>
     </div>
   )
 
