@@ -57,6 +57,57 @@ interface FeaturedMessage {
   owner: string
 }
 
+// ─── Skeletons ────────────────────────────────────────────────────────────────
+
+function SkeletonBar({ className = '' }: { className?: string }) {
+  return <div className={`bg-[#1A1F4D] rounded animate-pulse ${className}`} />
+}
+
+function HeroStatsSkeleton() {
+  return (
+    <div className="flex items-center gap-6 mt-10 flex-wrap">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="flex items-center gap-2">
+          <SkeletonBar className="w-3 h-3 rounded-full" />
+          <SkeletonBar className="w-10 h-3.5" />
+          <SkeletonBar className="w-20 h-3.5" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LeaderboardCardSkeleton() {
+  return (
+    <div className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <SkeletonBar className="w-12 h-12 rounded-lg flex-shrink-0" />
+        <div className="flex-1 space-y-2">
+          <SkeletonBar className="w-3/4 h-5" />
+          <SkeletonBar className="w-1/2 h-3" />
+        </div>
+      </div>
+
+      {/* Message box */}
+      <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[120px] space-y-2.5 flex flex-col justify-center">
+        <SkeletonBar className="w-full h-3.5" />
+        <SkeletonBar className="w-4/5 h-3.5" />
+        <SkeletonBar className="w-1/3 h-3 ml-auto mt-auto" />
+      </div>
+
+      {/* Footer row */}
+      <div className="flex items-center justify-between mb-4">
+        <SkeletonBar className="w-28 h-3" />
+        <SkeletonBar className="w-16 h-3" />
+      </div>
+
+      {/* Button */}
+      <SkeletonBar className="w-full h-9 rounded-lg" />
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SuperfluidPlatformPage() {
@@ -73,6 +124,7 @@ export default function SuperfluidPlatformPage() {
     try {
       if (!silent) setIsLoadingLeaderboards(true)
       else setIsRefreshing(true)
+
       const res = await fetch('/api/superfluid/leaderboards')
       if (res.ok) {
         const data = await res.json()
@@ -193,47 +245,52 @@ export default function SuperfluidPlatformPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-6 mt-10 flex-wrap">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-              <span className="text-[#F897FE] font-semibold">{leaderboards.length}</span>
-              <span className="text-[#8A8FBF]">active signs</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Trophy size={14} className="text-[#7C9CFF]" />
-              <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-              <span className="text-[#8A8FBF]">total funded</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-[#7C9CFF] font-semibold">1 pt</span>
-              <span className="text-[#8A8FBF]">/ 0.0001 ETH funded</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-[#7C9CFF] font-semibold">1 pt</span>
-              <span className="text-[#8A8FBF]">/ follow Markee on Farcaster</span>
-              <a
-                href="https://farcaster.xyz/markee"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
-                aria-label="Follow Markee on Farcaster"
+          {/* Stats — skeleton while loading, real values once resolved */}
+          {isLoadingLeaderboards ? (
+            <HeroStatsSkeleton />
+          ) : (
+            <div className="flex items-center gap-6 mt-10 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <span className="text-[#F897FE] font-semibold">{leaderboards.length}</span>
+                <span className="text-[#8A8FBF]">active signs</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Trophy size={14} className="text-[#7C9CFF]" />
+                <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
+                <span className="text-[#8A8FBF]">total funded</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[#7C9CFF] font-semibold">1 pt</span>
+                <span className="text-[#8A8FBF]">/ 0.0001 ETH funded</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[#7C9CFF] font-semibold">1 pt</span>
+                <span className="text-[#8A8FBF]">/ follow Markee on Farcaster</span>
+                <a
+                  href="https://farcaster.xyz/markee"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                  aria-label="Follow Markee on Farcaster"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </a>
+              </div>
+              <button
+                onClick={() => fetchLeaderboards(true)}
+                disabled={isRefreshing}
+                className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
-              </a>
+                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+                {isRefreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
             </div>
-            <button
-              onClick={() => fetchLeaderboards(true)}
-              disabled={isRefreshing}
-              className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
-            >
-              <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-              {isRefreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
+          )}
         </div>
       </section>
 
@@ -255,7 +312,7 @@ export default function SuperfluidPlatformPage() {
               {
                 step: '3',
                 title: 'Get Rewarded',
-                body: 'Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid\'s Season 5 Rewards.',
+                body: "Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid's Season 5 Rewards.",
               },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
@@ -299,7 +356,7 @@ export default function SuperfluidPlatformPage() {
           {isLoadingLeaderboards ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[1, 2, 3].map(i => (
-                <div key={i} className="bg-[#0A0F3D] rounded-lg p-8 border border-[#8A8FBF]/20 animate-pulse h-48" />
+                <LeaderboardCardSkeleton key={i} />
               ))}
             </div>
           ) : leaderboards.length === 0 ? (
