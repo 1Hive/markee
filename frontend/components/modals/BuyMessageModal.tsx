@@ -63,6 +63,10 @@ interface BuyMessageModalProps {
    *  - 'superfluid' → tracks Superfluid points via useSuperfluidPoints; skips GitHub write
    */
   platformId?: 'github' | 'superfluid'
+  /** Partner/project display name shown in the ETH split panel */
+  partnerName?: string
+  /** Percentage of ETH going to the partner treasury (e.g. 62). Affects token calc and split display. */
+  partnerSplitPercentage?: number
 }
 
 // ─── MARKEE token helpers ─────────────────────────────────────────────────────
@@ -83,8 +87,14 @@ function getCurrentPhaseRate(): number {
   return PHASES[PHASES.length - 1].rate
 }
 
-function calculateMarkeeTokens(ethAmount: number): number {
-  return ethAmount * getCurrentPhaseRate() * 0.62
+function calculateMarkeeTokens(ethAmount: number, partnerSplitPercentage?: number): number {
+  const baseRate = getCurrentPhaseRate()
+  const USER_PERCENT = 0.62
+  if (partnerSplitPercentage) {
+    const revnetPercentage = (100 - partnerSplitPercentage) / 100
+    return ethAmount * baseRate * revnetPercentage * USER_PERCENT
+  }
+  return ethAmount * baseRate * USER_PERCENT
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -99,6 +109,8 @@ export function BuyMessageModal({
   onClose,
   onSuccess,
   platformId,
+  partnerName,
+  partnerSplitPercentage,
 }: BuyMessageModalProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -303,6 +315,64 @@ export function BuyMessageModal({
     </div>
   )
 
+  // ── Token + partner split display ─────────────────────────────────────────
+  const tokenDisplayJSX = amount && parseFloat(amount) > 0 ? (
+    <div className={`grid ${partnerName && partnerSplitPercentage ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
+        <p className="text-sm text-[#F897FE] font-medium mb-2">You&apos;ll receive</p>
+        <p className="text-4xl font-bold text-[#F897FE] mb-1">
+          {calculateMarkeeTokens(parseFloat(amount), partnerSplitPercentage).toLocaleString()}
+        </p>
+        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
+      </div>
+
+      {partnerName && partnerSplitPercentage && (
+        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
+          <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
+          <p className="text-4xl font-bold text-[#FFA94D] mb-1">
+            {(() => {
+              const value = parseFloat(amount) * (partnerSplitPercentage / 100)
+              if (value === 0) return '0'
+              if (value < 0.00001) return '< 0.00001'
+              return Number(value.toFixed(5)).toString()
+            })()}
+          </p>
+          <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
+        </div>
+      )}
+    </div>
+  ) : null
+
+  // ── Revenue split info panel ──────────────────────────────────────────────
+  const revenueSplitJSX = (
+    <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
+      <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
+      {partnerName && partnerSplitPercentage ? (
+        <>
+          <div className="flex justify-between">
+            <span className="text-[#EDEEFF]">{partnerName}</span>
+            <span className="text-[#FFA94D] font-semibold">{partnerSplitPercentage}%</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[#EDEEFF]">Markee Cooperative</span>
+            <span className="text-[#7C9CFF] font-semibold">{100 - partnerSplitPercentage}%</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex justify-between">
+            <span className="text-[#EDEEFF]">Project treasury</span>
+            <span className="text-[#F897FE] font-semibold">62%</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[#EDEEFF]">Markee Cooperative</span>
+            <span className="text-[#7C9CFF] font-semibold">38%</span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="absolute inset-0" onClick={onClose} />
@@ -423,16 +493,8 @@ export function BuyMessageModal({
 
                 {amountSelectorJSX}
 
-                {/* MARKEE token display */}
-                {amount && parseFloat(amount) > 0 && (
-                  <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
-                    <p className="text-sm text-[#F897FE] font-medium mb-2">You&apos;ll receive</p>
-                    <p className="text-4xl font-bold text-[#F897FE] mb-1">
-                      {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-                    </p>
-                    <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-                  </div>
-                )}
+                {/* MARKEE token display + optional partner ETH panel */}
+                {tokenDisplayJSX}
 
                 {/* Payment info panel */}
                 {isAddFunds && existingMarkee ? (
@@ -458,17 +520,7 @@ export function BuyMessageModal({
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
-                    <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
-                    <div className="flex justify-between">
-                      <span className="text-[#EDEEFF]">Project treasury</span>
-                      <span className="text-[#F897FE] font-semibold">62%</span>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-[#EDEEFF]">Markee Cooperative</span>
-                      <span className="text-[#7C9CFF] font-semibold">38%</span>
-                    </div>
-                  </div>
+                  revenueSplitJSX
                 )}
 
                 {(error || writeError) && (
