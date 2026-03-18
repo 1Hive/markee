@@ -306,33 +306,22 @@ export default function SuperfluidPlatformPage() {
       {/* Featured Message — Legacy TopDawg */}
       {featuredMessage?.message && (
         <section className="py-10 bg-[#060A2A] border-b border-[#8A8FBF]/20">
-          <div className="max-w-sm mx-auto px-4">
+          <div className="max-w-2xl mx-auto px-4">
             {/* External link tab */}
             <a
-              href="https://campaigns.superfluid.org"
+              href="https://www.markee.xyz/ecosystem/superfluid"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
             >
               <ExternalLink size={12} />
-              campaigns.superfluid.org
+              markee.xyz/ecosystem/superfluid
             </a>
 
             {/* Card */}
-            <div className="bg-[#0A0F3D] rounded-t-none rounded-b-lg border border-t-0 border-[#F897FE]/20 p-6">
-              {/* Header */}
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden flex-shrink-0">
-                  <Image src="/partners/superfluid.png" alt="Superfluid" width={32} height={32} className="object-contain" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-[#EDEEFF] text-base">Superfluid</h3>
-                  <p className="text-[#8A8FBF] text-xs">campaigns.superfluid.org</p>
-                </div>
-              </div>
-
+            <div className="bg-[#0A0F3D] rounded-t-none rounded-b-lg border border-t-0 border-[#1DB227]/30 p-5">
               {/* Message box */}
-              <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[100px] flex flex-col">
+              <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col">
                 <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
                   {featuredMessage.message}
                 </p>
@@ -343,23 +332,18 @@ export default function SuperfluidPlatformPage() {
                 )}
               </div>
 
-              {/* Stats */}
-              <div className="flex items-center justify-between text-xs mb-4">
-                <span className="text-[#7C9CFF] font-medium">
-                  {featuredMessage.totalFundsAdded
-                    ? `${(Number(featuredMessage.totalFundsAdded) / 1e18).toFixed(4)} ETH raised`
-                    : 'Top funded message'}
+              {/* Stats + CTA */}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[#7C9CFF] font-medium text-xs">
+                  {formatFunds(totalPlatformFunds)} total raised across all Superfluid signs
                 </span>
-                <span className="text-[#8A8FBF]">Legacy TopDawg</span>
+                <button
+                  onClick={() => setFeaturedModalOpen(true)}
+                  className="flex-shrink-0 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
+                >
+                  Buy this message
+                </button>
               </div>
-
-              {/* CTA */}
-              <button
-                onClick={() => setFeaturedModalOpen(true)}
-                className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
-              >
-                Buy this message
-              </button>
             </div>
           </div>
         </section>
