@@ -316,23 +316,22 @@ export default function SuperfluidPlatformPage() {
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
             <div className="max-w-2xl mx-auto px-4">
-              {/* Single wrapper owns the full border + hover — no double-border seam */}
-              <div className="group rounded-lg overflow-hidden border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors">
-                {/* External link tab */}
-                <a
-                  href="https://campaigns.superfluid.org"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className="flex items-center justify-center gap-2 bg-[#060A2A] border-b border-[#8A8FBF]/20 group-hover:border-[#F897FE]/40 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 transition-all"
-                >
-                  <ExternalLink size={12} />
-                  campaigns.superfluid.org
-                </a>
+              {/* Tab — independent hover */}
+              <a
+                href="https://campaigns.superfluid.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+              >
+                <ExternalLink size={12} />
+                campaigns.superfluid.org
+              </a>
 
-                {/* Card */}
+              {/* overflow-hidden clips the card's border at the junction */}
+              <div className="rounded-t-none rounded-b-lg overflow-hidden">
                 <div
-                  className="bg-[#060A2A] p-5 cursor-pointer"
+                  className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
                   onClick={() => window.open('https://www.markee.xyz/ecosystem/superfluid', '_blank')}
                 >
                   {/* Message box */}
@@ -367,6 +366,7 @@ export default function SuperfluidPlatformPage() {
                     </button>
                   </div>
                 </div>
+              </div>
               </div>
             </div>
           </section>
