@@ -170,7 +170,7 @@ export default function GithubPlatformPage() {
                 <Github size={32} className="text-[#EDEEFF]" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-[#EDEEFF] mb-2">GitHub — SKILL.md</h1>
+                <h1 className="text-3xl font-bold text-[#EDEEFF] mb-2">Raise Funds on GitHub</h1>
                 <p className="text-[#8A8FBF] max-w-xl">
                   Raise funds for your open source project by adding a Markee message to any markdown file in your repository.
                 </p>
