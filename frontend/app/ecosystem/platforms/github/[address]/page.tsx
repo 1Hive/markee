@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -59,7 +59,10 @@ const MARKEE_ABI = [
 
 export default function GithubLeaderboardPage() {
   const params = useParams()
-  const leaderboardAddress = (params.address as string) as `0x${string}`
+  const leaderboardAddress = useMemo(
+    () => (params.address as string) as `0x${string}`,
+    [params.address]
+  )
 
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
@@ -67,7 +70,18 @@ export default function GithubLeaderboardPage() {
   const [copied, setCopied] = useState(false)
   const [githubUser, setGithubUser] = useState<{ login: string; avatarUrl: string } | null>(null)
   const [githubLoading, setGithubLoading] = useState(true)
-  const [linkedFiles, setLinkedFiles] = useState<LinkedFile[]>([])
+
+  // ← Seed from sessionStorage written by the index page card click.
+  //   This prevents the detail page from flashing "Awaiting Integration"
+  //   when Vercel KV read replicas haven't caught up to a recent verify write.
+  const [linkedFiles, setLinkedFiles] = useState<LinkedFile[]>(() => {
+    try {
+      const key = `markee:linkedFiles:${(params.address as string).toLowerCase()}`
+      const cached = sessionStorage.getItem(key)
+      if (cached) return JSON.parse(cached) as LinkedFile[]
+    } catch {}
+    return []
+  })
   const [linkedFilesLoading, setLinkedFilesLoading] = useState(true)
   const [repos, setRepos] = useState<Array<{ id: number; fullName: string; owner: string; avatarUrl: string; private: boolean }>>([])
 
@@ -79,6 +93,10 @@ export default function GithubLeaderboardPage() {
       const res = await fetch(`/api/github/repo-status?address=${leaderboardAddress}`)
       const data = await res.json()
       setLinkedFiles(data.linkedFiles ?? [])
+      // Clear the sessionStorage cache now that we have a fresh read
+      try {
+        sessionStorage.removeItem(`markee:linkedFiles:${leaderboardAddress.toLowerCase()}`)
+      } catch {}
     } catch {
       setLinkedFiles([])
     } finally {
@@ -115,6 +133,7 @@ export default function GithubLeaderboardPage() {
       { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'maxMessageLength' },
       { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees', args: [100n] },
     ],
+    query: { refetchOnWindowFocus: false },
   })
 
   const leaderboardName = meta?.[0]?.result as string | undefined
@@ -123,7 +142,6 @@ export default function GithubLeaderboardPage() {
   const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const topResult = meta?.[6]?.result as [string[], bigint[]] | undefined
 
-  // Strip " — filename" suffix from leaderboard name — only show repo name
   const displayName = leaderboardName ? leaderboardName.split(' — ')[0] : undefined
 
   const topAddresses = topResult?.[0] ?? []
@@ -135,7 +153,7 @@ export default function GithubLeaderboardPage() {
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'owner' as const },
     ]),
-    query: { enabled: topAddresses.length > 0 },
+    query: { enabled: topAddresses.length > 0, refetchOnWindowFocus: false },
   })
 
   const markees: MarkeeSlot[] = topAddresses
@@ -229,7 +247,6 @@ export default function GithubLeaderboardPage() {
             </button>
           </div>
 
-          {/* Stats — use markees.length to exclude seed markee from count */}
           <div className="flex flex-wrap items-center gap-8 mt-8">
             <div className="flex items-center gap-2 text-sm">
               <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
