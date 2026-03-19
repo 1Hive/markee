@@ -7,7 +7,7 @@ import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linke
 
 const client = createPublicClient({
   chain: base,
-  transport: http(process.env.RPC_URL_BASE ?? undefined),
+  transport: http(process.env.ALCHEMY_BASE_URL ?? undefined), // ← was RPC_URL_BASE (env var doesn't exist)
 })
 
 const LEADERBOARD_ABI = [
@@ -33,7 +33,6 @@ function buildMarkeeBlock(
   leaderboardUrl: string,
 ): string {
   const attribution = ownerName ? ` — ${ownerName}` : ''
-  // Uses address-specific delimiters so multiple blocks can coexist in the same file
   return `${startDelimiter(leaderboardAddress)}
 > 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
 >
