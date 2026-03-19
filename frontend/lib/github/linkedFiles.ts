@@ -27,13 +27,29 @@ export function endDelimiter(leaderboardAddress: string): string {
 
 export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
   const kvKey = `github:markee:${leaderboardAddress.toLowerCase()}`
-  const raw = await kv.get(kvKey)
+
+  // Use Upstash REST API directly with strong consistency to avoid
+  // read replica lag causing verified status to flicker on page refresh
+  const url = `${process.env.KV_REST_API_URL}/get/${encodeURIComponent(kvKey)}`
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
+      'Upstash-Consistency': 'strong',
+    },
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    console.error(`[getLinkedFiles] Upstash REST error ${res.status} for key ${kvKey}`)
+    return []
+  }
+
+  const json = await res.json()
+  const raw = json.result
+
   if (!raw) return []
   if (Array.isArray(raw)) return raw as LinkedFile[]
-  // Legacy single-object migration — treat as verified since old route verified push access
-  if (typeof raw === 'object' && raw !== null) {
-    return legacyToArray(raw as Record<string, unknown>)
-  }
+  if (typeof raw === 'object' && raw !== null) return legacyToArray(raw as Record<string, unknown>)
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw)
