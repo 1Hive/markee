@@ -19,13 +19,6 @@ function getClient() {
 
 const FACTORY_ABI = [
   {
-    inputs: [],
-    name: 'leaderboardCount',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
     inputs: [
       { name: 'offset', type: 'uint256' },
       { name: 'limit', type: 'uint256' },
@@ -81,21 +74,14 @@ export async function GET() {
       return results
     }
 
-    const count = await client.readContract({
-      address: GITHUB_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'leaderboardCount',
-    })
-
-    if (count === 0n) {
-      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' }, { headers: NO_CACHE })
-    }
-
+    // Use a fixed large limit instead of fetching leaderboardCount first.
+    // The two-call pattern (count then fetch) causes new leaderboards to be
+    // dropped when Alchemy returns a cached count that's behind the actual state.
     const addresses = await client.readContract({
       address: GITHUB_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
       functionName: 'getLeaderboards',
-      args: [0n, count],
+      args: [0n, 1000n],
     })
 
     if (!addresses || addresses.length === 0) {
