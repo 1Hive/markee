@@ -329,7 +329,6 @@ function LeaderboardCard({
   const buyPriceFormatted = Number(buyPrice) / 1e18
 
   const primaryFile = leaderboard.linkedFiles.find(f => f.verified) ?? leaderboard.linkedFiles[0] ?? null
-  // Strip " — filename" suffix from leaderboard name for display
   const title = primaryFile?.repoName ?? leaderboard.name.split(' — ')[0]
   const avatarUrl = primaryFile?.repoAvatarUrl ?? GITHUB_LOGO
   const repoHtmlUrl = primaryFile?.repoHtmlUrl ?? null
@@ -340,8 +339,20 @@ function LeaderboardCard({
   const shownFiles = allFiles.slice(0, MAX_FILES_SHOWN)
   const overflowCount = allFiles.length - MAX_FILES_SHOWN
 
-  // Subtract 1 for the seed markee (created at deploy with 0 funds)
   const displayMessageCount = Math.max(0, leaderboard.markeeCount - 1)
+
+  // ← Cache linkedFiles in sessionStorage before navigating so the detail
+  //   page can render the correct verified state immediately, bypassing
+  //   Vercel KV read-replica lag.
+  const handleNavigate = () => {
+    try {
+      sessionStorage.setItem(
+        `markee:linkedFiles:${leaderboard.address.toLowerCase()}`,
+        JSON.stringify(leaderboard.linkedFiles)
+      )
+    } catch {}
+    router.push(`/ecosystem/platforms/github/${leaderboard.address}`)
+  }
 
   return (
     <div className="relative">
@@ -360,69 +371,69 @@ function LeaderboardCard({
 
       <div className={repoHtmlUrl ? 'rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20' : ''}>
         <div
-          onClick={() => router.push(`/ecosystem/platforms/github/${leaderboard.address}`)}
+          onClick={handleNavigate}
           className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
             repoHtmlUrl ? 'rounded-t-none rounded-b-lg' : 'rounded-lg'
           }`}
         >
-        <div className="flex items-center gap-3 mb-3">
-          <img src={avatarUrl} alt={title} className="h-12 w-12 object-contain rounded-lg" />
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{title}</h3>
-            {allFiles.length > 0 && (
-              <div className="mt-1 space-y-0.5">
-                {shownFiles.map(file => (
-                  <div key={`${file.repoFullName}:${file.filePath}`} className="flex items-center gap-1.5">
-                    {file.verified ? (
-                      <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />
-                    ) : (
-                      <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />
-                    )}
-                    <span className={`text-xs font-mono truncate ${file.verified ? 'text-[#7C9CFF]' : 'text-[#8A8FBF]'}`}>
-                      {file.filePath}
-                    </span>
-                  </div>
-                ))}
-                {overflowCount > 0 && (
-                  <span className="text-[#8A8FBF] text-xs">+{overflowCount} more</span>
-                )}
-              </div>
-            )}
+          <div className="flex items-center gap-3 mb-3">
+            <img src={avatarUrl} alt={title} className="h-12 w-12 object-contain rounded-lg" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{title}</h3>
+              {allFiles.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {shownFiles.map(file => (
+                    <div key={`${file.repoFullName}:${file.filePath}`} className="flex items-center gap-1.5">
+                      {file.verified ? (
+                        <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />
+                      ) : (
+                        <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />
+                      )}
+                      <span className={`text-xs font-mono truncate ${file.verified ? 'text-[#7C9CFF]' : 'text-[#8A8FBF]'}`}>
+                        {file.filePath}
+                      </span>
+                    </div>
+                  ))}
+                  {overflowCount > 0 && (
+                    <span className="text-[#8A8FBF] text-xs">+{overflowCount} more</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+
+          {leaderboard.topMessage ? (
+            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
+              <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
+                {leaderboard.topMessage}
+              </p>
+              {leaderboard.topMessageOwner && (
+                <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {leaderboard.topMessageOwner}</p>
+              )}
+            </div>
+          ) : (
+            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
+              <div className="text-4xl mb-2">🪧</div>
+              <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-xs mb-4">
+            <span className="text-[#7C9CFF] font-medium">
+              {formatFunds(leaderboard.totalFunds)} total raised.
+            </span>
+            <span className="text-[#8A8FBF]">
+              {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
+            </span>
+          </div>
+
+          <button
+            onClick={e => { e.stopPropagation(); handleNavigate() }}
+            className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
+          >
+            {buyPriceFormatted.toFixed(3)} ETH to change
+          </button>
         </div>
-
-        {leaderboard.topMessage ? (
-          <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
-            <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
-              {leaderboard.topMessage}
-            </p>
-            {leaderboard.topMessageOwner && (
-              <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {leaderboard.topMessageOwner}</p>
-            )}
-          </div>
-        ) : (
-          <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
-            <div className="text-4xl mb-2">🪧</div>
-            <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between text-xs mb-4">
-          <span className="text-[#7C9CFF] font-medium">
-            {formatFunds(leaderboard.totalFunds)} total raised.
-          </span>
-          <span className="text-[#8A8FBF]">
-            {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
-          </span>
-        </div>
-
-        <button
-          onClick={e => { e.stopPropagation(); router.push(`/ecosystem/platforms/github/${leaderboard.address}`) }}
-          className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
-        >
-          {buyPriceFormatted.toFixed(3)} ETH to change
-        </button>
-      </div>
       </div>
     </div>
   )
