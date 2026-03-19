@@ -58,7 +58,7 @@ export default function EcosystemPage() {
     Promise.all(
       PLATFORMS.map(async p => {
         try {
-          const res = await fetch(p.statsApi)
+          const res = await fetch(p.statsApi, { cache: 'no-store' })
           if (!res.ok) return [p.slug, null] as const
           const data = await res.json()
           const leaderboards: any[] = data.leaderboards ?? []
