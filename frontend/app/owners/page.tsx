@@ -8,41 +8,44 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import TokenomicsSimulator from '@/components/ui/TokenomicsSimulator'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-// Phase configuration
+// Phase configuration derived from Stage 1 start date + 91.31 day cut intervals
+const STAGE_1_START = new Date('2025-12-21T00:00:00Z')
+const CUT_INTERVAL_MS = 91.31 * 24 * 60 * 60 * 1000
+
 const PHASES = [
-  { 
-    phase: 0, 
-    rate: 100000, 
-    endDate: new Date('2026-03-21T00:00:00Z'),
+  {
+    phase: 0,
+    rate: 100000,
+    endDate: new Date(STAGE_1_START.getTime() + 1 * CUT_INTERVAL_MS),
     label: 'Phase 0',
     color: 'bg-[#935AF0]'
   },
-  { 
-    phase: 1, 
-    rate: 50000, 
-    endDate: new Date('2026-06-21T00:00:00Z'),
+  {
+    phase: 1,
+    rate: 50000,
+    endDate: new Date(STAGE_1_START.getTime() + 2 * CUT_INTERVAL_MS),
     label: 'Phase 1',
     color: 'bg-[#7B6AF4]'
   },
-  { 
-    phase: 2, 
-    rate: 25000, 
-    endDate: new Date('2026-09-21T00:00:00Z'),
+  {
+    phase: 2,
+    rate: 25000,
+    endDate: new Date(STAGE_1_START.getTime() + 3 * CUT_INTERVAL_MS),
     label: 'Phase 2',
     color: 'bg-[#6A4AE3]'
   },
-  { 
-    phase: 3, 
-    rate: 12500, 
-    endDate: new Date('2026-12-21T00:00:00Z'),
+  {
+    phase: 3,
+    rate: 12500,
+    endDate: new Date(STAGE_1_START.getTime() + 4 * CUT_INTERVAL_MS),
     label: 'Phase 3',
     color: 'bg-[#4B3ACC]'
   },
-  { 
-    phase: 4, 
-    rate: 6250, 
-    endDate: new Date('2027-03-21T00:00:00Z'),
-    label: 'Phase 4',
+  {
+    phase: 4,
+    rate: 6250,
+    endDate: new Date('2026-12-21T00:00:00Z'),
+    label: 'Stage 2',
     color: 'bg-[#4B3ACC]'
   },
 ]
