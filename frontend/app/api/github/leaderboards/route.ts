@@ -6,7 +6,7 @@ import { getLinkedFiles } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
-const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
+const LEADERBOARD_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
 function getClient() {
   return createPublicClient({
@@ -78,7 +78,7 @@ export async function GET() {
     // The two-call pattern (count then fetch) causes new leaderboards to be
     // dropped when Alchemy returns a cached count that's behind the actual state.
     const addresses = await client.readContract({
-      address: GITHUB_FACTORY_ADDRESS,
+      address: LEADERBOARD_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
@@ -180,7 +180,14 @@ export async function GET() {
       }
     })
 
-    leaderboards.sort((a, b) => (a.totalFundsRaw > b.totalFundsRaw ? -1 : 1))
+    // Sort descending by total funds — compare as BigInt, not string.
+    // String comparison breaks for values of different digit lengths:
+    // "14000000000000000" < "5000000000000000" lexicographically even though 14 > 5.
+    leaderboards.sort((a, b) => {
+      const aWei = BigInt(a.totalFundsRaw)
+      const bWei = BigInt(b.totalFundsRaw)
+      return bWei > aWei ? 1 : bWei < aWei ? -1 : 0
+    })
 
     return NextResponse.json({
       leaderboards,
