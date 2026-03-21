@@ -7,7 +7,7 @@ import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linke
 
 const client = createPublicClient({
   chain: base,
-  transport: http(process.env.ALCHEMY_BASE_URL ?? undefined), // ← was RPC_URL_BASE (env var doesn't exist)
+  transport: http(process.env.ALCHEMY_BASE_URL ?? undefined),
 })
 
 const LEADERBOARD_ABI = [
@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
   const { leaderboardAddress } = (body ?? {}) as { leaderboardAddress?: string }
   if (!leaderboardAddress) return NextResponse.json({ error: 'Missing leaderboardAddress' }, { status: 400 })
 
-  const normalizedAddress = leaderboardAddress.toLowerCase()
+  // Normalize once here — used for KV lookups, delimiter matching, and chain reads
+  const normalizedAddress = leaderboardAddress.toLowerCase() as `0x${string}`
   console.log(`[update-markee-file] triggered for ${normalizedAddress}`)
 
   const linkedFiles = await getLinkedFiles(normalizedAddress)
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
   let nextBuyPriceEth = '0.001'
   try {
     const [topAddresses, topFunds] = await client.readContract({
-      address: leaderboardAddress as `0x${string}`,
+      address: normalizedAddress,
       abi: LEADERBOARD_ABI,
       functionName: 'getTopMarkees',
       args: [1n],
@@ -102,13 +103,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Chain read failed: ${String(err)}` }, { status: 500 })
   }
 
-  const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github/${leaderboardAddress}`
+  const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github/${normalizedAddress}`
   const markeeBlock = topMessage
-    ? buildMarkeeBlock(leaderboardAddress, topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
-    : buildEmptyBlock(leaderboardAddress, nextBuyPriceEth, leaderboardUrl)
+    ? buildMarkeeBlock(normalizedAddress, topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
+    : buildEmptyBlock(normalizedAddress, nextBuyPriceEth, leaderboardUrl)
 
-  const START = startDelimiter(leaderboardAddress)
-  const END   = endDelimiter(leaderboardAddress)
+  const START = startDelimiter(normalizedAddress)
+  const END   = endDelimiter(normalizedAddress)
 
   const results: Array<{ filePath: string; repoFullName: string; success: boolean; error?: string }> = []
 
