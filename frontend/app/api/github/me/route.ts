@@ -27,6 +27,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const uid = request.cookies.get('github_uid')?.value
+
+  // Clear the KV session record alongside the cookie so the data doesn't
+  // linger for a year after an explicit disconnect
+  if (uid) {
+    await kv.del(`github:user:${uid}`)
+  }
+
   const res = NextResponse.json({ disconnected: true })
   res.cookies.delete('github_uid')
   return res
