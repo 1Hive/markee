@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID!,
     redirect_uri: process.env.GITHUB_REDIRECT_URI!,
-    scope: 'repo public_repo read:org',
+    // `repo` already includes `public_repo` — requesting both is redundant
+    scope: 'repo read:org',
     state,
   })
 
