@@ -45,10 +45,12 @@ export async function POST(request: NextRequest) {
     existing[idx] = { ...existing[idx], verified }
     await saveLinkedFiles(leaderboardAddress, existing)
 
-    // If this flip made the file Live, immediately write the current top message
+    // If this flip made the file Live, write the current top message.
+    // Awaited before returning — fire-and-forget is unreliable on Vercel serverless
+    // since the runtime may terminate the function immediately after the response is sent.
     if (verified) {
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
-      fetch(`${siteUrl}/api/github/update-markee-file`, {
+      await fetch(`${siteUrl}/api/github/update-markee-file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leaderboardAddress }),
