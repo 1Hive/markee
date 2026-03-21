@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
   }
 
   // Reverse-lookup: address → { owner, repo, githubUserId }
-  const repoMeta = await kv.get<{ owner: string; repo: string; githubUserId: number }>(
+  // Written by register-markee/route.ts on each successful registration.
+  // githubUserId is stored as a string (the uid cookie value) — not a number.
+  const repoMeta = await kv.get<{ owner: string; repo: string; githubUserId: string }>(
     `github:contract:${address}`
   )
   if (!repoMeta) {
