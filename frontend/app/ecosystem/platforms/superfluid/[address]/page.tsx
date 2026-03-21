@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -12,6 +12,8 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { useViews } from '@/hooks/useViews'
+import type { Markee } from '@/types'
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,19 @@ const MARKEE_ABI = [
   { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
 ] as const
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function slotToMarkee(slot: MarkeeSlot): Markee {
+  return {
+    address: slot.address,
+    message: slot.message,
+    owner: slot.owner,
+    totalFundsAdded: slot.totalFundsAdded,
+    chainId: 8453,
+    pricingStrategy: '',
+  }
+}
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
 
@@ -83,7 +98,6 @@ function TopMessageSkeleton() {
 }
 
 function MarkeeRowSkeleton({ rank }: { rank: number }) {
-  // Vary the widths a bit so rows don't look identical
   const messageWidths = ['w-4/5', 'w-3/4', 'w-2/3', 'w-5/6', 'w-1/2']
   const nameWidths = ['w-24', 'w-20', 'w-28', 'w-16', 'w-24']
   const mw = messageWidths[rank % messageWidths.length]
@@ -138,7 +152,6 @@ export default function SuperfluidLeaderboardPage() {
   const topAddresses = topResult?.[0] ?? []
   const topFunds = topResult?.[1] ?? []
 
-  // Subtract 1 for the seed markee (created at deploy with 0 funds)
   const displayMessageCount = markeeCount !== undefined
     ? (markeeCount > 0n ? markeeCount - 1n : 0n)
     : undefined
@@ -152,7 +165,6 @@ export default function SuperfluidLeaderboardPage() {
     query: { enabled: topAddresses.length > 0 },
   })
 
-  // Loading state: meta still fetching, or addresses loaded but markee details still fetching
   const isLoading = isMetaLoading || (topAddresses.length > 0 && isDetailsLoading)
 
   const markees: MarkeeSlot[] = topAddresses
@@ -164,6 +176,10 @@ export default function SuperfluidLeaderboardPage() {
       totalFundsAdded: topFunds[i] ?? 0n,
     }))
     .filter(m => m.totalFundsAdded > 0n)
+
+  // ── Views ──────────────────────────────────────────────────────────────────
+  const viewableMarkees: Markee[] = markees.map(slotToMarkee)
+  const { views, trackView } = useViews(viewableMarkees)
 
   const refetch = useCallback(() => {
     refetchMeta()
@@ -350,6 +366,8 @@ export default function SuperfluidLeaderboardPage() {
                   markee={markee}
                   rank={idx + 1}
                   formatFunds={formatFunds}
+                  trackView={trackView}
+                  viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                   onAddFunds={() => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
                   onEditMessage={() => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                 />
@@ -384,17 +402,25 @@ function MarkeeRow({
   markee,
   rank,
   formatFunds,
+  trackView,
+  viewCount,
   onAddFunds,
   onEditMessage,
 }: {
   markee: MarkeeSlot
   rank: number
   formatFunds: (wei: bigint) => string
+  trackView: (m: Markee) => void
+  viewCount?: number
   onAddFunds: () => void
   onEditMessage: () => void
 }) {
   const { address } = useAccount()
   const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
+
+  useEffect(() => {
+    trackView(slotToMarkee(markee))
+  }, [markee.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const rankColors: Record<number, string> = {
     1: 'text-[#FFD700] border-[#FFD700]/40 bg-[#FFD700]/10',
@@ -422,6 +448,9 @@ function MarkeeRow({
         </div>
       </div>
       <div className="flex-shrink-0 flex flex-col items-end gap-2">
+        {viewCount !== undefined && (
+          <span className="text-[#8A8FBF] text-xs">{viewCount.toLocaleString()} views</span>
+        )}
         <span className="text-[#F897FE] text-sm font-semibold">{formatFunds(markee.totalFundsAdded)}</span>
         <button onClick={onAddFunds} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
           + add funds
