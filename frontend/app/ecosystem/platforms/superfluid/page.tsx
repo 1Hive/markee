@@ -15,6 +15,8 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Image from 'next/image'
 import { RewardsModal } from '@/components/modals/RewardsModal'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { useViews } from '@/hooks/useViews'
+import type { Markee } from '@/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,6 +61,19 @@ interface FeaturedMessage {
   totalFundsAdded: string
   totalFunds: string
   markeeCount: number
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function toMarkeeShape(lb: SuperfluidLeaderboard): Markee {
+  return {
+    address: lb.address,
+    message: lb.topMessage ?? '',
+    owner: lb.admin,
+    totalFundsAdded: BigInt(lb.totalFundsRaw ?? '0'),
+    chainId: 8453,
+    pricingStrategy: '',
+  }
 }
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
@@ -149,6 +164,10 @@ export default function SuperfluidPlatformPage() {
     fetchLeaderboards()
   }, [fetchLeaderboards])
 
+  // ── Views ──────────────────────────────────────────────────────────────────
+  const viewableMarkees: Markee[] = leaderboards.map(toMarkeeShape)
+  const { views, trackView } = useViews(viewableMarkees)
+
   const formatFunds = (eth: string) => {
     const n = parseFloat(eth)
     if (n === 0) return '0 ETH'
@@ -215,7 +234,7 @@ export default function SuperfluidPlatformPage() {
             </div>
           </div>
 
-          {/* Stats — skeleton while loading, real values once resolved */}
+          {/* Stats */}
           {isLoadingLeaderboards ? (
             <HeroStatsSkeleton />
           ) : (
@@ -310,7 +329,6 @@ export default function SuperfluidPlatformPage() {
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
             <div className="max-w-2xl mx-auto px-4">
-              {/* Tab — independent hover */}
               <a
                 href="https://campaigns.superfluid.org"
                 target="_blank"
@@ -322,13 +340,11 @@ export default function SuperfluidPlatformPage() {
                 campaigns.superfluid.org
               </a>
 
-              {/* overflow-hidden + border-t-0 kills top seam, matches ecosystem page pattern */}
               <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
                 <div
                   className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
                   onClick={() => window.location.href = 'https://www.markee.xyz/ecosystem/superfluid'}
                 >
-                  {/* Message box */}
                   <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
                     <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
                       {featuredMessage.message}
@@ -340,7 +356,6 @@ export default function SuperfluidPlatformPage() {
                     )}
                   </div>
 
-                  {/* Stats row */}
                   <div className="flex items-center justify-between text-xs mb-4">
                     <span className="text-[#7C9CFF] font-medium">
                       {totalFundsEth} ETH total raised.
@@ -350,7 +365,6 @@ export default function SuperfluidPlatformPage() {
                     </span>
                   </div>
 
-                  {/* CTA — full width on mobile, centered natural width on sm+ */}
                   <div className="flex justify-center">
                     <button
                       onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
@@ -402,6 +416,8 @@ export default function SuperfluidPlatformPage() {
                     leaderboard={lb}
                     rank={idx + 1}
                     formatFunds={formatFunds}
+                    trackView={trackView}
+                    viewCount={views.get(lb.address.toLowerCase())?.totalViews}
                   />
                 ))}
               </div>
@@ -447,12 +463,20 @@ function LeaderboardCard({
   leaderboard,
   rank,
   formatFunds,
+  trackView,
+  viewCount,
 }: {
   leaderboard: SuperfluidLeaderboard
   rank: number
   formatFunds: (eth: string) => string
+  trackView: (m: Markee) => void
+  viewCount?: number
 }) {
   const router = useRouter()
+
+  useEffect(() => {
+    trackView(toMarkeeShape(leaderboard))
+  }, [leaderboard.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
   const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
@@ -500,9 +524,15 @@ function LeaderboardCard({
         <span className="text-[#7C9CFF] font-medium">
           {formatFunds(leaderboard.totalFunds)} total raised.
         </span>
-        <span className="text-[#8A8FBF]">
-          {Math.max(0, leaderboard.markeeCount - 1)} {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
-        </span>
+        <div className="flex items-center gap-3 text-[#8A8FBF]">
+          {viewCount !== undefined && (
+            <span>{viewCount.toLocaleString()} views</span>
+          )}
+          <span>
+            {Math.max(0, leaderboard.markeeCount - 1)}{' '}
+            {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
+          </span>
+        </div>
       </div>
 
       <button
