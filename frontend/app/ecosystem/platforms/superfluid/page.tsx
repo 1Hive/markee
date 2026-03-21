@@ -475,7 +475,9 @@ function LeaderboardCard({
   const router = useRouter()
 
   useEffect(() => {
-    trackView(toMarkeeShape(leaderboard))
+    if (leaderboard.topMessage) {
+      trackView(toMarkeeShape(leaderboard))
+    }
   }, [leaderboard.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
