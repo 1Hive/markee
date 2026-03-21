@@ -528,7 +528,7 @@ function LeaderboardCard({
         </span>
         <div className="flex items-center gap-3 text-[#8A8FBF]">
           {viewCount !== undefined && (
-            <span>{viewCount.toLocaleString()} views</span>
+            <span>👁 {viewCount.toLocaleString()}</span>
           )}
           <span>
             {Math.max(0, leaderboard.markeeCount - 1)}{' '}
