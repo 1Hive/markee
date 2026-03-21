@@ -48,6 +48,8 @@ export async function POST(request: NextRequest) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(leaderboardAddress))
       return NextResponse.json({ error: 'Invalid leaderboard address' }, { status: 400 })
 
+    const normalizedAddress = leaderboardAddress.toLowerCase()
+
     // Verify push access
     const repoRes = await fetch(`https://api.github.com/repos/${repoFullName}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `You need push access to ${repoFullName}` }, { status: 403 })
 
     // Check for address-specific delimiters
-    const verified = await checkDelimiters(token, repoData.full_name, filePath, leaderboardAddress)
+    const verified = await checkDelimiters(token, repoData.full_name, filePath, normalizedAddress)
 
     const newEntry: LinkedFile = {
       repoFullName:  repoData.full_name,
@@ -72,12 +74,20 @@ export async function POST(request: NextRequest) {
       linkedAt:    new Date().toISOString(),
     }
 
-    const existing = await getLinkedFiles(leaderboardAddress)
+    const existing = await getLinkedFiles(normalizedAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoData.full_name && e.filePath === filePath)
     if (idx >= 0) existing[idx] = { ...existing[idx], ...newEntry }
     else existing.push(newEntry)
 
-    await saveLinkedFiles(leaderboardAddress, existing)
+    await saveLinkedFiles(normalizedAddress, existing)
+
+    // Write reverse-lookup key so traffic/route.ts can resolve address → repo + token owner.
+    // Keyed by normalizedAddress; uid is stored as a string (consistent with github:user:{uid}).
+    await kv.set(
+      `github:contract:${normalizedAddress}`,
+      { owner: repoData.owner.login, repo: repoData.name, githubUserId: uid },
+      { ex: 60 * 60 * 24 * 365 * 5 }
+    )
 
     return NextResponse.json({ success: true, verified, linkedFiles: existing })
   } catch (err) {
