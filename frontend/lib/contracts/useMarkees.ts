@@ -39,9 +39,7 @@ export function useMarkees() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isFetchingFresh, setIsFetchingFresh] = useState(false)
 
-  const { data, loading, error, refetch: apolloRefetch } = useQuery(MARKEES_QUERY, {
-    pollInterval: 30000, // Poll every 30 seconds
-  })
+  const { data, loading, error, refetch: apolloRefetch } = useQuery(MARKEES_QUERY)
 
   // Transform GraphQL data to Markee type
   useEffect(() => {
