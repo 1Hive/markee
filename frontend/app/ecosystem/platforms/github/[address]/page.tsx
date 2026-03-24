@@ -457,7 +457,7 @@ function MarkeeRow({
         </p>
         <div className="flex items-center gap-3 mt-1.5">
           {markee.name && <span className="text-[#8A8FBF] text-xs">{markee.name}</span>}
-          {viewCount !== undefined && (
+          {viewCount !== undefined && viewCount > 0 && (
             <span className="text-[#8A8FBF] text-xs flex items-center gap-1">
               <Eye size={12} className="opacity-60" />
               <span>{viewCount.toLocaleString()}</span>

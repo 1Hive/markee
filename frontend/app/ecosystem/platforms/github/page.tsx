@@ -440,7 +440,7 @@ function LeaderboardCard({
               {formatFunds(leaderboard.totalFunds)} total raised.
             </span>
             <div className="flex items-center gap-3 text-[#8A8FBF]">
-              {viewCount !== undefined && (
+              {viewCount !== undefined && viewCount > 0 && (
                 <span className="flex items-center gap-1">
                   <Eye size={12} className="opacity-60" />
                   <span>{viewCount.toLocaleString()}</span>

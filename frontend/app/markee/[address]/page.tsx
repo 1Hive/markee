@@ -198,6 +198,18 @@ export default function MarkeeDetailPage() {
     if (!markee) return
 
     const track = async () => {
+      // Always fetch the current count first so it shows immediately
+      try {
+        const getRes = await fetch(`/api/views?addresses=${markee.address.toLowerCase()}`)
+        if (getRes.ok) {
+          const getData = await getRes.json()
+          const count = getData[markee.address.toLowerCase()]?.totalViews
+          if (count !== undefined) setTotalViews(count)
+        }
+      } catch {}
+
+      // Then POST to increment (no-ops if message is empty or rate-limited)
+      if (!markee.message) return
       try {
         const res = await fetch('/api/views', {
           method: 'POST',
