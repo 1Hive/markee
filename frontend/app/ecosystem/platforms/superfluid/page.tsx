@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink,
+  CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink, Eye,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -528,7 +528,10 @@ function LeaderboardCard({
         </span>
         <div className="flex items-center gap-3 text-[#8A8FBF]">
           {viewCount !== undefined && (
-            <span>👁 {viewCount.toLocaleString()}</span>
+            <span className="flex items-center gap-1">
+              <Eye size={12} className="opacity-60" />
+              <span>{viewCount.toLocaleString()}</span>
+            </span>
           )}
           <span>
             {Math.max(0, leaderboard.markeeCount - 1)}{' '}

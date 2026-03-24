@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ChevronRight, Zap, Trophy, Plus, Copy, Check,
+  ChevronRight, Zap, Trophy, Plus, Copy, Check, Eye,
 } from 'lucide-react'
 import { useReadContracts, useAccount } from 'wagmi'
 import { formatEther } from 'viem'
@@ -461,7 +461,10 @@ function MarkeeRow({
       </div>
       <div className="flex-shrink-0 flex flex-col items-end gap-2">
         {viewCount !== undefined && (
-          <span className="text-[#8A8FBF] text-xs">👁 {viewCount.toLocaleString()}</span>
+          <span className="text-[#8A8FBF] text-xs flex items-center gap-1">
+            <Eye size={12} className="opacity-60" />
+            <span>{viewCount.toLocaleString()}</span>
+          </span>
         )}
         <span className="text-[#F897FE] text-sm font-semibold">{formatFunds(markee.totalFundsAdded)}</span>
         <button onClick={onAddFunds} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
