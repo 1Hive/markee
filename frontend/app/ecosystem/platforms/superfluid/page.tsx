@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -165,7 +165,7 @@ export default function SuperfluidPlatformPage() {
   }, [fetchLeaderboards])
 
   // ── Views ──────────────────────────────────────────────────────────────────
-  const viewableMarkees: Markee[] = leaderboards.map(toMarkeeShape)
+  const viewableMarkees = useMemo(() => leaderboards.map(toMarkeeShape), [leaderboards])
   const { views, trackView } = useViews(viewableMarkees)
 
   const formatFunds = (eth: string) => {

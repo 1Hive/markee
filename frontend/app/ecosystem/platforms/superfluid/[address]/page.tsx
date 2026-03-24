@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -130,16 +130,18 @@ export default function SuperfluidLeaderboardPage() {
   const [copied, setCopied] = useState(false)
 
   // ── Read leaderboard metadata ──────────────────────────────────────────────
+  const metaContracts = useMemo(() => [
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'admin' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'maxMessageLength' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [100n] as const },
+  ], [leaderboardAddress])
+
   const { data: meta, isLoading: isMetaLoading, refetch: refetchMeta } = useReadContracts({
-    contracts: [
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' },
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' },
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'markeeCount' },
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' },
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'admin' },
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'maxMessageLength' },
-      { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees', args: [100n] },
-    ],
+    contracts: metaContracts,
   })
 
   const leaderboardName = meta?.[0]?.result as string | undefined
@@ -156,29 +158,37 @@ export default function SuperfluidLeaderboardPage() {
     ? (markeeCount > 0n ? markeeCount - 1n : 0n)
     : undefined
 
-  const { data: markeeDetails, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContracts({
-    contracts: topAddresses.flatMap(addr => [
+  const markeeContracts = useMemo(
+    () => topAddresses.flatMap(addr => [
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'owner' as const },
     ]),
+    [topAddresses]
+  )
+
+  const { data: markeeDetails, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContracts({
+    contracts: markeeContracts,
     query: { enabled: topAddresses.length > 0 },
   })
 
   const isLoading = isMetaLoading || (topAddresses.length > 0 && isDetailsLoading)
 
-  const markees: MarkeeSlot[] = topAddresses
-    .map((addr, i) => ({
-      address: addr,
-      message: (markeeDetails?.[i * 3]?.result as string) ?? '',
-      name: (markeeDetails?.[i * 3 + 1]?.result as string) ?? '',
-      owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
-      totalFundsAdded: topFunds[i] ?? 0n,
-    }))
-    .filter(m => m.totalFundsAdded > 0n)
+  const markees = useMemo((): MarkeeSlot[] =>
+    topAddresses
+      .map((addr, i) => ({
+        address: addr,
+        message: (markeeDetails?.[i * 3]?.result as string) ?? '',
+        name: (markeeDetails?.[i * 3 + 1]?.result as string) ?? '',
+        owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
+        totalFundsAdded: topFunds[i] ?? 0n,
+      }))
+      .filter(m => m.totalFundsAdded > 0n),
+    [topAddresses, topFunds, markeeDetails]
+  )
 
   // ── Views ──────────────────────────────────────────────────────────────────
-  const viewableMarkees: Markee[] = markees.map(slotToMarkee)
+  const viewableMarkees = useMemo(() => markees.map(slotToMarkee), [markees])
   const { views, trackView } = useViews(viewableMarkees)
 
   const refetch = useCallback(() => {
