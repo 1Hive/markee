@@ -25,8 +25,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing address' }, { status: 400 })
   }
 
-  // Check cache first
+  // Check short-lived cache first
   const cacheKey = `views:github:${address}`
+  const lastKey = `views:github:last:${address}`
   const cached = await kv.get<GitHubTrafficResponse>(cacheKey)
   if (cached) {
     return NextResponse.json({ ...cached, cached: true })
@@ -47,6 +48,9 @@ export async function GET(req: NextRequest) {
     `github:user:${repoMeta.githubUserId}`
   )
   if (!userRecord?.accessToken) {
+    // Fall back to last-known value if token is gone
+    const last = await kv.get<GitHubTrafficResponse>(lastKey)
+    if (last) return NextResponse.json({ ...last, cached: true, stale: true })
     return NextResponse.json(
       { error: 'GitHub token not found — user may need to reconnect' },
       { status: 401 }
@@ -67,6 +71,9 @@ export async function GET(req: NextRequest) {
 
   if (!ghRes.ok) {
     const err = await ghRes.json().catch(() => ({}))
+    // Fall back to last-known value on auth or API failure
+    const last = await kv.get<GitHubTrafficResponse>(lastKey)
+    if (last) return NextResponse.json({ ...last, cached: true, stale: true })
     if (ghRes.status === 403 || ghRes.status === 401) {
       return NextResponse.json(
         { error: 'GitHub token expired or permissions revoked — reconnect repo to refresh' },
@@ -81,8 +88,11 @@ export async function GET(req: NextRequest) {
 
   const traffic: GitHubTrafficResponse = await ghRes.json()
 
-  // Cache result for 1 hour
-  await kv.set(cacheKey, traffic, { ex: CACHE_TTL })
+  // Cache result for 1 hour; also persist as last-known (no TTL)
+  await Promise.all([
+    kv.set(cacheKey, traffic, { ex: CACHE_TTL }),
+    kv.set(lastKey, traffic),
+  ])
 
   return NextResponse.json({ ...traffic, cached: false })
 }
