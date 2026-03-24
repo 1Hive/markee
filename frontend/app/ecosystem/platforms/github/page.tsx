@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, ShieldAlert, RefreshCw,
+  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, ShieldAlert, RefreshCw, Eye,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -13,6 +13,8 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import type { LinkedFile } from './[address]/page'
+import { useViews } from '@/hooks/useViews'
+import type { Markee } from '@/types'
 
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
@@ -146,6 +148,9 @@ export default function GithubPlatformPage() {
   const liveLeaderboards = leaderboards.filter(l => l.linkedFiles.some(f => f.verified))
   const unliveLeaderboards = leaderboards.filter(l => !l.linkedFiles.some(f => f.verified))
 
+  const viewableMarkees = useMemo(() => leaderboards.map(toMarkeeShape), [leaderboards])
+  const { views } = useViews(viewableMarkees)
+
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
@@ -265,7 +270,7 @@ export default function GithubPlatformPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {liveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} />
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} viewCount={views.get(lb.address.toLowerCase())?.totalViews} />
                     ))}
                   </div>
                 </div>
@@ -281,7 +286,7 @@ export default function GithubPlatformPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80">
                     {unliveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} />
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} viewCount={views.get(lb.address.toLowerCase())?.totalViews} />
                     ))}
                   </div>
                 </div>
@@ -309,15 +314,27 @@ export default function GithubPlatformPage() {
 
 // ─── Leaderboard Card ─────────────────────────────────────────────────────────
 
+function toMarkeeShape(lb: GithubLeaderboard): Markee {
+  return {
+    address: lb.address,
+    message: lb.topMessage ?? '',
+    owner: lb.admin,
+    totalFundsAdded: BigInt(lb.topFundsAddedRaw ?? '0'),
+    chainId: 8453,
+    pricingStrategy: '',
+  }
+}
+
 const GITHUB_LOGO = 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'
 const MAX_FILES_SHOWN = 3
 
 function LeaderboardCard({
-  leaderboard, formatFunds,
+  leaderboard, formatFunds, viewCount,
 }: {
   leaderboard: GithubLeaderboard
   rank: number
   formatFunds: (eth: string) => string
+  viewCount?: number
 }) {
   const router = useRouter()
 
@@ -422,9 +439,17 @@ function LeaderboardCard({
             <span className="text-[#7C9CFF] font-medium">
               {formatFunds(leaderboard.totalFunds)} total raised.
             </span>
-            <span className="text-[#8A8FBF]">
-              {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
-            </span>
+            <div className="flex items-center gap-3 text-[#8A8FBF]">
+              {viewCount !== undefined && (
+                <span className="flex items-center gap-1">
+                  <Eye size={12} className="opacity-60" />
+                  <span>{viewCount.toLocaleString()}</span>
+                </span>
+              )}
+              <span>
+                {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
+              </span>
+            </div>
           </div>
 
           <button

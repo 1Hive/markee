@@ -16,6 +16,8 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
 import { useGithubTraffic } from '@/hooks/useGithubTraffic'
+import { useViews } from '@/hooks/useViews'
+import type { Markee } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -144,27 +146,49 @@ export default function GithubLeaderboardPage() {
 
   const displayName = leaderboardName ? leaderboardName.split(' — ')[0] : undefined
 
-  const topAddresses = topResult?.[0] ?? []
-  const topFunds = topResult?.[1] ?? []
+  const topAddresses = useMemo(() => topResult?.[0] ?? [], [topResult])
+  const topFunds = useMemo(() => topResult?.[1] ?? [], [topResult])
 
-  const { data: markeeDetails, refetch: refetchDetails } = useReadContracts({
-    contracts: topAddresses.flatMap(addr => [
+  const markeeContracts = useMemo(
+    () => topAddresses.flatMap(addr => [
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
       { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'owner' as const },
     ]),
+    [topAddresses]
+  )
+
+  const { data: markeeDetails, refetch: refetchDetails } = useReadContracts({
+    contracts: markeeContracts,
     query: { enabled: topAddresses.length > 0, refetchOnWindowFocus: false },
   })
 
-  const markees: MarkeeSlot[] = topAddresses
-    .map((addr, i) => ({
-      address: addr,
-      message: (markeeDetails?.[i * 3]?.result as string) ?? '',
-      name: (markeeDetails?.[i * 3 + 1]?.result as string) ?? '',
-      owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
-      totalFundsAdded: topFunds[i] ?? 0n,
-    }))
-    .filter(m => m.totalFundsAdded > 0n)
+  const markees: MarkeeSlot[] = useMemo(
+    () => topAddresses
+      .map((addr, i) => ({
+        address: addr,
+        message: (markeeDetails?.[i * 3]?.result as string) ?? '',
+        name: (markeeDetails?.[i * 3 + 1]?.result as string) ?? '',
+        owner: (markeeDetails?.[i * 3 + 2]?.result as string) ?? '',
+        totalFundsAdded: topFunds[i] ?? 0n,
+      }))
+      .filter(m => m.totalFundsAdded > 0n),
+    [topAddresses, topFunds, markeeDetails]
+  )
+
+  const viewableMarkees = useMemo<Markee[]>(
+    () => markees.map(m => ({
+      address: m.address,
+      message: m.message,
+      owner: m.owner,
+      totalFundsAdded: m.totalFundsAdded,
+      chainId: 8453,
+      pricingStrategy: '',
+    })),
+    [markees]
+  )
+
+  const { views } = useViews(viewableMarkees)
 
   const refetch = useCallback(() => {
     refetchMeta()
@@ -355,6 +379,7 @@ export default function GithubLeaderboardPage() {
                   formatFunds={formatFunds}
                   onAddFunds={() => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
                   onEditMessage={() => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
+                  viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                 />
               ))}
             </div>
@@ -402,13 +427,14 @@ export default function GithubLeaderboardPage() {
 // ─── Markee Row ───────────────────────────────────────────────────────────────
 
 function MarkeeRow({
-  markee, rank, formatFunds, onAddFunds, onEditMessage,
+  markee, rank, formatFunds, onAddFunds, onEditMessage, viewCount,
 }: {
   markee: MarkeeSlot
   rank: number
   formatFunds: (wei: bigint) => string
   onAddFunds: () => void
   onEditMessage: () => void
+  viewCount?: number
 }) {
   const { address } = useAccount()
   const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
@@ -431,6 +457,12 @@ function MarkeeRow({
         </p>
         <div className="flex items-center gap-3 mt-1.5">
           {markee.name && <span className="text-[#8A8FBF] text-xs">{markee.name}</span>}
+          {viewCount !== undefined && (
+            <span className="text-[#8A8FBF] text-xs flex items-center gap-1">
+              <Eye size={12} className="opacity-60" />
+              <span>{viewCount.toLocaleString()}</span>
+            </span>
+          )}
           {isOwner && (
             <span className="text-xs bg-[#F897FE]/15 border border-[#F897FE]/30 text-[#F897FE] px-2 py-0.5 rounded-full">
               yours
