@@ -126,8 +126,8 @@ export function PartnerMarkeeCard({
         <div className="flex items-center gap-3 text-[#8A8FBF]">
           {totalViews !== undefined && (
             <span className="flex items-center gap-1">
-              <Eye size={10} className="opacity-60" />
-              {formatViewCount(totalViews)}
+              <Eye size={12} className="opacity-60" />
+              <span>{formatViewCount(totalViews)}</span>
             </span>
           )}
           {markeeCount !== undefined && (
