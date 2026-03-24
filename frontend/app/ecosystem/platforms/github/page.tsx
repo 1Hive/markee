@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -13,8 +13,6 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import type { LinkedFile } from './[address]/page'
-import { useViews } from '@/hooks/useViews'
-import type { Markee } from '@/types'
 
 const GITHUB_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA' as const
 
@@ -54,6 +52,7 @@ interface GithubLeaderboard {
   repoAvatarUrl: string | null
   repoHtmlUrl: string | null
   filePath: string | null
+  githubTrafficViews: number | null
 }
 
 interface GithubUser {
@@ -147,9 +146,6 @@ export default function GithubPlatformPage() {
 
   const liveLeaderboards = leaderboards.filter(l => l.linkedFiles.some(f => f.verified))
   const unliveLeaderboards = leaderboards.filter(l => !l.linkedFiles.some(f => f.verified))
-
-  const viewableMarkees = useMemo(() => leaderboards.map(toMarkeeShape), [leaderboards])
-  const { views } = useViews(viewableMarkees)
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -270,7 +266,7 @@ export default function GithubPlatformPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {liveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} viewCount={views.get(lb.address.toLowerCase())?.totalViews} />
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} viewCount={lb.githubTrafficViews ?? undefined} />
                     ))}
                   </div>
                 </div>
@@ -286,7 +282,7 @@ export default function GithubPlatformPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80">
                     {unliveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} viewCount={views.get(lb.address.toLowerCase())?.totalViews} />
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} viewCount={lb.githubTrafficViews ?? undefined} />
                     ))}
                   </div>
                 </div>
@@ -313,17 +309,6 @@ export default function GithubPlatformPage() {
 }
 
 // ─── Leaderboard Card ─────────────────────────────────────────────────────────
-
-function toMarkeeShape(lb: GithubLeaderboard): Markee {
-  return {
-    address: lb.address,
-    message: lb.topMessage ?? '',
-    owner: lb.admin,
-    totalFundsAdded: BigInt(lb.topFundsAddedRaw ?? '0'),
-    chainId: 8453,
-    pricingStrategy: '',
-  }
-}
 
 const GITHUB_LOGO = 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'
 const MAX_FILES_SHOWN = 3

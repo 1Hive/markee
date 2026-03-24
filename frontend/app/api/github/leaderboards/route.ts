@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
+import { kv } from '@vercel/kv'
 import { getLinkedFiles } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
@@ -133,10 +134,13 @@ export async function GET() {
       }
     }
 
-    // Read KV linked files for all leaderboards in parallel
-    const linkedFilesMap = await Promise.all(
-      addresses.map(addr => getLinkedFiles(addr))
-    )
+    // Read KV linked files and last-known GitHub traffic counts in parallel
+    const [linkedFilesMap, trafficCounts] = await Promise.all([
+      Promise.all(addresses.map(addr => getLinkedFiles(addr))),
+      kv.mget<({ count: number } | null)[]>(
+        ...addresses.map(addr => `views:github:last:${addr.toLowerCase()}`)
+      ),
+    ])
 
     // Assemble leaderboard objects
     let totalPlatformFundsWei = 0n
@@ -177,6 +181,7 @@ export async function GET() {
         repoAvatarUrl: primaryFile?.repoAvatarUrl ?? null,
         repoHtmlUrl: primaryFile?.repoHtmlUrl ?? null,
         filePath: primaryFile?.filePath ?? null,
+        githubTrafficViews: trafficCounts[i]?.count ?? null,
       }
     })
 
