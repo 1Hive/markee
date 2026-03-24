@@ -1,6 +1,6 @@
 // hooks/useGithubTraffic.ts
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 interface TrafficDay {
   timestamp: string
@@ -47,6 +47,10 @@ export function useGithubTraffic(address: string) {
       setErrorMessage('Network error')
     }
   }, [address])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   return { traffic, status, errorMessage, refresh }
 }
