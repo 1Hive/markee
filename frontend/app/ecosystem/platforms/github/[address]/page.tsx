@@ -297,7 +297,7 @@ export default function GithubLeaderboardPage() {
                 <span className="text-[#8A8FBF]">live {liveFiles.length === 1 ? 'integration' : 'integrations'}</span>
               </div>
             )}
-            {trafficStatus === 'success' && traffic && (
+            {trafficStatus === 'success' && traffic && liveFiles.length > 0 && (
               <div className="flex items-center gap-2 text-sm">
                 <Eye size={14} className="text-[#8A8FBF]" />
                 <span className="text-[#EDEEFF] font-semibold">{traffic.count.toLocaleString()}</span>
