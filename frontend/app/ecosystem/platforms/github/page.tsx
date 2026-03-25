@@ -282,7 +282,7 @@ export default function GithubPlatformPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80">
                     {unliveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} viewCount={lb.githubTrafficViews ?? undefined} />
+                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} />
                     ))}
                   </div>
                 </div>
