@@ -43,16 +43,25 @@ export function ConnectButton() {
               }
 
               return (
-                <button
-                  onClick={openAccountModal}
-                  type="button"
-                  className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
-                >
-                  <Wallet size={20} />
-                  <span className="hidden sm:inline">
-                    {account.displayName}
-                  </span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/account"
+                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/30 text-[#8A8FBF] hover:text-[#F897FE] hover:border-[#F897FE]/60 transition-colors"
+                    title="My Markees"
+                  >
+                    <User size={18} />
+                  </Link>
+                  <button
+                    onClick={openAccountModal}
+                    type="button"
+                    className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
+                  >
+                    <Wallet size={20} />
+                    <span className="hidden sm:inline">
+                      {account.displayName}
+                    </span>
+                  </button>
+                </div>
               )
             })()}
           </div>
