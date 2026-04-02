@@ -140,12 +140,14 @@ export default function SuperfluidPlatformPage() {
   const [featuredMessage, setFeaturedMessage] = useState<FeaturedMessage | null>(null)
   const [featuredModalOpen, setFeaturedModalOpen] = useState(false)
 
-  const fetchLeaderboards = useCallback(async (silent = false) => {
+  const fetchLeaderboards = useCallback(async (silent = false, bust = false) => {
     try {
       if (!silent) setIsLoadingLeaderboards(true)
       else setIsRefreshing(true)
 
-      const res = await fetch(`/api/superfluid/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+      const params = new URLSearchParams({ t: Date.now().toString() })
+      if (bust) params.set('bust', '1')
+      const res = await fetch(`/api/superfluid/leaderboards?${params}`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
@@ -462,7 +464,7 @@ export default function SuperfluidPlatformPage() {
           myLeaderboards={myLeaderboards}
           walletAddress={walletAddress}
           onClose={() => setCreateModalOpen(false)}
-          onSuccess={fetchLeaderboards}
+          onSuccess={() => fetchLeaderboards(false, true)}
         />
       )}
 

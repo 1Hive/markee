@@ -114,10 +114,13 @@ async function fetchFeaturedMessage() {
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cached = await kv.get<object>(CACHE_KEY)
-    if (cached) return NextResponse.json(cached, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
+    const bust = new URL(request.url).searchParams.get('bust') === '1'
+    if (!bust) {
+      const cached = await kv.get<object>(CACHE_KEY)
+      if (cached) return NextResponse.json(cached, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
+    }
 
     const client = getClient()
 

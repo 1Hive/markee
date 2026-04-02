@@ -61,10 +61,13 @@ const CACHE_TTL = 60 // seconds
 
 // ── GET /api/github/leaderboards ─────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cached = await kv.get<object>(CACHE_KEY)
-    if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+    const bust = new URL(request.url).searchParams.get('bust') === '1'
+    if (!bust) {
+      const cached = await kv.get<object>(CACHE_KEY)
+      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+    }
 
     const client = getClient()
 

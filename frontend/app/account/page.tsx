@@ -65,8 +65,8 @@ export default function AccountPage() {
     setIsLoading(true)
     try {
       const [sfRes, ghRes] = await Promise.all([
-        fetch('/api/superfluid/leaderboards', { cache: 'no-store' }),
-        fetch('/api/github/leaderboards', { cache: 'no-store' }),
+        fetch('/api/superfluid/leaderboards?bust=1', { cache: 'no-store' }),
+        fetch('/api/github/leaderboards?bust=1', { cache: 'no-store' }),
       ])
 
       if (sfRes.ok) {
