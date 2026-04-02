@@ -137,7 +137,7 @@ export default function GithubPlatformPage() {
     const n = parseFloat(eth)
     if (n === 0) return '0 ETH'
     if (n < 0.001) return '< 0.001 ETH'
-    return `${n.toFixed(4)} ETH`
+    return `${n.toFixed(3)} ETH`
   }
 
   const myLeaderboards = walletAddress

@@ -117,7 +117,7 @@ export function PartnerMarkeeCard({
       <div className="flex items-center justify-between text-xs mb-4">
         <div className="flex items-center gap-2">
           <span className="text-[#7C9CFF] font-medium">
-            {Number(formatEther(totalFunds)).toFixed(4)} total ETH raised.
+            {Number(formatEther(totalFunds)).toFixed(3)} total ETH raised.
           </span>
           {winningMarkee && (
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={winningMarkee.address} compact />

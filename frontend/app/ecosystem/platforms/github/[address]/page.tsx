@@ -210,7 +210,7 @@ export default function GithubLeaderboardPage() {
     const eth = parseFloat(formatEther(wei))
     if (eth === 0) return '0 ETH'
     if (eth < 0.0001) return '< 0.0001 ETH'
-    return `${eth.toFixed(4)} ETH`
+    return `${eth.toFixed(3)} ETH`
   }
 
   const copyAddress = () => {

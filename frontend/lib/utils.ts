@@ -11,7 +11,7 @@ export function formatAddress(address: string): string {
 }
 
 export function formatEth(wei: bigint): string {
-  return (Number(wei) / 1e18).toFixed(4)
+  return (Number(wei) / 1e18).toFixed(3)
 }
 
 /**

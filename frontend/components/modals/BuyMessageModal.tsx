@@ -136,7 +136,7 @@ export function BuyMessageModal({
   // ── Preset amounts ────────────────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
   const minimumAmount = minimumPrice > 0n ? minimumPrice : parseEther('0.001')
-  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(4)
+  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
 
   const rawTakeFirst = topFundsAdded && topFundsAdded > 0n
     ? topFundsAdded + MIN_INCREMENT
@@ -145,7 +145,7 @@ export function BuyMessageModal({
     ? (rawTakeFirst >= minimumAmount ? rawTakeFirst : minimumAmount)
     : null
   const takeFirstAmountFormatted = takeFirstAmount
-    ? Number(formatEther(takeFirstAmount)).toFixed(4)
+    ? Number(formatEther(takeFirstAmount)).toFixed(3)
     : null
 
   const addFundsRawTakeFirst = topFundsAdded && topFundsAdded > 0n && existingMarkee
@@ -155,7 +155,7 @@ export function BuyMessageModal({
     ? addFundsRawTakeFirst
     : null
   const addFundsTakeFirstFormatted = addFundsTakeFirstAmount
-    ? Number(formatEther(addFundsTakeFirstAmount)).toFixed(4)
+    ? Number(formatEther(addFundsTakeFirstAmount)).toFixed(3)
     : null
 
   const activeTakeFirstFormatted = isAddFunds ? addFundsTakeFirstFormatted : takeFirstAmountFormatted
@@ -313,7 +313,7 @@ export function BuyMessageModal({
       />
       {balanceData && (
         <p className="text-xs text-[#8A8FBF]">
-          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
         </p>
       )}
     </div>
@@ -521,7 +521,7 @@ export function BuyMessageModal({
                       <span className="text-[#8A8FBF] text-xs font-semibold">New total</span>
                       <span className="text-sm font-bold text-[#F897FE]">
                         {amount && parseFloat(amount) > 0
-                          ? (parseFloat(formatEther(existingMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(4)
+                          ? (parseFloat(formatEther(existingMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(3)
                           : formatEther(existingMarkee.totalFundsAdded)
                         } ETH
                       </span>

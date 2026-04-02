@@ -160,9 +160,9 @@ export function TopDawgModal({
     activeTab === 'addFunds' ? addFundsTakeFirstAmount : takeFirstAmount
 
   // Formatted preset values
-  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(4)
+  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
   const takeFirstAmountFormatted = activeTakeFirstAmount
-    ? Number(formatEther(activeTakeFirstAmount)).toFixed(4)
+    ? Number(formatEther(activeTakeFirstAmount)).toFixed(3)
     : null
 
   // Show Featured Message button when there's competition to beat
@@ -480,7 +480,7 @@ export function TopDawgModal({
       {/* Balance display */}
       {balanceData && (
         <p className="text-xs text-[#8A8FBF]">
-          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
         </p>
       )}
     </div>
@@ -635,7 +635,7 @@ export function TopDawgModal({
                           <div className="text-center">
                             <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
                             <p className="text-4xl font-bold text-[#FFA94D] mb-2">
-                              {(parseFloat(amount) * (partnerSplitPercentage / 100)).toFixed(4)}
+                              {(parseFloat(amount) * (partnerSplitPercentage / 100)).toFixed(3)}
                             </p>
                             <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
                           </div>
@@ -722,7 +722,7 @@ export function TopDawgModal({
                         <p className="text-xs font-semibold text-[#B8B6D9]">New total</p>
                         <p className="text-sm font-bold text-[#F897FE]">
                           {amount && parseFloat(amount) > 0
-                            ? (parseFloat(formatEther(userMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(4)
+                            ? (parseFloat(formatEther(userMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(3)
                             : formatEther(userMarkee.totalFundsAdded)
                           } ETH
                         </p>

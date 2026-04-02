@@ -22,6 +22,7 @@ interface BaseLeaderboard {
   markeeCount: number
   admin: string
   topMessage: string | null
+  topMessageOwner?: string | null
   topFundsAddedRaw: string
 }
 
@@ -44,17 +45,26 @@ function formatFunds(eth: string) {
   const n = parseFloat(eth)
   if (n === 0) return '0 ETH'
   if (n < 0.001) return '< 0.001 ETH'
-  return `${n.toFixed(4)} ETH`
+  return `${n.toFixed(3)} ETH`
 }
 
 function shortAddr(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
+function platformIcon(lb: AnyLeaderboard, size = 22) {
+  if (lb.platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
+  return <Github size={size} className="text-[#EDEEFF]" />
+}
+
+function platformLink(lb: AnyLeaderboard) {
+  if (lb.platform === 'superfluid') return '/ecosystem/platforms/superfluid'
+  return '/ecosystem/platforms/github'
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function AccountPage() {
-  const router = useRouter()
   const { address: walletAddress, isConnected } = useAccount()
   const [mounted, setMounted] = useState(false)
 
@@ -108,8 +118,10 @@ export default function AccountPage() {
     return diff > 0n ? 1 : diff < 0n ? -1 : 0
   })
 
+  const activeBoards = allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
+  const inactiveBoards = allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') === 0n)
+
   const totalRaisedWei = allBoards.reduce((sum, lb) => sum + BigInt(lb.totalFundsRaw), 0n)
-  const totalMessages = allBoards.reduce((sum, lb) => sum + Math.max(0, lb.markeeCount - 1), 0)
 
   function detailUrl(lb: AnyLeaderboard) {
     if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
@@ -171,10 +183,6 @@ export default function AccountPage() {
                 </span>
                 <span className="text-[#8A8FBF]">total raised</span>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#EDEEFF] font-semibold">{totalMessages}</span>
-                <span className="text-[#8A8FBF]">{totalMessages === 1 ? 'message' : 'messages'} bought</span>
-              </div>
             </div>
           )}
         </div>
@@ -192,9 +200,9 @@ export default function AccountPage() {
               {mounted && <ConnectButton />}
             </div>
           ) : isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-5 animate-pulse h-28" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-6 animate-pulse h-64" />
               ))}
             </div>
           ) : allBoards.length === 0 ? (
@@ -220,56 +228,42 @@ export default function AccountPage() {
               </div>
             </div>
           ) : (
-            <div className="space-y-10">
-              {superfluidBoards.length > 0 && (
+            <div className="space-y-12">
+              {inactiveBoards.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <Zap size={16} className="text-[#1DB227]" />
-                    <h2 className="text-lg font-bold text-[#EDEEFF]">Superfluid</h2>
-                    <Link
-                      href="/ecosystem/platforms/superfluid"
-                      className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
-                      title="Platform page"
-                    >
-                      <ExternalLink size={13} />
-                    </Link>
-                    <span className="text-[#8A8FBF] text-sm ml-auto">{superfluidBoards.length} {superfluidBoards.length === 1 ? 'sign' : 'signs'}</span>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-bold text-[#EDEEFF]">Awaiting Activation</h2>
+                    <p className="text-[#8A8FBF] text-sm mt-1">Buy a message to activate these Markees</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {superfluidBoards.map(lb => (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {inactiveBoards.map(lb => (
                       <AccountLeaderboardCard
                         key={lb.address}
                         leaderboard={lb}
                         detailUrl={detailUrl(lb)}
-                        icon={<Zap size={18} className="text-[#1DB227]" />}
+                        icon={platformIcon(lb)}
+                        subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
+                        platformHref={platformLink(lb)}
                       />
                     ))}
                   </div>
                 </div>
               )}
 
-              {githubBoards.length > 0 && (
+              {activeBoards.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <Github size={16} className="text-[#EDEEFF]" />
-                    <h2 className="text-lg font-bold text-[#EDEEFF]">GitHub</h2>
-                    <Link
-                      href="/ecosystem/platforms/github"
-                      className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
-                      title="Platform page"
-                    >
-                      <ExternalLink size={13} />
-                    </Link>
-                    <span className="text-[#8A8FBF] text-sm ml-auto">{githubBoards.length} {githubBoards.length === 1 ? 'sign' : 'signs'}</span>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-bold text-[#EDEEFF]">Active Markees</h2>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {githubBoards.map(lb => (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {activeBoards.map(lb => (
                       <AccountLeaderboardCard
                         key={lb.address}
                         leaderboard={lb}
                         detailUrl={detailUrl(lb)}
-                        icon={<Github size={18} className="text-[#EDEEFF]" />}
-                        subtitle={(lb as GithubLeaderboard).repoFullName ?? undefined}
+                        icon={platformIcon(lb)}
+                        subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
+                        platformHref={platformLink(lb)}
                       />
                     ))}
                   </div>
@@ -292,53 +286,64 @@ function AccountLeaderboardCard({
   detailUrl,
   icon,
   subtitle,
+  platformHref,
 }: {
   leaderboard: AnyLeaderboard
   detailUrl: string
   icon: React.ReactNode
   subtitle?: string
+  platformHref: string
 }) {
   const router = useRouter()
-  const hasPurchase = BigInt(leaderboard.topFundsAddedRaw ?? '0') > 0n
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
 
   return (
     <div
       onClick={() => router.push(detailUrl)}
-      className={`rounded-lg border transition-colors cursor-pointer p-5 flex gap-4 ${
-        !hasPurchase
-          ? 'bg-[#0A0F3D] border-[#F897FE]/30 hover:border-[#F897FE]/70'
-          : 'bg-[#0A0F3D] border-[#8A8FBF]/20 hover:border-[#F897FE]/60'
-      }`}
+      className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
     >
-      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 mt-0.5">
-        {icon}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{leaderboard.name}</h3>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#8A8FBF] text-xs font-mono">
+              {subtitle ?? `${leaderboard.address.slice(0, 8)}…${leaderboard.address.slice(-6)}`}
+            </span>
+            <Link
+              href={platformHref}
+              onClick={e => e.stopPropagation()}
+              className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
+            >
+              <ExternalLink size={11} />
+            </Link>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <p className="font-semibold text-[#EDEEFF] text-sm truncate">{leaderboard.name}</p>
-        </div>
-
-        {subtitle && (
-          <p className="text-[#8A8FBF] text-xs font-mono mb-1 truncate">{subtitle}</p>
-        )}
-
-        {!hasPurchase ? (
-          <p className="text-[#F897FE]/80 text-xs mb-2">
-            No message bought yet — won't appear on Active Signs until someone bids.
+      {leaderboard.topMessage ? (
+        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
+          <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
+            {leaderboard.topMessage}
           </p>
-        ) : leaderboard.topMessage ? (
-          <p className="text-[#8A8FBF] text-xs font-mono line-clamp-1 mb-2 italic">
-            "{leaderboard.topMessage}"
-          </p>
-        ) : null}
-
-        <div className="flex items-center gap-3 text-xs text-[#8A8FBF]">
-          <span className="text-[#7C9CFF] font-medium">{formatFunds(leaderboard.totalFunds)}</span>
-          <span>·</span>
-          <span>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
+          {leaderboard.topMessageOwner && (
+            <p className="text-[#8A8FBF] text-xs text-right mt-auto">
+              - {leaderboard.topMessageOwner}
+            </p>
+          )}
         </div>
+      ) : (
+        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[100px] flex flex-col items-center justify-center">
+          <div className="text-3xl mb-2">🪧</div>
+          <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-[#7C9CFF] font-medium">{formatFunds(leaderboard.totalFunds)} total raised.</span>
+        <span className="text-[#8A8FBF]">{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
       </div>
     </div>
   )

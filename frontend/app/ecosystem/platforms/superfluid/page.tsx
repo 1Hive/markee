@@ -174,7 +174,7 @@ export default function SuperfluidPlatformPage() {
     const n = parseFloat(eth)
     if (n === 0) return '0 ETH'
     if (n < 0.001) return '< 0.001 ETH'
-    return `${n.toFixed(4)} ETH`
+    return `${n.toFixed(3)} ETH`
   }
 
   const myLeaderboards = walletAddress
@@ -331,7 +331,7 @@ export default function SuperfluidPlatformPage() {
         const topFunds = BigInt(featuredMessage.totalFundsAdded ?? '0')
         const buyPrice = topFunds + minIncrement
         const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
-        const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(4)
+        const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(3)
 
         return (
           <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">

@@ -181,7 +181,7 @@ export function FixedPriceModal({
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
                     <p className="text-xs text-[#B8B6D9]">Your Balance</p>
                     <p className="text-sm font-medium text-[#EDEEFF]">
-                      {parseFloat(formatEther(balanceData.value)).toFixed(4)} ETH
+                      {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
                     </p>
                   </div>
                 )}
