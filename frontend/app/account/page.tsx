@@ -165,9 +165,7 @@ export default function AccountPage() {
               </div>
             </div>
 
-            {mounted && !isConnected && (
-              <ConnectButton />
-            )}
+            {mounted && !isConnected && <ConnectButton />}
           </div>
 
           {isConnected && !isLoading && allBoards.length > 0 && (
@@ -193,18 +191,18 @@ export default function AccountPage() {
       <section className="py-12 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          {!mounted || !isConnected ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
-              <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">Connect your wallet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">See all the Markees you've created across every platform.</p>
-              {mounted && <ConnectButton />}
-            </div>
-          ) : isLoading ? (
+          {!mounted || isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map(i => (
                 <div key={i} className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-6 animate-pulse h-64" />
               ))}
+            </div>
+          ) : !isConnected ? (
+            <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
+              <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
+              <p className="text-[#EDEEFF] font-semibold mb-2">Connect your wallet</p>
+              <p className="text-[#8A8FBF] text-sm mb-6">See all the Markees you've created across every platform.</p>
+              <ConnectButton />
             </div>
           ) : allBoards.length === 0 ? (
             <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
