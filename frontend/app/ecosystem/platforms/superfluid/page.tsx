@@ -394,15 +394,16 @@ export default function SuperfluidPlatformPage() {
             <div className="flex items-center gap-3 mb-6">
               <User size={18} className="text-[#F897FE]" />
               <h2 className="text-xl font-bold text-[#EDEEFF]">My Markees</h2>
-              <span className="text-[#8A8FBF] text-sm">
-                {myLeaderboards.length} {myLeaderboards.length === 1 ? 'sign' : 'signs'} you created
-              </span>
               <Link
                 href="/account"
-                className="ml-auto flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                title="My account"
               >
-                View account <ChevronRight size={12} />
+                <ExternalLink size={13} />
               </Link>
+              <span className="text-[#8A8FBF] text-sm ml-auto">
+                {myLeaderboards.length} {myLeaderboards.length === 1 ? 'sign' : 'signs'} you created
+              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {myLeaderboards.map(lb => (

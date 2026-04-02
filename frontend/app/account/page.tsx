@@ -226,13 +226,14 @@ export default function AccountPage() {
                   <div className="flex items-center gap-3 mb-4">
                     <Zap size={16} className="text-[#1DB227]" />
                     <h2 className="text-lg font-bold text-[#EDEEFF]">Superfluid</h2>
-                    <span className="text-[#8A8FBF] text-sm">{superfluidBoards.length} {superfluidBoards.length === 1 ? 'sign' : 'signs'}</span>
                     <Link
                       href="/ecosystem/platforms/superfluid"
-                      className="ml-auto flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                      className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                      title="Platform page"
                     >
-                      Platform page <ExternalLink size={11} />
+                      <ExternalLink size={13} />
                     </Link>
+                    <span className="text-[#8A8FBF] text-sm ml-auto">{superfluidBoards.length} {superfluidBoards.length === 1 ? 'sign' : 'signs'}</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {superfluidBoards.map(lb => (
@@ -252,13 +253,14 @@ export default function AccountPage() {
                   <div className="flex items-center gap-3 mb-4">
                     <Github size={16} className="text-[#EDEEFF]" />
                     <h2 className="text-lg font-bold text-[#EDEEFF]">GitHub</h2>
-                    <span className="text-[#8A8FBF] text-sm">{githubBoards.length} {githubBoards.length === 1 ? 'sign' : 'signs'}</span>
                     <Link
                       href="/ecosystem/platforms/github"
-                      className="ml-auto flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                      className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+                      title="Platform page"
                     >
-                      Platform page <ExternalLink size={11} />
+                      <ExternalLink size={13} />
                     </Link>
+                    <span className="text-[#8A8FBF] text-sm ml-auto">{githubBoards.length} {githubBoards.length === 1 ? 'sign' : 'signs'}</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {githubBoards.map(lb => (
@@ -303,7 +305,11 @@ function AccountLeaderboardCard({
   return (
     <div
       onClick={() => router.push(detailUrl)}
-      className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 transition-colors cursor-pointer p-5 flex gap-4"
+      className={`rounded-lg border transition-colors cursor-pointer p-5 flex gap-4 ${
+        !hasPurchase
+          ? 'bg-[#0A0F3D] border-[#F897FE]/30 hover:border-[#F897FE]/70'
+          : 'bg-[#0A0F3D] border-[#8A8FBF]/20 hover:border-[#F897FE]/60'
+      }`}
     >
       <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 mt-0.5">
         {icon}
@@ -312,22 +318,21 @@ function AccountLeaderboardCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="font-semibold text-[#EDEEFF] text-sm truncate">{leaderboard.name}</p>
-          {!hasPurchase && (
-            <span className="text-[10px] font-semibold text-[#8A8FBF] bg-[#8A8FBF]/10 border border-[#8A8FBF]/20 px-2 py-0.5 rounded-full flex-shrink-0">
-              No bids yet
-            </span>
-          )}
         </div>
 
         {subtitle && (
           <p className="text-[#8A8FBF] text-xs font-mono mb-1 truncate">{subtitle}</p>
         )}
 
-        {leaderboard.topMessage && (
+        {!hasPurchase ? (
+          <p className="text-[#F897FE]/80 text-xs mb-2">
+            No message bought yet — won't appear on Active Signs until someone bids.
+          </p>
+        ) : leaderboard.topMessage ? (
           <p className="text-[#8A8FBF] text-xs font-mono line-clamp-1 mb-2 italic">
             "{leaderboard.topMessage}"
           </p>
-        )}
+        ) : null}
 
         <div className="flex items-center gap-3 text-xs text-[#8A8FBF]">
           <span className="text-[#7C9CFF] font-medium">{formatFunds(leaderboard.totalFunds)}</span>
