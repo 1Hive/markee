@@ -56,11 +56,16 @@ const MARKEE_ABI = [
 ] as const
 
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+const CACHE_KEY = 'cache:github:leaderboards'
+const CACHE_TTL = 60 // seconds
 
 // ── GET /api/github/leaderboards ─────────────────────────────────────────────
 
 export async function GET() {
   try {
+    const cached = await kv.get<object>(CACHE_KEY)
+    if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+
     const client = getClient()
 
     // Chunk multicalls into batches of 50 to avoid Alchemy limits
@@ -194,12 +199,9 @@ export async function GET() {
       return bWei > aWei ? 1 : bWei < aWei ? -1 : 0
     })
 
-    return NextResponse.json({
-      leaderboards,
-      totalPlatformFunds: formatEther(totalPlatformFundsWei),
-    }, {
-      headers: NO_CACHE,
-    })
+    const payload = { leaderboards, totalPlatformFunds: formatEther(totalPlatformFundsWei) }
+    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
+    return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[leaderboards] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

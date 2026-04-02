@@ -2,8 +2,12 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
+import { kv } from '@vercel/kv'
 
 export const dynamic = 'force-dynamic'
+
+const CACHE_KEY = 'cache:superfluid:leaderboards'
+const CACHE_TTL = 60 // seconds
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -112,6 +116,9 @@ async function fetchFeaturedMessage() {
 
 export async function GET() {
   try {
+    const cached = await kv.get<object>(CACHE_KEY)
+    if (cached) return NextResponse.json(cached, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
+
     const client = getClient()
 
     // Run leaderboard RPC calls and featured message subgraph fetch in parallel
@@ -219,13 +226,9 @@ export async function GET() {
       return diff > 0n ? 1 : diff < 0n ? -1 : 0
     })
 
-    return NextResponse.json({
-      leaderboards,
-      totalPlatformFunds: formatEther(totalFundsRaw),
-      featuredMessage,
-    }, {
-      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
-    })
+    const payload = { leaderboards, totalPlatformFunds: formatEther(totalFundsRaw), featuredMessage }
+    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
+    return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
   } catch (err) {
     console.error('[superfluid/leaderboards] Error:', err)
     return NextResponse.json({ error: 'Failed to fetch leaderboards' }, { status: 500 })
