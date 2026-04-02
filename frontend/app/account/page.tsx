@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
-  Globe, Github, Zap, Trophy, User, ChevronRight, ExternalLink,
+  Globe, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil,
 } from 'lucide-react'
+import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -86,6 +87,7 @@ export default function AccountPage() {
   const [githubBoards, setGithubBoards] = useState<GithubLeaderboard[]>([])
   const [websiteBoards, setWebsiteBoards] = useState<WebsiteLeaderboard[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [editingBoard, setEditingBoard] = useState<WebsiteLeaderboard | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -283,6 +285,7 @@ export default function AccountPage() {
                         subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
                         platformHref={platformLink(lb)}
                         variant="inactive"
+                        onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
                       />
                     ))}
                   </div>
@@ -305,6 +308,7 @@ export default function AccountPage() {
                         subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
                         platformHref={platformLink(lb)}
                         variant="active"
+                        onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
                       />
                     ))}
                   </div>
@@ -316,6 +320,17 @@ export default function AccountPage() {
       </section>
 
       <Footer />
+
+      {editingBoard && (
+        <EditWebsiteMetaModal
+          isOpen={!!editingBoard}
+          onClose={() => setEditingBoard(null)}
+          leaderboardAddress={editingBoard.address}
+          initialSiteUrl={editingBoard.siteUrl}
+          initialLogoUrl={editingBoard.logoUrl}
+          onSuccess={() => { setEditingBoard(null); if (walletAddress) fetchAll(walletAddress) }}
+        />
+      )}
     </div>
   )
 }
@@ -336,6 +351,7 @@ function AccountLeaderboardCard({
   subtitle?: string
   platformHref: string
   variant: 'active' | 'inactive'
+  onEdit?: () => void
 }) {
   const router = useRouter()
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
@@ -377,6 +393,15 @@ function AccountLeaderboardCard({
             >
               <ExternalLink size={11} />
             </Link>
+            {onEdit && (
+              <button
+                onClick={e => { e.stopPropagation(); onEdit() }}
+                className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
+                title="Edit website info"
+              >
+                <Pencil size={11} />
+              </button>
+            )}
           </div>
         </div>
       </div>

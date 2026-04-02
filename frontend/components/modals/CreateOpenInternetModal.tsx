@@ -133,7 +133,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                 <Globe size={20} className="text-[#F897FE]" />
               </div>
               <div>
-                <h2 className="text-[#EDEEFF] font-bold text-lg">Create a Website Markee</h2>
+                <h2 className="text-[#EDEEFF] font-bold text-lg">Create a Markee for your Website</h2>
                 <p className="text-[#8A8FBF] text-xs">Anyone can pay to change the message on your site</p>
               </div>
             </div>
@@ -147,7 +147,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
               <div className="space-y-5">
                 <div>
                   <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Sign Name <span className="text-[#F897FE]">*</span>
+                    Website Name <span className="text-[#F897FE]">*</span>
                   </label>
                   <input
                     type="text"
@@ -205,7 +205,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                 <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                   <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
                   <div className="flex justify-between">
-                    <span className="text-[#EDEEFF]">Your treasury</span>
+                    <span className="text-[#EDEEFF]">Your Treasury</span>
                     <span className="text-[#F897FE] font-semibold">62%</span>
                   </div>
                   <div className="flex justify-between mt-1.5">
