@@ -344,6 +344,7 @@ function AccountLeaderboardCard({
   subtitle,
   platformHref,
   variant,
+  onEdit,
 }: {
   leaderboard: AnyLeaderboard
   detailUrl: string
