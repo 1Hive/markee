@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
-  Github, Zap, Trophy, User, ChevronRight, ExternalLink,
+  Globe, Github, Zap, Trophy, User, ChevronRight, ExternalLink,
 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -38,7 +38,18 @@ interface GithubLeaderboard extends BaseLeaderboard {
   repoHtmlUrl: string | null
 }
 
-type AnyLeaderboard = SuperfluidLeaderboard | GithubLeaderboard
+interface WebsiteLeaderboard extends BaseLeaderboard {
+  platform: 'website'
+  creator: string | null
+  logoUrl: string | null
+  siteUrl: string | null
+  verifiedUrl: string | null
+  status: 'pending' | 'verified'
+  isLegacy: boolean
+  slug?: string
+}
+
+type AnyLeaderboard = SuperfluidLeaderboard | GithubLeaderboard | WebsiteLeaderboard
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,12 +66,14 @@ function shortAddr(addr: string) {
 
 function platformIcon(lb: AnyLeaderboard, size = 22) {
   if (lb.platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
-  return <Github size={size} className="text-[#EDEEFF]" />
+  if (lb.platform === 'github') return <Github size={size} className="text-[#EDEEFF]" />
+  return <Globe size={size} className="text-[#F897FE]" />
 }
 
 function platformLink(lb: AnyLeaderboard) {
   if (lb.platform === 'superfluid') return '/ecosystem/platforms/superfluid'
-  return '/ecosystem/platforms/github'
+  if (lb.platform === 'github') return '/ecosystem/platforms/github'
+  return '/ecosystem'
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -71,6 +84,7 @@ export default function AccountPage() {
 
   const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
   const [githubBoards, setGithubBoards] = useState<GithubLeaderboard[]>([])
+  const [websiteBoards, setWebsiteBoards] = useState<WebsiteLeaderboard[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
@@ -78,9 +92,10 @@ export default function AccountPage() {
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
     try {
-      const [sfRes, ghRes] = await Promise.all([
+      const [sfRes, ghRes, oiRes] = await Promise.all([
         fetch('/api/superfluid/leaderboards?bust=1', { cache: 'no-store' }),
         fetch('/api/github/leaderboards?bust=1', { cache: 'no-store' }),
+        fetch('/api/openinternet/leaderboards?bust=1', { cache: 'no-store' }),
       ])
 
       if (sfRes.ok) {
@@ -100,6 +115,20 @@ export default function AccountPage() {
           .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'github' as const }))
         setGithubBoards(mine)
       }
+
+      if (oiRes.ok) {
+        const data = await oiRes.json()
+        const mine = (data.leaderboards ?? [])
+          .filter((lb: any) => {
+            // Factory leaderboards: filter by creator
+            // Legacy TopDawg: not shown on account page (no creator tracking)
+            if (lb.isLegacy) return false
+            const c = lb.creator ?? lb.admin
+            return c && c.toLowerCase() === addr.toLowerCase()
+          })
+          .map((lb: any) => ({ ...lb, platform: 'website' as const }))
+        setWebsiteBoards(mine)
+      }
     } catch (err) {
       console.error('[account] fetch error:', err)
     } finally {
@@ -114,6 +143,7 @@ export default function AccountPage() {
   const allBoards: AnyLeaderboard[] = [
     ...superfluidBoards,
     ...githubBoards,
+    ...websiteBoards,
   ].sort((a, b) => {
     const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
     return diff > 0n ? 1 : diff < 0n ? -1 : 0
@@ -126,7 +156,8 @@ export default function AccountPage() {
 
   function detailUrl(lb: AnyLeaderboard) {
     if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
-    return `/ecosystem/platforms/github/${lb.address}`
+    if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
+    return '/ecosystem'
   }
 
   return (
@@ -210,6 +241,13 @@ export default function AccountPage() {
               <p className="text-[#EDEEFF] font-semibold mb-2">No Markees yet</p>
               <p className="text-[#8A8FBF] text-sm mb-6">Create your first sign on one of our platforms.</p>
               <div className="flex items-center justify-center gap-3 flex-wrap">
+                <Link
+                  href="/ecosystem"
+                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <Globe size={14} className="text-[#F897FE]" />
+                  Website
+                </Link>
                 <Link
                   href="/ecosystem/platforms/superfluid"
                   className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
