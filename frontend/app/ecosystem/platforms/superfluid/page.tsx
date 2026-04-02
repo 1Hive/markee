@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink, Eye,
+  CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink, Eye, User,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -179,6 +179,9 @@ export default function SuperfluidPlatformPage() {
     ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
     : []
 
+  // Public listing: only boards where a real purchase has been made
+  const activeLeaderboards = leaderboards.filter(l => BigInt(l.topFundsAddedRaw ?? '0') > 0n)
+
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="ecosystem" />
@@ -241,7 +244,7 @@ export default function SuperfluidPlatformPage() {
             <div className="flex items-center gap-6 mt-10 flex-wrap">
               <div className="flex items-center gap-2 text-sm">
                 <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{leaderboards.length}</span>
+                <span className="text-[#F897FE] font-semibold">{activeLeaderboards.length}</span>
                 <span className="text-[#8A8FBF]">active signs</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
@@ -380,6 +383,32 @@ export default function SuperfluidPlatformPage() {
         )
       })()}
 
+      {/* My Markees — visible only to the connected admin */}
+      {walletAddress && myLeaderboards.length > 0 && (
+        <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 mb-6">
+              <User size={18} className="text-[#F897FE]" />
+              <h2 className="text-xl font-bold text-[#EDEEFF]">My Markees</h2>
+              <span className="text-[#8A8FBF] text-sm">
+                {myLeaderboards.length} {myLeaderboards.length === 1 ? 'sign' : 'signs'} you created
+              </span>
+              <Link
+                href="/account"
+                className="ml-auto flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+              >
+                View account <ChevronRight size={12} />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {myLeaderboards.map(lb => (
+                <MyMarkeeCard key={lb.address} leaderboard={lb} formatFunds={formatFunds} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Signs grid */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -389,11 +418,11 @@ export default function SuperfluidPlatformPage() {
                 <LeaderboardCardSkeleton key={i} />
               ))}
             </div>
-          ) : leaderboards.length === 0 ? (
+          ) : activeLeaderboards.length === 0 ? (
             <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
               <Zap size={40} className="text-[#1DB227] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No signs yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Be the first Superfluid project to create a Markee.</p>
+              <p className="text-[#EDEEFF] font-semibold mb-2">No active signs yet</p>
+              <p className="text-[#8A8FBF] text-sm mb-6">Be the first Superfluid project to buy a message.</p>
               <button
                 onClick={() => setCreateModalOpen(true)}
                 className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
@@ -410,7 +439,7 @@ export default function SuperfluidPlatformPage() {
                 <span className="text-[#8A8FBF] text-sm">ranked by total funds added</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {leaderboards.map((lb, idx) => (
+                {activeLeaderboards.map((lb, idx) => (
                   <LeaderboardCard
                     key={lb.address}
                     leaderboard={lb}
@@ -453,6 +482,41 @@ export default function SuperfluidPlatformPage() {
         partnerSplitPercentage={62}
         topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
       />
+    </div>
+  )
+}
+
+// ─── My Markee Card (admin-only compact card) ─────────────────────────────────
+
+function MyMarkeeCard({
+  leaderboard,
+  formatFunds,
+}: {
+  leaderboard: SuperfluidLeaderboard
+  formatFunds: (eth: string) => string
+}) {
+  const router = useRouter()
+  const hasPurchase = BigInt(leaderboard.topFundsAddedRaw ?? '0') > 0n
+
+  return (
+    <div
+      onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
+      className="bg-[#060A2A] rounded-lg border border-[#F897FE]/20 hover:border-[#F897FE]/60 transition-colors cursor-pointer p-4 flex items-center gap-4"
+    >
+      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
+        <Zap size={18} className="text-[#1DB227]" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[#EDEEFF] text-sm truncate">{leaderboard.name}</p>
+        <p className="text-[#8A8FBF] text-xs mt-0.5">
+          {formatFunds(leaderboard.totalFunds)} raised · {Math.max(0, leaderboard.markeeCount - 1)} {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
+        </p>
+      </div>
+      {!hasPurchase && (
+        <span className="text-[10px] font-semibold text-[#8A8FBF] bg-[#8A8FBF]/10 border border-[#8A8FBF]/20 px-2 py-0.5 rounded-full flex-shrink-0">
+          No bids yet
+        </span>
+      )}
     </div>
   )
 }

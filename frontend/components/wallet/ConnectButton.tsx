@@ -1,6 +1,7 @@
 'use client'
 import { ConnectButton as RainbowConnectButton } from '@rainbow-me/rainbowkit'
-import { Wallet } from 'lucide-react'
+import { Wallet, User } from 'lucide-react'
+import Link from 'next/link'
 
 export function ConnectButton() {
   return (
