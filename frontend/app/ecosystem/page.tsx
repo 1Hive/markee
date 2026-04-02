@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Globe, Github, Zap, ChevronRight, ExternalLink, Trophy, CheckCircle } from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Trophy, CheckCircle } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
@@ -11,6 +11,8 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { CreateOpenInternetModal } from '@/components/modals/CreateOpenInternetModal'
 import { ModerationProvider } from '@/components/moderation'
+
+const INITIAL_SHOW = 9
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +30,6 @@ interface EcosystemLeaderboard {
   minimumPrice: string
   minimumPriceRaw: string
   topFundsAddedRaw: string
-  // website-specific
   logoUrl?: string | null
   siteUrl?: string | null
   verifiedUrl?: string | null
@@ -37,7 +38,6 @@ interface EcosystemLeaderboard {
   isCooperative?: boolean
   percentToBeneficiary?: number
   slug?: string
-  // github-specific
   repoAvatarUrl?: string | null
   repoFullName?: string | null
   repoHtmlUrl?: string | null
@@ -52,10 +52,14 @@ function formatFunds(eth: string) {
   return `${n.toFixed(3)} ETH`
 }
 
+function hasRealPurchase(lb: EcosystemLeaderboard) {
+  return BigInt(lb.topFundsAddedRaw ?? '0') > 0n
+}
+
 function platformIcon(platform: string, size = 14) {
   if (platform === 'github') return <Github size={size} className="text-[#8A8FBF]" />
   if (platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
-  return <Globe size={size} className="text-[#F897FE]" />
+  return <Globe2 size={size} className="text-[#F897FE]" />
 }
 
 function platformLabel(platform: string) {
@@ -94,7 +98,6 @@ function EcosystemCard({
   const router = useRouter()
 
   const logoSrc = lb.logoUrl ?? (lb.platform === 'github' ? lb.repoAvatarUrl : null)
-  const hasLogo = !!logoSrc
 
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
   const topFunds = BigInt(lb.topFundsAddedRaw ?? '0')
@@ -102,25 +105,18 @@ function EcosystemCard({
   const rawBuyPrice = topFunds + minIncrement
   const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
   const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
+  const messageCount = lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
 
   function handleCardClick() {
-    if (lb.platform === 'superfluid') {
-      router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
-    } else if (lb.platform === 'github') {
-      router.push(`/ecosystem/platforms/github`)
-    }
-    // website cards aren't clickable by default
+    if (lb.platform === 'superfluid') router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
+    else if (lb.platform === 'github') router.push(`/ecosystem/platforms/github`)
   }
 
   function handleBuyClick(e: React.MouseEvent) {
     e.stopPropagation()
-    if (lb.isLegacy && onBuyLegacy) {
-      onBuyLegacy(lb)
-    } else if (lb.platform === 'superfluid') {
-      router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
-    } else if (lb.platform === 'github') {
-      router.push(`/ecosystem/platforms/github`)
-    }
+    if (lb.isLegacy && onBuyLegacy) onBuyLegacy(lb)
+    else if (lb.platform === 'superfluid') router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
+    else if (lb.platform === 'github') router.push(`/ecosystem/platforms/github`)
   }
 
   const isClickable = lb.platform === 'superfluid' || lb.platform === 'github'
@@ -131,11 +127,10 @@ function EcosystemCard({
       className={`bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 transition-colors
         ${isClickable ? 'cursor-pointer hover:border-[#F897FE]' : ''}`}
     >
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 overflow-hidden">
-          {hasLogo ? (
-            <img src={logoSrc!} alt={lb.name} className="w-9 h-9 object-contain" />
+          {logoSrc ? (
+            <img src={logoSrc} alt={lb.name} className="w-9 h-9 object-contain" />
           ) : (
             <div className="flex items-center justify-center w-full h-full">
               {platformIcon(lb.platform, 22)}
@@ -151,7 +146,7 @@ function EcosystemCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={e => e.stopPropagation()}
-                className="flex items-center gap-1 text-[#1DB227] text-xs hover:text-[#1DB227]/80 transition-colors"
+                className="text-[#1DB227] hover:text-[#1DB227]/80 transition-colors"
                 title="Verified website"
               >
                 <CheckCircle size={12} />
@@ -165,41 +160,93 @@ function EcosystemCard({
         </div>
       </div>
 
-      {/* Message box */}
-      {lb.topMessage ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
-          <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
-            {lb.topMessage}
+      <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
+        <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
+          {lb.topMessage}
+        </p>
+        {lb.topMessageOwner && (
+          <p className="text-[#8A8FBF] text-xs text-right mt-auto">
+            — {lb.topMessageOwner.startsWith('0x')
+              ? `${lb.topMessageOwner.slice(0, 6)}…${lb.topMessageOwner.slice(-4)}`
+              : lb.topMessageOwner}
           </p>
-          {lb.topMessageOwner && (
-            <p className="text-[#8A8FBF] text-xs text-right mt-auto">
-              — {lb.topMessageOwner.startsWith('0x')
-                ? `${lb.topMessageOwner.slice(0, 6)}…${lb.topMessageOwner.slice(-4)}`
-                : lb.topMessageOwner}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[100px] flex flex-col items-center justify-center">
-          <div className="text-4xl mb-2">🪧</div>
-          <p className="text-[#8A8FBF] text-sm">No messages yet</p>
-        </div>
-      )}
-
-      {/* Stats row */}
-      <div className="flex items-center justify-between text-xs mb-4 text-[#8A8FBF]">
-        <span className="text-[#7C9CFF] font-medium">{formatFunds(lb.totalFunds)}</span>
-        <span>{Math.max(0, lb.markeeCount - 1)} {lb.markeeCount - 1 === 1 ? 'message' : 'messages'}</span>
+        )}
       </div>
 
-      {/* Buy button — only for active boards */}
-      {lb.markeeCount > 0 && (
-        <button
-          onClick={handleBuyClick}
-          className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
-        >
-          {buyPriceFormatted} ETH to change
-        </button>
+      <div className="flex items-center justify-between text-xs mb-4 text-[#8A8FBF]">
+        <span className="text-[#7C9CFF] font-medium">{formatFunds(lb.totalFunds)}</span>
+        <span>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
+      </div>
+
+      <button
+        onClick={handleBuyClick}
+        className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
+      >
+        {buyPriceFormatted} ETH to change
+      </button>
+    </div>
+  )
+}
+
+// ─── Show-more section ────────────────────────────────────────────────────────
+
+function LeaderboardSection({
+  title,
+  badge,
+  items,
+  renderCard,
+  withUrlBar,
+}: {
+  title: string
+  badge: React.ReactNode
+  items: EcosystemLeaderboard[]
+  renderCard: (lb: EcosystemLeaderboard) => React.ReactNode
+  withUrlBar?: (lb: EcosystemLeaderboard) => string | null
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const visible = showAll ? items : items.slice(0, INITIAL_SHOW)
+  const hasMore = items.length > INITIAL_SHOW
+
+  return (
+    <div className="mb-16">
+      <div className="flex items-center gap-3 mb-6">
+        {badge}
+        <h2 className="text-2xl font-bold text-[#EDEEFF]">{title}</h2>
+        <span className="text-[#8A8FBF] text-sm">{items.length}</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {visible.map(lb => {
+          const url = withUrlBar?.(lb)
+          if (url) {
+            return (
+              <div key={lb.address} className="relative">
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+                >
+                  <ExternalLink size={12} />
+                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </a>
+                <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
+                  {renderCard(lb)}
+                </div>
+              </div>
+            )
+          }
+          return <div key={lb.address}>{renderCard(lb)}</div>
+        })}
+      </div>
+      {hasMore && !showAll && (
+        <div className="text-center mt-6">
+          <button
+            onClick={() => setShowAll(true)}
+            className="text-[#8A8FBF] hover:text-[#EDEEFF] text-sm font-medium border border-[#8A8FBF]/30 hover:border-[#8A8FBF]/60 px-6 py-2 rounded-lg transition-colors"
+          >
+            Show all {items.length} Markees
+          </button>
+        </div>
       )}
     </div>
   )
@@ -209,6 +256,7 @@ function EcosystemCard({
 
 export default function EcosystemPage() {
   const [leaderboards, setLeaderboards] = useState<EcosystemLeaderboard[]>([])
+  const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [isLoading, setIsLoading] = useState(true)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [topDawgModalData, setTopDawgModalData] = useState<EcosystemLeaderboard | null>(null)
@@ -222,6 +270,7 @@ export default function EcosystemPage() {
       if (res.ok) {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
+        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
       }
     } catch (err) {
       console.error(err)
@@ -232,14 +281,15 @@ export default function EcosystemPage() {
 
   useEffect(() => { fetchLeaderboards() }, [])
 
-  // Categorize by status
-  const verified = leaderboards.filter(l =>
-    l.markeeCount > 0 && l.platform === 'website' && l.status === 'verified'
-  )
-  const unverified = leaderboards.filter(l =>
-    l.markeeCount > 0 && !(l.platform === 'website' && l.status === 'verified')
-  )
-  const awaiting = leaderboards.filter(l => l.markeeCount === 0)
+  // Only show boards where a real purchase has been made
+  const active = leaderboards.filter(hasRealPurchase)
+  const verified = active.filter(l => l.platform === 'website' && l.status === 'verified')
+  const unverified = active.filter(l => !(l.platform === 'website' && l.status === 'verified'))
+
+  // Hero stats
+  const totalMessages = active.reduce((sum, lb) => {
+    return sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1))
+  }, 0)
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -259,6 +309,26 @@ export default function EcosystemPage() {
           >
             Create a Markee
           </button>
+
+          {/* Stats */}
+          {!isLoading && active.length > 0 && (
+            <div className="flex items-center justify-center gap-8 mt-10 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <span className="text-[#F897FE] font-semibold">{active.length}</span>
+                <span className="text-[#8A8FBF]">active Markees</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[#EDEEFF] font-semibold">{totalMessages.toLocaleString()}</span>
+                <span className="text-[#8A8FBF]">messages bought</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Trophy size={14} className="text-[#7C9CFF]" />
+                <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
+                <span className="text-[#8A8FBF]">total raised</span>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -274,7 +344,7 @@ export default function EcosystemPage() {
               <div className="flex flex-col gap-4 bg-[#0A0F3D] rounded-lg border border-[#F897FE]/30 p-5">
                 <div className="flex items-center gap-3">
                   <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
-                    <Globe size={26} className="text-[#F897FE]" />
+                    <Globe2 size={26} className="text-[#F897FE]" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-[#EDEEFF] font-semibold text-sm">Website</h3>
@@ -287,51 +357,51 @@ export default function EcosystemPage() {
                   onClick={() => setCreateModalOpen(true)}
                   className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
                 >
-                  Create a Markee
+                  Create a Markee for your Website
                 </button>
               </div>
 
               {/* GitHub */}
-              <Link
-                href="/ecosystem/platforms/github"
-                className="group flex items-center gap-5 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 transition-all p-5"
-              >
-                <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
-                  <Github size={26} className="text-[#EDEEFF]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-[#EDEEFF] font-semibold text-sm group-hover:text-[#F897FE] transition-colors">
-                    GitHub Repo
-                  </h3>
-                  <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
-                    Add a Markee to your README, SKILL file, or any markdown in your project.
-                  </p>
-                  <div className="flex items-center gap-1 text-[#7C9CFF] text-xs group-hover:text-[#F897FE] transition-colors mt-2">
-                    See GitHub Markees <ChevronRight size={13} />
+              <div className="flex flex-col gap-4 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
+                    <Github size={26} className="text-[#EDEEFF]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[#EDEEFF] font-semibold text-sm">GitHub Repo</h3>
+                    <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
+                      Add a Markee to your README, SKILL file, or any markdown in your project.
+                    </p>
                   </div>
                 </div>
-              </Link>
+                <Link
+                  href="/ecosystem/platforms/github"
+                  className="w-full flex items-center justify-center bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#F897FE]/10 transition-colors"
+                >
+                  See Github Markees and Create
+                </Link>
+              </div>
 
               {/* Superfluid */}
-              <Link
-                href="/ecosystem/platforms/superfluid"
-                className="group flex items-center gap-5 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 transition-all p-5"
-              >
-                <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden">
-                  <Image src="/partners/superfluid.png" alt="Superfluid" width={36} height={36} className="object-contain" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-[#EDEEFF] font-semibold text-sm group-hover:text-[#F897FE] transition-colors">
-                    Superfluid Project
-                  </h3>
-                  <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
-                    Builders in the Superfluid ecosystem can create a Markee and earn SUP rewards.
-                  </p>
-                  <div className="flex items-center gap-1 text-[#7C9CFF] text-xs group-hover:text-[#F897FE] transition-colors mt-2">
-                    Superfluid platform <ChevronRight size={13} />
+              <div className="flex flex-col gap-4 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden">
+                    <Image src="/partners/superfluid.png" alt="Superfluid" width={36} height={36} className="object-contain" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[#EDEEFF] font-semibold text-sm">Superfluid Project</h3>
+                    <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
+                      Builders in the Superfluid ecosystem can create a Markee and earn SUP rewards.
+                    </p>
                   </div>
                 </div>
-              </Link>
+                <Link
+                  href="/ecosystem/platforms/superfluid"
+                  className="w-full flex items-center justify-center bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#F897FE]/10 transition-colors"
+                >
+                  See Superfluid Markees and Create
+                </Link>
+              </div>
 
             </div>
           </div>
@@ -344,74 +414,34 @@ export default function EcosystemPage() {
               </div>
             ) : (
               <>
-                {/* Top Verified Markees */}
                 {verified.length > 0 && (
-                  <div className="mb-16">
-                    <div className="flex items-center gap-3 mb-6">
-                      <Trophy size={20} className="text-[#F897FE]" />
-                      <h2 className="text-2xl font-bold text-[#EDEEFF]">Top Verified Markees</h2>
+                  <LeaderboardSection
+                    title="Top Verified Markees"
+                    badge={
                       <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-3 py-1 rounded-full">
                         <CheckCircle size={11} />
                         Verified
                       </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {verified.map(lb => (
-                        <div key={lb.address} className="relative">
-                          {lb.verifiedUrl && (
-                            <a
-                              href={lb.verifiedUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-                            >
-                              <ExternalLink size={12} />
-                              {lb.verifiedUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                            </a>
-                          )}
-                          <div className={`${lb.verifiedUrl ? 'rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20' : ''}`}>
-                            <EcosystemCard lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                    }
+                    items={verified}
+                    withUrlBar={lb => lb.verifiedUrl ?? null}
+                    renderCard={lb => (
+                      <EcosystemCard lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
+                    )}
+                  />
                 )}
 
-                {/* Unverified Markees */}
                 {unverified.length > 0 && (
-                  <div className="mb-16">
-                    <div className="flex items-center gap-3 mb-6">
-                      <h2 className="text-2xl font-bold text-[#EDEEFF]">Unverified Markees</h2>
-                      <span className="bg-[#8A8FBF]/15 border border-[#8A8FBF]/30 text-[#8A8FBF] text-xs font-semibold px-3 py-1 rounded-full">
-                        Active
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {unverified.map(lb => (
-                        <EcosystemCard key={lb.address} lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Awaiting Activation */}
-                {awaiting.length > 0 && (
-                  <div className="mb-16">
-                    <div className="flex items-center gap-3 mb-6">
-                      <h2 className="text-2xl font-bold text-[#EDEEFF]">Awaiting Activation</h2>
-                      <span className="flex items-center gap-1.5 bg-[#7C9CFF]/15 border border-[#7C9CFF]/30 text-[#7C9CFF] text-xs font-semibold px-3 py-1 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#7C9CFF] animate-pulse" />
-                        Pending
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-75">
-                      {awaiting.map(lb => (
-                        <EcosystemCard key={lb.address} lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
-                      ))}
-                    </div>
-                  </div>
+                  <LeaderboardSection
+                    title="Markees"
+                    badge={
+                      <Trophy size={20} className="text-[#F897FE]" />
+                    }
+                    items={unverified}
+                    renderCard={lb => (
+                      <EcosystemCard lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
+                    )}
+                  />
                 )}
               </>
             )}
@@ -421,14 +451,12 @@ export default function EcosystemPage() {
 
       <Footer />
 
-      {/* Create Website Markee modal */}
       <CreateOpenInternetModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSuccess={() => { setCreateModalOpen(false); fetchLeaderboards(true) }}
       />
 
-      {/* Legacy TopDawg buy modal */}
       {topDawgModalData && (
         <TopDawgModal
           isOpen={!!topDawgModalData}

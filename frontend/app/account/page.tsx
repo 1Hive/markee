@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
-  Globe, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil,
+  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { Header } from '@/components/layout/Header'
@@ -68,7 +68,7 @@ function shortAddr(addr: string) {
 function platformIcon(lb: AnyLeaderboard, size = 22) {
   if (lb.platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
   if (lb.platform === 'github') return <Github size={size} className="text-[#EDEEFF]" />
-  return <Globe size={size} className="text-[#F897FE]" />
+  return <Globe2 size={size} className="text-[#F897FE]" />
 }
 
 function platformLink(lb: AnyLeaderboard) {
@@ -247,7 +247,7 @@ export default function AccountPage() {
                   href="/ecosystem"
                   className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
                 >
-                  <Globe size={14} className="text-[#F897FE]" />
+                  <Globe2 size={14} className="text-[#F897FE]" />
                   Website
                 </Link>
                 <Link
