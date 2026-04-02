@@ -401,7 +401,7 @@ export default function SuperfluidPlatformPage() {
               >
                 <ExternalLink size={13} />
               </Link>
-              <span className="text-[#8A8FBF] text-sm ml-auto">
+              <span className="text-[#8A8FBF] text-sm">
                 {myLeaderboards.length} {myLeaderboards.length === 1 ? 'sign' : 'signs'} you created
               </span>
             </div>
@@ -518,8 +518,8 @@ function MyMarkeeCard({
         </p>
       </div>
       {!hasPurchase && (
-        <span className="text-[10px] font-semibold text-[#8A8FBF] bg-[#8A8FBF]/10 border border-[#8A8FBF]/20 px-2 py-0.5 rounded-full flex-shrink-0">
-          No bids yet
+        <span className="text-[10px] font-semibold text-[#7C9CFF] bg-[#7C9CFF]/10 border border-[#7C9CFF]/20 px-2 py-0.5 rounded-full flex-shrink-0">
+          Awaiting Activation
         </span>
       )}
     </div>

@@ -24,6 +24,7 @@ interface BaseLeaderboard {
   topMessage: string | null
   topMessageOwner?: string | null
   topFundsAddedRaw: string
+  minimumPriceRaw?: string
 }
 
 interface SuperfluidLeaderboard extends BaseLeaderboard {
@@ -297,6 +298,13 @@ function AccountLeaderboardCard({
   const router = useRouter()
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
 
+  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+  const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
+  const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
+  const rawBuyPrice = topFunds + minIncrement
+  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
+  const buyPriceEth = (Number(buyPrice) / 1e18).toFixed(3)
+
   return (
     <div
       onClick={() => router.push(detailUrl)}
@@ -341,10 +349,17 @@ function AccountLeaderboardCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs">
+      <div className="flex items-center justify-between text-xs mb-4">
         <span className="text-[#7C9CFF] font-medium">{formatFunds(leaderboard.totalFunds)} total raised.</span>
         <span className="text-[#8A8FBF]">{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
       </div>
+
+      <button
+        onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
+        className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
+      >
+        {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
+      </button>
     </div>
   )
 }
