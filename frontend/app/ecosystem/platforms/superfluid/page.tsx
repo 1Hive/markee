@@ -178,7 +178,9 @@ export default function SuperfluidPlatformPage() {
   }
 
   const myLeaderboards = walletAddress
-    ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
+    ? leaderboards.filter(l =>
+        ((l as any).creator ?? l.admin).toLowerCase() === walletAddress.toLowerCase()
+      )
     : []
 
   // Public listing: only boards where a real purchase has been made

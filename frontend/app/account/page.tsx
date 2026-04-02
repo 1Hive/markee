@@ -56,10 +56,13 @@ function shortAddr(addr: string) {
 export default function AccountPage() {
   const router = useRouter()
   const { address: walletAddress, isConnected } = useAccount()
+  const [mounted, setMounted] = useState(false)
 
   const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
   const [githubBoards, setGithubBoards] = useState<GithubLeaderboard[]>([])
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
@@ -72,7 +75,9 @@ export default function AccountPage() {
       if (sfRes.ok) {
         const data = await sfRes.json()
         const mine = (data.leaderboards ?? [])
-          .filter((lb: BaseLeaderboard) => lb.admin.toLowerCase() === addr.toLowerCase())
+          .filter((lb: BaseLeaderboard & { creator?: string | null }) =>
+            (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase()
+          )
           .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
         setSuperfluidBoards(mine)
       }
@@ -147,7 +152,7 @@ export default function AccountPage() {
               </div>
             </div>
 
-            {!isConnected && (
+            {mounted && !isConnected && (
               <ConnectButton />
             )}
           </div>
@@ -179,12 +184,12 @@ export default function AccountPage() {
       <section className="py-12 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          {!isConnected ? (
+          {!mounted || !isConnected ? (
             <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
               <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">Connect your wallet</p>
               <p className="text-[#8A8FBF] text-sm mb-6">See all the Markees you've created across every platform.</p>
-              <ConnectButton />
+              {mounted && <ConnectButton />}
             </div>
           ) : isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

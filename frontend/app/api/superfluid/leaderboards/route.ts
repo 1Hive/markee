@@ -112,6 +112,57 @@ async function fetchFeaturedMessage() {
   }
 }
 
+// ─── Creator lookup via factory logs ─────────────────────────────────────────
+// Creator is not stored in the contract — we derive it from the transaction
+// that called createLeaderboard. Results are cached permanently in KV since
+// creator never changes.
+
+async function resolveCreators(
+  client: ReturnType<typeof getClient>,
+  addresses: readonly `0x${string}`[],
+): Promise<(string | null)[]> {
+  const keys = addresses.map(a => `creator:sf:${a.toLowerCase()}`)
+  const cached = await kv.mget<(string | null)[]>(...keys)
+
+  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
+  if (missingIndices.length === 0) return cached
+
+  try {
+    const logs = await client.getLogs({
+      address: SUPERFLUID_FACTORY_ADDRESS,
+      fromBlock: 0n,
+      toBlock: 'latest',
+    })
+
+    // topics[1] = leaderboard address (first indexed param in the factory event)
+    const lbToTxHash = new Map<string, `0x${string}`>()
+    for (const log of logs) {
+      if (log.topics[1]) {
+        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
+        lbToTxHash.set(addr, log.transactionHash)
+      }
+    }
+
+    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
+    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
+    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
+    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
+
+    await Promise.all(missingIndices.map(i => {
+      const addr = addresses[i].toLowerCase()
+      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
+      if (creator) {
+        cached[i] = creator
+        return kv.set(keys[i], creator) // no TTL — creator never changes
+      }
+    }))
+  } catch (e: any) {
+    console.error('[superfluid/leaderboards] creator lookup error:', e.message)
+  }
+
+  return cached
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
@@ -180,9 +231,12 @@ export async function GET(request: Request) {
         : []
     )
 
-    const markeeResults = markeeCalls.length > 0
-      ? await chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
-      : []
+    const [markeeResults, creators] = await Promise.all([
+      markeeCalls.length > 0
+        ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
+        : Promise.resolve([]),
+      resolveCreators(client, addresses),
+    ])
 
     // 4. Assemble response
     let totalFundsRaw = 0n
@@ -216,6 +270,7 @@ export async function GET(request: Request) {
         totalFundsRaw: totalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
+        creator: creators[i] ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFunds0.toString(),
