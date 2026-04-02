@@ -278,7 +278,7 @@ export default function SuperfluidPlatformPage() {
                 </a>
               </div>
               <button
-                onClick={() => fetchLeaderboards(true)}
+                onClick={() => fetchLeaderboards(true, true)}
                 disabled={isRefreshing}
                 className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
               >
@@ -481,7 +481,7 @@ export default function SuperfluidPlatformPage() {
       <TopDawgModal
         isOpen={featuredModalOpen}
         onClose={() => setFeaturedModalOpen(false)}
-        onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true) }}
+        onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true, true) }}
         strategyAddress={LEGACY_TOPDAWG_ADDRESS as `0x${string}`}
         partnerName="Superfluid"
         partnerSplitPercentage={62}
