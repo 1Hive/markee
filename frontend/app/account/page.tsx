@@ -231,11 +231,12 @@ export default function AccountPage() {
           ) : (
             <div className="space-y-12">
               {inactiveBoards.length > 0 && (
-                <div>
-                  <div className="mb-6">
-                    <h2 className="text-xl font-bold text-[#EDEEFF]">Awaiting Activation</h2>
-                    <p className="text-[#8A8FBF] text-sm mt-1">Buy a message to activate these Markees</p>
+                <div className="bg-[#0A0F3D] rounded-2xl border border-[#7C9CFF]/30 p-6">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-[#7C9CFF] animate-pulse flex-shrink-0" />
+                    <h2 className="text-xl font-bold text-[#7C9CFF]">Awaiting Activation</h2>
                   </div>
+                  <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Buy a message to activate these Markees</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {inactiveBoards.map(lb => (
                       <AccountLeaderboardCard
@@ -245,6 +246,7 @@ export default function AccountPage() {
                         icon={platformIcon(lb)}
                         subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
                         platformHref={platformLink(lb)}
+                        variant="inactive"
                       />
                     ))}
                   </div>
@@ -253,7 +255,8 @@ export default function AccountPage() {
 
               {activeBoards.length > 0 && (
                 <div>
-                  <div className="mb-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <span className="w-2 h-2 rounded-full bg-[#1DB227]" />
                     <h2 className="text-xl font-bold text-[#EDEEFF]">Active Markees</h2>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -265,6 +268,7 @@ export default function AccountPage() {
                         icon={platformIcon(lb)}
                         subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
                         platformHref={platformLink(lb)}
+                        variant="active"
                       />
                     ))}
                   </div>
@@ -288,12 +292,14 @@ function AccountLeaderboardCard({
   icon,
   subtitle,
   platformHref,
+  variant,
 }: {
   leaderboard: AnyLeaderboard
   detailUrl: string
   icon: React.ReactNode
   subtitle?: string
   platformHref: string
+  variant: 'active' | 'inactive'
 }) {
   const router = useRouter()
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
@@ -305,13 +311,21 @@ function AccountLeaderboardCard({
   const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
   const buyPriceEth = (Number(buyPrice) / 1e18).toFixed(3)
 
+  const isInactive = variant === 'inactive'
+  const cardBorder = isInactive
+    ? 'border-[#7C9CFF]/25 hover:border-[#7C9CFF]/60'
+    : 'border-[#8A8FBF]/20 hover:border-[#F897FE]'
+  const btnClass = isInactive
+    ? 'w-full bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#F897FE] transition-colors text-sm'
+    : 'w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm'
+
   return (
     <div
       onClick={() => router.push(detailUrl)}
-      className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
+      className={`bg-[#060A2A] p-6 rounded-lg border transition-colors cursor-pointer ${cardBorder}`}
     >
       <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
+        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -332,7 +346,7 @@ function AccountLeaderboardCard({
       </div>
 
       {leaderboard.topMessage ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
+        <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
           <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
             {leaderboard.topMessage}
           </p>
@@ -343,7 +357,7 @@ function AccountLeaderboardCard({
           )}
         </div>
       ) : (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[100px] flex flex-col items-center justify-center">
+        <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[100px] flex flex-col items-center justify-center">
           <div className="text-3xl mb-2">🪧</div>
           <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
         </div>
@@ -356,7 +370,7 @@ function AccountLeaderboardCard({
 
       <button
         onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
-        className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
+        className={btnClass}
       >
         {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
       </button>
