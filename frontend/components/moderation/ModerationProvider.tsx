@@ -17,7 +17,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, useSignMessage } from 'wagmi'
 import { ADMIN_ADDRESSES, MODERATION_API } from '@/lib/moderation/config'
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -53,6 +53,7 @@ export function useModeration() {
 
 export function ModerationProvider({ children }: { children: ReactNode }) {
   const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
   const [flaggedSet, setFlaggedSet] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
 
@@ -105,6 +106,10 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
       })
 
       try {
+        const timestamp = Math.floor(Date.now() / 1000)
+        const message = `markee-moderation:${action}:${chainId}:${markeeId}:${timestamp}`
+        const signature = await signMessageAsync({ message })
+
         const res = await fetch(MODERATION_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -113,6 +118,8 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
             chainId,
             action,
             adminAddress: address,
+            signature,
+            timestamp,
           }),
         })
 
@@ -135,7 +142,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return currentlyFlagged
       }
     },
-    [address, isAdminUser, flaggedSet]
+    [address, isAdminUser, flaggedSet, signMessageAsync]
   )
 
   return (

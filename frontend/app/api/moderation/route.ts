@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
+import { verifyMessage } from 'viem'
 import { ADMIN_ADDRESSES } from '@/lib/moderation/config'
 
 const KV_KEY = 'moderation:flagged'
@@ -50,19 +51,34 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { markeeId, chainId, action, adminAddress } = body as {
+    const { markeeId, chainId, action, adminAddress, signature, timestamp } = body as {
       markeeId: string
       chainId: number | string
       action: 'flag' | 'unflag'
       adminAddress: string
+      signature: `0x${string}`
+      timestamp: number
     }
 
-    // Validate
-    if (!markeeId || !chainId || !action || !adminAddress) {
+    // Validate required fields
+    if (!markeeId || !chainId || !action || !adminAddress || !signature || !timestamp) {
       return NextResponse.json(
-        { error: 'Missing required fields: markeeId, chainId, action, adminAddress' },
+        { error: 'Missing required fields' },
         { status: 400 }
       )
+    }
+
+    // Reject signatures older than 5 minutes
+    const now = Math.floor(Date.now() / 1000)
+    if (Math.abs(now - timestamp) > 300) {
+      return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
+    }
+
+    // Verify the caller actually controls the wallet they claim
+    const message = `markee-moderation:${action}:${chainId}:${markeeId}:${timestamp}`
+    const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature })
+    if (!valid) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
     if (!isAdmin(adminAddress)) {
