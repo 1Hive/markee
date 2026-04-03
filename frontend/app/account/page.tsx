@@ -159,7 +159,7 @@ export default function AccountPage() {
   function detailUrl(lb: AnyLeaderboard) {
     if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
     if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
-    return '/ecosystem'
+    return `/ecosystem/website/${lb.address}`
   }
 
   return (

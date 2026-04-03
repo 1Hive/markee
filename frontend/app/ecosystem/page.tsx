@@ -110,6 +110,7 @@ function EcosystemCard({
   function handleCardClick() {
     if (lb.platform === 'superfluid') router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
     else if (lb.platform === 'github') router.push(`/ecosystem/platforms/github`)
+    else if (lb.platform === 'website' && !lb.isLegacy) router.push(`/ecosystem/website/${lb.address}`)
   }
 
   function handleBuyClick(e: React.MouseEvent) {
@@ -117,9 +118,10 @@ function EcosystemCard({
     if (lb.isLegacy && onBuyLegacy) onBuyLegacy(lb)
     else if (lb.platform === 'superfluid') router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
     else if (lb.platform === 'github') router.push(`/ecosystem/platforms/github`)
+    else if (lb.platform === 'website' && !lb.isLegacy) router.push(`/ecosystem/website/${lb.address}`)
   }
 
-  const isClickable = lb.platform === 'superfluid' || lb.platform === 'github'
+  const isClickable = lb.platform === 'superfluid' || lb.platform === 'github' || (lb.platform === 'website' && !lb.isLegacy)
 
   return (
     <div
