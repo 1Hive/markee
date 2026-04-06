@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
-  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil,
+  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
+import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -88,6 +89,7 @@ export default function AccountPage() {
   const [websiteBoards, setWebsiteBoards] = useState<WebsiteLeaderboard[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [editingBoard, setEditingBoard] = useState<WebsiteLeaderboard | null>(null)
+  const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -286,6 +288,7 @@ export default function AccountPage() {
                         platformHref={platformLink(lb)}
                         variant="inactive"
                         onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
+                        onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
                       />
                     ))}
                   </div>
@@ -309,6 +312,7 @@ export default function AccountPage() {
                         platformHref={platformLink(lb)}
                         variant="active"
                         onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
+                        onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
                       />
                     ))}
                   </div>
@@ -331,6 +335,20 @@ export default function AccountPage() {
           onSuccess={() => { setEditingBoard(null); if (walletAddress) fetchAll(walletAddress) }}
         />
       )}
+
+      {integrationBoard && (
+        <IntegrationModal
+          isOpen={!!integrationBoard}
+          onClose={() => setIntegrationBoard(null)}
+          leaderboard={{
+            address: integrationBoard.address,
+            name: integrationBoard.name,
+            verifiedUrl: integrationBoard.verifiedUrl,
+            status: integrationBoard.status,
+          }}
+          onVerified={() => { if (walletAddress) fetchAll(walletAddress) }}
+        />
+      )}
     </div>
   )
 }
@@ -345,6 +363,7 @@ function AccountLeaderboardCard({
   platformHref,
   variant,
   onEdit,
+  onIntegrate,
 }: {
   leaderboard: AnyLeaderboard
   detailUrl: string
@@ -353,6 +372,7 @@ function AccountLeaderboardCard({
   platformHref: string
   variant: 'active' | 'inactive'
   onEdit?: () => void
+  onIntegrate?: () => void
 }) {
   const router = useRouter()
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
@@ -436,6 +456,16 @@ function AccountLeaderboardCard({
       >
         {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
       </button>
+
+      {onIntegrate && (
+        <button
+          onClick={e => { e.stopPropagation(); onIntegrate() }}
+          className="w-full flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs mt-2 transition-colors"
+        >
+          <Code2 size={11} />
+          Integration guide
+        </button>
+      )}
     </div>
   )
 }
