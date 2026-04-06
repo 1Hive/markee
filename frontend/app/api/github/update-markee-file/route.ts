@@ -153,9 +153,9 @@ ${blank}
   ╠${border}╣
   ║ ${centerPad(footer, INNER - 2)} ║
   ╚${border}╝
-              │││                    │││
-            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+                   ││                      ││
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 \`\`\`
 [Change this message at markee.xyz](${leaderboardUrl}) and show the world you support this repo.
 ${endDelimiter(leaderboardAddress)}`
