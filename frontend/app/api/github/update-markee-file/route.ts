@@ -151,10 +151,10 @@ ${blank}
   ╠${border}╣
   ║ ${centerPad(footerText, INNER - 2)} ║
   ╚${border}╝
-                   ││                      ││
+                 ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 \`\`\`
-*Show the world you support this repo by [changing this message at markee.xyz](${leaderboardUrl})*
+*Show the world you support this repo! [Change this message at markee.xyz](${leaderboardUrl})*
 ${endDelimiter(leaderboardAddress)}`
 }
 
