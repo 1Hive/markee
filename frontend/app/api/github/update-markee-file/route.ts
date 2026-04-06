@@ -3,8 +3,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
-import wcwidth from 'wcwidth'
 import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linkedFiles'
+
+// ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
+// Emoji and CJK characters occupy 2 columns; everything else occupies 1.
+function wcwidth(str: string): number {
+  let w = 0
+  for (const cp of [...str]) {
+    const c = cp.codePointAt(0) ?? 0
+    if (
+      (c >= 0x1100  && c <= 0x115F)  ||
+      (c >= 0x2E80  && c <= 0x303E)  ||
+      (c >= 0x3040  && c <= 0x33FF)  ||
+      (c >= 0x3400  && c <= 0x4DBF)  ||
+      (c >= 0x4E00  && c <= 0xA4CF)  ||
+      (c >= 0xA960  && c <= 0xA97F)  ||
+      (c >= 0xAC00  && c <= 0xD7FF)  ||
+      (c >= 0xF900  && c <= 0xFAFF)  ||
+      (c >= 0xFE10  && c <= 0xFE19)  ||
+      (c >= 0xFE30  && c <= 0xFE6F)  ||
+      (c >= 0xFF00  && c <= 0xFF60)  ||
+      (c >= 0xFFE0  && c <= 0xFFE6)  ||
+      (c >= 0x1B000 && c <= 0x1B0FF) ||
+      (c >= 0x1F004 && c <= 0x1F0CF) ||
+      (c >= 0x1F200 && c <= 0x1F2FF) ||
+      (c >= 0x1F300 && c <= 0x1F9FF) ||
+      (c >= 0x20000 && c <= 0x2FFFD) ||
+      (c >= 0x30000 && c <= 0x3FFFD)
+    ) { w += 2 } else { w += 1 }
+  }
+  return w
+}
 
 const client = createPublicClient({
   chain: base,
