@@ -136,7 +136,7 @@ function buildMarkeeBlock(
   // Header padding is hardcoded (left=19, right=16) rather than computed:
   // braille chars render slightly wider than 1 col in GitHub's code font,
   // so centerPad over-pads the right side by ~2 spaces.
-  const hdrLines = HDR_LINES.map(h => `  ║                    ${h}                 ║`).join('\n')
+  const hdrLines = HDR_LINES.map(h => `  ║                  ${h}                 ║`).join('\n')
   const msgLines = wrapMessage(message, MSG_WIDTH)
     .map(l => `  ║   ${padToWidth(l, MSG_WIDTH)}   ║`)
     .join('\n')
