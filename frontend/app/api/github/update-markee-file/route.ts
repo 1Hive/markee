@@ -133,7 +133,10 @@ function buildMarkeeBlock(
 ): string {
   const border   = '═'.repeat(INNER)
   const blank    = `  ║ ${' '.repeat(INNER - 2)} ║`
-  const hdrLines = HDR_LINES.map(h => `  ║ ${centerPad(h, INNER - 2)} ║`).join('\n')
+  // Header padding is hardcoded (left=19, right=16) rather than computed:
+  // braille chars render slightly wider than 1 col in GitHub's code font,
+  // so centerPad over-pads the right side by ~2 spaces.
+  const hdrLines = HDR_LINES.map(h => `  ║                    ${h}                 ║`).join('\n')
   const msgLines = wrapMessage(message, MSG_WIDTH)
     .map(l => `  ║   ${padToWidth(l, MSG_WIDTH)}   ║`)
     .join('\n')
@@ -150,10 +153,11 @@ ${blank}
   ╠${border}╣
   ║ ${centerPad(footer, INNER - 2)} ║
   ╚${border}╝
-                ││                      ││
-   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+              │││                    │││
+            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 \`\`\`
-[Support this repo by paying to change this message at markee.xyz](${leaderboardUrl})
+[Change this message at markee.xyz](${leaderboardUrl}) and show the world you support this repo.
 ${endDelimiter(leaderboardAddress)}`
 }
 
