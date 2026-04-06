@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
+import wcwidth from 'wcwidth'
 import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linkedFiles'
 
 const client = createPublicClient({
@@ -25,6 +26,75 @@ const MARKEE_ABI = [
   { inputs: [], name: 'name',    outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
 ] as const
 
+// ── Billboard constants ──────────────────────────────────────────────────────
+
+const INNER = 54  // columns between ║ and ║ (border = INNER ═ chars)
+const MSG_WIDTH = INNER - 6  // usable message width (3-space margins each side)
+
+const HDR_LINES = [
+  '⡷⢾ ⣎⣱ ⣏⡱ ⣇⠜ ⣏⡉ ⣏⡉',
+  '⠇⠸ ⠇⠸ ⠇⠱ ⠇⠱ ⠧⠤ ⠧⠤',
+]
+
+// ── Text helpers ─────────────────────────────────────────────────────────────
+
+function padToWidth(str: string, width: number): string {
+  const dw = wcwidth(str)
+  return str + ' '.repeat(Math.max(0, width - dw))
+}
+
+function centerPad(str: string, width: number): string {
+  const dw = wcwidth(str)
+  const tot = Math.max(0, width - dw)
+  const left = Math.floor(tot / 2)
+  return ' '.repeat(left) + str + ' '.repeat(tot - left)
+}
+
+function wrapMessage(str: string, maxWidth: number): string[] {
+  const words = str.split(' ')
+  const lines: string[] = []
+  let current = ''
+  let currentWidth = 0
+
+  for (const word of words) {
+    // Hard-slice any single word that exceeds maxWidth
+    const chunks: string[] = []
+    let remaining = word
+    while (wcwidth(remaining) > maxWidth) {
+      let slice = ''
+      let sliceWidth = 0
+      for (const char of [...remaining]) {
+        const cw = wcwidth(char)
+        if (sliceWidth + cw > maxWidth) break
+        slice += char
+        sliceWidth += cw
+      }
+      chunks.push(slice)
+      remaining = remaining.slice(slice.length)
+    }
+    if (remaining) chunks.push(remaining)
+
+    for (const chunk of chunks) {
+      const chunkWidth = wcwidth(chunk)
+      if (currentWidth === 0) {
+        current = chunk
+        currentWidth = chunkWidth
+      } else if (currentWidth + 1 + chunkWidth <= maxWidth) {
+        current += ' ' + chunk
+        currentWidth += 1 + chunkWidth
+      } else {
+        lines.push(current)
+        current = chunk
+        currentWidth = chunkWidth
+      }
+    }
+  }
+  if (current) lines.push(current)
+  return lines.length ? lines : ['']
+}
+
+// ── Billboard builder ────────────────────────────────────────────────────────
+
 function buildMarkeeBlock(
   leaderboardAddress: string,
   message: string,
@@ -32,17 +102,30 @@ function buildMarkeeBlock(
   nextBuyPriceEth: string,
   leaderboardUrl: string,
 ): string {
-  const attribution = ownerName ? ` — ${ownerName}` : ''
+  const border   = '═'.repeat(INNER)
+  const blank    = `  ║ ${' '.repeat(INNER - 2)} ║`
+  const hdrLines = HDR_LINES.map(h => `  ║ ${centerPad(h, INNER - 2)} ║`).join('\n')
+  const msgLines = wrapMessage(message, MSG_WIDTH)
+    .map(l => `  ║   ${padToWidth(l, MSG_WIDTH)}   ║`)
+    .join('\n')
+  const footer = `${nextBuyPriceEth} ETH to change`
+
   return `${startDelimiter(leaderboardAddress)}
-> 🪧🪧🪧🪧🪧🪧🪧 MARKEE 🪧🪧🪧🪧🪧🪧🪧
->
-> ${message}
->
-> ${attribution}
->
-> 🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧🪧
->
-> *Change this message for ${nextBuyPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
+\`\`\`
+  ╔${border}╗
+${hdrLines}
+  ╠${border}╣
+${blank}
+${msgLines}
+${blank}
+  ╠${border}╣
+  ║ ${centerPad(footer, INNER - 2)} ║
+  ╚${border}╝
+              │││                    │││
+            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+\`\`\`
+[Support this repo by paying to change this message at markee.xyz](${leaderboardUrl})
 ${endDelimiter(leaderboardAddress)}`
 }
 
@@ -58,12 +141,13 @@ function buildEmptyBlock(
 ${endDelimiter(leaderboardAddress)}`
 }
 
+// ── Route handler ────────────────────────────────────────────────────────────
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const { leaderboardAddress } = (body ?? {}) as { leaderboardAddress?: string }
   if (!leaderboardAddress) return NextResponse.json({ error: 'Missing leaderboardAddress' }, { status: 400 })
 
-  // Normalize once here — used for KV lookups, delimiter matching, and chain reads
   const normalizedAddress = leaderboardAddress.toLowerCase() as `0x${string}`
   console.log(`[update-markee-file] triggered for ${normalizedAddress}`)
 
