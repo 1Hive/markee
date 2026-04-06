@@ -150,9 +150,8 @@ ${blank}
   ╠${border}╣
   ║ ${centerPad(footer, INNER - 2)} ║
   ╚${border}╝
-              │││                    │││
-            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                ││                      ││
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 \`\`\`
 [Support this repo by paying to change this message at markee.xyz](${leaderboardUrl})
 ${endDelimiter(leaderboardAddress)}`
