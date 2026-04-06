@@ -61,7 +61,7 @@ export function IntegrationModal({ isOpen, onClose, leaderboard, onVerified }: I
   const buyUrl = `https://markee.xyz/ecosystem/website/${address}`
   const embedUrl = `https://markee.xyz/api/embed/${address}`
   const apiUrl = `https://markee.xyz/api/openinternet/leaderboards`
-  const metaTag = `<meta name="markee-address" content="${lowerAddress}">`
+  const dataAttr = `data-markee-address="${lowerAddress}"`
 
   const aiPrompt = `I want to add a Markee widget to my website.
 
@@ -72,19 +72,19 @@ My leaderboard:
 - Address: ${address}
 - Buy page (where visitors go to bid): ${buyUrl}
 
-Step 1 — Add this to your <head> for verification:
-${metaTag}
-
-Step 2 — Fetch the current top message:
+Step 1 — Fetch the current top message:
 GET ${apiUrl}
 Find the entry where address matches "${address}" (case-insensitive).
 Relevant fields: topMessage, topMessageOwner, minimumPrice, totalFunds
 
-Step 3 — Display it on my site:
-- Show topMessage prominently
+Step 2 — Display it on my site:
+- Wrap the widget container with the attribute: ${dataAttr}
+- Show topMessage prominently inside it
 - Link "Change this message" to ${buyUrl}
 - Re-fetch every 60 seconds to stay current
 - Optionally show topMessageOwner (a wallet address) and current minimum bid price
+
+The data-markee-address attribute on the wrapper is required for integration verification.
 
 Please look at this codebase and implement the integration. Choose an appropriate location (footer, header banner, sidebar widget). Match the existing code style. Keep it minimal.`
 
@@ -123,7 +123,7 @@ export function MarkeeWidget() {
   if (!message) return null
 
   return (
-    <div className="markee-widget">
+    <div data-markee-address={LEADERBOARD_ADDRESS} className="markee-widget">
       <p>{message}</p>
       {owner && (
         <p className="markee-owner">
@@ -137,13 +137,10 @@ export function MarkeeWidget() {
   )
 }`
 
-  const vanillaSnippet = `<!-- 1. Add to your <head> for verification -->
-${metaTag}
+  const vanillaSnippet = `<!-- Add where you want the widget — the data attribute is required for verification -->
+<div id="markee-widget" ${dataAttr}></div>
 
-<!-- 2. Add where you want the widget -->
-<div id="markee-widget"></div>
-
-<!-- 3. Add before </body> -->
+<!-- Add before </body> -->
 <script>
   (function () {
     var ADDRESS = '${address}';
@@ -174,19 +171,18 @@ ${metaTag}
   })();
 <\/script>`
 
-  const iframeSnippet = `<!-- Add to your <head> for verification -->
-${metaTag}
-
-<!-- Paste where you want the widget to appear -->
-<iframe
-  src="${embedUrl}"
-  width="100%"
-  height="80"
-  frameborder="0"
-  scrolling="no"
-  style="border-radius:12px; border:none;"
-  title="Markee — ${name}"
-></iframe>`
+  const iframeSnippet = `<!-- Wrap the iframe with data-markee-address for verification -->
+<div ${dataAttr}>
+  <iframe
+    src="${embedUrl}"
+    width="100%"
+    height="80"
+    frameborder="0"
+    scrolling="no"
+    style="border-radius:12px; border:none;"
+    title="Markee — ${name}"
+  ></iframe>
+</div>`
 
   async function handleVerify() {
     if (!verifyUrl.trim()) return
@@ -308,16 +304,10 @@ ${metaTag}
 
               {snippetLang === 'react' ? (
                 <>
-                  <div>
-                    <p className="text-[#8A8FBF] text-xs mb-2">
-                      Add to your <code className="bg-[#060A2A] px-1 rounded">&lt;head&gt;</code> for verification:
-                    </p>
-                    <CodeBlock code={metaTag} />
-                  </div>
-                  <div>
-                    <p className="text-[#8A8FBF] text-xs mb-2">React component:</p>
-                    <CodeBlock code={reactSnippet} />
-                  </div>
+                  <p className="text-[#8A8FBF] text-xs">
+                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute on the wrapper is used for verification — keep it in place.
+                  </p>
+                  <CodeBlock code={reactSnippet} />
                 </>
               ) : (
                 <CodeBlock code={vanillaSnippet} />
@@ -349,15 +339,15 @@ ${metaTag}
           {tab === 'verify' && (
             <>
               <p className="text-[#8A8FBF] text-xs">
-                Once you've deployed the meta tag, verify ownership to unlock your listing in the{' '}
-                <span className="text-[#EDEEFF]">Top Verified Markees</span> section on the ecosystem page.
+                Once your integration is live, verify it to unlock your listing in{' '}
+                <span className="text-[#EDEEFF]">Top Verified Markees</span>. We check that your page is actually displaying the live Markee message — or has the widget container ready.
               </p>
 
               <div>
                 <p className="text-[#8A8FBF] text-xs mb-2">
-                  Add this to your <code className="bg-[#060A2A] px-1 rounded">&lt;head&gt;</code>:
+                  Your widget container must have this attribute:
                 </p>
-                <CodeBlock code={metaTag} />
+                <CodeBlock code={`<div ${dataAttr}>…</div>`} />
               </div>
 
               {isVerified ? (
