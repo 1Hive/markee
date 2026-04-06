@@ -122,25 +122,23 @@ function wrapMessage(str: string, maxWidth: number): string[] {
   return lines.length ? lines : ['']
 }
 
-// ── Billboard builder ────────────────────────────────────────────────────────
+// ── Billboard builder (shared structure) ─────────────────────────────────────
 
-function buildMarkeeBlock(
+function buildBillboard(
   leaderboardAddress: string,
   message: string,
-  ownerName: string | null,
-  nextBuyPriceEth: string,
+  footerText: string,
   leaderboardUrl: string,
 ): string {
   const border   = '═'.repeat(INNER)
   const blank    = `  ║ ${' '.repeat(INNER - 2)} ║`
-  // Header padding is hardcoded (left=19, right=16) rather than computed:
+  // Header padding is hardcoded (left=18, right=17) rather than computed:
   // braille chars render slightly wider than 1 col in GitHub's code font,
   // so centerPad over-pads the right side by ~2 spaces.
   const hdrLines = HDR_LINES.map(h => `  ║                  ${h}                 ║`).join('\n')
   const msgLines = wrapMessage(message, MSG_WIDTH)
     .map(l => `  ║   ${padToWidth(l, MSG_WIDTH)}   ║`)
     .join('\n')
-  const footer = `${nextBuyPriceEth} ETH to change`
 
   return `${startDelimiter(leaderboardAddress)}
 \`\`\`
@@ -151,7 +149,7 @@ ${blank}
 ${msgLines}
 ${blank}
   ╠${border}╣
-  ║ ${centerPad(footer, INNER - 2)} ║
+  ║ ${centerPad(footerText, INNER - 2)} ║
   ╚${border}╝
                    ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
@@ -160,16 +158,33 @@ ${blank}
 ${endDelimiter(leaderboardAddress)}`
 }
 
+function buildMarkeeBlock(
+  leaderboardAddress: string,
+  message: string,
+  ownerName: string | null,
+  nextBuyPriceEth: string,
+  leaderboardUrl: string,
+): string {
+  return buildBillboard(
+    leaderboardAddress,
+    message,
+    `${nextBuyPriceEth} ETH to change`,
+    leaderboardUrl,
+  )
+}
+
 function buildEmptyBlock(
   leaderboardAddress: string,
   minimumPriceEth: string,
   leaderboardUrl: string,
 ): string {
-  return `${startDelimiter(leaderboardAddress)}
-> 🪧 **[Markee](${leaderboardUrl})** — *This space is available.*
->
-> *Be the first to buy a message for ${minimumPriceEth} ETH on the [Markee App](${leaderboardUrl}).*
-${endDelimiter(leaderboardAddress)}`
+
+  return buildBillboard(
+    leaderboardAddress,
+    'This space is available!',
+    `Add your message for ${minimumPriceEth} ETH`,
+    leaderboardUrl,
+  )
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────
