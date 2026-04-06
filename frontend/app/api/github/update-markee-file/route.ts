@@ -157,8 +157,8 @@ ${blank}
                    ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 \`\`\`
-[Change this message at markee.xyz](${leaderboardUrl}) and show the world you support this repo.
-${endDelimiter(leaderboardAddress)}`
+*Show the world you support this repo by [changing this message at markee.xyz](${leaderboardUrl})
+${endDelimiter(leaderboardAddress)}`*
 }
 
 function buildEmptyBlock(
