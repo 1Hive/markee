@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -31,10 +32,12 @@ interface CreateOpenInternetModalProps {
 
 export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOpenInternetModalProps) {
   const { isConnected } = useAccount()
+  const router = useRouter()
   const [name, setName] = useState('')
   const [beneficiary, setBeneficiary] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [newAddress, setNewAddress] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -45,6 +48,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setBeneficiary('')
       setLogoUrl('')
       setError(null)
+      setNewAddress(null)
       reset()
     }
   }, [isOpen, reset])
@@ -63,15 +67,18 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       }
     }
 
-    if (foundAddress && logoUrl.trim()) {
-      fetch('/api/openinternet/meta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaderboardAddress: foundAddress,
-          logoUrl: logoUrl.trim(),
-        }),
-      }).catch(e => console.error('[CreateOpenInternetModal] meta POST failed:', e))
+    if (foundAddress) {
+      setNewAddress(foundAddress)
+      if (logoUrl.trim()) {
+        fetch('/api/openinternet/meta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leaderboardAddress: foundAddress,
+            logoUrl: logoUrl.trim(),
+          }),
+        }).catch(e => console.error('[CreateOpenInternetModal] meta POST failed:', e))
+      }
     }
 
     onSuccess?.()
@@ -110,13 +117,16 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
             <CheckCircle2 size={44} className="text-green-400" />
             <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
             <p className="text-[#8A8FBF] text-sm text-center">
-              Your sign is live. Once you add a message it will appear in the ecosystem.
+              Your Markee is live. Add a message and verify the integration on your site.
             </p>
             <button
-              onClick={onClose}
+              onClick={() => {
+                onClose()
+                if (newAddress) router.push(`/ecosystem/website/${newAddress}`)
+              }}
               className="w-full bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
             >
-              Done
+              Go to your Markee
             </button>
           </div>
         ) : (
