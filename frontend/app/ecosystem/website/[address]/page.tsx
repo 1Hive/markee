@@ -291,12 +291,6 @@ export default function WebsiteLeaderboardPage() {
                 </span>
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
-              {minimumPrice !== undefined && minimumPrice > 0n && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Globe2 size={14} className="text-[#8A8FBF]" />
-                  <span className="text-[#8A8FBF]">min {formatFunds(minimumPrice)}</span>
-                </div>
-              )}
             </div>
           )}
         </div>

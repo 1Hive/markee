@@ -217,6 +217,7 @@ function EcosystemCard({
 
 function LeaderboardSection({
   title,
+  showAllLabel,
   subtitle,
   badge,
   items,
@@ -224,6 +225,7 @@ function LeaderboardSection({
   withUrlBar,
 }: {
   title: string
+  showAllLabel: string
   subtitle?: React.ReactNode
   badge: React.ReactNode
   items: EcosystemLeaderboard[]
@@ -272,7 +274,7 @@ function LeaderboardSection({
             onClick={() => setShowAll(true)}
             className="text-[#8A8FBF] hover:text-[#EDEEFF] text-sm font-medium border border-[#8A8FBF]/30 hover:border-[#8A8FBF]/60 px-6 py-2 rounded-lg transition-colors"
           >
-            Show all {items.length} Markees
+            Show all {items.length} {showAllLabel}
           </button>
         </div>
       )}
@@ -471,6 +473,7 @@ export default function EcosystemPage() {
                 {verified.length > 0 && (
                   <LeaderboardSection
                     title="Top Verified Markees"
+                    showAllLabel="Verified Markees"
                     badge={
                       <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-3 py-1 rounded-full">
                         <CheckCircle size={11} />
@@ -495,6 +498,7 @@ export default function EcosystemPage() {
                 {unverified.length > 0 && (
                   <LeaderboardSection
                     title="Unverified Markees"
+                    showAllLabel="Unverified Markees"
                     subtitle={
                       <p className="text-[#8A8FBF] text-sm mb-6 ml-1">
                         These messages haven&apos;t been linked to a website yet.{' '}

@@ -284,12 +284,6 @@ export default function GithubLeaderboardPage() {
               </span>
               <span className="text-[#8A8FBF]">total funded</span>
             </div>
-            {minimumPrice !== undefined && minimumPrice > 0n && (
-              <div className="flex items-center gap-2 text-sm">
-                <Zap size={14} className="text-[#8A8FBF]" />
-                <span className="text-[#8A8FBF]">min {formatFunds(minimumPrice)}</span>
-              </div>
-            )}
             {liveFiles.length > 0 && (
               <div className="flex items-center gap-2 text-sm">
                 <ShieldCheck size={14} className="text-green-400" />
