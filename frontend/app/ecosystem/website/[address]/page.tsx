@@ -3,13 +3,15 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronRight, Globe2, Trophy, Plus, Copy, Check, Eye, ExternalLink } from 'lucide-react'
+import { ChevronRight, Globe2, Trophy, Plus, Copy, Check, Eye, ExternalLink, CheckCircle2 } from 'lucide-react'
 import { useReadContracts, useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
+import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { useViews } from '@/hooks/useViews'
 import type { Markee } from '@/types'
 
@@ -108,7 +110,9 @@ export default function WebsiteLeaderboardPage() {
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
   const [initialMode, setInitialMode] = useState<'create' | 'addFunds' | 'updateMessage' | undefined>(undefined)
   const [copied, setCopied] = useState(false)
-  const [siteMeta, setSiteMeta] = useState<{ logoUrl?: string; siteUrl?: string; verifiedUrl?: string } | null>(null)
+  const [siteMeta, setSiteMeta] = useState<{ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[] } | null>(null)
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false)
+  const [integrationModalOpen, setIntegrationModalOpen] = useState(false)
 
   // Fetch KV metadata (logo, siteUrl) for this leaderboard
   useEffect(() => {
@@ -205,7 +209,7 @@ export default function WebsiteLeaderboardPage() {
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             {isMetaLoading
               ? <SkeletonBar className="w-32 h-3.5" />
-              : <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? '—'}</span>
+              : <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? ''}</span>
             }
           </div>
         </div>
@@ -228,7 +232,7 @@ export default function WebsiteLeaderboardPage() {
                 <div className="flex items-center gap-3 mb-1 flex-wrap">
                   {isMetaLoading
                     ? <SkeletonBar className="w-48 h-7" />
-                    : <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? '—'}</h1>
+                    : <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? ''}</h1>
                   }
                   {displayUrl && (
                     <a
@@ -252,13 +256,22 @@ export default function WebsiteLeaderboardPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => { setSelectedMarkee(null); setInitialMode(undefined); setBuyModalOpen(true) }}
-              className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-            >
-              <Plus size={18} />
-              Buy a Message
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => { setSelectedMarkee(null); setInitialMode(undefined); setBuyModalOpen(true) }}
+                className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
+              >
+                <Plus size={18} />
+                Buy a Message
+              </button>
+              <button
+                onClick={() => setIntegrationModalOpen(true)}
+                className="flex items-center gap-2 border border-[#8A8FBF]/30 hover:border-[#F897FE]/50 text-[#8A8FBF] hover:text-[#F897FE] px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap text-sm"
+              >
+                <Globe2 size={16} />
+                Add this Markee to Your Site
+              </button>
+            </div>
           </div>
 
           {/* Stats */}
@@ -268,7 +281,7 @@ export default function WebsiteLeaderboardPage() {
             <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
                 <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? '—'}</span>
+                <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? ''}</span>
                 <span className="text-[#8A8FBF]">messages</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
@@ -318,6 +331,41 @@ export default function WebsiteLeaderboardPage() {
           </section>
         )
       }
+
+      {/* Verified Integrations */}
+      {(siteMeta?.verifiedUrls?.length ?? 0) > 0 && (
+        <section className="py-8 bg-[#060A2A] border-b border-[#8A8FBF]/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={15} className="text-[#1DB227]" />
+                <h2 className="text-sm font-semibold text-[#8A8FBF] uppercase tracking-wider">Verified integrations</h2>
+              </div>
+              <button
+                onClick={() => setVerifyModalOpen(true)}
+                className="text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+              >
+                + Add URL
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {siteMeta!.verifiedUrls!.map(url => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-[#8A8FBF] hover:text-[#F897FE] border border-[#1DB227]/20 hover:border-[#F897FE]/30 bg-[#0A0F3D] px-3 py-1.5 rounded-full transition-colors"
+                >
+                  <CheckCircle2 size={11} className="text-[#1DB227]" />
+                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                  <ExternalLink size={10} />
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* All Messages */}
       <section className="py-12 bg-[#060A2A]">
@@ -381,6 +429,34 @@ export default function WebsiteLeaderboardPage() {
           initialMode={initialMode}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
           onSuccess={refetch}
+        />
+      )}
+
+      {verifyModalOpen && (
+        <VerifyIntegrationModal
+          isOpen={verifyModalOpen}
+          onClose={() => setVerifyModalOpen(false)}
+          leaderboard={{
+            address: leaderboardAddress,
+            name: leaderboardName ?? '',
+            verifiedUrls: siteMeta?.verifiedUrls ?? [],
+          }}
+          onVerified={urls => setSiteMeta(prev => ({ ...prev, verifiedUrls: urls }))}
+          onOpenIntegration={() => { setVerifyModalOpen(false); setIntegrationModalOpen(true) }}
+        />
+      )}
+
+      {integrationModalOpen && (
+        <IntegrationModal
+          isOpen={integrationModalOpen}
+          onClose={() => setIntegrationModalOpen(false)}
+          leaderboard={{
+            address: leaderboardAddress,
+            name: leaderboardName ?? '',
+            verifiedUrls: siteMeta?.verifiedUrls ?? [],
+            status: (siteMeta?.verifiedUrls?.length ?? 0) > 0 ? 'verified' : 'pending',
+          }}
+          onOpenVerify={() => { setIntegrationModalOpen(false); setVerifyModalOpen(true) }}
         />
       )}
     </div>

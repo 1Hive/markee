@@ -168,7 +168,7 @@ function EcosystemCard({
         </p>
         {lb.topMessageOwner && (
           <p className="text-[#8A8FBF] text-xs text-right mt-auto">
-            — {lb.topMessageOwner.startsWith('0x')
+            {lb.topMessageOwner.startsWith('0x')
               ? `${lb.topMessageOwner.slice(0, 6)}…${lb.topMessageOwner.slice(-4)}`
               : lb.topMessageOwner}
           </p>

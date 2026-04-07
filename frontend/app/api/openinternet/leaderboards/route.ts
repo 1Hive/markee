@@ -356,7 +356,7 @@ export async function GET(request: Request) {
         : Promise.resolve([]),
       resolveCreators(client, addresses),
       addresses.length > 0
-        ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; status?: string } | null)[]>(...metaKeys)
+        ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),
     ])
 
@@ -403,6 +403,7 @@ export async function GET(request: Request) {
         logoUrl: meta?.logoUrl ?? null,
         siteUrl: meta?.siteUrl ?? null,
         verifiedUrl: meta?.verifiedUrl ?? null,
+        verifiedUrls: Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [],
         status: (meta?.status as 'pending' | 'verified') ?? 'pending',
       }
     })

@@ -5,10 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
-  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2,
+  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
+import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -46,6 +47,7 @@ interface WebsiteLeaderboard extends BaseLeaderboard {
   logoUrl: string | null
   siteUrl: string | null
   verifiedUrl: string | null
+  verifiedUrls: string[]
   status: 'pending' | 'verified'
   isLegacy: boolean
   slug?: string
@@ -90,6 +92,7 @@ export default function AccountPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [editingBoard, setEditingBoard] = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
+  const [verifyBoard, setVerifyBoard] = useState<WebsiteLeaderboard | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -153,7 +156,15 @@ export default function AccountPage() {
     return diff > 0n ? 1 : diff < 0n ? -1 : 0
   })
 
-  const activeBoards = allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
+  const awaitingVerification = allBoards.filter(lb =>
+    lb.platform === 'website' &&
+    BigInt(lb.topFundsAddedRaw ?? '0') > 0n &&
+    ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
+  ) as WebsiteLeaderboard[]
+  const awaitingVerificationAddrs = new Set(awaitingVerification.map(lb => lb.address))
+  const activeBoards = allBoards.filter(lb =>
+    BigInt(lb.topFundsAddedRaw ?? '0') > 0n && !awaitingVerificationAddrs.has(lb.address)
+  )
   const inactiveBoards = allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') === 0n)
 
   const totalRaisedWei = allBoards.reduce((sum, lb) => sum + BigInt(lb.totalFundsRaw), 0n)
@@ -270,6 +281,31 @@ export default function AccountPage() {
             </div>
           ) : (
             <div className="space-y-12">
+              {awaitingVerification.length > 0 && (
+                <div className="bg-[#0A0F3D] rounded-2xl border border-[#F897FE]/30 p-6">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse flex-shrink-0" />
+                    <h2 className="text-xl font-bold text-[#F897FE]">Awaiting Verification</h2>
+                  </div>
+                  <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Verify your integration to appear in Top Verified Markees</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {awaitingVerification.map(lb => (
+                      <AccountLeaderboardCard
+                        key={lb.address}
+                        leaderboard={lb}
+                        detailUrl={detailUrl(lb)}
+                        icon={platformIcon(lb)}
+                        platformHref={platformLink(lb)}
+                        variant="active"
+                        onEdit={() => setEditingBoard(lb)}
+                        onIntegrate={() => setIntegrationBoard(lb)}
+                        onVerify={() => setVerifyBoard(lb)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {inactiveBoards.length > 0 && (
                 <div className="bg-[#0A0F3D] rounded-2xl border border-[#7C9CFF]/30 p-6">
                   <div className="flex items-center gap-3 mb-1">
@@ -313,6 +349,7 @@ export default function AccountPage() {
                         variant="active"
                         onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
                         onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
+                        onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
                       />
                     ))}
                   </div>
@@ -343,10 +380,24 @@ export default function AccountPage() {
           leaderboard={{
             address: integrationBoard.address,
             name: integrationBoard.name,
-            verifiedUrl: integrationBoard.verifiedUrl,
+            verifiedUrls: integrationBoard.verifiedUrls,
             status: integrationBoard.status,
           }}
+          onOpenVerify={() => { setIntegrationBoard(null); setVerifyBoard(integrationBoard) }}
+        />
+      )}
+
+      {verifyBoard && (
+        <VerifyIntegrationModal
+          isOpen={!!verifyBoard}
+          onClose={() => setVerifyBoard(null)}
+          leaderboard={{
+            address: verifyBoard.address,
+            name: verifyBoard.name,
+            verifiedUrls: verifyBoard.verifiedUrls,
+          }}
           onVerified={() => { if (walletAddress) fetchAll(walletAddress) }}
+          onOpenIntegration={() => { setVerifyBoard(null); setIntegrationBoard(verifyBoard) }}
         />
       )}
     </div>
@@ -364,6 +415,7 @@ function AccountLeaderboardCard({
   variant,
   onEdit,
   onIntegrate,
+  onVerify,
 }: {
   leaderboard: AnyLeaderboard
   detailUrl: string
@@ -373,6 +425,7 @@ function AccountLeaderboardCard({
   variant: 'active' | 'inactive'
   onEdit?: () => void
   onIntegrate?: () => void
+  onVerify?: () => void
 }) {
   const router = useRouter()
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
@@ -457,14 +510,27 @@ function AccountLeaderboardCard({
         {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
       </button>
 
-      {onIntegrate && (
-        <button
-          onClick={e => { e.stopPropagation(); onIntegrate() }}
-          className="w-full flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs mt-2 transition-colors"
-        >
-          <Code2 size={11} />
-          Integration guide
-        </button>
+      {(onIntegrate || onVerify) && (
+        <div className="flex gap-2 mt-2">
+          {onIntegrate && (
+            <button
+              onClick={e => { e.stopPropagation(); onIntegrate() }}
+              className="flex-1 flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors"
+            >
+              <Code2 size={11} />
+              Integration guide
+            </button>
+          )}
+          {onVerify && (
+            <button
+              onClick={e => { e.stopPropagation(); onVerify() }}
+              className="flex-1 flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors"
+            >
+              <CheckCircle2 size={11} />
+              Verify
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
