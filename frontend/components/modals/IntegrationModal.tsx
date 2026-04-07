@@ -80,7 +80,7 @@ Step 2: Display it on my site:
 - Re-fetch every 60 seconds to stay current
 - Optionally show topMessageOwner (a wallet address) and current minimum bid price
 
-The data-markee-address attribute on the wrapper is required for integration verification.
+The data-markee-address attribute on the wrapper is required for integration verification. It must be present in the server-rendered HTML (e.g. on a layout element, server component, or static HTML wrapper) — not only in client-side JavaScript.
 
 Please look at this codebase and implement the integration. Choose an appropriate location (footer, header banner, sidebar widget). Match the existing code style. Keep it minimal.`
 
@@ -284,7 +284,7 @@ export function MarkeeWidget() {
               {snippetLang === 'react' ? (
                 <>
                   <p className="text-[#8A8FBF] text-xs">
-                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute on the wrapper is used for verification. Keep it in place.
+                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute is required for verification. Place it on a server-rendered wrapper element, not inside a client component — it must be present in the initial HTML.
                   </p>
                   <CodeBlock code={reactSnippet} />
                 </>
