@@ -43,6 +43,7 @@ interface EcosystemLeaderboard {
   repoAvatarUrl?: string | null
   repoFullName?: string | null
   repoHtmlUrl?: string | null
+  repoVerified?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -68,6 +69,11 @@ function platformLabel(platform: string) {
   if (platform === 'github') return 'GitHub'
   if (platform === 'superfluid') return 'Superfluid'
   return 'Website'
+}
+
+function getDisplayPlatform(lb: EcosystemLeaderboard): 'website' | 'github' | 'superfluid' {
+  if (lb.slug === 'superfluid') return 'superfluid'
+  return lb.platform
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -111,9 +117,11 @@ function EcosystemCard({
   const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
   const messageCount = lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
 
+  const displayPlatform = getDisplayPlatform(lb)
+
   const detailHref =
     lb.platform === 'superfluid' ? `/ecosystem/platforms/superfluid/${lb.address}` :
-    lb.platform === 'github' ? `/ecosystem/platforms/github` :
+    lb.platform === 'github' ? `/ecosystem/platforms/github/${lb.address}` :
     lb.isLegacy && lb.slug ? `/ecosystem/${lb.slug}` :
     !lb.isLegacy ? `/ecosystem/website/${lb.address}` :
     null
@@ -163,8 +171,8 @@ function EcosystemCard({
             )}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-[#8A8FBF] mt-0.5">
-            {platformIcon(lb.platform, 11)}
-            <span>{platformLabel(lb.platform)}</span>
+            {platformIcon(displayPlatform, 11)}
+            <span>{platformLabel(displayPlatform)}</span>
           </div>
         </div>
       </div>
@@ -325,8 +333,12 @@ export default function EcosystemPage() {
 
   // Only show boards where a real purchase has been made
   const active = leaderboards.filter(hasRealPurchase)
-  const verified = active.filter(l => l.platform === 'website' && l.status === 'verified')
-  const unverified = active.filter(l => !(l.platform === 'website' && l.status === 'verified'))
+  const verified = active.filter(l =>
+    (l.platform === 'website' && l.status === 'verified') ||
+    (l.platform === 'github' && l.repoVerified)
+  )
+  const verifiedAddresses = new Set(verified.map(l => l.address))
+  const unverified = active.filter(l => !verifiedAddresses.has(l.address))
 
   // Hero stats
   const totalMessages = active.reduce((sum, lb) => {
@@ -466,7 +478,10 @@ export default function EcosystemPage() {
                       </span>
                     }
                     items={verified}
-                    withUrlBar={lb => lb.verifiedUrls?.[0] ?? lb.verifiedUrl ?? null}
+                    withUrlBar={lb => {
+                      if (lb.platform === 'github') return lb.repoHtmlUrl ?? null
+                      return lb.verifiedUrls?.[0] ?? lb.verifiedUrl ?? null
+                    }}
                     renderCard={lb => (
                       <EcosystemCard
                         lb={lb}
