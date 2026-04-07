@@ -114,6 +114,7 @@ function EcosystemCard({
   const detailHref =
     lb.platform === 'superfluid' ? `/ecosystem/platforms/superfluid/${lb.address}` :
     lb.platform === 'github' ? `/ecosystem/platforms/github` :
+    lb.isLegacy && lb.slug ? `/ecosystem/${lb.slug}` :
     !lb.isLegacy ? `/ecosystem/website/${lb.address}` :
     null
 
