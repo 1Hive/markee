@@ -34,9 +34,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const [name, setName] = useState('')
   const [beneficiary, setBeneficiary] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
-  const [siteUrl, setSiteUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -46,9 +44,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setName('')
       setBeneficiary('')
       setLogoUrl('')
-      setSiteUrl('')
       setError(null)
-      setNewLeaderboardAddress(null)
       reset()
     }
   }, [isOpen, reset])
@@ -66,17 +62,14 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
         break
       }
     }
-    setNewLeaderboardAddress(foundAddress)
 
-    // Post optional metadata to KV
-    if (foundAddress && (logoUrl.trim() || siteUrl.trim())) {
+    if (foundAddress && logoUrl.trim()) {
       fetch('/api/openinternet/meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           leaderboardAddress: foundAddress,
-          ...(logoUrl.trim() && { logoUrl: logoUrl.trim() }),
-          ...(siteUrl.trim() && { siteUrl: siteUrl.trim() }),
+          logoUrl: logoUrl.trim(),
         }),
       }).catch(e => console.error('[CreateOpenInternetModal] meta POST failed:', e))
     }
@@ -104,7 +97,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-6 sm:p-8 max-w-md sm:max-w-xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors"
@@ -129,7 +122,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
         ) : (
           <>
             <div className="flex items-center gap-3 mb-6">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
                 <Globe size={20} className="text-[#F897FE]" />
               </div>
               <div>
@@ -145,70 +138,58 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
               </div>
             ) : (
               <div className="space-y-5">
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Website Name <span className="text-[#F897FE]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="e.g. My Website"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
-                    disabled={isPending || isConfirming}
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
+                      Website Name <span className="text-[#F897FE]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      placeholder="e.g. My Website"
+                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
+                      disabled={isPending || isConfirming}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
+                      Treasury Address <span className="text-[#F897FE]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={beneficiary}
+                      onChange={e => setBeneficiary(e.target.value)}
+                      placeholder="0x..."
+                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
+                      disabled={isPending || isConfirming}
+                    />
+                    <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
+                      Logo URL <span className="text-[#8A8FBF]/60">(optional)</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={logoUrl}
+                      onChange={e => setLogoUrl(e.target.value)}
+                      placeholder="https://yoursite.com/logo.png"
+                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
+                      disabled={isPending || isConfirming}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Treasury Address <span className="text-[#F897FE]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiary}
-                    onChange={e => setBeneficiary(e.target.value)}
-                    placeholder="0x…"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-                    disabled={isPending || isConfirming}
-                  />
-                  <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Site URL <span className="text-[#8A8FBF]/60">(optional)</span>
-                  </label>
-                  <input
-                    type="url"
-                    value={siteUrl}
-                    onChange={e => setSiteUrl(e.target.value)}
-                    placeholder="https://yoursite.com"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
-                    disabled={isPending || isConfirming}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Logo URL <span className="text-[#8A8FBF]/60">(optional)</span>
-                  </label>
-                  <input
-                    type="url"
-                    value={logoUrl}
-                    onChange={e => setLogoUrl(e.target.value)}
-                    placeholder="https://yoursite.com/logo.png"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
-                    disabled={isPending || isConfirming}
-                  />
-                </div>
-
-                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
+                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
                   <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span className="text-[#EDEEFF]">Your Treasury</span>
                     <span className="text-[#F897FE] font-semibold">62%</span>
                   </div>
-                  <div className="flex justify-between mt-1.5">
+                  <div className="flex justify-between text-sm mt-1.5">
                     <span className="text-[#EDEEFF]">Markee Cooperative</span>
                     <span className="text-[#7C9CFF] font-semibold">38%</span>
                   </div>
@@ -229,7 +210,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                   {isPending || isConfirming ? (
                     <>
                       <Loader2 size={18} className="animate-spin" />
-                      {isPending ? 'Confirm in wallet…' : 'Creating…'}
+                      {isPending ? 'Confirm in wallet...' : 'Creating...'}
                     </>
                   ) : (
                     'Create Markee'

@@ -358,7 +358,7 @@ export default function SuperfluidPlatformPage() {
                     </p>
                     {featuredMessage.owner && (
                       <p className="text-[#8A8FBF] text-xs text-right mt-2">
-                        — {featuredMessage.owner.slice(0, 6)}…{featuredMessage.owner.slice(-4)}
+                        {featuredMessage.owner.slice(0, 6)}...{featuredMessage.owner.slice(-4)}
                       </p>
                     )}
                   </div>

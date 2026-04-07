@@ -331,7 +331,7 @@ function LeaderboardCard({
   const buyPriceFormatted = Number(buyPrice) / 1e18
 
   const primaryFile = leaderboard.linkedFiles.find(f => f.verified) ?? leaderboard.linkedFiles[0] ?? null
-  const title = primaryFile?.repoName ?? leaderboard.name.split(' — ')[0]
+  const title = primaryFile?.repoName ?? leaderboard.name
   const avatarUrl = primaryFile?.repoAvatarUrl ?? GITHUB_LOGO
   const repoHtmlUrl = primaryFile?.repoHtmlUrl ?? null
 

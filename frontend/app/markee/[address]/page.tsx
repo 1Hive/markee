@@ -264,7 +264,7 @@ export default function MarkeeDetailPage() {
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <p className="text-[#8A8FBF] italic">
-                    — <span className={markee.name ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
+                    <span className={markee.name ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
                       {markee.name || formatAddress(markee.owner)}
                     </span>
                   </p>
@@ -326,7 +326,7 @@ export default function MarkeeDetailPage() {
               <StatCard
                 icon={<Eye size={14} />}
                 label="All-Time Views"
-                value={totalViews !== null ? formatViewCount(totalViews) : '—'}
+                value={totalViews !== null ? formatViewCount(totalViews) : ''}
               />
             </div>
 

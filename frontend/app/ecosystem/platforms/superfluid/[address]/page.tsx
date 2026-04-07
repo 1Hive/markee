@@ -225,7 +225,7 @@ export default function SuperfluidLeaderboardPage() {
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             {isMetaLoading
               ? <SkeletonBar className="w-32 h-3.5" />
-              : <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? '—'}</span>
+              : <span className="text-[#EDEEFF] truncate max-w-xs">{leaderboardName ?? ''}</span>
             }
           </div>
         </div>
@@ -246,7 +246,7 @@ export default function SuperfluidLeaderboardPage() {
                     ? <SkeletonBar className="w-48 h-7" />
                     : (
                       <>
-                        <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? '—'}</h1>
+                        <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? ''}</h1>
                         <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-0.5 rounded-full">
                           Superfluid S5
                         </span>
@@ -280,7 +280,7 @@ export default function SuperfluidLeaderboardPage() {
             <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
                 <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? '—'}</span>
+                <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? ''}</span>
                 <span className="text-[#8A8FBF]">messages</span>
               </div>
               <div className="flex items-center gap-2 text-sm">

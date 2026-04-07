@@ -144,7 +144,7 @@ export default function GithubLeaderboardPage() {
   const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const topResult = meta?.[6]?.result as [string[], bigint[]] | undefined
 
-  const displayName = leaderboardName ? leaderboardName.split(' — ')[0] : undefined
+  const displayName = leaderboardName ?? undefined
 
   const topAddresses = useMemo(() => topResult?.[0] ?? [], [topResult])
   const topFunds = useMemo(() => topResult?.[1] ?? [], [topResult])
@@ -280,7 +280,7 @@ export default function GithubLeaderboardPage() {
             <div className="flex items-center gap-2 text-sm">
               <Trophy size={14} className="text-[#7C9CFF]" />
               <span className="text-[#7C9CFF] font-semibold">
-                {totalFunds !== undefined ? formatFunds(totalFunds) : '—'}
+                {totalFunds !== undefined ? formatFunds(totalFunds) : ''}
               </span>
               <span className="text-[#8A8FBF]">total funded</span>
             </div>
@@ -320,7 +320,7 @@ export default function GithubLeaderboardPage() {
                 #1
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message — In Context Window</div>
+                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message (In Context Window)</div>
                 <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
                   {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
                 </p>
@@ -632,7 +632,7 @@ function SetupFlow({
             <div className="w-6 h-6 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-xs font-bold">1</div>
             <h4 className="text-[#EDEEFF] font-semibold text-sm">Add these tags to your file</h4>
           </div>
-          <p className="text-[#8A8FBF] text-xs mb-3">Paste them anywhere in a markdown file — the message will appear between them.</p>
+          <p className="text-[#8A8FBF] text-xs mb-3">Paste them anywhere in a markdown file. The message will appear between them.</p>
           <div className="relative bg-[#0A0F3D] rounded-lg p-3 font-mono text-xs text-[#7C9CFF] leading-relaxed border border-[#8A8FBF]/10">
             {startTag}<br />{endTag}
             <button
@@ -728,7 +728,7 @@ function RepoFileManager({
         setSyncResult({ ok: false, message: data.error ?? `HTTP ${res.status}` })
       } else if (!data.success) {
         const failed = (data.results ?? []).find((r: { success: boolean; error?: string }) => !r.success)
-        setSyncResult({ ok: false, message: failed?.error ?? 'Write failed — check Vercel logs' })
+        setSyncResult({ ok: false, message: failed?.error ?? 'Write failed. Check Vercel logs.' })
       } else {
         setSyncResult({ ok: true, message: 'Message synced ✓' })
         setTimeout(() => setSyncResult(null), 4000)
@@ -853,7 +853,7 @@ function RepoFileManager({
             <span>
               {trafficError}
               {trafficError.includes('reconnect') && (
-                <> — <a href="/ecosystem/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</a></>
+                <> - <a href="/ecosystem/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</a></>
               )}
             </span>
           </div>
@@ -1006,7 +1006,7 @@ function RepoFilePicker({
         setSaveError(data.error ?? 'Could not link file')
       }
     } catch {
-      setSaveError('Network error — try again')
+      setSaveError('Network error. Please try again.')
     } finally {
       setIsSaving(false)
     }

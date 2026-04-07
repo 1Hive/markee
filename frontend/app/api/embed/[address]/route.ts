@@ -99,7 +99,7 @@ export async function GET(_req: NextRequest, { params }: { params: { address: st
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Markee${leaderboardName ? ` — ${escapeHtml(leaderboardName)}` : ''}</title>
+  <title>Markee${leaderboardName ? `: ${escapeHtml(leaderboardName)}` : ''}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -165,8 +165,8 @@ export async function GET(_req: NextRequest, { params }: { params: { address: st
     <div class="content">
       ${topMessage
         ? `<div class="message">${escapeHtml(topMessage)}</div>
-           <div class="meta">${ownerDisplay ? `— ${ownerDisplay} · ` : ''}${priceDisplay} ETH to change</div>`
-        : `<div class="message empty">No message yet — be the first!</div>
+           <div class="meta">${ownerDisplay ? `${ownerDisplay} · ` : ''}${priceDisplay} ETH to change</div>`
+        : `<div class="message empty">No message yet. Be the first!</div>
            <div class="meta">${priceDisplay} ETH to set the first message</div>`}
     </div>
     <a class="cta" href="${escapeHtml(buyUrl)}" target="_blank" rel="noopener">Change</a>
