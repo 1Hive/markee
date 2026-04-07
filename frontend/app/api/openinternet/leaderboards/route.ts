@@ -109,7 +109,7 @@ const LEGACY_PARTNERS = [
     percentToBeneficiary: 6200,
   },
   {
-    slug: 'superfluid-partner',
+    slug: 'superfluid',
     name: 'Superfluid',
     strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
     logoUrl: '/partners/superfluid.png',
