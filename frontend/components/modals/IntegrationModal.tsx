@@ -61,12 +61,12 @@ export function IntegrationModal({ isOpen, onClose, leaderboard, onOpenVerify }:
 
   const aiPrompt = `I want to add a Markee widget to my website.
 
-Markee is a protocol where anyone can pay ETH to set the message displayed on my site. The highest bidder's message is always shown. Anyone can outbid the current holder.
+Markee is a protocol where anyone can pay ETH to set the message displayed on my site. The person who pays the most gets the featured spot. Anyone can pay more to take the featured message.
 
 My leaderboard:
 - Name: ${name}
 - Address: ${address}
-- Buy page (where visitors go to bid): ${buyUrl}
+- Buy page (where visitors go to buy a message): ${buyUrl}
 
 Step 1: Fetch the current top message:
 GET ${apiUrl}
@@ -78,7 +78,7 @@ Step 2: Display it on my site:
 - Show topMessage prominently inside it
 - Link "Change this message" to ${buyUrl}
 - Re-fetch every 60 seconds to stay current
-- Optionally show topMessageOwner (a wallet address) and current minimum bid price
+- Optionally show topMessageOwner (a wallet address) and current minimum price to take the featured spot
 
 The data-markee-address attribute on the wrapper is required for integration verification. It must be present in the server-rendered HTML (e.g. on a layout element, server component, or static HTML wrapper). It cannot only be in client-side JavaScript.
 

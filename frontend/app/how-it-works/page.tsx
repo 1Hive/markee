@@ -113,7 +113,7 @@ function PricingStrategies() {
       icon: <TrendingUp className="w-8 h-8" />,
       color: 'cool-sky-blue',
       description: 'Buyer owns message, top funded message is featured',
-      visual: 'Competitive bidding',
+      visual: 'Pay to feature your message',
       example: '',
       status: 'live'
     },
