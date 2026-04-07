@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Copy, Check, Code2, Globe2, Monitor, CheckCircle2, AlertCircle, Loader2, ExternalLink } from 'lucide-react'
+import { X, Copy, Check, Code2, Globe2, Monitor, CheckCircle2 } from 'lucide-react'
 
-type Tab = 'prompt' | 'snippet' | 'iframe' | 'verify'
+type Tab = 'prompt' | 'snippet' | 'iframe'
 
 interface IntegrationModalProps {
   isOpen: boolean
@@ -11,10 +11,10 @@ interface IntegrationModalProps {
   leaderboard: {
     address: string
     name: string
-    verifiedUrl?: string | null
+    verifiedUrls?: string[]
     status?: 'pending' | 'verified'
   }
-  onVerified?: () => void
+  onOpenVerify?: () => void
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -48,13 +48,9 @@ function CodeBlock({ code }: { code: string }) {
   )
 }
 
-export function IntegrationModal({ isOpen, onClose, leaderboard, onVerified }: IntegrationModalProps) {
+export function IntegrationModal({ isOpen, onClose, leaderboard, onOpenVerify }: IntegrationModalProps) {
   const [tab, setTab] = useState<Tab>('prompt')
   const [snippetLang, setSnippetLang] = useState<'react' | 'vanilla'>('react')
-  const [verifyUrl, setVerifyUrl] = useState('')
-  const [verifying, setVerifying] = useState(false)
-  const [verifyError, setVerifyError] = useState<string | null>(null)
-  const [verifySuccess, setVerifySuccess] = useState(false)
 
   const { address, name } = leaderboard
   const lowerAddress = address.toLowerCase()
@@ -65,19 +61,19 @@ export function IntegrationModal({ isOpen, onClose, leaderboard, onVerified }: I
 
   const aiPrompt = `I want to add a Markee widget to my website.
 
-Markee is a protocol where anyone can pay ETH to set the message displayed on my site. The highest bidder's message is always shown — anyone can outbid the current holder.
+Markee is a protocol where anyone can pay ETH to set the message displayed on my site. The highest bidder's message is always shown. Anyone can outbid the current holder.
 
 My leaderboard:
 - Name: ${name}
 - Address: ${address}
 - Buy page (where visitors go to bid): ${buyUrl}
 
-Step 1 — Fetch the current top message:
+Step 1: Fetch the current top message:
 GET ${apiUrl}
 Find the entry where address matches "${address}" (case-insensitive).
 Relevant fields: topMessage, topMessageOwner, minimumPrice, totalFunds
 
-Step 2 — Display it on my site:
+Step 2: Display it on my site:
 - Wrap the widget container with the attribute: ${dataAttr}
 - Show topMessage prominently inside it
 - Link "Change this message" to ${buyUrl}
@@ -127,7 +123,7 @@ export function MarkeeWidget() {
       <p>{message}</p>
       {owner && (
         <p className="markee-owner">
-          — {owner.slice(0, 6)}…{owner.slice(-4)}
+          {owner.slice(0, 6)}...{owner.slice(-4)}
         </p>
       )}
       <a href={BUY_URL} target="_blank" rel="noopener noreferrer">
@@ -137,7 +133,7 @@ export function MarkeeWidget() {
   )
 }`
 
-  const vanillaSnippet = `<!-- Add where you want the widget — the data attribute is required for verification -->
+  const vanillaSnippet = `<!-- Add where you want the widget. The data attribute is required for verification -->
 <div id="markee-widget" ${dataAttr}></div>
 
 <!-- Add before </body> -->
@@ -161,7 +157,7 @@ export function MarkeeWidget() {
           if (!el) return;
           el.innerHTML =
             '<p>' + lb.topMessage + '</p>' +
-            (owner ? '<p>— ' + owner + '</p>' : '') +
+            (owner ? '<p>' + owner + '</p>' : '') +
             '<a href="' + BUY_URL + '" target="_blank">Change this message</a>';
         });
     }
@@ -180,43 +176,18 @@ export function MarkeeWidget() {
     frameborder="0"
     scrolling="no"
     style="border-radius:12px; border:none;"
-    title="Markee — ${name}"
+    title="Markee: ${name}"
   ></iframe>
 </div>`
 
-  async function handleVerify() {
-    if (!verifyUrl.trim()) return
-    setVerifyError(null)
-    setVerifying(true)
-    try {
-      const res = await fetch('/api/openinternet/verify-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, url: verifyUrl.trim() }),
-      })
-      const data = await res.json()
-      if (data.verified) {
-        setVerifySuccess(true)
-        onVerified?.()
-      } else {
-        setVerifyError(data.error ?? 'Verification failed')
-      }
-    } catch {
-      setVerifyError('Something went wrong — please try again')
-    } finally {
-      setVerifying(false)
-    }
-  }
-
   if (!isOpen) return null
 
-  const isVerified = leaderboard.status === 'verified' || verifySuccess
+  const isVerified = leaderboard.status === 'verified' || (leaderboard.verifiedUrls?.length ?? 0) > 0
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'prompt', label: 'AI Prompt', icon: <Globe2 size={13} /> },
     { id: 'snippet', label: 'Code', icon: <Code2 size={13} /> },
     { id: 'iframe', label: 'iFrame', icon: <Monitor size={13} /> },
-    { id: 'verify', label: 'Verify', icon: <CheckCircle2 size={13} /> },
   ]
 
   return (
@@ -239,11 +210,19 @@ export function MarkeeWidget() {
             <h2 className="text-[#EDEEFF] font-bold text-base">Integration Guide</h2>
             <p className="text-[#8A8FBF] text-xs truncate">{name}</p>
           </div>
-          {isVerified && (
+          {isVerified ? (
             <span className="flex-shrink-0 flex items-center gap-1.5 text-xs text-[#1DB227] bg-[#1DB227]/10 border border-[#1DB227]/30 px-2.5 py-1 rounded-full">
               <CheckCircle2 size={11} />
               Verified
             </span>
+          ) : onOpenVerify && (
+            <button
+              onClick={onOpenVerify}
+              className="flex-shrink-0 flex items-center gap-1.5 text-xs text-[#8A8FBF] border border-[#8A8FBF]/30 hover:border-[#F897FE]/50 hover:text-[#F897FE] px-2.5 py-1 rounded-full transition-colors"
+            >
+              <CheckCircle2 size={11} />
+              Verify
+            </button>
           )}
         </div>
 
@@ -305,7 +284,7 @@ export function MarkeeWidget() {
               {snippetLang === 'react' ? (
                 <>
                   <p className="text-[#8A8FBF] text-xs">
-                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute on the wrapper is used for verification — keep it in place.
+                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute on the wrapper is used for verification. Keep it in place.
                   </p>
                   <CodeBlock code={reactSnippet} />
                 </>
@@ -318,7 +297,7 @@ export function MarkeeWidget() {
           {tab === 'iframe' && (
             <>
               <p className="text-[#8A8FBF] text-xs">
-                Drop-in embed — no JavaScript required. The widget fetches the current message server-side and refreshes automatically.
+                Drop-in embed. No JavaScript required. The widget fetches the current message server-side and refreshes automatically.
               </p>
               <CodeBlock code={iframeSnippet} />
               <div>
@@ -336,78 +315,19 @@ export function MarkeeWidget() {
             </>
           )}
 
-          {tab === 'verify' && (
-            <>
-              <p className="text-[#8A8FBF] text-xs">
-                Once your integration is live, verify it to unlock your listing in{' '}
-                <span className="text-[#EDEEFF]">Top Verified Markees</span>. We check that your page is actually displaying the live Markee message — or has the widget container ready.
-              </p>
-
-              <div>
-                <p className="text-[#8A8FBF] text-xs mb-2">
-                  Your widget container must have this attribute:
-                </p>
-                <CodeBlock code={`<div ${dataAttr}>…</div>`} />
-              </div>
-
-              {isVerified ? (
-                <div className="flex items-center gap-3 bg-[#1DB227]/10 border border-[#1DB227]/30 rounded-lg px-4 py-3">
-                  <CheckCircle2 size={18} className="text-[#1DB227] flex-shrink-0" />
-                  <div>
-                    <p className="text-[#1DB227] text-sm font-semibold">Integration verified</p>
-                    {(leaderboard.verifiedUrl) && (
-                      <a
-                        href={leaderboard.verifiedUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-[#8A8FBF] text-xs hover:text-[#F897FE] transition-colors mt-0.5"
-                      >
-                        {leaderboard.verifiedUrl}
-                        <ExternalLink size={10} />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                      Your site URL
-                    </label>
-                    <input
-                      type="url"
-                      value={verifyUrl}
-                      onChange={e => { setVerifyUrl(e.target.value); setVerifyError(null) }}
-                      placeholder="https://yoursite.com"
-                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
-                      disabled={verifying}
-                    />
-                  </div>
-
-                  {verifyError && (
-                    <div className="flex items-start gap-2 text-red-400 text-sm">
-                      <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
-                      <span>{verifyError}</span>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleVerify}
-                    disabled={verifying || !verifyUrl.trim()}
-                    className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {verifying ? (
-                      <><Loader2 size={15} className="animate-spin" /> Checking…</>
-                    ) : (
-                      'Verify Integration'
-                    )}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
         </div>
+
+        {onOpenVerify && !isVerified && (
+          <div className="mt-4 pt-4 border-t border-[#8A8FBF]/15 flex-shrink-0">
+            <button
+              onClick={onOpenVerify}
+              className="w-full flex items-center justify-center gap-2 border border-[#8A8FBF]/30 hover:border-[#F897FE]/50 text-[#8A8FBF] hover:text-[#F897FE] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            >
+              <CheckCircle2 size={14} />
+              Verify Integration
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
