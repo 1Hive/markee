@@ -186,6 +186,7 @@ interface LegacySubgraphData {
   totalMarkeesCreated: string
   topMessage: string | null
   topMessageOwner: string | null
+  topMarkeeAddress: string | null
   topFundsAddedRaw: string
 }
 
@@ -201,6 +202,7 @@ async function fetchLegacyPartnerData(): Promise<(LegacySubgraphData | null)[]> 
     totalFundsRaised
     totalMarkeesCreated
     markees(orderBy: totalFundsAdded, orderDirection: desc, first: 1) {
+      id
       message
       totalFundsAdded
       owner { id }
@@ -230,6 +232,7 @@ async function fetchLegacyPartnerData(): Promise<(LegacySubgraphData | null)[]> 
         totalMarkeesCreated: d.totalMarkeesCreated ?? '0',
         topMessage: top?.message ?? null,
         topMessageOwner: top?.owner?.id ?? null,
+        topMarkeeAddress: top?.id ?? null,
         topFundsAddedRaw: top?.totalFundsAdded ?? '0',
       }
     })
@@ -400,6 +403,7 @@ export async function GET(request: Request) {
         topFundsAddedRaw: topFunds0.toString(),
         topMessage,
         topMessageOwner,
+        topMarkeeAddress: topMarkeeAddresses[i] ?? null,
         logoUrl: meta?.logoUrl ?? null,
         siteUrl: meta?.siteUrl ?? null,
         verifiedUrl: meta?.verifiedUrl ?? null,
@@ -428,6 +432,7 @@ export async function GET(request: Request) {
         topFundsAddedRaw: d?.topFundsAddedRaw ?? '0',
         topMessage: d?.topMessage ?? null,
         topMessageOwner: d?.topMessageOwner ?? null,
+        topMarkeeAddress: d?.topMarkeeAddress ?? null,
         logoUrl: partner.logoUrl,
         siteUrl: partner.siteUrl,
         verifiedUrl: partner.verifiedUrl,

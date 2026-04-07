@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Globe2, Github, Zap, ExternalLink, Trophy, CheckCircle, Eye } from 'lucide-react'
 import Image from 'next/image'
@@ -34,6 +34,7 @@ interface EcosystemLeaderboard {
   siteUrl?: string | null
   verifiedUrl?: string | null
   verifiedUrls?: string[]
+  topMarkeeAddress?: string | null
   status?: 'pending' | 'verified'
   isLegacy?: boolean
   isCooperative?: boolean
@@ -89,35 +90,16 @@ function CardSkeleton() {
 
 // ─── Ecosystem Card ───────────────────────────────────────────────────────────
 
-const sessionTracked = new Set<string>()
-
 function EcosystemCard({
   lb,
   onBuyLegacy,
   viewCount,
-  onViewTracked,
 }: {
   lb: EcosystemLeaderboard
   onBuyLegacy?: (lb: EcosystemLeaderboard) => void
   viewCount?: number
-  onViewTracked?: (address: string, count: number) => void
 }) {
   const router = useRouter()
-  const tracked = useRef(false)
-
-  useEffect(() => {
-    if (tracked.current || sessionTracked.has(lb.address.toLowerCase())) return
-    tracked.current = true
-    sessionTracked.add(lb.address.toLowerCase())
-    fetch('/api/views', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: lb.address, message: lb.topMessage ?? '' }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.totalViews != null) onViewTracked?.(lb.address, data.totalViews) })
-      .catch(() => {})
-  }, [lb.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const logoSrc = lb.logoUrl ?? (lb.platform === 'github' ? lb.repoAvatarUrl : null)
 
@@ -311,14 +293,22 @@ export default function EcosystemPage() {
         setLeaderboards(lbs)
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
 
-        // Fetch view counts for all active leaderboard addresses
+        // Fetch view counts using the top markee address for each active leaderboard
         const active = lbs.filter(l => BigInt(l.topFundsAddedRaw ?? '0') > 0n)
-        if (active.length > 0) {
-          const addrs = active.map(l => l.address.toLowerCase()).join(',')
-          fetch(`/api/views?addresses=${addrs}`)
+        const markeeAddrs = active
+          .map(l => l.topMarkeeAddress?.toLowerCase())
+          .filter((a): a is string => !!a)
+        if (markeeAddrs.length > 0) {
+          fetch(`/api/views?addresses=${markeeAddrs.join(',')}`)
             .then(r => r.ok ? r.json() : {})
             .then((data: Record<string, { totalViews: number }>) => {
-              setViewCounts(new Map(Object.entries(data).map(([k, v]) => [k.toLowerCase(), v.totalViews])))
+              // Map view counts back to leaderboard address for easy lookup
+              const map = new Map<string, number>()
+              for (const lb of active) {
+                const key = lb.topMarkeeAddress?.toLowerCase()
+                if (key && data[key] != null) map.set(lb.address.toLowerCase(), data[key].totalViews)
+              }
+              setViewCounts(map)
             })
             .catch(() => {})
         }
@@ -328,10 +318,6 @@ export default function EcosystemPage() {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  function handleViewTracked(address: string, count: number) {
-    setViewCounts(prev => new Map(prev).set(address.toLowerCase(), count))
   }
 
   useEffect(() => { fetchLeaderboards() }, [])
@@ -485,7 +471,6 @@ export default function EcosystemPage() {
                         lb={lb}
                         onBuyLegacy={l => setTopDawgModalData(l)}
                         viewCount={viewCounts.get(lb.address.toLowerCase())}
-                        onViewTracked={handleViewTracked}
                       />
                     )}
                   />
@@ -512,7 +497,6 @@ export default function EcosystemPage() {
                         lb={lb}
                         onBuyLegacy={l => setTopDawgModalData(l)}
                         viewCount={viewCounts.get(lb.address.toLowerCase())}
-                        onViewTracked={handleViewTracked}
                       />
                     )}
                   />

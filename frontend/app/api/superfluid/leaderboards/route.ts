@@ -276,6 +276,7 @@ export async function GET(request: Request) {
         topFundsAddedRaw: topFunds0.toString(),
         topMessage,
         topMessageOwner,
+        topMarkeeAddress: topMarkeeAddresses[i] ?? null,
       }
     })
 

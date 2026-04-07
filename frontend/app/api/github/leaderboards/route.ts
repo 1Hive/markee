@@ -181,6 +181,7 @@ export async function GET(request: Request) {
         topFundsAddedRaw: topFundsRaw.toString(),
         topMessage: topMarkee?.message || null,
         topMessageOwner: topMarkee?.name || null,
+        topMarkeeAddress: topMarkeeAddr ?? null,
         linkedFiles,
         repoVerified: !!primaryFile?.verified,
         repoFullName: primaryFile?.repoFullName ?? null,
