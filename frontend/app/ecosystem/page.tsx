@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { Globe2, Github, Zap, ExternalLink, Trophy, CheckCircle } from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Trophy, CheckCircle, Eye } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
@@ -33,6 +33,7 @@ interface EcosystemLeaderboard {
   logoUrl?: string | null
   siteUrl?: string | null
   verifiedUrl?: string | null
+  verifiedUrls?: string[]
   status?: 'pending' | 'verified'
   isLegacy?: boolean
   isCooperative?: boolean
@@ -88,14 +89,35 @@ function CardSkeleton() {
 
 // ─── Ecosystem Card ───────────────────────────────────────────────────────────
 
+const sessionTracked = new Set<string>()
+
 function EcosystemCard({
   lb,
   onBuyLegacy,
+  viewCount,
+  onViewTracked,
 }: {
   lb: EcosystemLeaderboard
   onBuyLegacy?: (lb: EcosystemLeaderboard) => void
+  viewCount?: number
+  onViewTracked?: (address: string, count: number) => void
 }) {
   const router = useRouter()
+  const tracked = useRef(false)
+
+  useEffect(() => {
+    if (tracked.current || sessionTracked.has(lb.address.toLowerCase())) return
+    tracked.current = true
+    sessionTracked.add(lb.address.toLowerCase())
+    fetch('/api/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: lb.address, message: lb.topMessage ?? '' }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.totalViews != null) onViewTracked?.(lb.address, data.totalViews) })
+      .catch(() => {})
+  }, [lb.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const logoSrc = lb.logoUrl ?? (lb.platform === 'github' ? lb.repoAvatarUrl : null)
 
@@ -107,21 +129,23 @@ function EcosystemCard({
   const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
   const messageCount = lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
 
+  const detailHref =
+    lb.platform === 'superfluid' ? `/ecosystem/platforms/superfluid/${lb.address}` :
+    lb.platform === 'github' ? `/ecosystem/platforms/github` :
+    !lb.isLegacy ? `/ecosystem/website/${lb.address}` :
+    null
+
   function handleCardClick() {
-    if (lb.platform === 'superfluid') router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
-    else if (lb.platform === 'github') router.push(`/ecosystem/platforms/github`)
-    else if (lb.platform === 'website' && !lb.isLegacy) router.push(`/ecosystem/website/${lb.address}`)
+    if (detailHref) router.push(detailHref)
   }
 
   function handleBuyClick(e: React.MouseEvent) {
     e.stopPropagation()
     if (lb.isLegacy && onBuyLegacy) onBuyLegacy(lb)
-    else if (lb.platform === 'superfluid') router.push(`/ecosystem/platforms/superfluid/${lb.address}`)
-    else if (lb.platform === 'github') router.push(`/ecosystem/platforms/github`)
-    else if (lb.platform === 'website' && !lb.isLegacy) router.push(`/ecosystem/website/${lb.address}`)
+    else if (detailHref) router.push(detailHref)
   }
 
-  const isClickable = lb.platform === 'superfluid' || lb.platform === 'github' || (lb.platform === 'website' && !lb.isLegacy)
+  const isClickable = !!detailHref
 
   return (
     <div
@@ -177,7 +201,15 @@ function EcosystemCard({
 
       <div className="flex items-center justify-between text-xs mb-4 text-[#8A8FBF]">
         <span className="text-[#7C9CFF] font-medium">{formatFunds(lb.totalFunds)}</span>
-        <span>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
+        <div className="flex items-center gap-3">
+          {viewCount != null && (
+            <span className="flex items-center gap-1">
+              <Eye size={11} className="opacity-60" />
+              {viewCount.toLocaleString()}
+            </span>
+          )}
+          <span>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
+        </div>
       </div>
 
       <button
@@ -194,12 +226,14 @@ function EcosystemCard({
 
 function LeaderboardSection({
   title,
+  subtitle,
   badge,
   items,
   renderCard,
   withUrlBar,
 }: {
   title: string
+  subtitle?: React.ReactNode
   badge: React.ReactNode
   items: EcosystemLeaderboard[]
   renderCard: (lb: EcosystemLeaderboard) => React.ReactNode
@@ -211,12 +245,13 @@ function LeaderboardSection({
 
   return (
     <div className="mb-16">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-2">
         {badge}
         <h2 className="text-2xl font-bold text-[#EDEEFF]">{title}</h2>
         <span className="text-[#8A8FBF] text-sm">{items.length}</span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {subtitle}
+      <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${subtitle ? '' : 'mt-4'}`}>
         {visible.map(lb => {
           const url = withUrlBar?.(lb)
           if (url) {
@@ -262,6 +297,7 @@ export default function EcosystemPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [topDawgModalData, setTopDawgModalData] = useState<EcosystemLeaderboard | null>(null)
+  const [viewCounts, setViewCounts] = useState<Map<string, number>>(new Map())
 
   const fetchLeaderboards = async (bust = false) => {
     try {
@@ -271,14 +307,31 @@ export default function EcosystemPage() {
       const res = await fetch(`/api/ecosystem/leaderboards?${params}`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
-        setLeaderboards(data.leaderboards ?? [])
+        const lbs: EcosystemLeaderboard[] = data.leaderboards ?? []
+        setLeaderboards(lbs)
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
+
+        // Fetch view counts for all active leaderboard addresses
+        const active = lbs.filter(l => BigInt(l.topFundsAddedRaw ?? '0') > 0n)
+        if (active.length > 0) {
+          const addrs = active.map(l => l.address.toLowerCase()).join(',')
+          fetch(`/api/views?addresses=${addrs}`)
+            .then(r => r.ok ? r.json() : {})
+            .then((data: Record<string, { totalViews: number }>) => {
+              setViewCounts(new Map(Object.entries(data).map(([k, v]) => [k.toLowerCase(), v.totalViews])))
+            })
+            .catch(() => {})
+        }
       }
     } catch (err) {
       console.error(err)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  function handleViewTracked(address: string, count: number) {
+    setViewCounts(prev => new Map(prev).set(address.toLowerCase(), count))
   }
 
   useEffect(() => { fetchLeaderboards() }, [])
@@ -426,22 +479,41 @@ export default function EcosystemPage() {
                       </span>
                     }
                     items={verified}
-                    withUrlBar={lb => lb.verifiedUrl ?? null}
+                    withUrlBar={lb => lb.verifiedUrls?.[0] ?? lb.verifiedUrl ?? null}
                     renderCard={lb => (
-                      <EcosystemCard lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
+                      <EcosystemCard
+                        lb={lb}
+                        onBuyLegacy={l => setTopDawgModalData(l)}
+                        viewCount={viewCounts.get(lb.address.toLowerCase())}
+                        onViewTracked={handleViewTracked}
+                      />
                     )}
                   />
                 )}
 
                 {unverified.length > 0 && (
                   <LeaderboardSection
-                    title="Markees"
+                    title="Unverified Markees"
+                    subtitle={
+                      <p className="text-[#8A8FBF] text-sm mb-6 ml-1">
+                        These messages haven&apos;t been linked to a website yet.{' '}
+                        <Link href="/account" className="text-[#F897FE] hover:underline">
+                          Go to Your Account
+                        </Link>{' '}
+                        to verify your Markees.
+                      </p>
+                    }
                     badge={
                       <Trophy size={20} className="text-[#F897FE]" />
                     }
                     items={unverified}
                     renderCard={lb => (
-                      <EcosystemCard lb={lb} onBuyLegacy={l => setTopDawgModalData(l)} />
+                      <EcosystemCard
+                        lb={lb}
+                        onBuyLegacy={l => setTopDawgModalData(l)}
+                        viewCount={viewCounts.get(lb.address.toLowerCase())}
+                        onViewTracked={handleViewTracked}
+                      />
                     )}
                   />
                 )}
