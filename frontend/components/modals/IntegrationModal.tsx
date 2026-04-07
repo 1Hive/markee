@@ -70,17 +70,20 @@ My leaderboard:
 
 Step 1: Fetch the current top message:
 GET ${apiUrl}
-Find the entry where address matches "${address}" (case-insensitive).
-Relevant fields: topMessage, topMessageOwner, minimumPrice, totalFunds
+This returns all leaderboards. Find the entry where address matches "${address}" (case-insensitive).
+Relevant fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice, totalFunds
 
 Step 2: Display it on my site:
 - Wrap the widget container with the attribute: ${dataAttr}
-- Show topMessage prominently inside it
+- If topFundsAddedRaw is "0" or topMessage is null, no message has been purchased yet -- show a placeholder like "No message yet" or hide the widget entirely
+- Show topMessage prominently inside the wrapper
 - Link "Change this message" to ${buyUrl}
 - Re-fetch every 60 seconds to stay current
-- Optionally show topMessageOwner (a wallet address) and current minimum price to take the featured spot
+- Optionally show topMessageOwner: this is the message owner's name or address. If it starts with "0x" you can truncate it (e.g. 0x1234...abcd). Otherwise display it as-is.
 
-The data-markee-address attribute on the wrapper is required for integration verification. It must be present in the server-rendered HTML (e.g. on a layout element, server component, or static HTML wrapper). It cannot only be in client-side JavaScript.
+The data-markee-address attribute on the wrapper is required for integration verification. It must be present in the server-rendered HTML.
+- Next.js: placing the attribute in JSX works even in a "use client" component -- Next.js SSRs client components into the initial HTML. The only thing to avoid is adding it exclusively via useEffect or document.setAttribute(), which runs after page load and will not be detected.
+- Plain SPA (Vite, Create React App with no SSR): add the attribute to a static element in your index.html instead, since React-rendered HTML is not present in the server response.
 
 Please look at this codebase and implement the integration. Choose an appropriate location (footer, header banner, sidebar widget). Match the existing code style. Keep it minimal.`
 
