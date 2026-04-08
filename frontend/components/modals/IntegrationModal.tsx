@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Copy, Check, Code2, Globe2, Monitor, CheckCircle2 } from 'lucide-react'
+import { X, Copy, Check, Code2, Globe2, Monitor, CheckCircle2, Sparkles } from 'lucide-react'
 
-type Tab = 'prompt' | 'snippet' | 'iframe'
+type Tab = 'prompt' | 'snippet' | 'iframe' | 'modal'
 
 interface IntegrationModalProps {
   isOpen: boolean
@@ -49,7 +49,7 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 export function IntegrationModal({ isOpen, onClose, leaderboard, onOpenVerify }: IntegrationModalProps) {
-  const [tab, setTab] = useState<Tab>('prompt')
+  const [tab, setTab] = useState<Tab>('modal')
   const [snippetLang, setSnippetLang] = useState<'react' | 'vanilla'>('react')
 
   const { address, name } = leaderboard
@@ -224,12 +224,140 @@ export function MarkeeWidget() {
   ></iframe>
 </div>`
 
+  const fullModalPrompt = `I want to add a full Markee buy-flow modal to my Next.js site -- not just a display widget, but an embedded modal where visitors can buy or boost a message without leaving my site.
+
+My leaderboard:
+- Name: ${name}
+- Address: ${address}
+- Buy page (fallback for non-Next.js sites): ${buyUrl}
+
+## What to build
+
+Two components:
+
+1. A trigger component (e.g. MarkeeSign) that:
+   - Fetches and displays the current top message from /api/markee/leaderboards (see proxy route below)
+   - Shows the owner name below the message (truncate 0x addresses to 0x1234...abcd, show plain names as-is)
+   - On hover reveals a price badge: "X.XXX ETH to change" or "be first!" if no messages yet
+   - Opens the modal when clicked
+   - Is disabled only while loading (never on fetch error -- fall back to default message and let the modal open)
+   - Wraps its container with ${dataAttr} for integration verification
+   - After a successful transaction, waits 3 seconds then re-fetches to show the new message
+
+2. A modal component (e.g. MarkeeModal) that is a full buy flow with:
+   - A header with the site logo, title, and close button
+   - The current top message displayed above the tabs
+   - Two tabs: "Buy a Message" and "Boost Existing Message"
+   - A footer: "You'll receive MARKEE tokens with your purchase and co-own the Markee Network." (link "Markee Network" to the Gardens community for this leaderboard if applicable)
+
+### Buy a Message tab
+- Textarea for the message (left-aligned, monospace, char counter, maxLength from contract)
+- Optional name input
+- ETH amount section:
+  - "Take top spot" preset button (shows only when there is an existing top message)
+  - "Minimum" preset button
+  - Custom number input, capped at 8 total digit characters (before + after decimal)
+  - Clickable balance label that fills the field with the user's full balance, floored to fit within the 8-digit cap and never exceeding actual balance
+  - Inline "Amount exceeds your balance" warning below the input (not just on submit)
+- Wrong network banner with "Switch to Base" button (always visible when connected to wrong chain)
+- Low balance banner when connected balance is below the minimum price
+- Connect Wallet button (closes dialog before opening RainbowKit modal so it appears on top; dialog reopens when the connect modal closes)
+- Buy Message submit button (disabled when loading, insufficient balance, or low balance)
+
+### Boost Existing Message tab
+- List of top messages read directly from the contract via getTopMarkees(10) + useReadContracts for message/name per address -- do NOT use the API for this, the API only returns the top 1
+- Each entry shows: message, owner name, ETH funded, #1 badge for top entry
+- Clicking an entry selects it (highlighted border)
+- When an entry is selected and it already holds the top spot, show a note: "This message has the top spot. Add more funds to make it harder to reach."
+- "Edit messages you own on the Markee app." link (or "See more messages and edit messages you own." if > 5 entries) shown ABOVE the payment section, linking to ${buyUrl}
+- Amount to Pay section (no Minimum button, only Take Top Spot + custom input)
+  - Take top spot amount for the selected entry = topFundsAdded - selectedEntryFunds + 0.001 ETH
+  - If the selected entry IS already the top, show Take Top Spot button with selectedFunds + 0.001 ETH
+- "Add Funds to this Message" submit button
+
+### Success state
+When a transaction confirms, replace the entire modal body (below the header) with:
+- A large checkmark
+- "Transaction confirmed!"
+- "View on Basescan" link to https://basescan.org/tx/{hash}
+- "Refreshing in a moment..." note
+The modal stays open indefinitely. When the user closes it after success, trigger the data refresh.
+
+## Contract interactions
+
+All on Base (chainId 8453).
+
+Leaderboard contract: ${address}
+
+ABI functions needed:
+- minimumPrice() view -> uint256
+- maxMessageLength() view -> uint256
+- getTopMarkees(limit: uint256) view -> (address[], uint256[]) -- top markee addresses + their funds
+- createMarkee(message: string, name: string) payable -> address  -- buys a new message
+- addFunds(markeeAddress: address) payable  -- boosts an existing message
+
+Per-markee ABI (call on each markee contract address returned by getTopMarkees):
+- message() view -> string
+- name() view -> string
+
+## Data fetching
+
+### Proxy route (required -- avoids CORS)
+Create app/api/markee/leaderboards/route.ts:
+  export async function GET() {
+    const res = await fetch('${apiUrl}', { next: { revalidate: 60 } })
+    if (!res.ok) return Response.json({ leaderboards: [] }, { status: res.status })
+    return Response.json(await res.json())
+  }
+
+Then fetch /api/markee/leaderboards in the trigger component.
+Find the entry where address matches "${address}" (case-insensitive).
+Fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice
+
+### On-chain reads
+Use wagmi useReadContract / useReadContracts for:
+- minimumPrice, maxMessageLength (in both components or passed as props)
+- getTopMarkees(10n) -- in the boost tab only (enable query only when on that tab)
+- Per-markee message + name via useReadContracts multicall on the returned addresses
+
+### Network detection
+Use useAccount().chainId (not useChainId()) -- it is bound to the connected account and stays accurate in multi-wallet-extension environments.
+const { address, isConnected, chainId } = useAccount()
+const isOnBase = isConnected && chainId === base.id
+
+### Wallet connect and dialog z-index
+The modal should use the native <dialog> element with showModal(). When opening the RainbowKit connect modal, close the dialog first so it appears on top, then reopen it when the connect modal closes:
+  dialogRef.current?.close()
+  openConnectModal?.()
+  // useEffect: if (!connectModalOpen && !dialogRef.current?.open) dialogRef.current?.showModal()
+
+## Packages required
+- wagmi v2
+- viem v2
+- @rainbow-me/rainbowkit v2
+- @tanstack/react-query v5
+
+Wrap the app in (order matters):
+WagmiProvider -> QueryClientProvider -> RainbowKitProvider
+
+wagmi config: getDefaultConfig({ appName, projectId, chains: [base], ssr: true })
+Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in your environment (get a free ID at cloud.walletconnect.com).
+
+## Implementation notes
+- The data-markee-address attribute must be in the server-rendered HTML for verification. In Next.js, placing it in JSX inside a 'use client' component is fine -- Next.js SSRs client components. Avoid setting it only via useEffect or document.setAttribute().
+- takeTopSpot passed to the modal = topFundsAdded + 0.001 ETH (MIN_INCREMENT). If no competition yet, use minimumPrice.
+- On fetch error from the proxy route, fall back to the default message and still allow the modal to open -- the modal works fully from on-chain data alone.
+- Style to match your site's existing design system. The pattern works with any CSS framework.
+
+Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.`
+
   if (!isOpen) return null
 
   const isVerified = leaderboard.status === 'verified' || (leaderboard.verifiedUrls?.length ?? 0) > 0
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'prompt', label: 'AI Prompt', icon: <Globe2 size={13} /> },
+    { id: 'modal', label: 'Full Modal', icon: <Sparkles size={13} /> },
+    { id: 'prompt', label: 'Simple Widget', icon: <Globe2 size={13} /> },
     { id: 'snippet', label: 'Code', icon: <Code2 size={13} /> },
     { id: 'iframe', label: 'iFrame', icon: <Monitor size={13} /> },
   ]
@@ -291,10 +419,24 @@ export function MarkeeWidget() {
         {/* Tab content */}
         <div className="overflow-y-auto flex-1 space-y-4 min-h-0">
 
+          {tab === 'modal' && (
+            <>
+              <p className="text-[#8A8FBF] text-xs">
+                The recommended integration for Next.js sites. Visitors buy or boost a message without leaving your site. Paste this prompt into Claude, ChatGPT, or Cursor alongside your codebase.
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {['wagmi v2', 'viem v2', 'RainbowKit v2', 'TanStack Query v5'].map(pkg => (
+                  <span key={pkg} className="bg-[#060A2A] border border-[#8A8FBF]/20 px-2 py-0.5 rounded font-mono text-[#F897FE]">{pkg}</span>
+                ))}
+              </div>
+              <CodeBlock code={fullModalPrompt} />
+            </>
+          )}
+
           {tab === 'prompt' && (
             <>
               <p className="text-[#8A8FBF] text-xs">
-                Copy this prompt and paste it into Claude, ChatGPT, or Cursor alongside your codebase. It will recommend and implement the right integration for your stack.
+                A lightweight display widget with a link to buy on markee.xyz. For a full on-site buy flow, use the Full Modal tab. Paste into Claude, ChatGPT, or Cursor alongside your codebase.
               </p>
               <CodeBlock code={aiPrompt} />
             </>
