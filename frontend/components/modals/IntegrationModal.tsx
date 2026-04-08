@@ -68,18 +68,38 @@ My leaderboard:
 - Address: ${address}
 - Buy page (where visitors go to buy a message): ${buyUrl}
 
-Step 1: Fetch the current top message:
-GET ${apiUrl}
-This returns all leaderboards. Find the entry where address matches "${address}" (case-insensitive).
+Step 1: Fetch the current top message.
+
+IMPORTANT: Do not fetch the Markee API directly from the browser -- it will be blocked by CORS on most hosting setups.
+
+If this is a Next.js site, create a proxy API route first:
+
+// app/api/markee/leaderboards/route.ts
+export async function GET() {
+  const res = await fetch('${apiUrl}', { next: { revalidate: 60 } })
+  if (!res.ok) return Response.json({ leaderboards: [] }, { status: res.status })
+  return Response.json(await res.json())
+}
+
+Then fetch from your own route:
+GET /api/markee/leaderboards
+
+If this is a static site (plain HTML, Vite, CRA with no SSR), use the iframe embed instead -- it has no CORS issues:
+<div ${dataAttr}>
+  <iframe src="https://markee.xyz/api/embed/${address}" width="100%" height="80" frameborder="0"></iframe>
+</div>
+
+Step 2: Find this leaderboard in the response:
+Look for the entry where address matches "${address}" (case-insensitive).
 Relevant fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice, totalFunds
 
-Step 2: Display it on my site:
+Step 3: Display it on my site:
 - Wrap the widget container with the attribute: ${dataAttr}
 - If topFundsAddedRaw is "0" or topMessage is null, no message has been purchased yet -- show a placeholder like "No message yet" or hide the widget entirely
 - Show topMessage prominently inside the wrapper
 - Link "Change this message" to ${buyUrl}
 - Re-fetch every 60 seconds to stay current
-- Optionally show topMessageOwner: this is the message owner's name or address. If it starts with "0x" you can truncate it (e.g. 0x1234...abcd). Otherwise display it as-is.
+- Optionally show topMessageOwner: this is the message owner's name or address. If it starts with "0x" truncate it (e.g. 0x1234...abcd). Otherwise display it as-is.
 
 The data-markee-address attribute on the wrapper is required for integration verification. It must be present in the server-rendered HTML.
 - Next.js: placing the attribute in JSX works even in a "use client" component -- Next.js SSRs client components into the initial HTML. The only thing to avoid is adding it exclusively via useEffect or document.setAttribute(), which runs after page load and will not be detected.
@@ -87,7 +107,15 @@ The data-markee-address attribute on the wrapper is required for integration ver
 
 Please look at this codebase and implement the integration. Choose an appropriate location (footer, header banner, sidebar widget). Match the existing code style. Keep it minimal.`
 
-  const reactSnippet = `// components/MarkeeWidget.tsx
+  const reactSnippet = `// Step 1: app/api/markee/leaderboards/route.ts
+// Proxy route -- fetches server-side so CORS is never an issue.
+export async function GET() {
+  const res = await fetch('${apiUrl}', { next: { revalidate: 60 } })
+  if (!res.ok) return Response.json({ leaderboards: [] }, { status: res.status })
+  return Response.json(await res.json())
+}
+
+// Step 2: components/MarkeeWidget.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -101,14 +129,14 @@ export function MarkeeWidget() {
 
   async function fetchMessage() {
     try {
-      const res = await fetch('${apiUrl}')
+      const res = await fetch('/api/markee/leaderboards')
       const json = await res.json()
       const lb = json.leaderboards?.find(
         (l: any) => l.address.toLowerCase() === LEADERBOARD_ADDRESS.toLowerCase()
       )
-      if (lb) {
+      if (lb?.topMessage) {
         setMessage(lb.topMessage)
-        setOwner(lb.topMessageOwner)
+        setOwner(lb.topMessageOwner ?? null)
       }
     } catch {}
   }
@@ -121,14 +149,16 @@ export function MarkeeWidget() {
 
   if (!message) return null
 
+  const ownerDisplay = owner
+    ? owner.startsWith('0x')
+      ? \`\${owner.slice(0, 6)}...\${owner.slice(-4)}\`
+      : owner
+    : null
+
   return (
     <div data-markee-address={LEADERBOARD_ADDRESS} className="markee-widget">
       <p>{message}</p>
-      {owner && (
-        <p className="markee-owner">
-          {owner.slice(0, 6)}...{owner.slice(-4)}
-        </p>
-      )}
+      {ownerDisplay && <p className="markee-owner">{ownerDisplay}</p>}
       <a href={BUY_URL} target="_blank" rel="noopener noreferrer">
         Change this message
       </a>
@@ -136,26 +166,37 @@ export function MarkeeWidget() {
   )
 }`
 
-  const vanillaSnippet = `<!-- Add where you want the widget. The data attribute is required for verification -->
+  const vanillaSnippet = `<!--
+  NOTE: Browser fetches to markee.xyz are blocked by CORS on most setups.
+  If you have a backend (Node, PHP, etc.) create a proxy endpoint that
+  fetches ${apiUrl} server-side and re-serves the JSON, then replace
+  the fetch URL below with your proxy URL.
+
+  For static sites (no backend), use the iFrame tab instead -- it has
+  no CORS issues and requires zero JavaScript.
+-->
+
+<!-- Add where you want the widget. The data attribute is required for verification -->
 <div id="markee-widget" ${dataAttr}></div>
 
-<!-- Add before </body> -->
+<!-- Add before </body>. Replace /api/markee/leaderboards with your proxy URL. -->
 <script>
   (function () {
     var ADDRESS = '${address}';
     var BUY_URL = '${buyUrl}';
 
     function fetchMessage() {
-      fetch('${apiUrl}')
+      fetch('/api/markee/leaderboards')
         .then(function (r) { return r.json(); })
         .then(function (json) {
           var lb = (json.leaderboards || []).find(function (l) {
             return l.address.toLowerCase() === ADDRESS.toLowerCase();
           });
           if (!lb || !lb.topMessage) return;
-          var owner = lb.topMessageOwner
-            ? lb.topMessageOwner.slice(0, 6) + '…' + lb.topMessageOwner.slice(-4)
-            : '';
+          var rawOwner = lb.topMessageOwner || '';
+          var owner = rawOwner.startsWith('0x')
+            ? rawOwner.slice(0, 6) + '...' + rawOwner.slice(-4)
+            : rawOwner;
           var el = document.getElementById('markee-widget');
           if (!el) return;
           el.innerHTML =
@@ -287,7 +328,7 @@ export function MarkeeWidget() {
               {snippetLang === 'react' ? (
                 <>
                   <p className="text-[#8A8FBF] text-xs">
-                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute is required for verification. Place it on a server-rendered wrapper element, not inside a client component. It must be present in the initial HTML.
+                    The <code className="bg-[#060A2A] px-1 rounded">data-markee-address</code> attribute is required for verification. In Next.js, placing it in JSX is fine even inside a <code className="bg-[#060A2A] px-1 rounded">&apos;use client&apos;</code> component -- Next.js SSRs client components into the initial HTML. Avoid setting it only via <code className="bg-[#060A2A] px-1 rounded">useEffect</code> or <code className="bg-[#060A2A] px-1 rounded">document.setAttribute()</code>.
                   </p>
                   <CodeBlock code={reactSnippet} />
                 </>
