@@ -154,7 +154,7 @@ ${blank}
                  ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 \`\`\`
-*Show the world you support this repo! ^ [Change this message at markee.xyz](${leaderboardUrl})*
+*Show the world you support this repo! [Change this message at markee.xyz](${leaderboardUrl}) ^*
 ${endDelimiter(leaderboardAddress)}`
 }
 
