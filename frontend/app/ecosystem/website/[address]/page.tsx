@@ -13,6 +13,7 @@ import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessage
 import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { useViews } from '@/hooks/useViews'
+import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import type { Markee } from '@/types'
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
@@ -342,19 +343,23 @@ export default function WebsiteLeaderboardPage() {
                 + Add URL
               </button>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-4">
               {siteMeta!.verifiedUrls!.map(url => (
-                <a
-                  key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-[#8A8FBF] hover:text-[#F897FE] border border-[#1DB227]/20 hover:border-[#F897FE]/30 bg-[#0A0F3D] px-3 py-1.5 rounded-full transition-colors"
-                >
-                  <CheckCircle2 size={11} className="text-[#1DB227]" />
-                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                  <ExternalLink size={10} />
-                </a>
+                <div key={url} className="flex flex-col gap-1.5">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs text-[#8A8FBF] hover:text-[#F897FE] border border-[#1DB227]/20 hover:border-[#F897FE]/30 bg-[#0A0F3D] px-3 py-1.5 rounded-full transition-colors"
+                  >
+                    <CheckCircle2 size={11} className="text-[#1DB227]" />
+                    {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                    <ExternalLink size={10} />
+                  </a>
+                  <div className="pl-1">
+                    <IntegrationHealthStatus url={url} />
+                  </div>
+                </div>
               ))}
             </div>
           </div>

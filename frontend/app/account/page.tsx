@@ -8,6 +8,7 @@ import {
   Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
+import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { Header } from '@/components/layout/Header'
@@ -532,6 +533,23 @@ function AccountLeaderboardCard({
           )}
         </div>
       )}
+
+      {leaderboard.platform === 'website' &&
+        (leaderboard as WebsiteLeaderboard).verifiedUrls?.length > 0 && (
+          <div
+            className="mt-3 pt-3 border-t border-[#8A8FBF]/10 space-y-2"
+            onClick={e => e.stopPropagation()}
+          >
+            {(leaderboard as WebsiteLeaderboard).verifiedUrls.map(url => (
+              <div key={url} className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-[#8A8FBF] truncate">
+                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </span>
+                <IntegrationHealthStatus url={url} />
+              </div>
+            ))}
+          </div>
+        )}
     </div>
   )
 }
