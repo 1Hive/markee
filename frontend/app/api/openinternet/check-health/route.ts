@@ -60,7 +60,8 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await res.json()
-    return NextResponse.json(data)
+    const platform = res.headers.get('x-vercel-id') ? 'vercel' : 'unknown'
+    return NextResponse.json({ ...data, platform })
   } catch (err) {
     const msg = err instanceof Error && err.name === 'TimeoutError'
       ? 'Integration health endpoint timed out'

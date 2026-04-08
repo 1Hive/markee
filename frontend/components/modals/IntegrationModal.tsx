@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Copy, Check, Code2, Globe2, Monitor, CheckCircle2, Sparkles } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, Copy, Check, Code2, Globe2, Monitor, CheckCircle2, Sparkles, AlertTriangle, Info } from 'lucide-react'
 
 type Tab = 'prompt' | 'snippet' | 'iframe' | 'modal'
 
@@ -51,6 +51,22 @@ function CodeBlock({ code }: { code: string }) {
 export function IntegrationModal({ isOpen, onClose, leaderboard, onOpenVerify }: IntegrationModalProps) {
   const [tab, setTab] = useState<Tab>('modal')
   const [snippetLang, setSnippetLang] = useState<'react' | 'vanilla'>('react')
+  const [platform, setPlatform] = useState<'vercel' | 'unknown' | null>(null)
+  const [moderationStatus, setModerationStatus] = useState<'ok' | 'error' | null>(null)
+
+  const verifiedUrl = leaderboard.verifiedUrls?.[0]
+
+  useEffect(() => {
+    if (!verifiedUrl) return
+    const params = new URLSearchParams({ url: verifiedUrl })
+    fetch(`/api/openinternet/check-health?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.platform) setPlatform(d.platform)
+        if (d.checks?.moderation?.status) setModerationStatus(d.checks.moderation.status === 'ok' ? 'ok' : 'error')
+      })
+      .catch(() => {})
+  }, [verifiedUrl])
 
   const { address, name } = leaderboard
   const lowerAddress = address.toLowerCase()
@@ -397,6 +413,30 @@ Please look at this codebase and implement both components. Choose an appropriat
             </button>
           )}
         </div>
+
+        {/* Platform / moderation banner */}
+        {verifiedUrl && platform !== null && (
+          <div className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs mb-4 flex-shrink-0 ${
+            platform === 'unknown'
+              ? 'bg-[#FFD700]/8 border border-[#FFD700]/20 text-[#FFD700]'
+              : moderationStatus === 'error'
+                ? 'bg-[#7C9CFF]/8 border border-[#7C9CFF]/20 text-[#7C9CFF]'
+                : 'bg-[#1DB227]/8 border border-[#1DB227]/20 text-[#1DB227]'
+          }`}>
+            {platform === 'unknown'
+              ? <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+              : <Info size={13} className="flex-shrink-0 mt-0.5" />
+            }
+            <span>
+              {platform === 'unknown'
+                ? 'Site does not appear to be on Vercel. Moderation uses @vercel/kv — swap for any Redis client if deploying elsewhere.'
+                : moderationStatus === 'error'
+                  ? 'Vercel detected. Add KV_REST_API_URL and KV_REST_API_TOKEN in your Vercel project settings to enable moderation.'
+                  : 'Vercel detected. Moderation is active.'
+              }
+            </span>
+          </div>
+        )}
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-5 bg-[#060A2A] rounded-lg p-1 flex-shrink-0">
