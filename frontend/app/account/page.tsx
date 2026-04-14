@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
   Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
+  MessageSquare, TrendingUp, TrendingDown,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
@@ -56,6 +57,52 @@ interface WebsiteLeaderboard extends BaseLeaderboard {
 
 type AnyLeaderboard = SuperfluidLeaderboard | GithubLeaderboard | WebsiteLeaderboard
 
+interface MyMessage {
+  address: string
+  message: string
+  name: string
+  totalFundsAdded: bigint
+  createdAt: number
+  strategyId: string
+  strategyName: string
+  isTop: boolean
+  topFunds: bigint
+}
+
+const MY_MESSAGES_QUERY = `
+  query GetMyMessages($owner: String!) {
+    markees(
+      where: { owner: $owner }
+      orderBy: totalFundsAdded
+      orderDirection: desc
+      first: 50
+    ) {
+      id
+      address
+      message
+      name
+      totalFundsAdded
+      createdAt
+      strategy {
+        id
+        instanceName
+        markees(orderBy: totalFundsAdded, orderDirection: desc, first: 1) {
+          address
+          totalFundsAdded
+        }
+      }
+      partnerStrategy {
+        id
+        instanceName
+        markees(orderBy: totalFundsAdded, orderDirection: desc, first: 1) {
+          address
+          totalFundsAdded
+        }
+      }
+    }
+  }
+`
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatFunds(eth: string) {
@@ -91,6 +138,8 @@ export default function AccountPage() {
   const [githubBoards, setGithubBoards] = useState<GithubLeaderboard[]>([])
   const [websiteBoards, setWebsiteBoards] = useState<WebsiteLeaderboard[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [myMessages, setMyMessages] = useState<MyMessage[]>([])
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [editingBoard, setEditingBoard] = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
   const [verifyBoard, setVerifyBoard] = useState<WebsiteLeaderboard | null>(null)
@@ -144,9 +193,54 @@ export default function AccountPage() {
     }
   }, [])
 
+  const fetchMyMessages = useCallback(async (addr: string) => {
+    const subgraphUrl = `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`
+    if (!process.env.NEXT_PUBLIC_GRAPH_TOKEN) return
+    setIsLoadingMessages(true)
+    try {
+      const res = await fetch(subgraphUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: MY_MESSAGES_QUERY,
+          variables: { owner: addr.toLowerCase() },
+        }),
+      })
+      if (!res.ok) return
+      const { data } = await res.json()
+      const raw = data?.markees ?? []
+      const messages: MyMessage[] = raw.map((m: any) => {
+        const strat = m.partnerStrategy ?? m.strategy
+        const topMarkees: { address: string; totalFundsAdded: string }[] = strat?.markees ?? []
+        const topFunds = topMarkees[0] ? BigInt(topMarkees[0].totalFundsAdded) : BigInt(0)
+        const isTop = topMarkees.length === 0 || topMarkees[0]?.address?.toLowerCase() === m.address?.toLowerCase()
+        return {
+          address: m.address,
+          message: m.message ?? '',
+          name: m.name ?? '',
+          totalFundsAdded: BigInt(m.totalFundsAdded ?? '0'),
+          createdAt: Number(m.createdAt ?? 0),
+          strategyId: strat?.id ?? '',
+          strategyName: strat?.instanceName ?? 'Unknown Leaderboard',
+          isTop,
+          topFunds,
+        }
+      })
+      setMyMessages(messages)
+    } catch {
+      // non-critical
+    } finally {
+      setIsLoadingMessages(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (walletAddress) fetchAll(walletAddress)
   }, [walletAddress, fetchAll])
+
+  useEffect(() => {
+    if (walletAddress) fetchMyMessages(walletAddress)
+  }, [walletAddress, fetchMyMessages])
 
   const allBoards: AnyLeaderboard[] = [
     ...superfluidBoards,
@@ -361,6 +455,49 @@ export default function AccountPage() {
         </div>
       </section>
 
+      {/* Messages I've Bought */}
+      {mounted && isConnected && (
+        <section className="py-12 bg-[#0A0F3D] border-t border-[#8A8FBF]/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 mb-2">
+              <MessageSquare size={20} className="text-[#7C9CFF]" />
+              <h2 className="text-xl font-bold text-[#EDEEFF]">Messages I&apos;ve Bought</h2>
+            </div>
+            <p className="text-[#8A8FBF] text-sm mb-8 ml-8">
+              Your messages posted on Markee leaderboards
+            </p>
+
+            {isLoadingMessages ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-[#060A2A] rounded-lg border border-[#8A8FBF]/20 p-5 animate-pulse h-44" />
+                ))}
+              </div>
+            ) : myMessages.length === 0 ? (
+              <div className="bg-[#060A2A] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
+                <MessageSquare size={32} className="text-[#8A8FBF] mx-auto mb-3" />
+                <p className="text-[#EDEEFF] font-semibold mb-1">No messages yet</p>
+                <p className="text-[#8A8FBF] text-sm mb-5">
+                  Buy a message on any Markee leaderboard to get your words in front of an audience.
+                </p>
+                <Link
+                  href="/ecosystem"
+                  className="inline-flex items-center gap-2 bg-[#7C9CFF] text-[#060A2A] px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#F897FE] transition-colors"
+                >
+                  Browse leaderboards
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {myMessages.map(msg => (
+                  <MessageCard key={msg.address} message={msg} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       <Footer />
 
       {editingBoard && (
@@ -550,6 +687,81 @@ function AccountLeaderboardCard({
             ))}
           </div>
         )}
+    </div>
+  )
+}
+
+// ─── Message Card ──────────────────────────────────────────────────────────────
+
+function MessageCard({ message }: { message: MyMessage }) {
+  const router = useRouter()
+  const fundsEth = (Number(message.totalFundsAdded) / 1e18).toFixed(3)
+  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+  const toTopEth = message.isTop
+    ? null
+    : (Number(message.topFunds - message.totalFundsAdded + minIncrement) / 1e18).toFixed(3)
+
+  const detailUrl = `/markee/${message.address}`
+
+  return (
+    <div
+      onClick={() => router.push(detailUrl)}
+      className="bg-[#060A2A] p-5 rounded-lg border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/60 transition-colors cursor-pointer flex flex-col gap-3"
+    >
+      {/* Status + leaderboard */}
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          href={`/ecosystem/website/${message.strategyId}`}
+          onClick={e => e.stopPropagation()}
+          className="flex items-center gap-1.5 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors truncate"
+        >
+          <Globe2 size={11} />
+          <span className="truncate">{message.strategyName}</span>
+          <ExternalLink size={10} className="flex-shrink-0" />
+        </Link>
+        {message.isTop ? (
+          <span className="flex items-center gap-1 text-xs font-semibold text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-full flex-shrink-0">
+            <TrendingUp size={11} />
+            Top
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-xs text-[#F3841E] bg-[#F3841E]/10 px-2 py-0.5 rounded-full flex-shrink-0">
+            <TrendingDown size={11} />
+            Overtaken
+          </span>
+        )}
+      </div>
+
+      {/* Message */}
+      <div className="bg-[#0A0F3D] rounded-lg p-3 border border-[#8A8FBF]/15 flex-1">
+        <p className="text-[#EDEEFF] font-mono text-sm break-words leading-snug line-clamp-3">
+          {message.message || <span className="text-[#8A8FBF] italic">(no message)</span>}
+        </p>
+        {message.name && (
+          <p className="text-[#8A8FBF] text-xs mt-2 text-right">
+            {message.name.startsWith('0x') && message.name.length === 42
+              ? `${message.name.slice(0, 6)}…${message.name.slice(-4)}`
+              : message.name}
+          </p>
+        )}
+      </div>
+
+      {/* Funds + action row */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs">
+          <Trophy size={11} className="text-[#7C9CFF]" />
+          <span className="text-[#7C9CFF] font-semibold">{fundsEth} ETH</span>
+          <span className="text-[#8A8FBF]">funded by you</span>
+        </div>
+        <Link
+          href={detailUrl}
+          onClick={e => e.stopPropagation()}
+          className="flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
+        >
+          {toTopEth ? `+${toTopEth} ETH to top` : 'Add funds'}
+          <ChevronRight size={12} />
+        </Link>
+      </div>
     </div>
   )
 }
