@@ -24,7 +24,12 @@ const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
   process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE_STUDIO
 
-const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+const NO_CACHE = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
 
 // ─── Hardcoded legacy TopDawg partner metadata ────────────────────────────────
 // These partners use legacy TopDawg strategy contracts (not the factory).
@@ -290,6 +295,10 @@ async function resolveCreators(
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: NO_CACHE })
+}
 
 export async function GET(request: Request) {
   try {
