@@ -3,17 +3,9 @@ import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 
-const ALLOWED_ORIGINS = [
-  'https://markee.xyz',
-  'https://www.markee.xyz',
-  'https://app.gardens.fund',
-]
-
-function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed =
-    origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+function corsHeaders(_origin: string | null): Record<string, string> {
   return {
-    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   }
