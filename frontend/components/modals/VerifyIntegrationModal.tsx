@@ -119,6 +119,11 @@ export function VerifyIntegrationModal({
               <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
               <div>
                 <span>{verifyError}</span>
+                {verifyError.toLowerCase().includes('not detected') && (
+                  <p className="text-[#8A8FBF] text-xs mt-1.5 leading-relaxed">
+                    The verifier checks the raw HTML from the server, not JavaScript-rendered content. If your site is a client-side app (Create React App, Vite), add <code className="font-mono bg-[#060A2A] px-1 rounded">data-markee-address</code> to a static element in your <code className="font-mono bg-[#060A2A] px-1 rounded">index.html</code> instead of relying on React to render it.
+                  </p>
+                )}
                 {onOpenIntegration && (
                   <button
                     onClick={onOpenIntegration}

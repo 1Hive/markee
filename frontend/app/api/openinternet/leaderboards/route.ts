@@ -170,6 +170,7 @@ const LEADERBOARD_ABI = [
 const MARKEE_ABI = [
   { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
 
 // ─── Client ───────────────────────────────────────────────────────────────────
@@ -357,6 +358,7 @@ export async function GET(request: Request) {
       addr ? [
         { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
         { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
+        { address: addr, abi: MARKEE_ABI, functionName: 'owner' as const },
       ] : []
     )
 
@@ -390,10 +392,12 @@ export async function GET(request: Request) {
 
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
+      let topMarkeeOwner: string | null = null
       if (topMarkeeAddresses[i]) {
         topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
         topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
-        markeeCallIndex += 2
+        topMarkeeOwner  = (markeeResults[markeeCallIndex + 2]?.result as string) || null
+        markeeCallIndex += 3
       }
 
       const meta = kvMetas[i]
@@ -412,6 +416,7 @@ export async function GET(request: Request) {
         topFundsAddedRaw: topFunds0.toString(),
         topMessage,
         topMessageOwner,
+        topMarkeeOwner,
         topMarkeeAddress: topMarkeeAddresses[i] ?? null,
         logoUrl: meta?.logoUrl ?? null,
         siteUrl: meta?.siteUrl ?? null,

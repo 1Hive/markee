@@ -8,8 +8,11 @@
 // Add any address in lowercase. Checked case-insensitively at runtime.
 export const ADMIN_ADDRESSES: string[] = [
   // Addresses that can flag messages for blurring
-    '0x809C9f8dd8CA93A41c3adca4972Fa234C28F7714',
-    '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'
+  '0x809C9f8dd8CA93A41c3adca4972Fa234C28F7714',
+  '0x07AD02e0C1FA0b09fC945ff197E18e9C256838c6',
+  '0x2F9e113434aeBDd70bB99cB6505e1F726C578D6d',
+  '0xa25211B64D041F690C0c818183E32f28ba9647Dd',
+  '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB',
 ]
 
 // How flagged content appears to non-admin users
