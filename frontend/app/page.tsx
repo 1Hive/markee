@@ -3,11 +3,11 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import Link from 'next/link'
-import { Eye } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkees } from '@/lib/contracts/useMarkees'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
+import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 import { useReactions } from '@/hooks/useReactions'
 import { useViews } from '@/hooks/useViews'
 import { useFixedViews } from '@/hooks/useFixedViews'
@@ -16,32 +16,29 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { PartnerMarkeeCard } from '@/components/ecosystem/PartnerMarkeeCard'
+import { ModerationProvider } from '@/components/moderation'
+import { Eye, ExternalLink } from 'lucide-react'
 import { formatEther } from 'viem'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 import { formatDistanceToNow } from 'date-fns'
 import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
-
-function PartnerCard({ slug, logo, name, description }: { slug: string; logo: string; name: string; description: string }) {
-  return (
-    <a
-      href={`/ecosystem/${slug}`}
-      className="bg-[#060A2A] rounded-lg shadow-md p-6 border border-[#8A8FBF]/30 hover:border-[#F897FE] transition-all group block"
-    >
-      <div className="flex flex-col items-center text-center">
-        <img src={logo} alt={name} className="h-16 object-contain mb-4 group-hover:scale-110 transition-transform" />
-        <h3 className="font-bold text-[#EDEEFF] mb-2">{name}</h3>
-        <p className="text-sm text-[#8A8FBF]">{description}</p>
-      </div>
-    </a>
-  )
-}
 
 export default function Home() {
   const { address } = useAccount()
 
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
+  const { partnerData, isLoading: isLoadingPartners } = usePartnerMarkees()
+
+  const livePartners = partnerData
+    .filter(({ partner }) => !!partner.liveUrl)
+    .sort((a, b) => (b.totalFunds > a.totalFunds ? 1 : -1))
+
+  const totalMessagesBought = partnerData.reduce((sum, { markeeCount }) => sum + markeeCount, BigInt(0))
+  const totalEthRaised = partnerData.reduce((sum, { totalFunds }) => sum + totalFunds, BigInt(0))
 
   const {
     reactions,
@@ -255,21 +252,76 @@ export default function Home() {
         }
       `}</style>
 
-      {/* Ecosystem Partners */}
+      {/* Raise Funds with Markee */}
       <section className="bg-[#0A0F3D] py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="flex items-center justify-center gap-4 mb-8">
-            <h2 className="text-2xl font-bold text-[#EDEEFF]">Our Ecosystem</h2>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold text-[#EDEEFF] mb-3">Raise Funds with Markee</h2>
+            <p className="text-[#8A8FBF] mb-8">Join our growing ecosystem of platforms raising funds through Markee</p>
+
+            {/* Growth metrics */}
+            {!isLoadingPartners && (
+              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-2">
+                <div className="bg-[#060A2A] rounded-lg px-8 py-4 border border-[#8A8FBF]/20 min-w-[140px]">
+                  <p className="text-2xl font-bold text-[#F897FE]">{livePartners.length}</p>
+                  <p className="text-sm text-[#8A8FBF] mt-0.5">Active Markees</p>
+                </div>
+                <div className="bg-[#060A2A] rounded-lg px-8 py-4 border border-[#8A8FBF]/20 min-w-[140px]">
+                  <p className="text-2xl font-bold text-[#F897FE]">{totalMessagesBought.toString()}</p>
+                  <p className="text-sm text-[#8A8FBF] mt-0.5">Messages Bought</p>
+                </div>
+                <div className="bg-[#060A2A] rounded-lg px-8 py-4 border border-[#8A8FBF]/20 min-w-[140px]">
+                  <p className="text-2xl font-bold text-[#F897FE]">{parseFloat(formatEther(totalEthRaised)).toFixed(2)} ETH</p>
+                  <p className="text-sm text-[#8A8FBF] mt-0.5">ETH Raised</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 max-w-6xl mx-auto">
-            <PartnerCard slug="gardens" logo="/partners/gardens.png" name="Gardens" description="Community Governance" />
-            <PartnerCard slug="superfluid" logo="/partners/superfluid.png" name="Superfluid" description="Streaming Protocol" />
-            <PartnerCard slug="juicebox" logo="/partners/juicebox.png" name="Juicebox" description="Crowdfunding Protocol" />
-            <PartnerCard slug="revnets" logo="/partners/revnets.png" name="RevNets" description="Tokenized Revenues" />
-            <PartnerCard slug="bread-cooperative" logo="/partners/breadcoop.png" name="Bread Cooperative" description="Digital Co-op" />
-            <PartnerCard slug="giveth" logo="/partners/giveth.png" name="Giveth" description="Fundraising Platform" />
-            <PartnerCard slug="flow-state" logo="/partners/flowstate.png" name="Flow State" description="Continuous Funding" />
+          {/* Live partner cards */}
+          {isLoadingPartners ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-[#060A2A] rounded-lg p-8 border border-[#8A8FBF]/20 animate-pulse">
+                  <div className="h-48 bg-[#1A1F4D] rounded" />
+                </div>
+              ))}
+            </div>
+          ) : livePartners.length > 0 ? (
+            <ModerationProvider>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                {livePartners.map(({ partner, winningMarkee, totalFunds, markeeCount }) => (
+                  <div key={partner.slug} className="relative">
+                    <a
+                      href={partner.liveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <ExternalLink size={12} />
+                      {partner.liveUrl?.replace(/^https?:\/\//, '')}
+                    </a>
+                    <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
+                      <PartnerMarkeeCard
+                        partner={partner}
+                        winningMarkee={winningMarkee ?? undefined}
+                        totalFunds={totalFunds}
+                        markeeCount={markeeCount}
+                        chainId={CANONICAL_CHAIN_ID}
+                        onBuyMessage={() => { window.location.href = `/ecosystem/${partner.slug}` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ModerationProvider>
+          ) : null}
+
+          <div className="text-center">
+            <a href="/ecosystem" className="text-[#7C9CFF] hover:text-[#F897FE] text-sm transition-colors">
+              See all partners &rarr;
+            </a>
           </div>
         </div>
       </section>
