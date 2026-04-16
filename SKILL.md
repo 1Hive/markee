@@ -6,8 +6,8 @@ Markee is a cooperatively owned digital message board network. Anyone can pay to
 **Canonical chain:** Base (8453)  
 **Contracts:** Juicebox RevNets (Multi Terminal V5)
 
-<!-- MARKEE:START:0xdcbe333701d8795872c09e7db1b196064ebcedbc -->
-<!-- MARKEE:END:0xdcbe333701d8795872c09e7db1b196064ebcedbc -->
+<!-- MARKEE:START:0x72a8e1470ac4988248091e76f363a33f8563d10c -->
+<!-- MARKEE:END:0x72a8e1470ac4988248091e76f363a33f8563d10c -->
 
 ---
 
