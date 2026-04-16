@@ -267,19 +267,10 @@ export default function Home() {
       {/* Raise Funds with Markee */}
       <section className="bg-[#0A0F3D] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-[#EDEEFF] mb-6">Raise funds with Markee</h2>
-          <p className="text-xl text-[#8A8FBF] mb-8">
-            Explore the Universe of Markee messages growing across the internet ✨
-          </p>
-          <a
-            href="/ecosystem"
-            className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-          >
-            Create a Markee
-          </a>
+          <h2 className="text-4xl font-bold text-[#EDEEFF] mb-8">Raise funds with Markee</h2>
 
           {!isLoadingEco && ecoActive.length > 0 && (
-            <div className="flex items-center justify-center gap-8 mt-10 flex-wrap">
+            <div className="flex items-center justify-center gap-8 mb-8 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#F897FE] animate-pulse" />
                 <span className="text-[#F897FE] font-semibold text-3xl">{ecoActive.length}</span>
@@ -299,6 +290,13 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          <a
+            href="/ecosystem"
+            className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+          >
+            Create a Markee for Your Space
+          </a>
         </div>
       </section>
 
