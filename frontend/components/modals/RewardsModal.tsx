@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { X, Trophy, RefreshCw, Zap, Star } from 'lucide-react'
+import { X, Trophy, RefreshCw, Zap, Pin } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +139,7 @@ export function RewardsModal({
 }: RewardsModalProps) {
   const { address } = useAccount()
   const [data, setData] = useState<RewardsData | null>(null)
+  const [myEntry, setMyEntry] = useState<{ entry: LeaderboardEntry; rank: number } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [page, setPage] = useState(1)
@@ -161,16 +162,28 @@ export function RewardsModal({
     }
   }, [])
 
+  // Fetch the connected wallet's own entry (to pin at top even when off-page)
+  const fetchMyEntry = useCallback(async (addr: string) => {
+    try {
+      const res = await fetch(`/api/superfluid/rewards?address=${addr}`)
+      if (!res.ok) return
+      const d = await res.json()
+      if (d.entry) setMyEntry(d)
+    } catch {}
+  }, [])
+
   // Fetch on open, reset on close
   useEffect(() => {
     if (isOpen) {
       setPage(1)
       fetchData(1)
+      if (address) fetchMyEntry(address)
     } else {
       setData(null)
+      setMyEntry(null)
       setError(null)
     }
-  }, [isOpen, fetchData])
+  }, [isOpen, fetchData, fetchMyEntry, address])
 
   useEffect(() => {
     if (isOpen) fetchData(page)
@@ -186,7 +199,12 @@ export function RewardsModal({
     : null
   const globalRank = connectedIdx !== undefined && connectedIdx >= 0
     ? (page - 1) * 50 + connectedIdx + 1
-    : null
+    : myEntry?.rank ?? null
+
+  // Pinned entry: prefer in-page data (has accurate rank), fall back to myEntry
+  const pinnedEntry = connectedEntry
+    ? { entry: connectedEntry, rank: globalRank! }
+    : myEntry ?? null
 
   const totalAwarded =
     (data?.campaignTotals.addFunds ?? 0) + (data?.campaignTotals.farcasterFollow ?? 0)
@@ -245,23 +263,6 @@ export function RewardsModal({
           </div>
         )}
 
-        {/* Connected wallet callout */}
-        {connectedEntry && globalRank && (
-          <div className="mx-4 mt-4 flex-shrink-0 bg-gradient-to-r from-[#F897FE]/15 to-[#7C9CFF]/15 border border-[#F897FE]/40 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl font-bold text-[#EDEEFF]">#{globalRank}</span>
-              <div>
-                <p className="text-xs text-[#F897FE] font-semibold uppercase tracking-wider">Your rank</p>
-                <p className="text-sm font-mono text-[#EDEEFF]">{shortAddress(connectedEntry.account)}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-[#F897FE]">{connectedEntry.totalPoints.toLocaleString()}</p>
-              <p className="text-[10px] text-[#8A8FBF] uppercase tracking-wider">points</p>
-            </div>
-          </div>
-        )}
-
         {/* Scrollable list */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 min-h-0">
           {isLoading ? (
@@ -282,14 +283,35 @@ export function RewardsModal({
               <p className="text-[#8A8FBF] text-sm">Buy a message to earn the first points.</p>
             </div>
           ) : (
-            data?.accounts.map((entry, i) => (
-              <RewardsRow
-                key={entry.account}
-                entry={entry}
-                rank={(page - 1) * 50 + i + 1}
-                isConnectedWallet={!!address && entry.account.toLowerCase() === address.toLowerCase()}
-              />
-            ))
+            <>
+              {/* Pinned: connected wallet always at top */}
+              {pinnedEntry && (
+                <>
+                  <div className="flex items-center gap-1.5 text-[10px] text-[#F897FE] font-semibold uppercase tracking-wider px-1">
+                    <Pin size={9} />
+                    Your ranking
+                  </div>
+                  <RewardsRow
+                    entry={pinnedEntry.entry}
+                    rank={pinnedEntry.rank}
+                    isConnectedWallet
+                  />
+                  <div className="border-t border-[#8A8FBF]/20 pt-1" />
+                </>
+              )}
+              {data?.accounts.map((entry, i) => {
+                // Skip if already pinned above
+                if (address && entry.account.toLowerCase() === address.toLowerCase()) return null
+                return (
+                  <RewardsRow
+                    key={entry.account}
+                    entry={entry}
+                    rank={(page - 1) * 50 + i + 1}
+                    isConnectedWallet={false}
+                  />
+                )
+              })}
+            </>
           )}
         </div>
 
