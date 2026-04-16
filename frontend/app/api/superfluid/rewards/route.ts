@@ -15,23 +15,6 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const address = searchParams.get('address')
-
-    const campaignId = getCampaignId()
-
-    // Single-address lookup: find the address's entry and global rank
-    if (address) {
-      const res = await fetch(
-        `${BASE_URL}/points/accounts?campaignId=${campaignId}&orderBy=totalPoints&order=desc&account=${address}&limit=1`,
-        { cache: 'no-store' }
-      )
-      if (!res.ok) return NextResponse.json({ entry: null, rank: null })
-      const data = await res.json()
-      const entry = data.accounts?.[0] ?? null
-      const rank = entry ? data.pagination?.offset + 1 : null
-      return NextResponse.json({ entry, rank })
-    }
-
     const page = parseInt(searchParams.get('page') ?? '1', 10)
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 100)
 

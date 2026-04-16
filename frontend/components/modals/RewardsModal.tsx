@@ -139,7 +139,6 @@ export function RewardsModal({
 }: RewardsModalProps) {
   const { address } = useAccount()
   const [data, setData] = useState<RewardsData | null>(null)
-  const [myEntry, setMyEntry] = useState<{ entry: LeaderboardEntry; rank: number } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [page, setPage] = useState(1)
@@ -162,28 +161,16 @@ export function RewardsModal({
     }
   }, [])
 
-  // Fetch the connected wallet's own entry (to pin at top even when off-page)
-  const fetchMyEntry = useCallback(async (addr: string) => {
-    try {
-      const res = await fetch(`/api/superfluid/rewards?address=${addr}`)
-      if (!res.ok) return
-      const d = await res.json()
-      if (d.entry) setMyEntry(d)
-    } catch {}
-  }, [])
-
   // Fetch on open, reset on close
   useEffect(() => {
     if (isOpen) {
       setPage(1)
       fetchData(1)
-      if (address) fetchMyEntry(address)
     } else {
       setData(null)
-      setMyEntry(null)
       setError(null)
     }
-  }, [isOpen, fetchData, fetchMyEntry, address])
+  }, [isOpen, fetchData])
 
   useEffect(() => {
     if (isOpen) fetchData(page)
@@ -199,12 +186,11 @@ export function RewardsModal({
     : null
   const globalRank = connectedIdx !== undefined && connectedIdx >= 0
     ? (page - 1) * 50 + connectedIdx + 1
-    : myEntry?.rank ?? null
+    : null
 
-  // Pinned entry: prefer in-page data (has accurate rank), fall back to myEntry
-  const pinnedEntry = connectedEntry
-    ? { entry: connectedEntry, rank: globalRank! }
-    : myEntry ?? null
+  const pinnedEntry = connectedEntry && globalRank
+    ? { entry: connectedEntry, rank: globalRank }
+    : null
 
   const totalAwarded =
     (data?.campaignTotals.addFunds ?? 0) + (data?.campaignTotals.farcasterFollow ?? 0)
