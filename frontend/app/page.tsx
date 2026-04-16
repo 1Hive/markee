@@ -267,35 +267,46 @@ export default function Home() {
       {/* Raise Funds with Markee */}
       <section className="bg-[#0A0F3D] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-[#EDEEFF] mb-8">Raise funds with Markee</h2>
+          <h2 className="text-4xl font-bold text-[#EDEEFF] mb-4">Raise Funds with Markee</h2>
+          <p className="text-[#8A8FBF] mb-8">Join our growing network of digital communities getting funded with Markee</p>
 
-          {!isLoadingEco && ecoActive.length > 0 && (
-            <div className="flex items-center justify-center gap-8 mb-8 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#F897FE] animate-pulse" />
+          <div className="flex items-center justify-center gap-8 mb-8 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#F897FE] animate-pulse" />
+              {isLoadingEco ? (
+                <span className="text-[#F897FE] font-semibold text-3xl animate-pulse">--</span>
+              ) : (
                 <span className="text-[#F897FE] font-semibold text-3xl">{ecoActive.length}</span>
-                <span className="text-[#8A8FBF]">active Markees</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#EDEEFF] animate-pulse" />
+              )}
+              <span className="text-[#8A8FBF]">active Markees</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#EDEEFF] animate-pulse" />
+              {isLoadingEco ? (
+                <span className="text-[#EDEEFF] font-semibold text-3xl animate-pulse">--</span>
+              ) : (
                 <span className="text-[#EDEEFF] font-semibold text-3xl">{ecoMessages.toLocaleString()}</span>
-                <span className="text-[#8A8FBF]">messages bought</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#7C9CFF] animate-pulse" />
+              )}
+              <span className="text-[#8A8FBF]">messages bought</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#7C9CFF] animate-pulse" />
+              {isLoadingEco ? (
+                <span className="text-[#7C9CFF] font-semibold text-3xl animate-pulse">--</span>
+              ) : (
                 <span className="text-[#7C9CFF] font-semibold text-3xl">
                   {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
                 </span>
-                <span className="text-[#8A8FBF]">total raised</span>
-              </div>
+              )}
+              <span className="text-[#8A8FBF]">total raised</span>
             </div>
-          )}
+          </div>
 
           <a
             href="/ecosystem"
             className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
           >
-            Create a Markee for Your Space
+            Create a Markee
           </a>
         </div>
       </section>
@@ -304,11 +315,10 @@ export default function Home() {
       <section className="bg-[#060A2A] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">Buy a Message.  Own the Network.</h3>
+            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">A Marketplace for Digital Real Estate</h3>
 
               <p className="text-lg text-[#8A8FBF] mb-6">
-                Our network is cooperatively owned by MARKEE token holders. Get MARKEE by buying a message here. <br />
-                Or buy from <a href="/ecosystem" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">Our Ecosystem</a> and fund your favorite platform too.
+                Buy a message on your favorite site from these verified Markees.
               </p>
 
             <div className="flex gap-4 justify-center mb-8">

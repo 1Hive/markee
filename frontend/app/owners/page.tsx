@@ -72,10 +72,25 @@ export default function Owners() {
         
         {/* Content */}
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Ownership Structure</h1>
-          <p className="text-xl text-[#B8B6D9]">
-            Markee is owned by a Digital Cooperative powered by RevNets, permissionlessly shifting ownership from the founding team to the community as revenue is generated.
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h1>
+          <p className="text-xl text-[#B8B6D9] mb-8">
+            Our network is cooperatively owned by MARKEE token holders. Get MARKEE by buying a message here.<br />
+            Or buy from <a href="/ecosystem" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">Our Ecosystem</a> and fund your favorite platform too.
           </p>
+          <div className="flex gap-4 justify-center">
+            <a
+              href="/"
+              className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
+            >
+              Buy a Message
+            </a>
+            <a
+              href="/how-it-works"
+              className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
+            >
+              How it Works
+            </a>
+          </div>
         </div>
       </section>
 
