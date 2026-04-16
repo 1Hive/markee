@@ -110,11 +110,14 @@ export default function GithubPlatformPage() {
 
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const fetchLeaderboards = useCallback(async (silent = false) => {
+  const fetchLeaderboards = useCallback(async (silent = false, bust = false) => {
     try {
       if (!silent) setIsLoadingLeaderboards(true)
       else setIsRefreshing(true)
-      const res = await fetch(`/api/github/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+      const url = bust
+        ? `/api/github/leaderboards?bust=1&t=${Date.now()}`
+        : `/api/github/leaderboards?t=${Date.now()}`
+      const res = await fetch(url, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
@@ -198,7 +201,7 @@ export default function GithubPlatformPage() {
               <span className="text-[#8A8FBF]">total funded</span>
             </div>
             <button
-              onClick={() => fetchLeaderboards(true)}
+              onClick={() => fetchLeaderboards(true, true)}
               disabled={isRefreshing}
               className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
             >
@@ -300,7 +303,7 @@ export default function GithubPlatformPage() {
           myLeaderboards={myLeaderboards}
           repos={repos}
           onClose={() => setCreateModalOpen(false)}
-          onSuccess={fetchLeaderboards}
+          onSuccess={() => setTimeout(() => fetchLeaderboards(true, true), 3000)}
           onGithubChange={() => { fetchGithubUser(); fetchRepos() }}
         />
       )}
