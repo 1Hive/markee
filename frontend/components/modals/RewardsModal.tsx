@@ -139,6 +139,7 @@ export function RewardsModal({
 }: RewardsModalProps) {
   const { address } = useAccount()
   const [data, setData] = useState<RewardsData | null>(null)
+  const [myEntry, setMyEntry] = useState<{ entry: LeaderboardEntry; rank: number } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [page, setPage] = useState(1)
@@ -161,16 +162,27 @@ export function RewardsModal({
     }
   }, [])
 
+  const fetchMyEntry = useCallback(async (addr: string) => {
+    try {
+      const res = await fetch(`/api/superfluid/rewards?address=${addr}`)
+      if (!res.ok) return
+      const d = await res.json()
+      if (d.entry) setMyEntry({ entry: d.entry, rank: d.rank })
+    } catch {}
+  }, [])
+
   // Fetch on open, reset on close
   useEffect(() => {
     if (isOpen) {
       setPage(1)
       fetchData(1)
+      if (address) fetchMyEntry(address)
     } else {
       setData(null)
+      setMyEntry(null)
       setError(null)
     }
-  }, [isOpen, fetchData])
+  }, [isOpen, fetchData, fetchMyEntry, address])
 
   useEffect(() => {
     if (isOpen) fetchData(page)
@@ -178,19 +190,16 @@ export function RewardsModal({
 
   if (!isOpen) return null
 
-  const connectedIdx = data?.accounts.findIndex(
-    e => address && e.account.toLowerCase() === address.toLowerCase()
-  )
-  const connectedEntry = connectedIdx !== undefined && connectedIdx >= 0
-    ? data?.accounts[connectedIdx]
-    : null
-  const globalRank = connectedIdx !== undefined && connectedIdx >= 0
-    ? (page - 1) * 50 + connectedIdx + 1
-    : null
+  // Find connected wallet in current page; fall back to dedicated lookup
+  const connectedIdx = address
+    ? (data?.accounts.findIndex(e => e.account.toLowerCase() === address.toLowerCase()) ?? -1)
+    : -1
+  const inPageEntry = connectedIdx >= 0 ? data?.accounts[connectedIdx] ?? null : null
+  const inPageRank = connectedIdx >= 0 ? (page - 1) * 50 + connectedIdx + 1 : null
 
-  const pinnedEntry = connectedEntry && globalRank
-    ? { entry: connectedEntry, rank: globalRank }
-    : null
+  const pinnedEntry = inPageEntry && inPageRank
+    ? { entry: inPageEntry, rank: inPageRank }
+    : myEntry ?? null
 
   const totalAwarded =
     (data?.campaignTotals.addFunds ?? 0) + (data?.campaignTotals.farcasterFollow ?? 0)
