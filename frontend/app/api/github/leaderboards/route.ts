@@ -12,7 +12,11 @@ const LEADERBOARD_FACTORY_ADDRESS = '0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA'
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org'),
+    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org', {
+      // cache: 'no-store' bypasses both Next.js data cache and any HTTP-level
+      // caching layer in front of Alchemy so every bust=1 call reads current state.
+      fetchOptions: { cache: 'no-store' },
+    }),
   })
 }
 
@@ -71,13 +75,17 @@ export async function GET(request: Request) {
 
     const client = getClient()
 
+    // Pin all reads to the current block so Alchemy cannot serve a stale
+    // cached response for the `latest` tag across requests.
+    const blockNumber = await client.getBlockNumber()
+
     // Chunk multicalls into batches of 50 to avoid Alchemy limits
     const CHUNK_SIZE = 50
     async function chunkedMulticall(contracts: Parameters<typeof client.multicall>[0]['contracts']) {
       const results = []
       for (let i = 0; i < contracts.length; i += CHUNK_SIZE) {
         const chunk = contracts.slice(i, i + CHUNK_SIZE) as Parameters<typeof client.multicall>[0]['contracts']
-        const chunkResults = await client.multicall({ contracts: chunk })
+        const chunkResults = await client.multicall({ contracts: chunk, blockNumber })
         results.push(...chunkResults)
       }
       return results
@@ -91,6 +99,7 @@ export async function GET(request: Request) {
       abi: FACTORY_ABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
+      blockNumber,
     })
 
     if (!addresses || addresses.length === 0) {
