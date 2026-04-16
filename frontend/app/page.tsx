@@ -268,7 +268,7 @@ export default function Home() {
       <section className="bg-[#0A0F3D] py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold text-[#EDEEFF] mb-4">Raise Funds with Markee</h2>
-          <p className="text-[#8A8FBF] mb-8">Join our growing network of digital communities getting funded with Markee</p>
+          <p className="text-[#8A8FBF] mb-8">Join the growing network of digital communities getting funded with a Markee sign.</p>
 
           <div className="flex items-center justify-center gap-8 mb-8 flex-wrap">
             <div className="flex items-center gap-2">
