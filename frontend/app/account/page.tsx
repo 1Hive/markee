@@ -125,7 +125,7 @@ function platformIcon(lb: AnyLeaderboard, size = 22) {
 function platformLink(lb: AnyLeaderboard) {
   if (lb.platform === 'superfluid') return '/ecosystem/platforms/superfluid'
   if (lb.platform === 'github') return '/ecosystem/platforms/github'
-  return '/ecosystem'
+  return '/create-a-markee'
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -272,14 +272,14 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="ecosystem" />
+      <Header activePage="create-a-markee" />
 
       {/* Breadcrumbs */}
       <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm">
-            <Link href="/ecosystem" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">
-              Ecosystem
+            <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">
+              Create a Markee
             </Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <span className="text-[#EDEEFF]">My Markees</span>
@@ -352,7 +352,7 @@ export default function AccountPage() {
               <p className="text-[#8A8FBF] text-sm mb-6">Create your first sign on one of our platforms.</p>
               <div className="flex items-center justify-center gap-3 flex-wrap">
                 <Link
-                  href="/ecosystem"
+                  href="/create-a-markee"
                   className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   <Globe2 size={14} className="text-[#F897FE]" />
@@ -481,7 +481,7 @@ export default function AccountPage() {
                   Buy a message on any Markee leaderboard to get your words in front of an audience.
                 </p>
                 <Link
-                  href="/ecosystem"
+                  href="/create-a-markee"
                   className="inline-flex items-center gap-2 bg-[#7C9CFF] text-[#060A2A] px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#F897FE] transition-colors"
                 >
                   Browse leaderboards

@@ -7,7 +7,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { TokenBalance } from '@/components/wallet/TokenBalance'
 
 interface HeaderProps {
-  activePage?: 'home' | 'how-it-works' | 'ecosystem' | 'owners'
+  activePage?: 'home' | 'how-it-works' | 'create-a-markee' | 'owners'
   useRegularLinks?: boolean 
 }
 
@@ -59,8 +59,8 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
               <NavLink href="/how-it-works" active={activePage === 'how-it-works'} useRegularLinks={useRegularLinks}>
                 How it Works
               </NavLink>
-              <NavLink href="/ecosystem" active={activePage === 'ecosystem'} useRegularLinks={useRegularLinks}>
-                Ecosystem
+              <NavLink href="/create-a-markee" active={activePage === 'create-a-markee'} useRegularLinks={useRegularLinks}>
+                Create a Markee
               </NavLink>
               <NavLink href="/owners" active={activePage === 'owners'} useRegularLinks={useRegularLinks}>
                 Owners
@@ -93,13 +93,13 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
               >
                 How it Works
               </NavLink>
-              <NavLink 
-                href="/ecosystem" 
-                active={activePage === 'ecosystem'}
+              <NavLink
+                href="/create-a-markee"
+                active={activePage === 'create-a-markee'}
                 onClick={() => setMobileMenuOpen(false)}
                 useRegularLinks={useRegularLinks}
               >
-                Ecosystem
+                Create a Markee
               </NavLink>
               <NavLink 
                 href="/owners" 

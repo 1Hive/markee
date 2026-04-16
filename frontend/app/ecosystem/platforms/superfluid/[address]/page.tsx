@@ -213,13 +213,13 @@ export default function SuperfluidLeaderboardPage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="ecosystem" />
+      <Header activePage="create-a-markee" />
 
       {/* Breadcrumbs */}
       <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm flex-wrap">
-            <Link href="/ecosystem" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Ecosystem</Link>
+            <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <Link href="/ecosystem/platforms/superfluid" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Superfluid</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />

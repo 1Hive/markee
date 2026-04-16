@@ -307,10 +307,10 @@ function CollectSection() {
 
           {/* CTA 2 */}
           <CollectCTACard
-            title="Our Ecosystem"
+            title="Create a Markee"
             subtitle="See the platforms adding Markee to their sites"
-            buttonText="View Ecosystem"
-            buttonLink="https://www.markee.xyz/ecosystem"
+            buttonText="Create a Markee"
+            buttonLink="https://www.markee.xyz/create-a-markee"
             color="cool-sky-blue"
           />
 
@@ -411,7 +411,7 @@ function CondensedFAQ() {
       answer: (
         <div className="space-y-2">
           <p>Markee is now live, with our first integrations under construction. If you run a website, community platform, or digital organization, reach out to and sign up to join the waitlist.</p>
-          <p className="mt-3"><Link href="/ecosystem" className="text-soft-pink hover:underline font-semibold">Explore our ecosystem</Link> to see existing integrations, or contact us to get started.</p>
+          <p className="mt-3"><Link href="/create-a-markee" className="text-soft-pink hover:underline font-semibold">Create a Markee</Link> to see existing platforms, or contact us to get started.</p>
         </div>
       )
     },

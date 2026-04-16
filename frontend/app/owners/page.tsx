@@ -75,7 +75,7 @@ export default function Owners() {
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h1>
           <p className="text-xl text-[#B8B6D9] mb-8">
             Our network is cooperatively owned by MARKEE token holders. Get MARKEE by buying a message here.<br />
-            Or buy from <a href="/ecosystem" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">Our Ecosystem</a> and fund your favorite platform too.
+            Or buy from <a href="/create-a-markee" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">Our Platforms</a> and fund your favorite platform too.
           </p>
           <div className="flex gap-4 justify-center">
             <a

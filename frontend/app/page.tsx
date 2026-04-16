@@ -303,7 +303,7 @@ export default function Home() {
           </div>
 
           <a
-            href="/ecosystem"
+            href="/create-a-markee"
             className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
           >
             Create a Markee
