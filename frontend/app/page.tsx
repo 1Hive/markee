@@ -15,7 +15,7 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { Eye, Trophy } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { formatEther } from 'viem'
 
 import { formatDistanceToNow } from 'date-fns'
@@ -286,11 +286,12 @@ export default function Home() {
                 <span className="text-[#8A8FBF]">active Markees</span>
               </div>
               <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#EDEEFF] animate-pulse" />
                 <span className="text-[#EDEEFF] font-semibold text-3xl">{ecoMessages.toLocaleString()}</span>
                 <span className="text-[#8A8FBF]">messages bought</span>
               </div>
               <div className="flex items-center gap-2">
-                <Trophy size={16} className="text-[#7C9CFF]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#7C9CFF] animate-pulse" />
                 <span className="text-[#7C9CFF] font-semibold text-3xl">
                   {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
                 </span>
