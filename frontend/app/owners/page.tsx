@@ -74,15 +74,16 @@ export default function Owners() {
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h1>
           <p className="text-xl text-[#B8B6D9] mb-8">
-            Our network is cooperatively owned by MARKEE token holders. Get MARKEE by buying a message here.<br />
-            Or buy from <a href="/create-a-markee" className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors">Our Platforms</a> and fund your favorite platform too.
+            Our network is cooperatively owned by MARKEE token holders. Every message bought issues MARKEE tokens on our network's permissionless Revnet
           </p>
           <div className="flex gap-4 justify-center">
             <a
-              href="/"
+              href="https://www.revnet.app/v5:base:119"
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
             >
-              Buy a Message
+              View Revnet
             </a>
             <a
               href="/how-it-works"
