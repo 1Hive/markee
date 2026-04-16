@@ -15,14 +15,7 @@ interface LeaderboardEntry {
 
 interface RewardsData {
   accounts: LeaderboardEntry[]
-  pagination: {
-    page: number
-    limit: number
-    totalDocs: number
-    totalPages: number
-    hasNextPage: boolean
-    hasPrevPage: boolean
-  }
+  totalDocs: number
   campaignTotals: {
     addFunds: number
     farcasterFollow: number
@@ -32,9 +25,7 @@ interface RewardsData {
 interface RewardsModalProps {
   isOpen: boolean
   onClose: () => void
-  /** Human-readable title shown in the modal header */
   title?: string
-  /** Optional description shown under the title */
   description?: string
 }
 
@@ -139,19 +130,16 @@ export function RewardsModal({
 }: RewardsModalProps) {
   const { address } = useAccount()
   const [data, setData] = useState<RewardsData | null>(null)
-  const [myEntry, setMyEntry] = useState<{ entry: LeaderboardEntry; rank: number } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [page, setPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = useCallback(async (p: number, silent = false) => {
+  const fetchData = useCallback(async (silent = false) => {
     try {
       if (!silent) setIsLoading(true)
       else setIsRefreshing(true)
       setError(null)
-
-      const res = await fetch(`/api/superfluid/rewards?page=${p}&limit=50`)
+      const res = await fetch('/api/superfluid/rewards')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData(await res.json())
     } catch {
@@ -162,44 +150,22 @@ export function RewardsModal({
     }
   }, [])
 
-  const fetchMyEntry = useCallback(async (addr: string) => {
-    try {
-      const res = await fetch(`/api/superfluid/rewards?address=${addr}`)
-      if (!res.ok) return
-      const d = await res.json()
-      if (d.entry) setMyEntry({ entry: d.entry, rank: d.rank })
-    } catch {}
-  }, [])
-
-  // Fetch on open, reset on close
   useEffect(() => {
     if (isOpen) {
-      setPage(1)
-      fetchData(1)
-      if (address) fetchMyEntry(address)
+      fetchData()
     } else {
       setData(null)
-      setMyEntry(null)
       setError(null)
     }
-  }, [isOpen, fetchData, fetchMyEntry, address])
-
-  useEffect(() => {
-    if (isOpen) fetchData(page)
-  }, [page, isOpen, fetchData])
+  }, [isOpen, fetchData])
 
   if (!isOpen) return null
 
-  // Find connected wallet in current page; fall back to dedicated lookup
   const connectedIdx = address
     ? (data?.accounts.findIndex(e => e.account.toLowerCase() === address.toLowerCase()) ?? -1)
     : -1
-  const inPageEntry = connectedIdx >= 0 ? data?.accounts[connectedIdx] ?? null : null
-  const inPageRank = connectedIdx >= 0 ? (page - 1) * 50 + connectedIdx + 1 : null
-
-  const pinnedEntry = inPageEntry && inPageRank
-    ? { entry: inPageEntry, rank: inPageRank }
-    : myEntry ?? null
+  const connectedEntry = connectedIdx >= 0 ? data!.accounts[connectedIdx] : null
+  const connectedRank = connectedIdx >= 0 ? connectedIdx + 1 : null
 
   const totalAwarded =
     (data?.campaignTotals.addFunds ?? 0) + (data?.campaignTotals.farcasterFollow ?? 0)
@@ -229,7 +195,7 @@ export function RewardsModal({
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => fetchData(page, true)}
+              onClick={() => fetchData(true)}
               disabled={isRefreshing}
               className="text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors disabled:opacity-40"
             >
@@ -246,7 +212,7 @@ export function RewardsModal({
           <div className="flex items-center gap-6 px-6 py-3 border-b border-[#8A8FBF]/15 bg-[#060A2A]/40 flex-shrink-0 flex-wrap">
             <div className="flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-[#F897FE]" />
-              <span className="text-[#F897FE] font-semibold">{data.pagination.totalDocs.toLocaleString()}</span>
+              <span className="text-[#F897FE] font-semibold">{data.totalDocs.toLocaleString()}</span>
               <span className="text-[#8A8FBF]">eligible addresses</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
@@ -254,7 +220,6 @@ export function RewardsModal({
               <span className="text-[#7C9CFF] font-semibold">{totalAwarded.toLocaleString()}</span>
               <span className="text-[#8A8FBF]">points awarded</span>
             </div>
-
           </div>
         )}
 
@@ -267,7 +232,7 @@ export function RewardsModal({
           ) : error ? (
             <div className="py-12 text-center">
               <p className="text-[#8A8FBF] text-sm">{error}</p>
-              <button onClick={() => fetchData(page)} className="mt-3 text-[#F897FE] text-sm hover:underline">
+              <button onClick={() => fetchData()} className="mt-3 text-[#F897FE] text-sm hover:underline">
                 Try again
               </button>
             </div>
@@ -279,29 +244,28 @@ export function RewardsModal({
             </div>
           ) : (
             <>
-              {/* Pinned: connected wallet always at top */}
-              {pinnedEntry && (
+              {/* Pinned: connected wallet at top */}
+              {connectedEntry && connectedRank && (
                 <>
                   <div className="flex items-center gap-1.5 text-[10px] text-[#F897FE] font-semibold uppercase tracking-wider px-1">
                     <Pin size={9} />
                     Your ranking
                   </div>
                   <RewardsRow
-                    entry={pinnedEntry.entry}
-                    rank={pinnedEntry.rank}
+                    entry={connectedEntry}
+                    rank={connectedRank}
                     isConnectedWallet
                   />
                   <div className="border-t border-[#8A8FBF]/20 pt-1" />
                 </>
               )}
               {data?.accounts.map((entry, i) => {
-                // Skip if already pinned above
                 if (address && entry.account.toLowerCase() === address.toLowerCase()) return null
                 return (
                   <RewardsRow
                     key={entry.account}
                     entry={entry}
-                    rank={(page - 1) * 50 + i + 1}
+                    rank={i + 1}
                     isConnectedWallet={false}
                   />
                 )
@@ -309,29 +273,6 @@ export function RewardsModal({
             </>
           )}
         </div>
-
-        {/* Pagination */}
-        {data && data.pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-[#8A8FBF]/20 flex-shrink-0">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={!data.pagination.hasPrevPage}
-              className="text-sm text-[#8A8FBF] hover:text-[#EDEEFF] disabled:opacity-30 transition-colors"
-            >
-              ← Previous
-            </button>
-            <span className="text-xs text-[#8A8FBF]">
-              Page {data.pagination.page} of {data.pagination.totalPages}
-            </span>
-            <button
-              onClick={() => setPage(p => p + 1)}
-              disabled={!data.pagination.hasNextPage}
-              className="text-sm text-[#8A8FBF] hover:text-[#EDEEFF] disabled:opacity-30 transition-colors"
-            >
-              Next →
-            </button>
-          </div>
-        )}
 
         {/* How points work footer */}
         <div className="flex-shrink-0 border-t border-[#8A8FBF]/20 px-6 py-4 bg-[#060A2A]/40">
