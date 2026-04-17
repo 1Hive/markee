@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
   Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
-  MessageSquare, TrendingUp, TrendingDown,
+  MessageSquare, TrendingDown,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
@@ -721,7 +721,7 @@ function MessageCard({ message }: { message: MyMessage }) {
         </Link>
         {message.isTop ? (
           <span className="flex items-center gap-1 text-xs font-semibold text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-full flex-shrink-0">
-            <TrendingUp size={11} />
+            <Trophy size={11} />
             Top
           </span>
         ) : (
