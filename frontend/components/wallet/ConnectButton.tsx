@@ -1,8 +1,6 @@
 'use client'
 import { ConnectButton as RainbowConnectButton } from '@rainbow-me/rainbowkit'
 import { Wallet, User } from 'lucide-react'
-import Link from 'next/link'
-
 export function ConnectButton() {
   return (
     <RainbowConnectButton.Custom>
@@ -44,13 +42,13 @@ export function ConnectButton() {
 
               return (
                 <div className="flex items-center gap-2">
-                  <Link
+                  <a
                     href="/account"
                     className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/30 text-[#8A8FBF] hover:text-[#F897FE] hover:border-[#F897FE]/60 transition-colors"
                     title="My Markees"
                   >
                     <User size={18} />
-                  </Link>
+                  </a>
                   <button
                     onClick={openAccountModal}
                     type="button"
