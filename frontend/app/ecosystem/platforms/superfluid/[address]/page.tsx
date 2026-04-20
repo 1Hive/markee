@@ -425,8 +425,8 @@ function MarkeeRow({
   formatFunds: (wei: bigint) => string
   trackView: (m: Markee) => void
   viewCount?: number
-  onAddFunds: () => void
-  onEditMessage: () => void
+  onAddFunds?: () => void
+  onEditMessage?: () => void
 }) {
   const { address } = useAccount()
   const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()

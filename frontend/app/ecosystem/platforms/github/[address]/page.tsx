@@ -435,8 +435,8 @@ function MarkeeRow({
   markee: MarkeeSlot
   rank: number
   formatFunds: (wei: bigint) => string
-  onAddFunds: () => void
-  onEditMessage: () => void
+  onAddFunds?: () => void
+  onEditMessage?: () => void
   viewCount?: number
 }) {
   const { address } = useAccount()
