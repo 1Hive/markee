@@ -10,6 +10,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { NETWORK_PAUSED } from '@/lib/paused'
 import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { useViews } from '@/hooks/useViews'
@@ -258,13 +259,15 @@ export default function WebsiteLeaderboardPage() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => { setSelectedMarkee(null); setInitialMode(undefined); setBuyModalOpen(true) }}
-                className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-              >
-                <Plus size={18} />
-                Buy a Message
-              </button>
+              {!NETWORK_PAUSED && (
+                <button
+                  onClick={() => { setSelectedMarkee(null); setInitialMode(undefined); setBuyModalOpen(true) }}
+                  className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
+                >
+                  <Plus size={18} />
+                  Buy a Message
+                </button>
+              )}
               <button
                 onClick={() => setIntegrationModalOpen(true)}
                 className="flex items-center gap-2 border border-[#8A8FBF]/30 hover:border-[#F897FE]/50 text-[#8A8FBF] hover:text-[#F897FE] px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap text-sm"
@@ -313,12 +316,14 @@ export default function WebsiteLeaderboardPage() {
                   <div className="flex items-center gap-4 mt-3">
                     {topMarkee.name && <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
-                    <button
-                      onClick={() => { setSelectedMarkee(topMarkee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
-                      className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
-                    >
-                      Add funds →
-                    </button>
+                    {!NETWORK_PAUSED && (
+                      <button
+                        onClick={() => { setSelectedMarkee(topMarkee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
+                        className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
+                      >
+                        Add funds →
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -371,13 +376,15 @@ export default function WebsiteLeaderboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-[#EDEEFF]">All Messages</h2>
-            <button
-              onClick={() => { setSelectedMarkee(null); setInitialMode(undefined); setBuyModalOpen(true) }}
-              className="flex items-center gap-1.5 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors border border-[#8A8FBF]/30 hover:border-[#F897FE]/40 px-4 py-2 rounded-lg"
-            >
-              <Plus size={14} />
-              Buy a message
-            </button>
+            {!NETWORK_PAUSED && (
+              <button
+                onClick={() => { setSelectedMarkee(null); setInitialMode(undefined); setBuyModalOpen(true) }}
+                className="flex items-center gap-1.5 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors border border-[#8A8FBF]/30 hover:border-[#F897FE]/40 px-4 py-2 rounded-lg"
+              >
+                <Plus size={14} />
+                Buy a message
+              </button>
+            )}
           </div>
 
           {isLoading ? (
@@ -389,13 +396,15 @@ export default function WebsiteLeaderboardPage() {
               <Globe2 size={40} className="text-[#8A8FBF] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">No messages yet</p>
               <p className="text-[#8A8FBF] text-sm mb-6">Be the first to buy a message on this sign.</p>
-              <button
-                onClick={() => setBuyModalOpen(true)}
-                className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-              >
-                <Plus size={18} />
-                Buy the first message
-              </button>
+              {!NETWORK_PAUSED && (
+                <button
+                  onClick={() => setBuyModalOpen(true)}
+                  className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+                >
+                  <Plus size={18} />
+                  Buy the first message
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -407,8 +416,8 @@ export default function WebsiteLeaderboardPage() {
                   formatFunds={formatFunds}
                   trackView={trackView}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
-                  onAddFunds={() => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
-                  onEditMessage={() => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
+                  onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
+                  onEditMessage={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                 />
               ))}
             </div>

@@ -17,6 +17,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
 import { useGithubTraffic } from '@/hooks/useGithubTraffic'
 import { useViews } from '@/hooks/useViews'
+import { NETWORK_PAUSED } from '@/lib/paused'
 import type { Markee } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -262,13 +263,15 @@ export default function GithubLeaderboardPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => { setSelectedMarkee(null); setBuyModalOpen(true) }}
-              className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-            >
-              <Plus size={18} />
-              Buy a Message
-            </button>
+            {!NETWORK_PAUSED && (
+              <button
+                onClick={() => { setSelectedMarkee(null); setBuyModalOpen(true) }}
+                className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
+              >
+                <Plus size={18} />
+                Buy a Message
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-8 mt-8">
@@ -323,12 +326,14 @@ export default function GithubLeaderboardPage() {
                     <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
                   )}
                   <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
-                  <button
-                    onClick={() => { setSelectedMarkee(topMarkee); setBuyModalOpen(true) }}
-                    className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
-                  >
-                    Add funds →
-                  </button>
+                  {!NETWORK_PAUSED && (
+                    <button
+                      onClick={() => { setSelectedMarkee(topMarkee); setBuyModalOpen(true) }}
+                      className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
+                    >
+                      Add funds →
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -341,13 +346,15 @@ export default function GithubLeaderboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-[#EDEEFF]">All Messages</h2>
-            <button
-              onClick={() => { setSelectedMarkee(null); setBuyModalOpen(true) }}
-              className="flex items-center gap-1.5 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors border border-[#8A8FBF]/30 hover:border-[#F897FE]/40 px-4 py-2 rounded-lg"
-            >
-              <Plus size={14} />
-              Buy a message
-            </button>
+            {!NETWORK_PAUSED && (
+              <button
+                onClick={() => { setSelectedMarkee(null); setBuyModalOpen(true) }}
+                className="flex items-center gap-1.5 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors border border-[#8A8FBF]/30 hover:border-[#F897FE]/40 px-4 py-2 rounded-lg"
+              >
+                <Plus size={14} />
+                Buy a message
+              </button>
+            )}
           </div>
 
           {markees.length === 0 ? (
@@ -355,13 +362,15 @@ export default function GithubLeaderboardPage() {
               <Trophy size={40} className="text-[#8A8FBF] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">No messages yet</p>
               <p className="text-[#8A8FBF] text-sm mb-6">Be the first to buy a message on this leaderboard.</p>
-              <button
-                onClick={() => setBuyModalOpen(true)}
-                className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-              >
-                <Plus size={18} />
-                Buy the first message
-              </button>
+              {!NETWORK_PAUSED && (
+                <button
+                  onClick={() => setBuyModalOpen(true)}
+                  className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+                >
+                  <Plus size={18} />
+                  Buy the first message
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -371,8 +380,8 @@ export default function GithubLeaderboardPage() {
                   markee={markee}
                   rank={idx + 1}
                   formatFunds={formatFunds}
-                  onAddFunds={() => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
-                  onEditMessage={() => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
+                  onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
+                  onEditMessage={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                 />
               ))}

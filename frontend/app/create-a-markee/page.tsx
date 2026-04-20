@@ -10,6 +10,7 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { CreateOpenInternetModal } from '@/components/modals/CreateOpenInternetModal'
+import { NETWORK_PAUSED } from '@/lib/paused'
 import { ModerationProvider } from '@/components/moderation'
 
 const INITIAL_SHOW = 9
@@ -359,12 +360,14 @@ export default function EcosystemPage() {
           <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
             Explore the Universe of Markee messages growing across the internet ✨
           </p>
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-          >
-            Create a Markee
-          </button>
+          {!NETWORK_PAUSED && (
+            <button
+              onClick={() => setCreateModalOpen(true)}
+              className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+            >
+              Create a Markee
+            </button>
+          )}
 
           {/* Stats */}
           {!isLoading && active.length > 0 && (
@@ -409,12 +412,14 @@ export default function EcosystemPage() {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setCreateModalOpen(true)}
-                  className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
-                >
-                  Create a Markee for your Website
-                </button>
+                {!NETWORK_PAUSED && (
+                  <button
+                    onClick={() => setCreateModalOpen(true)}
+                    className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
+                  >
+                    Create a Markee for your Website
+                  </button>
+                )}
               </div>
 
               {/* GitHub */}
@@ -488,7 +493,7 @@ export default function EcosystemPage() {
                     renderCard={lb => (
                       <EcosystemCard
                         lb={lb}
-                        onBuyLegacy={l => setTopDawgModalData(l)}
+                        onBuyLegacy={NETWORK_PAUSED ? undefined : l => setTopDawgModalData(l)}
                         viewCount={viewCounts.get(lb.address.toLowerCase())}
                       />
                     )}
@@ -515,7 +520,7 @@ export default function EcosystemPage() {
                     renderCard={lb => (
                       <EcosystemCard
                         lb={lb}
-                        onBuyLegacy={l => setTopDawgModalData(l)}
+                        onBuyLegacy={NETWORK_PAUSED ? undefined : l => setTopDawgModalData(l)}
                         viewCount={viewCounts.get(lb.address.toLowerCase())}
                       />
                     )}

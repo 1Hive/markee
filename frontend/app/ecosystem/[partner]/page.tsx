@@ -15,6 +15,7 @@ import { useViews } from '@/hooks/useViews'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
 import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatDistanceToNow } from 'date-fns'
+import { NETWORK_PAUSED } from '@/lib/paused'
 import type { Markee } from '@/types'
 
 // GraphQL queries for fetching ALL markees from a partner strategy
@@ -170,18 +171,21 @@ export default function PartnerPage() {
   }, [fetchMarkees])
 
   const handleCreateNew = () => {
+    if (NETWORK_PAUSED) return
     setSelectedMarkee(null)
     setModalMode('create')
     setIsModalOpen(true)
   }
 
   const handleEditMessage = (markee: Markee) => {
+    if (NETWORK_PAUSED) return
     setSelectedMarkee(markee)
     setModalMode('updateMessage')
     setIsModalOpen(true)
   }
 
   const handleAddFunds = (markee: Markee) => {
+    if (NETWORK_PAUSED) return
     setSelectedMarkee(markee)
     setModalMode('addFunds')
     setIsModalOpen(true)
