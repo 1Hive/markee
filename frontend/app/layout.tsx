@@ -32,8 +32,7 @@ export default function RootLayout({
       <body className="bg-[#0a0e27] text-white antialiased">
         {NETWORK_PAUSED && (
           <div className="w-full bg-[#7C0000] text-white text-sm px-4 py-3 text-center font-medium z-50 relative">
-            <span className="mr-2">&#9888;</span>
-            The Markee network is paused. A vulnerability in Revnets v5 contracts has been responsibly disclosed -- we are working on migrating to the secure v6 version.{' '}
+            &#9888; The Markee network is paused. A vulnerability in Revnets v5 contracts has been responsibly disclosed - we're working on migrating to the secure v6.{' '}
             <a
               href="https://discord.gg/BxuNakkS"
               target="_blank"
