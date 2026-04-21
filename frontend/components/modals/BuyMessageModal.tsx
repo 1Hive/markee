@@ -3,13 +3,15 @@
 import { useState, useEffect } from 'react'
 import {
   Trophy, X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Plus, ExternalLink,
+  CreditCard, Wallet,
 } from 'lucide-react'
 import {
   useWriteContract, useWaitForTransactionReceipt,
   useAccount, useSwitchChain, useBalance, useReadContract,
 } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { base } from 'viem/chains'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 
@@ -113,6 +115,9 @@ export function BuyMessageModal({
   const { switchChain } = useSwitchChain()
   const { data: balanceData } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
+  const { login } = usePrivy()
+  const { fundWallet } = useFundWallet()
+  const [isFunding, setIsFunding] = useState(false)
 
   const { data: beneficiaryAddress } = useReadContract({
     address: leaderboardAddress,
@@ -407,8 +412,15 @@ export function BuyMessageModal({
 
             {!isConnected ? (
               <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Connect your wallet to continue.</p>
-                <ConnectButton />
+                <p className="text-[#8A8FBF] text-sm">Sign in to buy a message -- use email, social, or a crypto wallet.</p>
+                <button
+                  onClick={login}
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2 bg-[#7C9CFF] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#F897FE] transition-colors"
+                >
+                  <Wallet size={18} />
+                  Sign in to continue
+                </button>
               </div>
             ) : !isCorrectChain ? (
               <div className="space-y-4">
@@ -529,6 +541,37 @@ export function BuyMessageModal({
                   </div>
                 ) : (
                   revenueSplitJSX
+                )}
+
+                {!isUpdateMessage && !canAfford && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[#8A8FBF] text-center">
+                      Your wallet balance is too low for this amount.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isFunding}
+                      onClick={async () => {
+                        if (!address) return
+                        setIsFunding(true)
+                        try {
+                          await fundWallet({
+                            address,
+                            options: { chain: base, amount: amount || undefined },
+                          })
+                        } finally {
+                          setIsFunding(false)
+                        }
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isFunding ? (
+                        <><Loader2 size={18} className="animate-spin" /> Opening payment…</>
+                      ) : (
+                        <><CreditCard size={18} /> Fund with card / Apple Pay / PayPal</>
+                      )}
+                    </button>
+                  </div>
                 )}
 
                 {(error || writeError) && (
