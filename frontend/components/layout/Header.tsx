@@ -38,9 +38,12 @@ const NavLink = ({ href, active, children, onClick, useRegularLinks }: {
 
 export function Header({ activePage = 'home', useRegularLinks = false }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  
+
   return (
-    <header className="bg-[#0A0F3D] border-b border-[#8A8FBF]/20" style={{ position: 'relative', zIndex: 50 }}>
+    <header
+      className="sticky top-0 z-50 border-b border-[#8A8FBF]/20"
+      style={{ background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(12px)' }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-8">
@@ -53,9 +56,12 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
                 <img src="/markee-logo.png" alt="Markee" className="h-10 w-auto" />
               </Link>
             )}
-            
+
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex gap-6">
+            <nav className="hidden md:flex gap-6 text-[13px]">
+              <NavLink href="/" active={activePage === 'home'} useRegularLinks={useRegularLinks}>
+                All Markees
+              </NavLink>
               <NavLink href="/how-it-works" active={activePage === 'how-it-works'} useRegularLinks={useRegularLinks}>
                 How it Works
               </NavLink>
@@ -67,13 +73,13 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
               </NavLink>
             </nav>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <TokenBalance />
             <ConnectButton />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden text-[#B8B6D9] hover:text-[#F897FE] p-2"
+              className="md:hidden text-[#8A8FBF] hover:text-[#F897FE] p-2 transition-colors"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -84,29 +90,17 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
           <div className="md:hidden mt-4 pb-4 border-t border-[#8A8FBF]/20 pt-4">
-            <nav className="flex flex-col gap-4">
-              <NavLink 
-                href="/how-it-works" 
-                active={activePage === 'how-it-works'}
-                onClick={() => setMobileMenuOpen(false)}
-                useRegularLinks={useRegularLinks}
-              >
+            <nav className="flex flex-col gap-4 text-[13px]">
+              <NavLink href="/" active={activePage === 'home'} onClick={() => setMobileMenuOpen(false)} useRegularLinks={useRegularLinks}>
+                All Markees
+              </NavLink>
+              <NavLink href="/how-it-works" active={activePage === 'how-it-works'} onClick={() => setMobileMenuOpen(false)} useRegularLinks={useRegularLinks}>
                 How it Works
               </NavLink>
-              <NavLink
-                href="/create-a-markee"
-                active={activePage === 'create-a-markee'}
-                onClick={() => setMobileMenuOpen(false)}
-                useRegularLinks={useRegularLinks}
-              >
+              <NavLink href="/create-a-markee" active={activePage === 'create-a-markee'} onClick={() => setMobileMenuOpen(false)} useRegularLinks={useRegularLinks}>
                 Create a Markee
               </NavLink>
-              <NavLink 
-                href="/owners" 
-                active={activePage === 'owners'}
-                onClick={() => setMobileMenuOpen(false)}
-                useRegularLinks={useRegularLinks}
-              >
+              <NavLink href="/owners" active={activePage === 'owners'} onClick={() => setMobileMenuOpen(false)} useRegularLinks={useRegularLinks}>
                 Owners
               </NavLink>
             </nav>

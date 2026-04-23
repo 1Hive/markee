@@ -99,3 +99,33 @@ img.emoji {
   width: 100%;
   margin: 0;
 }
+
+/* ── Design system animations ──────────────────────────────────── */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; }
+  50%       { opacity: 0.9; }
+}
+
+@keyframes blink {
+  0%, 50%       { opacity: 1; }
+  50.01%, 100%  { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+@keyframes rowHighlight {
+  0%   { background: rgba(248, 151, 254, 0.18); }
+  100% { background: transparent; }
+}
+
+.markee-row--new {
+  animation: rowHighlight 1.6s ease-out;
+}
