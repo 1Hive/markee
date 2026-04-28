@@ -14,13 +14,14 @@ import "./Interfaces.sol";
 ///        - Message and name length limits
 ///        - Free edits for Markee owners
 ///        - Open fund contributions from anyone
-///        - Payment routing via Markee.pay() - funds always flow through Markee's immutable routing logic
+///        - Payment routing via Markee.pay() — funds always flow through Markee's routing logic
 ///
-/// @dev Implements IPricingStrategy so that Markee can read beneficiaryAddress() dynamically.
-///      Changing beneficiaryAddress here instantly affects routing for every connected Markee.
+/// @dev Implements IPricingStrategy so that Markee reads all five routing values (beneficiaryAddress,
+///      percentToBeneficiary, revNetEnabled, revNetTerminal, revNetProjectId) dynamically from here.
+///      A single admin call on this Leaderboard propagates instantly to every connected Markee —
+///      including the RevNet terminal swap when v6 goes live. No per-Markee migrations ever needed.
 ///
-/// @dev Deployed as a minimal proxy clone by LeaderboardFactory (EIP-1167). RevNet config and
-///      Markee implementation address are injected at initialization and cannot change.
+/// @dev Deployed as a minimal proxy clone by LeaderboardFactory (EIP-1167).
 ///      Do not deploy this contract directly.
 contract Leaderboard is IPricingStrategy {
 
@@ -28,32 +29,25 @@ contract Leaderboard is IPricingStrategy {
     // Version
     // ─────────────────────────────────────────────
 
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "1.1.0";
 
     // ─────────────────────────────────────────────
     // Initialized-once config (set by initialize(), never changes after)
     // ─────────────────────────────────────────────
 
-    /// @notice Juicebox multi-terminal address: passed into every Markee deployment
-    address public revNetTerminal;
-
-    /// @notice Markee Cooperative RevNet project ID: passed into every Markee deployment
-    uint256 public revNetProjectId;
-
     /// @notice Markee implementation contract: cloned for every new message slot
-    /// @dev Storing this as a reference rather than using `new Markee()` keeps Leaderboard
+    /// @dev Storing as a reference rather than using `new Markee()` keeps Leaderboard
     ///      under the 24KB contract size limit (EIP-170).
     address public markeeImplementation;
 
     /// @notice The factory that deployed this Leaderboard — identifies the platform context
-    /// @dev Traverse Markee → Leaderboard → factory → platformName to understand full context
     address public factory;
 
     /// @notice Guard preventing initialize() from being called more than once
     bool public initialized;
 
     // ─────────────────────────────────────────────
-    // Admin-mutable config
+    // Admin-mutable config (implements IPricingStrategy)
     // ─────────────────────────────────────────────
 
     /// @notice Address with admin rights over this Leaderboard instance
@@ -70,6 +64,14 @@ contract Leaderboard is IPricingStrategy {
     /// @notice When false, Markees skip the RevNet call and route 100% to beneficiaryAddress
     /// @dev Flip to true (along with setting revNetTerminal + revNetProjectId) to activate RevNet v6
     bool public override revNetEnabled = false;
+
+    /// @notice Juicebox multi-terminal address for RevNet payments
+    /// @dev Read dynamically by each Markee via IPricingStrategy.revNetTerminal(). Update once when v6 is live.
+    address public override revNetTerminal;
+
+    /// @notice Markee Cooperative RevNet project ID
+    /// @dev Read dynamically by each Markee via IPricingStrategy.revNetProjectId(). Update once when v6 is live.
+    uint256 public override revNetProjectId;
 
     /// @notice Guard ensuring initializeHistory() is called at most once
     bool public historyInitialized;
@@ -114,6 +116,12 @@ contract Leaderboard is IPricingStrategy {
         address indexed markeeAddress,
         address indexed owner
     );
+    event MarkeeMigratedFromLegacy(
+        address indexed newMarkeeAddress,
+        address indexed oldMarkeeAddress,
+        address indexed owner,
+        uint256 historicalFunds
+    );
     event FundsAdded(
         address indexed markeeAddress,
         address indexed addedBy,
@@ -149,12 +157,13 @@ contract Leaderboard is IPricingStrategy {
 
     /// @notice Initialises a cloned Leaderboard. Called once by LeaderboardFactory immediately
     ///         after cloning. Also deploys the seed Markee owned by the leaderboard creator.
-    /// @dev Reverts if called a second time.
+    /// @dev RevNet terminal and project ID are NOT passed at init — they default to zero and are
+    ///      set by admin via setRevNetTerminal/setRevNetProjectId once RevNet v6 is live.
+    ///      This avoids baking stale config into the Leaderboard and prevents the v5/v6 migration
+    ///      problem where terminal addresses were locked at initialization time.
     /// @param _admin Address that will have admin rights over this leaderboard
     /// @param _beneficiaryAddress Initial community beneficiary address
     /// @param _leaderboardName Human-readable name for this leaderboard
-    /// @param _revNetTerminal Juicebox terminal address (from factory)
-    /// @param _revNetProjectId Markee Cooperative RevNet project ID (from factory)
     /// @param _markeeImplementation Markee implementation contract to clone for each message slot
     /// @param _minimumPrice Minimum ETH to create a Markee (default 0.001 ETH from factory)
     /// @param _maxMessageLength Max message length in characters (default 222 from factory)
@@ -165,8 +174,6 @@ contract Leaderboard is IPricingStrategy {
         address _admin,
         address _beneficiaryAddress,
         string calldata _leaderboardName,
-        address _revNetTerminal,
-        uint256 _revNetProjectId,
         address _markeeImplementation,
         uint256 _minimumPrice,
         uint256 _maxMessageLength,
@@ -186,15 +193,14 @@ contract Leaderboard is IPricingStrategy {
         admin = _admin;
         beneficiaryAddress = _beneficiaryAddress;
         leaderboardName = _leaderboardName;
-        revNetTerminal = _revNetTerminal;
-        revNetProjectId = _revNetProjectId;
         markeeImplementation = _markeeImplementation;
         minimumPrice = _minimumPrice;
         maxMessageLength = _maxMessageLength;
         maxNameLength = _maxNameLength;
 
-        // Deploy seed Markee — totalFundsAdded = 0, sits at leaderboard bottom
-        // until first paying buyer overtakes it. Owner can set message for free.
+        // revNetTerminal and revNetProjectId intentionally left as zero —
+        // admin sets them once via setRevNetTerminal/setRevNetProjectId when v6 is live.
+
         seedMarkeeAddress = _deployFreeMarkee(_seedOwner);
     }
 
@@ -204,7 +210,8 @@ contract Leaderboard is IPricingStrategy {
 
     /// @notice Creates a new Markee and places it on this leaderboard
     /// @dev Caller pays at least minimumPrice. Payment is forwarded to Markee.pay() which
-    ///      routes funds according to percentToBeneficiary and revNetEnabled.
+    ///      routes funds according to percentToBeneficiary and revNetEnabled — both read
+    ///      dynamically from this contract.
     /// @param _message The initial message to display
     /// @param _name The optional display name (max maxNameLength chars)
     /// @return markeeAddress The address of the newly deployed Markee clone
@@ -223,15 +230,13 @@ contract Leaderboard is IPricingStrategy {
         Markee(markeeAddress).initialize(
             msg.sender,
             address(this),
-            revNetTerminal,
-            revNetProjectId,
             _message,
-            _name
+            _name,
+            0  // no historical funds for a fresh Markee
         );
 
         _addToRegistry(markeeAddress);
 
-        // Forward full payment through Markee's routing logic
         Markee(markeeAddress).pay{value: msg.value}(msg.sender);
 
         emit MarkeeCreated(markeeAddress, msg.sender, _message, _name, msg.value);
@@ -273,8 +278,6 @@ contract Leaderboard is IPricingStrategy {
     // ─────────────────────────────────────────────
 
     /// @notice Allows the Markee owner to update their message at no cost
-    /// @param _markeeAddress The Markee to update
-    /// @param _newMessage The new message content
     function updateMessage(address _markeeAddress, string calldata _newMessage) external {
         require(isMarkeeOnLeaderboard[_markeeAddress], "Markee not on this leaderboard");
         Markee markee = Markee(_markeeAddress);
@@ -286,8 +289,6 @@ contract Leaderboard is IPricingStrategy {
     }
 
     /// @notice Allows the Markee owner to update their display name at no cost
-    /// @param _markeeAddress The Markee to update
-    /// @param _newName The new display name
     function updateName(address _markeeAddress, string calldata _newName) external {
         require(isMarkeeOnLeaderboard[_markeeAddress], "Markee not on this leaderboard");
         Markee markee = Markee(_markeeAddress);
@@ -299,10 +300,10 @@ contract Leaderboard is IPricingStrategy {
     }
 
     // ─────────────────────────────────────────────
-    // Pricing strategy migration (lazy pattern)
+    // Migration
     // ─────────────────────────────────────────────
 
-    /// @notice Allows admin to migrate a specific Markee to a new pricing strategy
+    /// @notice Pricing strategy migration — moves a Markee to a new strategy contract
     /// @dev The Markee itself calls setPricingStrategy, so this Leaderboard must be the
     ///      current pricingStrategy for the call to succeed. After migration the Markee
     ///      is removed from this leaderboard's registry.
@@ -321,7 +322,6 @@ contract Leaderboard is IPricingStrategy {
 
     /// @notice Removes a Markee from this leaderboard's registry if it has already switched strategy
     /// @dev Anyone can call this. Verifies the Markee has actually left before removing.
-    ///      Useful for scripts or other contracts to clean up stale entries.
     /// @param _markeeAddress The Markee to remove
     function markeeLeft(address _markeeAddress) external {
         require(isMarkeeOnLeaderboard[_markeeAddress], "Markee not on this leaderboard");
@@ -331,6 +331,45 @@ contract Leaderboard is IPricingStrategy {
         );
         _removeFromRegistry(_markeeAddress);
         emit MarkeeLeft(_markeeAddress);
+    }
+
+    /// @notice Migrates a legacy Markee clone to this leaderboard by reading its on-chain state
+    /// @dev Creates a new v1.1 Markee clone seeded with the old clone's owner, message, name, and
+    ///      totalFundsAdded. The historical funds value is read directly from the old clone —
+    ///      it cannot be inflated by admin, as the old clone accumulated it from real ETH flows.
+    ///      Anyone can verify the old clone's totalFundsAdded on-chain to confirm no tampering.
+    ///      The old Markee address is NOT registered here; the new address should be surfaced to
+    ///      users via an address-mapping in the frontend (oldAddress → newAddress).
+    /// @param _oldMarkee Address of the legacy Markee clone to migrate
+    /// @return newMarkeeAddress The address of the newly deployed v1.1 Markee clone
+    function migrateFromLegacy(address _oldMarkee)
+        external
+        onlyAdmin
+        returns (address newMarkeeAddress)
+    {
+        require(_oldMarkee != address(0), "Old markee cannot be zero address");
+        require(!isMarkeeOnLeaderboard[_oldMarkee], "Already on this leaderboard");
+
+        Markee old = Markee(_oldMarkee);
+
+        address oldOwner = old.owner();
+        string memory oldMessage = old.message();
+        string memory oldName = old.name();
+        uint256 historicalFunds = old.totalFundsAdded();
+
+        newMarkeeAddress = _clone(markeeImplementation);
+
+        Markee(newMarkeeAddress).initialize(
+            oldOwner,
+            address(this),
+            oldMessage,
+            oldName,
+            historicalFunds
+        );
+
+        _addToRegistry(newMarkeeAddress);
+
+        emit MarkeeMigratedFromLegacy(newMarkeeAddress, _oldMarkee, oldOwner, historicalFunds);
     }
 
     // ─────────────────────────────────────────────
@@ -343,8 +382,6 @@ contract Leaderboard is IPricingStrategy {
     }
 
     /// @notice Returns the sum of totalFundsAdded across all Markees on this leaderboard
-    /// @dev Suitable for leaderboards under ~500 Markees. For larger leaderboards,
-    ///      use getMarkees() + off-chain multicall aggregation.
     function totalLeaderboardFunds() external view returns (uint256 total) {
         for (uint256 i = 0; i < markees.length; i++) {
             total += Markee(markees[i]).totalFundsAdded();
@@ -388,7 +425,6 @@ contract Leaderboard is IPricingStrategy {
             funds[i] = Markee(markees[i]).totalFundsAdded();
         }
 
-        // Insertion sort (suitable for small N)
         for (uint256 i = 1; i < total; i++) {
             address addrKey = addrs[i];
             uint256 fundKey = funds[i];
@@ -408,6 +444,29 @@ contract Leaderboard is IPricingStrategy {
             topAddresses[i] = addrs[i];
             topFunds[i] = funds[i];
         }
+    }
+
+    // ─────────────────────────────────────────────
+    // History seeding
+    // ─────────────────────────────────────────────
+
+    /// @notice Seeds historical Markee state from a prior deployment. One-time call.
+    /// @dev Registers existing Markee addresses without creating new ones. Allows a fresh
+    ///      deployment to carry forward historical leaderboard membership.
+    ///      Call this once immediately after initialize() before any user activity.
+    ///      For v1.0 → v1.1 migration, prefer migrateFromLegacy() per Markee instead — it
+    ///      creates new v1.1 clones that read routing config from this Leaderboard correctly.
+    /// @param _markees Existing Markee addresses to register
+    function initializeHistory(address[] calldata _markees) external onlyAdmin {
+        require(!historyInitialized, "History already initialized");
+        historyInitialized = true;
+        for (uint256 i = 0; i < _markees.length; i++) {
+            address m = _markees[i];
+            if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
+                _addToRegistry(m);
+            }
+        }
+        emit HistoryInitialized(_markees.length);
     }
 
     // ─────────────────────────────────────────────
@@ -446,7 +505,9 @@ contract Leaderboard is IPricingStrategy {
         emit RevNetEnabledChanged(_enabled);
     }
 
-    /// @notice Updates the RevNet terminal address (for v6 migration)
+    /// @notice Updates the RevNet terminal address
+    /// @dev Call this once when RevNet v6 is deployed. Takes effect for all connected Markees
+    ///      immediately — no per-Markee migrations needed.
     function setRevNetTerminal(address _newTerminal) external onlyAdmin {
         require(_newTerminal != address(0), "Terminal cannot be zero address");
         address old = revNetTerminal;
@@ -454,28 +515,12 @@ contract Leaderboard is IPricingStrategy {
         emit RevNetTerminalChanged(old, _newTerminal);
     }
 
-    /// @notice Updates the RevNet project ID (for v6 migration)
+    /// @notice Updates the RevNet project ID
+    /// @dev Call this once when RevNet v6 is deployed.
     function setRevNetProjectId(uint256 _newProjectId) external onlyAdmin {
         uint256 old = revNetProjectId;
         revNetProjectId = _newProjectId;
         emit RevNetProjectIdChanged(old, _newProjectId);
-    }
-
-    /// @notice Seeds historical Markee state from a prior deployment. One-time call.
-    /// @dev Registers existing Markee addresses without creating new ones. Allows a fresh
-    ///      deployment to carry forward historical leaderboard history and total funds.
-    ///      Call this once immediately after initialize() before any user activity.
-    /// @param _markees Existing Markee addresses to register
-    function initializeHistory(address[] calldata _markees) external onlyAdmin {
-        require(!historyInitialized, "History already initialized");
-        historyInitialized = true;
-        for (uint256 i = 0; i < _markees.length; i++) {
-            address m = _markees[i];
-            if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
-                _addToRegistry(m);
-            }
-        }
-        emit HistoryInitialized(_markees.length);
     }
 
     /// @notice Updates the minimum price to create a new Markee
@@ -510,10 +555,9 @@ contract Leaderboard is IPricingStrategy {
         Markee(markeeAddress).initialize(
             _owner,
             address(this),
-            revNetTerminal,
-            revNetProjectId,
-            "",  // empty message — owner can set via updateMessage for free
-            ""
+            "",   // empty message — owner can set via updateMessage for free
+            "",
+            0
         );
         _addToRegistry(markeeAddress);
         emit FreeMarkeeCreated(markeeAddress, _owner);
@@ -541,8 +585,6 @@ contract Leaderboard is IPricingStrategy {
     }
 
     /// @notice Deploys a minimal proxy (EIP-1167) clone of the given implementation
-    /// @param implementation The contract to clone
-    /// @return instance The address of the deployed clone
     function _clone(address implementation) internal returns (address instance) {
         assembly {
             mstore(0x00, or(
