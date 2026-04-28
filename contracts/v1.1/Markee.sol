@@ -69,7 +69,8 @@ contract Markee {
     event PaymentReceived(
         uint256 totalAmount,
         uint256 beneficiaryAmount,
-        uint256 revNetAmount,
+        uint256 revNetBuyerAmount,
+        uint256 revNetFeeReceiverAmount,
         address indexed tokenRecipient,
         uint256 newTotalFundsAdded
     );
@@ -157,23 +158,60 @@ contract Markee {
             require(success, "Transfer to beneficiary failed");
         }
 
+        uint256 revNetBuyerAmount = 0;
+        uint256 revNetFeeReceiverAmount = 0;
+
         if (revNetAmount > 0) {
             address terminal = strategy.revNetTerminal();
             uint256 projectId = strategy.revNetProjectId();
-            IJBMultiTerminal(terminal).pay{value: revNetAmount}(
-                projectId,
-                NATIVE_TOKEN,
-                revNetAmount,
-                tokenRecipient,
-                0,
-                "",
-                ""
-            );
+            address feeReceiver = strategy.platformFeeReceiver();
+            uint256 feePct = strategy.percentToPlatformFeeReceiver();
+
+            if (feeReceiver == address(0) || feePct == 0) {
+                // No platform fee receiver — 100% of MARKEE issuance to buyer
+                revNetBuyerAmount = revNetAmount;
+                IJBMultiTerminal(terminal).pay{value: revNetBuyerAmount}(
+                    projectId,
+                    NATIVE_TOKEN,
+                    revNetBuyerAmount,
+                    tokenRecipient,
+                    0,
+                    "",
+                    ""
+                );
+            } else {
+                // Split RevNet ETH into two JB terminal calls — MARKEE issued proportionally
+                revNetFeeReceiverAmount = (revNetAmount * feePct) / BASIS_POINTS_DIVISOR;
+                revNetBuyerAmount = revNetAmount - revNetFeeReceiverAmount;
+
+                if (revNetFeeReceiverAmount > 0) {
+                    IJBMultiTerminal(terminal).pay{value: revNetFeeReceiverAmount}(
+                        projectId,
+                        NATIVE_TOKEN,
+                        revNetFeeReceiverAmount,
+                        feeReceiver,
+                        0,
+                        "",
+                        ""
+                    );
+                }
+                if (revNetBuyerAmount > 0) {
+                    IJBMultiTerminal(terminal).pay{value: revNetBuyerAmount}(
+                        projectId,
+                        NATIVE_TOKEN,
+                        revNetBuyerAmount,
+                        tokenRecipient,
+                        0,
+                        "",
+                        ""
+                    );
+                }
+            }
         }
 
         totalFundsAdded += amount;
 
-        emit PaymentReceived(amount, beneficiaryAmount, revNetAmount, tokenRecipient, totalFundsAdded);
+        emit PaymentReceived(amount, beneficiaryAmount, revNetBuyerAmount, revNetFeeReceiverAmount, tokenRecipient, totalFundsAdded);
     }
 
     // ─────────────────────────────────────────────

@@ -35,4 +35,14 @@ interface IPricingStrategy {
     /// @notice Returns the Markee Cooperative RevNet project ID
     /// @dev Only used when revNetEnabled is true. Admin updates this once when RevNet v6 is live.
     function revNetProjectId() external view returns (uint256);
+
+    /// @notice Returns the address that receives a share of MARKEE token issuance from the RevNet
+    /// @dev When address(0), 100% of MARKEE issuance goes to the buyer (tokenRecipient).
+    ///      Set by the factory at Leaderboard creation; admin-updatable after.
+    function platformFeeReceiver() external view returns (address);
+
+    /// @notice Returns the platform fee receiver's share of RevNet ETH in basis points (10000 = 100%)
+    /// @dev Applied only when platformFeeReceiver != address(0). Default is 3800 (38%).
+    ///      The buyer (tokenRecipient) receives the remaining share.
+    function percentToPlatformFeeReceiver() external view returns (uint256);
 }

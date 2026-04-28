@@ -73,6 +73,15 @@ contract Leaderboard is IPricingStrategy {
     /// @dev Read dynamically by each Markee via IPricingStrategy.revNetProjectId(). Update once when v6 is live.
     uint256 public override revNetProjectId;
 
+    /// @notice Address that receives a share of MARKEE token issuance from every RevNet payment
+    /// @dev Set by the factory at creation time. When address(0), 100% of MARKEE issuance goes to
+    ///      the buyer. Read dynamically by each Markee at pay time via IPricingStrategy.
+    address public override platformFeeReceiver;
+
+    /// @notice Platform fee receiver's share of RevNet ETH in basis points (10000 = 100%)
+    /// @dev Default is 3800 (38% to fee receiver, 62% to buyer). Only applied when platformFeeReceiver != address(0).
+    uint256 public override percentToPlatformFeeReceiver = 3800;
+
     /// @notice Guard ensuring initializeHistory() is called at most once
     bool public historyInitialized;
 
@@ -137,6 +146,8 @@ contract Leaderboard is IPricingStrategy {
     event RevNetEnabledChanged(bool enabled);
     event RevNetTerminalChanged(address indexed oldTerminal, address indexed newTerminal);
     event RevNetProjectIdChanged(uint256 oldId, uint256 newId);
+    event PlatformFeeReceiverChanged(address indexed oldReceiver, address indexed newReceiver);
+    event PercentToPlatformFeeReceiverChanged(uint256 oldPercent, uint256 newPercent);
     event HistoryInitialized(uint256 markeeCount);
     event MinimumPriceChanged(uint256 oldPrice, uint256 newPrice);
     event MaxMessageLengthChanged(uint256 oldLength, uint256 newLength);
@@ -162,7 +173,10 @@ contract Leaderboard is IPricingStrategy {
     ///      This avoids baking stale config into the Leaderboard and prevents the v5/v6 migration
     ///      problem where terminal addresses were locked at initialization time.
     /// @param _admin Address that will have admin rights over this leaderboard
-    /// @param _beneficiaryAddress Initial community beneficiary address
+    /// @param _beneficiaryAddress Initial ETH beneficiary address (e.g. the platform/partner)
+    /// @param _platformFeeReceiver Address that receives a share of MARKEE issuance from the RevNet.
+    ///        Pass address(0) to send 100% of MARKEE to buyers. Set by the factory so the Markee
+    ///        Cooperative captures its token cut across all leaderboards.
     /// @param _leaderboardName Human-readable name for this leaderboard
     /// @param _markeeImplementation Markee implementation contract to clone for each message slot
     /// @param _minimumPrice Minimum ETH to create a Markee (default 0.001 ETH from factory)
@@ -173,6 +187,7 @@ contract Leaderboard is IPricingStrategy {
     function initialize(
         address _admin,
         address _beneficiaryAddress,
+        address _platformFeeReceiver,
         string calldata _leaderboardName,
         address _markeeImplementation,
         uint256 _minimumPrice,
@@ -192,6 +207,7 @@ contract Leaderboard is IPricingStrategy {
         factory = msg.sender;
         admin = _admin;
         beneficiaryAddress = _beneficiaryAddress;
+        platformFeeReceiver = _platformFeeReceiver;
         leaderboardName = _leaderboardName;
         markeeImplementation = _markeeImplementation;
         minimumPrice = _minimumPrice;
@@ -521,6 +537,23 @@ contract Leaderboard is IPricingStrategy {
         uint256 old = revNetProjectId;
         revNetProjectId = _newProjectId;
         emit RevNetProjectIdChanged(old, _newProjectId);
+    }
+
+    /// @notice Updates the platform fee receiver address
+    /// @dev Set to address(0) to route 100% of MARKEE issuance to buyers
+    function setPlatformFeeReceiver(address _newReceiver) external onlyAdmin {
+        address old = platformFeeReceiver;
+        platformFeeReceiver = _newReceiver;
+        emit PlatformFeeReceiverChanged(old, _newReceiver);
+    }
+
+    /// @notice Updates the platform fee receiver's share of RevNet ETH in basis points (10000 = 100%)
+    /// @dev Only applied when platformFeeReceiver != address(0)
+    function setPercentToPlatformFeeReceiver(uint256 _newPercent) external onlyAdmin {
+        require(_newPercent <= 10000, "Cannot exceed 100%");
+        uint256 old = percentToPlatformFeeReceiver;
+        percentToPlatformFeeReceiver = _newPercent;
+        emit PercentToPlatformFeeReceiverChanged(old, _newPercent);
     }
 
     /// @notice Updates the minimum price to create a new Markee
