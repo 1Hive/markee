@@ -72,18 +72,21 @@ export default function Owners() {
         
         {/* Content */}
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Buy a Message. Own the Network.</h1>
-          <p className="text-xl text-[#B8B6D9] mb-8">
-            Our network is cooperatively owned by MARKEE token holders. Every message bought issues MARKEE tokens on our network's permissionless Revnet
+          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Own the Network.</h1>
+          <p className="text-xl text-[#B8B6D9] mb-4">
+            The Markee Network is cooperatively owned by MARKEE token holders. Governance is onchain through the Gardens community.
+          </p>
+          <p className="text-sm text-[#8A8FBF] mb-8 bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 inline-block">
+            ⚠️ Token issuance is paused while the network migrates from RevNet v5 to v6. Revenue sharing will resume once v6 is live.
           </p>
           <div className="flex gap-4 justify-center">
             <a
-              href="https://www.revnet.app/v5:base:119"
+              href="https://app.gardens.fund/gardens/8453/0xee3027f1e021b09d629922d40436c5dea3c6cb38/0xce6b968c8bd130ca08f1fcc97b509a824380d867"
               target="_blank"
               rel="noopener noreferrer"
               className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
             >
-              View Revnet
+              Governance on Gardens
             </a>
             <a
               href="/how-it-works"
@@ -95,7 +98,7 @@ export default function Owners() {
         </div>
       </section>
 
-      {/* Countdown and Phase Visualization */}
+      {/* Issuance Schedule (historical — paused during v5→v6 migration) */}
       <section className="bg-[#0A0F3D] py-12 border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <CountdownTimer />
@@ -110,28 +113,28 @@ export default function Owners() {
             Tokenomics Simulator
           </h2>
           <p className="text-[#B8B6D9] text-center mb-12 max-w-3xl mx-auto">
-            Model how different investment, revenue, and expense scenarios affect ownership distribution 
-            and token economics over time. All issuance is locked and pre-scheduled in the Revnet.
+            Model how different investment, revenue, and expense scenarios affect ownership distribution
+            and token economics over time. Issuance schedule is preset and will resume on RevNet v6.
           </p>
-          
+
           <TokenomicsSimulator />
         </div>
       </section>
 
-      {/* RevNet Terms Link */}
+      {/* RevNet v6 Notice */}
       <section className="py-12 bg-[#0A0F3D]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">Full RevNet Terms</h3>
+          <h3 className="text-2xl font-bold text-[#EDEEFF] mb-4">RevNet v6 Migration</h3>
           <p className="text-[#B8B6D9] mb-6">
-            View complete tokenomics, reserve rates, and governance parameters on-chain.
+            The Markee Cooperative is migrating from RevNet v5 to v6 following a responsible disclosure of a vulnerability in v5 contracts. Revenue sharing and token issuance will resume once v6 is live. No funds are at risk.
           </p>
-          <a 
-            href="https://www.revnet.app/v5:base:119/terms" 
-            target="_blank" 
+          <a
+            href="https://discord.gg/UhhRDzwwkM"
+            target="_blank"
             rel="noopener noreferrer"
             className="inline-block bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
           >
-            View on RevNets →
+            Join Discord for updates →
           </a>
         </div>
       </section>
@@ -172,7 +175,7 @@ function CountdownTimer() {
       <h2 className="text-2xl font-bold text-[#EDEEFF] mb-2">
         Token Issuance Schedule
       </h2>
-      <p className="text-[#8A8FBF] mb-6">Next price increase in:</p>
+      <p className="text-[#8A8FBF] mb-2">Paused during RevNet v5 → v6 migration. Next phase in:</p>
       <div className="flex justify-center gap-4 mb-8">
         <div className="bg-[#060A2A] rounded-lg shadow-md p-4 min-w-[80px] border border-[#8A8FBF]/20">
           <div className="text-3xl font-bold text-[#F897FE]">{timeLeft.days}</div>
@@ -266,14 +269,8 @@ function PhaseVisualization() {
         </div>
 
         <div className="mt-6 text-center">
-          <Link 
-            href="/ecosystem/markee-cooperative"
-            className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors inline-block"
-          >
-            Buy a Message to Join
-          </Link>
-          <p className="text-sm text-[#8A8FBF] mt-2">
-            Phases are preset in the Cooperative's RevNet
+          <p className="text-sm text-[#8A8FBF]">
+            Token issuance is paused during the v5 → v6 RevNet migration. Phases will resume on v6.
           </p>
         </div>
       </div>

@@ -4,198 +4,228 @@ pragma solidity ^0.8.23;
 import "./Markee.sol";
 import "./Interfaces.sol";
 
-/// @title FixedPrice
-/// @notice A pricing strategy where anyone can pay a fixed price to change the message
-/// @dev Deploys and manages a Markee contract with fixed-price message updates
-contract FixedPrice {
-    // Constants
+/// @title FixedPriceStrategy
+/// @notice Anyone pays the fixed price to change the message.
+///         All funds route to beneficiaryAddress during the RevNet v5→v6 migration.
+///         Admin re-enables RevNet routing once v6 is live.
+/// @dev v1.0 architecture — direct RPC (no subgraph).
+contract FixedPriceStrategy {
     address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
-    
-    // Configuration
-    address public immutable revNetTerminal;
-    uint256 public immutable revNetProjectId;
+    uint256 public constant BASIS_POINTS_DIVISOR = 10000;
+
     address public immutable markeeAddress;
     address public owner;
+
+    // Beneficiary routing (100% to beneficiary while revNetEnabled = false)
+    address public beneficiaryAddress;
+    uint256 public percentToBeneficiary = 10000;
+    bool public revNetEnabled = false;
+
+    // RevNet config — populated by admin when v6 is live
+    address public revNetTerminal;
+    uint256 public revNetProjectId;
+
     uint256 public price;
     uint256 public maxMessageLength;
     uint256 public maxNameLength;
-    
-    // Events
-    event MessageChanged(
-        address indexed changedBy,
-        string newMessage,
-        string name,
-        uint256 pricePaid
-    );
+    uint256 public totalFundsRaised;
+
+    bool public historyInitialized;
+
+    event MessageChanged(address indexed changedBy, string newMessage, string name, uint256 pricePaid);
     event PriceUpdated(uint256 oldPrice, uint256 newPrice);
+    event BeneficiaryAddressUpdated(address indexed oldBeneficiary, address indexed newBeneficiary);
+    event PercentToBeneficiaryUpdated(uint256 oldPercent, uint256 newPercent);
+    event RevNetEnabledUpdated(bool enabled);
+    event RevNetTerminalUpdated(address indexed oldTerminal, address indexed newTerminal);
+    event RevNetProjectIdUpdated(uint256 oldId, uint256 newId);
     event MaxMessageLengthUpdated(uint256 oldLength, uint256 newLength);
     event MaxNameLengthUpdated(uint256 oldLength, uint256 newLength);
     event PricingStrategyChanged(address indexed newStrategy);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    
-    /// @notice Creates a new FixedPrice and its associated Markee
-    /// @param _revNetTerminal Address of the Juicebox terminal for RevNet payments
-    /// @param _revNetProjectId The RevNet project ID for Markee
-    /// @param _initialMessage The initial message for the Markee
-    /// @param _initialName The initial name for the Markee creator
-    /// @param _price The fixed price (in wei) anyone must pay to change the message
-    /// @param _maxMessageLength The maximum message length
-    /// @param _maxNameLength The maximum name length
+    event HistoryInitialized(uint256 historicalTotal);
+
     constructor(
-        address _revNetTerminal,
-        uint256 _revNetProjectId,
         string memory _initialMessage,
         string memory _initialName,
+        address _beneficiaryAddress,
         uint256 _price,
         uint256 _maxMessageLength,
         uint256 _maxNameLength
     ) {
-        require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
-        require(_price > 0, "Price must be greater than zero");
-        require(_maxMessageLength > 0, "Maximum message length must be greater than zero");
-        require(_maxNameLength > 0, "Maximum name length must be greater than zero");
-        require(bytes(_initialMessage).length <= _maxMessageLength, "Message exceeds maximum length");
-        require(bytes(_initialName).length <= _maxNameLength, "Name exceeds maximum length");
-        
-        revNetTerminal = _revNetTerminal;
-        revNetProjectId = _revNetProjectId;
+        require(_price > 0, "Price must be > 0");
+        require(_maxMessageLength > 0, "Max message length must be > 0");
+        require(_maxNameLength > 0, "Max name length must be > 0");
+        require(bytes(_initialMessage).length <= _maxMessageLength, "Message too long");
+        require(bytes(_initialName).length <= _maxNameLength, "Name too long");
+
         owner = msg.sender;
+        beneficiaryAddress = _beneficiaryAddress;
         price = _price;
         maxMessageLength = _maxMessageLength;
         maxNameLength = _maxNameLength;
-        
-        // Deploy the Markee contract
+
         Markee markee = new Markee(
-            msg.sender,           // owner = the deployer
-            address(this),        // pricingStrategy = this contract
-            _initialMessage,      // initial message
-            _initialName,         // initial name
-            0                     // no initial funds
+            msg.sender,
+            address(this),
+            _initialMessage,
+            _initialName,
+            0
         );
-        
+
         markeeAddress = address(markee);
     }
-    
-    /// @notice Allows anyone to pay the fixed price to change the message
-    /// @param _newMessage The new message to set
-    /// @param _name The name of the person changing the message (optional - can be empty string)
-    function changeMessage(string calldata _newMessage, string calldata _name) 
-        external 
-        payable 
-    {
-        // Check payment amount
-        require(msg.value == price, "Payment amount must equal the fixed price");
-        
-        // Check message length
-        require(bytes(_newMessage).length <= maxMessageLength, "Message exceeds maximum length");
-        
-        // Check name length only if name is provided (allow empty string)
-        if (bytes(_name).length > 0) {
-            require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+
+    // ─── Payment routing ──────────────────────────────────────────────────────
+
+    function _routePayment(uint256 _amount, address _payer) internal {
+        uint256 beneficiaryAmount;
+        uint256 rvAmount;
+
+        if (!revNetEnabled || beneficiaryAddress == address(0)) {
+            beneficiaryAmount = _amount;
+            rvAmount = 0;
+        } else {
+            beneficiaryAmount = (_amount * percentToBeneficiary) / BASIS_POINTS_DIVISOR;
+            rvAmount = _amount - beneficiaryAmount;
         }
-        
-        // Get reference to the Markee
+
+        if (beneficiaryAddress != address(0) && beneficiaryAmount > 0) {
+            (bool ok, ) = beneficiaryAddress.call{value: beneficiaryAmount}("");
+            require(ok, "Transfer to beneficiary failed");
+        }
+
+        if (rvAmount > 0) {
+            IJBMultiTerminal(revNetTerminal).pay{value: rvAmount}(
+                revNetProjectId,
+                NATIVE_TOKEN,
+                rvAmount,
+                _payer,
+                0,
+                "",
+                ""
+            );
+        }
+    }
+
+    // ─── Core action ─────────────────────────────────────────────────────────
+
+    function changeMessage(string calldata _newMessage, string calldata _name) external payable {
+        require(msg.value == price, "Payment must equal fixed price");
+        require(bytes(_newMessage).length <= maxMessageLength, "Message too long");
+        if (bytes(_name).length > 0) {
+            require(bytes(_name).length <= maxNameLength, "Name too long");
+        }
+
         Markee markee = Markee(markeeAddress);
-        
-        // Update the message
         markee.setMessage(_newMessage);
-        
-        // Update the name
         markee.setName(_name);
-        
-        // Add funds to the Markee's total
         markee.addFunds(msg.value);
-        
-        // Forward payment to RevNet (tokens go to payer)
-        IJBMultiTerminal(revNetTerminal).pay{value: msg.value}(
-            revNetProjectId,
-            NATIVE_TOKEN,
-            msg.value,
-            msg.sender,           // payer receives MARKEE tokens
-            0,                    // minReturnedTokens
-            "",                   // memo
-            ""                    // metadata
-        );
-        
+        totalFundsRaised += msg.value;
+
+        _routePayment(msg.value, msg.sender);
+
         emit MessageChanged(msg.sender, _newMessage, _name, msg.value);
     }
-    
-    /// @notice updateMessage for cross-chain payments
-    function updateMessage(string calldata _newMessage, string calldata _name) 
-        external 
-    {
+
+    /// @notice Owner-only free message update (for cross-chain or admin use)
+    function updateMessage(string calldata _newMessage, string calldata _name) external {
         require(msg.sender == owner, "Only owner");
-        require(bytes(_newMessage).length <= maxMessageLength, "Message exceeds maximum length");
-        
-        // Check name length only if name is provided (allow empty string)
+        require(bytes(_newMessage).length <= maxMessageLength, "Message too long");
         if (bytes(_name).length > 0) {
-            require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
+            require(bytes(_name).length <= maxNameLength, "Name too long");
         }
-        
         Markee markee = Markee(markeeAddress);
         markee.setMessage(_newMessage);
         markee.setName(_name);
-        
         emit MessageChanged(owner, _newMessage, _name, 0);
     }
-    
-    /// @notice Allows the owner to update the fixed price
-    /// @param _newPrice The new price in wei
+
+    // ─── History seeding ──────────────────────────────────────────────────────
+
+    /// @notice One-time call to set accumulated total from prior deployment.
+    function initializeHistory(uint256 _historicalTotal) external {
+        require(msg.sender == owner, "Only owner");
+        require(!historyInitialized, "History already initialized");
+        historyInitialized = true;
+        totalFundsRaised += _historicalTotal;
+        emit HistoryInitialized(_historicalTotal);
+    }
+
+    // ─── Admin/owner setters ──────────────────────────────────────────────────
+
     function setPrice(uint256 _newPrice) external {
-        require(msg.sender == owner, "Only owner can set price");
-        require(_newPrice > 0, "Price must be greater than zero");
-        
-        uint256 oldPrice = price;
+        require(msg.sender == owner, "Only owner");
+        require(_newPrice > 0, "Price must be > 0");
+        uint256 old = price;
         price = _newPrice;
-        
-        emit PriceUpdated(oldPrice, _newPrice);
+        emit PriceUpdated(old, _newPrice);
     }
-    
-    /// @notice Allows the owner to update the maximum message length
-    /// @param _newMaxLength The new maximum length in characters
-    function setMaxMessageLength(uint256 _newMaxLength) external {
-        require(msg.sender == owner, "Only owner can set maximum message length");
-        require(_newMaxLength > 0, "Maximum message length must be greater than zero");
-        
-        uint256 oldLength = maxMessageLength;
-        maxMessageLength = _newMaxLength;
-        
-        emit MaxMessageLengthUpdated(oldLength, _newMaxLength);
+
+    function setBeneficiaryAddress(address _newBeneficiary) external {
+        require(msg.sender == owner, "Only owner");
+        address old = beneficiaryAddress;
+        beneficiaryAddress = _newBeneficiary;
+        emit BeneficiaryAddressUpdated(old, _newBeneficiary);
     }
-    
-    /// @notice Allows the owner to update the maximum name length
-    /// @param _newMaxLength The new maximum length in characters
-    function setMaxNameLength(uint256 _newMaxLength) external {
-        require(msg.sender == owner, "Only owner can set maximum name length");
-        require(_newMaxLength > 0, "Maximum name length must be greater than zero");
-        
-        uint256 oldLength = maxNameLength;
-        maxNameLength = _newMaxLength;
-        
-        emit MaxNameLengthUpdated(oldLength, _newMaxLength);
+
+    function setPercentToBeneficiary(uint256 _newPercent) external {
+        require(msg.sender == owner, "Only owner");
+        require(_newPercent <= BASIS_POINTS_DIVISOR, "Cannot exceed 100%");
+        uint256 old = percentToBeneficiary;
+        percentToBeneficiary = _newPercent;
+        emit PercentToBeneficiaryUpdated(old, _newPercent);
     }
-    
-    /// @notice Allows the owner to change the pricing strategy
-    /// @param _newStrategy The new pricing strategy contract
+
+    function setRevNetEnabled(bool _enabled) external {
+        require(msg.sender == owner, "Only owner");
+        revNetEnabled = _enabled;
+        emit RevNetEnabledUpdated(_enabled);
+    }
+
+    function setRevNetTerminal(address _terminal) external {
+        require(msg.sender == owner, "Only owner");
+        require(_terminal != address(0), "Terminal cannot be zero address");
+        address old = revNetTerminal;
+        revNetTerminal = _terminal;
+        emit RevNetTerminalUpdated(old, _terminal);
+    }
+
+    function setRevNetProjectId(uint256 _projectId) external {
+        require(msg.sender == owner, "Only owner");
+        uint256 old = revNetProjectId;
+        revNetProjectId = _projectId;
+        emit RevNetProjectIdUpdated(old, _projectId);
+    }
+
+    function setMaxMessageLength(uint256 _newLength) external {
+        require(msg.sender == owner, "Only owner");
+        require(_newLength > 0, "Must be > 0");
+        uint256 old = maxMessageLength;
+        maxMessageLength = _newLength;
+        emit MaxMessageLengthUpdated(old, _newLength);
+    }
+
+    function setMaxNameLength(uint256 _newLength) external {
+        require(msg.sender == owner, "Only owner");
+        require(_newLength > 0, "Must be > 0");
+        uint256 old = maxNameLength;
+        maxNameLength = _newLength;
+        emit MaxNameLengthUpdated(old, _newLength);
+    }
+
     function changePricingStrategy(address _newStrategy) external {
-        require(msg.sender == owner, "Only owner can change pricing strategy");
+        require(msg.sender == owner, "Only owner");
         require(_newStrategy != address(0), "Strategy cannot be zero address");
-        
-        Markee markee = Markee(markeeAddress);
-        markee.setPricingStrategy(_newStrategy);
-        
+        Markee(markeeAddress).setPricingStrategy(_newStrategy);
         emit PricingStrategyChanged(_newStrategy);
     }
-    
-    /// @notice Allows the owner to transfer ownership of the FixedPrice
-    /// @param _newOwner The new owner address
+
     function transferOwnership(address _newOwner) external {
-        require(msg.sender == owner, "Only owner can transfer ownership");
+        require(msg.sender == owner, "Only owner");
         require(_newOwner != address(0), "New owner cannot be zero address");
-        
-        address previousOwner = owner;
+        address old = owner;
         owner = _newOwner;
-        
-        emit OwnershipTransferred(previousOwner, _newOwner);
+        emit OwnershipTransferred(old, _newOwner);
     }
 }

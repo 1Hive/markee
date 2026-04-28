@@ -31,10 +31,6 @@ contract Markee {
     /// @notice The Markee Cooperative RevNet project ID
     uint256 public revNetProjectId;
 
-    /// @notice Percentage of every payment routed to the community beneficiary, in basis points
-    /// @dev 6200 = 62%. The remainder (38%) goes to the RevNet.
-    uint256 public percentToBeneficiary;
-
     /// @notice Guard preventing initialize() from being called more than once
     bool public initialized;
 
@@ -108,7 +104,6 @@ contract Markee {
         pricingStrategy = _pricingStrategy;
         revNetTerminal = _revNetTerminal;
         revNetProjectId = _revNetProjectId;
-        percentToBeneficiary = 6200; // 62%
         message = _initialMessage;
         name = _name;
 
@@ -136,22 +131,29 @@ contract Markee {
 
         uint256 amount = msg.value;
 
-        // Read beneficiary address dynamically from strategy
-        address beneficiary = IPricingStrategy(pricingStrategy).beneficiaryAddress();
+        // Read routing config dynamically from strategy so a single admin call propagates instantly
+        IPricingStrategy strategy = IPricingStrategy(pricingStrategy);
+        address beneficiary = strategy.beneficiaryAddress();
+        uint256 pct = strategy.percentToBeneficiary();
+        bool rvEnabled = strategy.revNetEnabled();
 
-        uint256 beneficiaryAmount = (amount * percentToBeneficiary) / BASIS_POINTS_DIVISOR;
-        uint256 revNetAmount = amount - beneficiaryAmount;
+        uint256 beneficiaryAmount;
+        uint256 revNetAmount;
 
-        // Route to community beneficiary
+        if (!rvEnabled || beneficiary == address(0)) {
+            // RevNet disabled or no beneficiary: route everything to beneficiary
+            beneficiaryAmount = amount;
+            revNetAmount = 0;
+        } else {
+            beneficiaryAmount = (amount * pct) / BASIS_POINTS_DIVISOR;
+            revNetAmount = amount - beneficiaryAmount;
+        }
+
         if (beneficiary != address(0) && beneficiaryAmount > 0) {
             (bool success, ) = beneficiary.call{value: beneficiaryAmount}("");
             require(success, "Transfer to beneficiary failed");
-        } else {
-            // If no beneficiary set, full amount goes to RevNet
-            revNetAmount = amount;
         }
 
-        // Route to Markee Cooperative RevNet — token recipient receives MARKEE tokens
         if (revNetAmount > 0) {
             IJBMultiTerminal(revNetTerminal).pay{value: revNetAmount}(
                 revNetProjectId,

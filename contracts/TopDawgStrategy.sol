@@ -5,325 +5,336 @@ import "./Markee.sol";
 import "./Interfaces.sol";
 
 /// @title TopDawgStrategy
-/// @notice A pricing strategy where buyers choose their price for a Markee message, and the message with the most funds added is the Top Dawg.
-/// @dev Each Top Dawg deployment creates an independent leaderboard with its own admin and settings
-/// @dev All instances deployed on Base (canonical chain)
+/// @notice Leaderboard where the highest-funded message holds the top spot.
+///         All funds route to beneficiaryAddress; RevNet routing re-enabled via admin
+///         once RevNet v6 is live.
+/// @dev v1.0 architecture — on-chain markee registry, direct RPC (no subgraph).
 contract TopDawgStrategy {
-    // Constants
     address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
-    
-    // Configuration
-    address public immutable revNetTerminal;
-    uint256 public immutable revNetProjectId;
-    string public instanceName;  // Identifies this specific instance (e.g., "Markee Top Dawg", "Gardens Top Dawg")
+    uint256 public constant BASIS_POINTS_DIVISOR = 10000;
+
+    string public instanceName;
     address public adminAddress;
+
+    // Beneficiary routing (100% to beneficiary while revNetEnabled = false)
+    address public beneficiaryAddress;
+    uint256 public percentToBeneficiary = 10000;
+    bool public revNetEnabled = false;
+
+    // RevNet config — populated by admin when v6 is live
+    address public revNetTerminal;
+    uint256 public revNetProjectId;
+
     uint256 public minimumPrice;
     uint256 public maxMessageLength;
     uint256 public maxNameLength;
-    
-    // Total funds that have flowed through this strategy instance
     uint256 public totalInstanceFunds;
-    
-    // Mapping to track which Markees are using this strategy
+
+    // On-chain markee registry
+    address[] public markees;
+    mapping(address => uint256) private markeeIndex;
     mapping(address => bool) public isMarkeeUsingThisStrategy;
-    
-    // Events
-    event MarkeeCreated(
-        address indexed markeeAddress,
-        address indexed owner,
-        string message,
-        string name,
-        uint256 amount
-    );
-    event MessageUpdated(
-        address indexed markeeAddress,
-        address indexed updatedBy,
-        string newMessage
-    );
-    event NameUpdated(
-        address indexed markeeAddress,
-        address indexed updatedBy,
-        string newName
-    );
-    event FundsAddedToMarkee(
-        address indexed markeeAddress,
-        address indexed addedBy,
-        uint256 amount,
-        uint256 newMarkeeTotal,
-        uint256 newInstanceTotal
-    );
-    event PricingStrategyChangedForMarkee(
-        address indexed markeeAddress,
-        address indexed oldStrategy,
-        address indexed newStrategy,
-        address changedBy
-    );
+
+    bool public historyInitialized;
+
+    event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name, uint256 amount);
+    event FundsAddedToMarkee(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal, uint256 newInstanceTotal);
+    event MessageUpdated(address indexed markeeAddress, address indexed updatedBy, string newMessage);
+    event NameUpdated(address indexed markeeAddress, address indexed updatedBy, string newName);
+    event PricingStrategyChangedForMarkee(address indexed markeeAddress, address indexed oldStrategy, address indexed newStrategy, address changedBy);
     event AdminAddressUpdated(address indexed oldAdmin, address indexed newAdmin);
+    event BeneficiaryAddressUpdated(address indexed oldBeneficiary, address indexed newBeneficiary);
+    event PercentToBeneficiaryUpdated(uint256 oldPercent, uint256 newPercent);
+    event RevNetEnabledUpdated(bool enabled);
+    event RevNetTerminalUpdated(address indexed oldTerminal, address indexed newTerminal);
+    event RevNetProjectIdUpdated(uint256 oldId, uint256 newId);
     event MinimumPriceUpdated(uint256 oldPrice, uint256 newPrice);
     event MaxMessageLengthUpdated(uint256 oldLength, uint256 newLength);
     event MaxNameLengthUpdated(uint256 oldLength, uint256 newLength);
     event InstanceNameUpdated(string oldName, string newName);
-    
-    /// @notice Creates a new TopDawgStrategy
-    /// @param _revNetTerminal Address of the Juicebox terminal for RevNet payments
-    /// @param _revNetProjectId The RevNet project ID for Markee
-    /// @param _instanceName Name identifying this specific instance (e.g., "Markee Top Dawg", "Gardens Top Dawg")
-    /// @param _adminAddress Address of the admin (typically a multisig)
-    /// @param _minimumPrice The minimum price to create a Markee
-    /// @param _maxMessageLength The maximum message length
-    /// @param _maxNameLength The maximum name length
+    event HistoryInitialized(uint256 markeeCount, uint256 totalFunds);
+
     constructor(
-        address _revNetTerminal,
-        uint256 _revNetProjectId,
         string memory _instanceName,
         address _adminAddress,
+        address _beneficiaryAddress,
         uint256 _minimumPrice,
         uint256 _maxMessageLength,
         uint256 _maxNameLength
     ) {
-        require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
         require(_adminAddress != address(0), "Admin address cannot be zero address");
         require(bytes(_instanceName).length > 0, "Instance name cannot be empty");
-        require(_maxMessageLength > 0, "Maximum message length must be greater than zero");
-        require(_maxNameLength > 0, "Maximum name length must be greater than zero");
-        
-        revNetTerminal = _revNetTerminal;
-        revNetProjectId = _revNetProjectId;
+        require(_maxMessageLength > 0, "Max message length must be > 0");
+        require(_maxNameLength > 0, "Max name length must be > 0");
+
         instanceName = _instanceName;
         adminAddress = _adminAddress;
+        beneficiaryAddress = _beneficiaryAddress;
         minimumPrice = _minimumPrice;
         maxMessageLength = _maxMessageLength;
         maxNameLength = _maxNameLength;
-        totalInstanceFunds = 0;
-    }
-    
-    /// @notice Modifier to restrict functions to admin only
-    modifier onlyAdmin() {
-        require(msg.sender == adminAddress, "Only admin address can perform this action");
-        _;
-    }
-    
-    /// @notice Creates a new Markee and forwards payment to RevNet
-    /// @param _message The initial message for the Markee
-    /// @param _name The optional name for the Markee creator (can be empty string)
-    /// @return markeeAddress The address of the newly created Markee
-    function createMarkee(string calldata _message, string calldata _name) 
-        external 
-        payable 
-        returns (address markeeAddress) 
-    {
-        // Check minimum price
-        require(msg.value >= minimumPrice, "Payment amount is below minimum price requirement");
-        
-        // Check message length
-        require(bytes(_message).length <= maxMessageLength, "Message exceeds maximum length");
-        
-        // Check name length
-        require(bytes(_name).length <= maxNameLength, "Name exceeds maximum length");
-        
-        // Deploy new Markee contract
-        Markee markee = new Markee(
-            msg.sender,           // owner = the payer
-            address(this),        // pricingStrategy = this contract
-            _message,             // initial message
-            _name,                // name (can be empty)
-            msg.value             // initial funds
-        );
-        
-        markeeAddress = address(markee);
-        
-        // Track that this Markee is using this strategy
-        isMarkeeUsingThisStrategy[markeeAddress] = true;
-        
-        // Update total instance funds
-        totalInstanceFunds += msg.value;
-        
-        // Forward payment to RevNet (tokens go to payer)
-        IJBMultiTerminal(revNetTerminal).pay{value: msg.value}(
-            revNetProjectId,
-            NATIVE_TOKEN,
-            msg.value,
-            msg.sender,           // payer receives MARKEE tokens
-            0,                    // minReturnedTokens
-            "",                   // memo
-            ""                    // metadata
-        );
-        
-        emit MarkeeCreated(markeeAddress, msg.sender, _message, _name, msg.value);
-    }
-    
-    /// @notice Allows the Markee owner to update their message for free
-    /// @param _markeeAddress The address of the Markee to update
-    /// @param _newMessage The new message
-    function updateMessage(address _markeeAddress, string calldata _newMessage) 
-        external 
-    {
-        Markee markee = Markee(_markeeAddress);
-        
-        // Verify this Markee is using this strategy
-        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
-        
-        // Verify caller is the owner
-        require(msg.sender == markee.owner(), "Only Markee owner can update message");
-        
-        // Check message length
-        require(bytes(_newMessage).length <= maxMessageLength, "Message exceeds maximum length");
-        
-        // Update the message
-        markee.setMessage(_newMessage);
-        
-        emit MessageUpdated(_markeeAddress, msg.sender, _newMessage);
-    }
-    
-    /// @notice Allows the Markee owner to update their name for free
-    /// @param _markeeAddress The address of the Markee to update
-    /// @param _newName The new name
-    function updateName(address _markeeAddress, string calldata _newName) 
-        external 
-    {
-        Markee markee = Markee(_markeeAddress);
-        
-        // Verify this Markee is using this strategy
-        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
-        
-        // Verify caller is the owner
-        require(msg.sender == markee.owner(), "Only Markee owner can update name");
-        
-        // Check name length
-        require(bytes(_newName).length <= maxNameLength, "Name exceeds maximum length");
-        
-        // Update the name
-        markee.setName(_newName);
-        
-        emit NameUpdated(_markeeAddress, msg.sender, _newName);
-    }
-    
-    /// @notice Allows anyone to add funds to increase a Markee’s leaderboard position
-    /// @param _markeeAddress The address of the Markee to add funds to
-    function addFunds(address _markeeAddress) 
-        external 
-        payable 
-    {
-        Markee markee = Markee(_markeeAddress);
-        
-        // Verify this Markee is using this strategy
-        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
-        
-        // Verify non-zero amount
-        require(msg.value > 0, "Must send ETH to add funds");
-        
-        // Update the Markee's total
-        markee.addFunds(msg.value);
-        
-        // Update total instance funds
-        totalInstanceFunds += msg.value;
-        
-        // Forward payment to RevNet (tokens go to payer)
-        IJBMultiTerminal(revNetTerminal).pay{value: msg.value}(
-            revNetProjectId,
-            NATIVE_TOKEN,
-            msg.value,
-            msg.sender,           // payer receives MARKEE tokens
-            0,                    // minReturnedTokens
-            "",                   // memo
-            ""                    // metadata
-        );
-        
-        emit FundsAddedToMarkee(
-            _markeeAddress, 
-            msg.sender, 
-            msg.value, 
-            markee.totalFundsAdded(),
-            totalInstanceFunds
-        );
     }
 
-    
-    /// @notice Allows admin to change a Markee's pricing strategy
-    /// @param _markeeAddress The address of the Markee
-    /// @param _newStrategy The new pricing strategy contract
-    function changePricingStrategy(address _markeeAddress, address _newStrategy) 
-        external 
-        onlyAdmin
-    {
-        // Verify this Markee is currently using this strategy
-        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
-        
-        Markee markee = Markee(_markeeAddress);
-        
-        // Remove from our tracking since it's switching away
-        isMarkeeUsingThisStrategy[_markeeAddress] = false;
-        
-        // Change the strategy on the Markee
-        markee.setPricingStrategy(_newStrategy);
-        
-        emit PricingStrategyChangedForMarkee(
-            _markeeAddress, 
-            address(this), 
-            _newStrategy, 
-            msg.sender
-        );
+    modifier onlyAdmin() {
+        require(msg.sender == adminAddress, "Only admin");
+        _;
     }
-    
-    /// @notice Allows the Markee owner to transfer message-editing privileges
-    /// @param _markeeAddress The address of the Markee
-    /// @param _newOwner The new owner address
-    function transferMarkeeOwnership(address _markeeAddress, address _newOwner) 
-        external 
+
+    // ─── Payment routing ──────────────────────────────────────────────────────
+
+    function _routePayment(uint256 _amount, address _payer) internal {
+        uint256 beneficiaryAmount;
+        uint256 rvAmount;
+
+        if (!revNetEnabled || beneficiaryAddress == address(0)) {
+            beneficiaryAmount = _amount;
+            rvAmount = 0;
+        } else {
+            beneficiaryAmount = (_amount * percentToBeneficiary) / BASIS_POINTS_DIVISOR;
+            rvAmount = _amount - beneficiaryAmount;
+        }
+
+        if (beneficiaryAddress != address(0) && beneficiaryAmount > 0) {
+            (bool ok, ) = beneficiaryAddress.call{value: beneficiaryAmount}("");
+            require(ok, "Transfer to beneficiary failed");
+        }
+
+        if (rvAmount > 0) {
+            IJBMultiTerminal(revNetTerminal).pay{value: rvAmount}(
+                revNetProjectId,
+                NATIVE_TOKEN,
+                rvAmount,
+                _payer,
+                0,
+                "",
+                ""
+            );
+        }
+    }
+
+    // ─── Markee lifecycle ─────────────────────────────────────────────────────
+
+    function createMarkee(string calldata _message, string calldata _name)
+        external
+        payable
+        returns (address markeeAddress)
     {
+        require(msg.value >= minimumPrice, "Below minimum price");
+        require(bytes(_message).length <= maxMessageLength, "Message too long");
+        require(bytes(_name).length <= maxNameLength, "Name too long");
+
+        Markee markee = new Markee(
+            msg.sender,
+            address(this),
+            _message,
+            _name,
+            msg.value
+        );
+
+        markeeAddress = address(markee);
+        _addToRegistry(markeeAddress);
+        totalInstanceFunds += msg.value;
+
+        _routePayment(msg.value, msg.sender);
+
+        emit MarkeeCreated(markeeAddress, msg.sender, _message, _name, msg.value);
+    }
+
+    function addFunds(address _markeeAddress) external payable {
+        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee not on this strategy");
+        require(msg.value > 0, "Must send ETH");
+
         Markee markee = Markee(_markeeAddress);
-        
-        // Verify this Markee is using this strategy
-        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee is not using this pricing strategy");
-        
-        // Verify caller is the current owner
-        require(msg.sender == markee.owner(), "Only Markee owner can transfer ownership");
-        
-        // Transfer ownership
+        markee.addFunds(msg.value);
+        totalInstanceFunds += msg.value;
+
+        _routePayment(msg.value, msg.sender);
+
+        emit FundsAddedToMarkee(_markeeAddress, msg.sender, msg.value, markee.totalFundsAdded(), totalInstanceFunds);
+    }
+
+    function updateMessage(address _markeeAddress, string calldata _newMessage) external {
+        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee not on this strategy");
+        Markee markee = Markee(_markeeAddress);
+        require(msg.sender == markee.owner(), "Only Markee owner");
+        require(bytes(_newMessage).length <= maxMessageLength, "Message too long");
+        markee.setMessage(_newMessage);
+        emit MessageUpdated(_markeeAddress, msg.sender, _newMessage);
+    }
+
+    function updateName(address _markeeAddress, string calldata _newName) external {
+        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee not on this strategy");
+        Markee markee = Markee(_markeeAddress);
+        require(msg.sender == markee.owner(), "Only Markee owner");
+        require(bytes(_newName).length <= maxNameLength, "Name too long");
+        markee.setName(_newName);
+        emit NameUpdated(_markeeAddress, msg.sender, _newName);
+    }
+
+    function changePricingStrategy(address _markeeAddress, address _newStrategy) external onlyAdmin {
+        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee not on this strategy");
+        _removeFromRegistry(_markeeAddress);
+        Markee(_markeeAddress).setPricingStrategy(_newStrategy);
+        emit PricingStrategyChangedForMarkee(_markeeAddress, address(this), _newStrategy, msg.sender);
+    }
+
+    function transferMarkeeOwnership(address _markeeAddress, address _newOwner) external {
+        require(isMarkeeUsingThisStrategy[_markeeAddress], "Markee not on this strategy");
+        Markee markee = Markee(_markeeAddress);
+        require(msg.sender == markee.owner(), "Only Markee owner");
         markee.transferOwnership(_newOwner);
     }
-    
-    /// @notice Allows admin to update the instance name
-    /// @param _newName The new instance name
+
+    // ─── Leaderboard queries ──────────────────────────────────────────────────
+
+    function markeeCount() external view returns (uint256) {
+        return markees.length;
+    }
+
+    function getMarkees(uint256 offset, uint256 limit) external view returns (address[] memory result) {
+        uint256 end = offset + limit;
+        if (end > markees.length) end = markees.length;
+        result = new address[](end - offset);
+        for (uint256 i = offset; i < end; i++) {
+            result[i - offset] = markees[i];
+        }
+    }
+
+    function getTopMarkees(uint256 limit)
+        external
+        view
+        returns (address[] memory topAddresses, uint256[] memory topFunds)
+    {
+        uint256 total = markees.length;
+        if (limit > total) limit = total;
+
+        address[] memory addrs = new address[](total);
+        uint256[] memory funds = new uint256[](total);
+        for (uint256 i = 0; i < total; i++) {
+            addrs[i] = markees[i];
+            funds[i] = Markee(markees[i]).totalFundsAdded();
+        }
+
+        for (uint256 i = 1; i < total; i++) {
+            address ak = addrs[i];
+            uint256 fk = funds[i];
+            uint256 j = i;
+            while (j > 0 && funds[j - 1] < fk) {
+                funds[j] = funds[j - 1];
+                addrs[j] = addrs[j - 1];
+                j--;
+            }
+            funds[j] = fk;
+            addrs[j] = ak;
+        }
+
+        topAddresses = new address[](limit);
+        topFunds = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            topAddresses[i] = addrs[i];
+            topFunds[i] = funds[i];
+        }
+    }
+
+    // ─── History seeding ──────────────────────────────────────────────────────
+
+    /// @notice One-time call to register historical Markees and set accumulated total from prior deployment.
+    function initializeHistory(address[] calldata _markees, uint256 _historicalTotal) external onlyAdmin {
+        require(!historyInitialized, "History already initialized");
+        historyInitialized = true;
+        for (uint256 i = 0; i < _markees.length; i++) {
+            address m = _markees[i];
+            if (m != address(0) && !isMarkeeUsingThisStrategy[m]) {
+                _addToRegistry(m);
+            }
+        }
+        totalInstanceFunds += _historicalTotal;
+        emit HistoryInitialized(_markees.length, _historicalTotal);
+    }
+
+    // ─── Admin setters ────────────────────────────────────────────────────────
+
     function setInstanceName(string calldata _newName) external onlyAdmin {
-        require(bytes(_newName).length > 0, "Instance name cannot be empty");
-        string memory oldName = instanceName;
+        require(bytes(_newName).length > 0, "Name cannot be empty");
+        string memory old = instanceName;
         instanceName = _newName;
-        emit InstanceNameUpdated(oldName, _newName);
+        emit InstanceNameUpdated(old, _newName);
     }
-    
-    /// @notice Allows admin to update the admin address
-    /// @param _newAdmin The new admin address
+
     function setAdminAddress(address _newAdmin) external onlyAdmin {
-        require(_newAdmin != address(0), "Admin address cannot be zero address");
-        address oldAdmin = adminAddress;
+        require(_newAdmin != address(0), "Admin cannot be zero address");
+        address old = adminAddress;
         adminAddress = _newAdmin;
-        emit AdminAddressUpdated(oldAdmin, _newAdmin);
+        emit AdminAddressUpdated(old, _newAdmin);
     }
-    
-    /// @notice Allows admin to update the minimum price
-    /// @param _newMinimumPrice The new minimum price in wei
-    function setMinimumPrice(uint256 _newMinimumPrice) external onlyAdmin {
-        uint256 oldPrice = minimumPrice;
-        minimumPrice = _newMinimumPrice;
-        emit MinimumPriceUpdated(oldPrice, _newMinimumPrice);
+
+    function setBeneficiaryAddress(address _newBeneficiary) external onlyAdmin {
+        address old = beneficiaryAddress;
+        beneficiaryAddress = _newBeneficiary;
+        emit BeneficiaryAddressUpdated(old, _newBeneficiary);
     }
-    
-    /// @notice Allows admin to update the maximum message length
-    /// @param _newMaxLength The new maximum length in characters
-    function setMaxMessageLength(uint256 _newMaxLength) external onlyAdmin {
-        require(_newMaxLength > 0, "Maximum message length must be greater than zero");
-        uint256 oldLength = maxMessageLength;
-        maxMessageLength = _newMaxLength;
-        emit MaxMessageLengthUpdated(oldLength, _newMaxLength);
+
+    function setPercentToBeneficiary(uint256 _newPercent) external onlyAdmin {
+        require(_newPercent <= BASIS_POINTS_DIVISOR, "Cannot exceed 100%");
+        uint256 old = percentToBeneficiary;
+        percentToBeneficiary = _newPercent;
+        emit PercentToBeneficiaryUpdated(old, _newPercent);
     }
-    
-    /// @notice Allows admin to update the maximum name length
-    /// @param _newMaxLength The new maximum length in characters
-    function setMaxNameLength(uint256 _newMaxLength) external onlyAdmin {
-        require(_newMaxLength > 0, "Maximum name length must be greater than zero");
-        uint256 oldLength = maxNameLength;
-        maxNameLength = _newMaxLength;
-        emit MaxNameLengthUpdated(oldLength, _newMaxLength);
+
+    function setRevNetEnabled(bool _enabled) external onlyAdmin {
+        revNetEnabled = _enabled;
+        emit RevNetEnabledUpdated(_enabled);
+    }
+
+    function setRevNetTerminal(address _terminal) external onlyAdmin {
+        require(_terminal != address(0), "Terminal cannot be zero address");
+        address old = revNetTerminal;
+        revNetTerminal = _terminal;
+        emit RevNetTerminalUpdated(old, _terminal);
+    }
+
+    function setRevNetProjectId(uint256 _projectId) external onlyAdmin {
+        uint256 old = revNetProjectId;
+        revNetProjectId = _projectId;
+        emit RevNetProjectIdUpdated(old, _projectId);
+    }
+
+    function setMinimumPrice(uint256 _newPrice) external onlyAdmin {
+        uint256 old = minimumPrice;
+        minimumPrice = _newPrice;
+        emit MinimumPriceUpdated(old, _newPrice);
+    }
+
+    function setMaxMessageLength(uint256 _newLength) external onlyAdmin {
+        require(_newLength > 0, "Must be > 0");
+        uint256 old = maxMessageLength;
+        maxMessageLength = _newLength;
+        emit MaxMessageLengthUpdated(old, _newLength);
+    }
+
+    function setMaxNameLength(uint256 _newLength) external onlyAdmin {
+        require(_newLength > 0, "Must be > 0");
+        uint256 old = maxNameLength;
+        maxNameLength = _newLength;
+        emit MaxNameLengthUpdated(old, _newLength);
+    }
+
+    // ─── Internal registry helpers ────────────────────────────────────────────
+
+    function _addToRegistry(address markeeAddress) internal {
+        markeeIndex[markeeAddress] = markees.length;
+        markees.push(markeeAddress);
+        isMarkeeUsingThisStrategy[markeeAddress] = true;
+    }
+
+    function _removeFromRegistry(address markeeAddress) internal {
+        require(isMarkeeUsingThisStrategy[markeeAddress], "Not in registry");
+        uint256 index = markeeIndex[markeeAddress];
+        address last = markees[markees.length - 1];
+        markees[index] = last;
+        markeeIndex[last] = index;
+        markees.pop();
+        delete markeeIndex[markeeAddress];
+        isMarkeeUsingThisStrategy[markeeAddress] = false;
     }
 }

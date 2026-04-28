@@ -59,9 +59,20 @@ contract Leaderboard is IPricingStrategy {
     /// @notice Address with admin rights over this Leaderboard instance
     address public admin;
 
-    /// @notice Address that receives 62% of every payment made through connected Markees
+    /// @notice Address that receives the beneficiary share of every payment made through connected Markees
     /// @dev Read dynamically by each Markee at payment time via IPricingStrategy.beneficiaryAddress()
     address public override beneficiaryAddress;
+
+    /// @notice Beneficiary share in basis points; read by each Markee at payment time
+    /// @dev 10000 = 100% (all funds go to beneficiary, RevNet skipped). Restore to 6200 when RevNet v6 is live.
+    uint256 public override percentToBeneficiary = 10000;
+
+    /// @notice When false, Markees skip the RevNet call and route 100% to beneficiaryAddress
+    /// @dev Flip to true (along with setting revNetTerminal + revNetProjectId) to activate RevNet v6
+    bool public override revNetEnabled = false;
+
+    /// @notice Guard ensuring initializeHistory() is called at most once
+    bool public historyInitialized;
 
     /// @notice Minimum ETH (in wei) required to create a new Markee on this leaderboard
     uint256 public minimumPrice;
@@ -114,6 +125,11 @@ contract Leaderboard is IPricingStrategy {
     event MarkeeLeft(address indexed markeeAddress);
     event AdminChanged(address indexed oldAdmin, address indexed newAdmin);
     event BeneficiaryChanged(address indexed oldBeneficiary, address indexed newBeneficiary);
+    event PercentToBeneficiaryChanged(uint256 oldPercent, uint256 newPercent);
+    event RevNetEnabledChanged(bool enabled);
+    event RevNetTerminalChanged(address indexed oldTerminal, address indexed newTerminal);
+    event RevNetProjectIdChanged(uint256 oldId, uint256 newId);
+    event HistoryInitialized(uint256 markeeCount);
     event MinimumPriceChanged(uint256 oldPrice, uint256 newPrice);
     event MaxMessageLengthChanged(uint256 oldLength, uint256 newLength);
     event MaxNameLengthChanged(uint256 oldLength, uint256 newLength);
@@ -159,7 +175,6 @@ contract Leaderboard is IPricingStrategy {
     ) external returns (address seedMarkeeAddress) {
         require(!initialized, "Already initialized");
         require(_admin != address(0), "Admin cannot be zero address");
-        require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
         require(_markeeImplementation != address(0), "Markee implementation cannot be zero address");
         require(bytes(_leaderboardName).length > 0, "Name cannot be empty");
         require(_maxMessageLength > 0, "Max message length must be > 0");
@@ -188,7 +203,7 @@ contract Leaderboard is IPricingStrategy {
 
     /// @notice Creates a new Markee and places it on this leaderboard
     /// @dev Caller pays at least minimumPrice. Payment is forwarded to Markee.pay() which
-    ///      handles the 62/38 split to beneficiary and RevNet. Caller receives MARKEE tokens.
+    ///      routes funds according to percentToBeneficiary and revNetEnabled.
     /// @param _message The initial message to display
     /// @param _name The optional display name (max maxNameLength chars)
     /// @return markeeAddress The address of the newly deployed Markee clone
@@ -240,8 +255,7 @@ contract Leaderboard is IPricingStrategy {
 
     /// @notice Adds funds to an existing Markee to boost its leaderboard position
     /// @dev Anyone can call this for any Markee on this leaderboard.
-    ///      Payment routes through Markee.pay() — 62% to beneficiary, 38% to RevNet.
-    ///      Caller receives MARKEE tokens.
+    ///      Payment routes through Markee.pay() per current percentToBeneficiary + revNetEnabled.
     /// @param _markeeAddress The Markee to boost
     function addFunds(address _markeeAddress) external payable {
         require(isMarkeeOnLeaderboard[_markeeAddress], "Markee not on this leaderboard");
@@ -413,6 +427,54 @@ contract Leaderboard is IPricingStrategy {
         address old = beneficiaryAddress;
         beneficiaryAddress = _newBeneficiary;
         emit BeneficiaryChanged(old, _newBeneficiary);
+    }
+
+    /// @notice Updates the beneficiary share in basis points (10000 = 100%)
+    /// @dev Set to 6200 when RevNet v6 is ready to restore the 62/38 split
+    function setPercentToBeneficiary(uint256 _newPercent) external onlyAdmin {
+        require(_newPercent <= 10000, "Cannot exceed 100%");
+        uint256 old = percentToBeneficiary;
+        percentToBeneficiary = _newPercent;
+        emit PercentToBeneficiaryChanged(old, _newPercent);
+    }
+
+    /// @notice Enables or disables RevNet routing
+    /// @dev Set to true (with updated terminal + projectId) to activate RevNet v6
+    function setRevNetEnabled(bool _enabled) external onlyAdmin {
+        revNetEnabled = _enabled;
+        emit RevNetEnabledChanged(_enabled);
+    }
+
+    /// @notice Updates the RevNet terminal address (for v6 migration)
+    function setRevNetTerminal(address _newTerminal) external onlyAdmin {
+        require(_newTerminal != address(0), "Terminal cannot be zero address");
+        address old = revNetTerminal;
+        revNetTerminal = _newTerminal;
+        emit RevNetTerminalChanged(old, _newTerminal);
+    }
+
+    /// @notice Updates the RevNet project ID (for v6 migration)
+    function setRevNetProjectId(uint256 _newProjectId) external onlyAdmin {
+        uint256 old = revNetProjectId;
+        revNetProjectId = _newProjectId;
+        emit RevNetProjectIdChanged(old, _newProjectId);
+    }
+
+    /// @notice Seeds historical Markee state from a prior deployment. One-time call.
+    /// @dev Registers existing Markee addresses without creating new ones. Allows a fresh
+    ///      deployment to carry forward historical leaderboard history and total funds.
+    ///      Call this once immediately after initialize() before any user activity.
+    /// @param _markees Existing Markee addresses to register
+    function initializeHistory(address[] calldata _markees) external onlyAdmin {
+        require(!historyInitialized, "History already initialized");
+        historyInitialized = true;
+        for (uint256 i = 0; i < _markees.length; i++) {
+            address m = _markees[i];
+            if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
+                _addToRegistry(m);
+            }
+        }
+        emit HistoryInitialized(_markees.length);
     }
 
     /// @notice Updates the minimum price to create a new Markee

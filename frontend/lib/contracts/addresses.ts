@@ -1,34 +1,20 @@
 // Contract addresses and configuration for Markee
-import { base, optimism, arbitrum, mainnet } from 'wagmi/chains'
+import { base } from 'wagmi/chains'
 // All Markees are deployed on Base (canonical chain)
 export const CANONICAL_CHAIN = base
 export const CANONICAL_CHAIN_ID = base.id
-// JB Multi Terminal V5 (same across all chains)
-export const JB_TERMINAL = '0x2dB6d704058E552DeFE415753465df8dF0361846' as const
 // MARKEE token address (same across all chains)
 export const MARKEE_TOKEN = '0xee3027f1e021b09D629922D40436C5DeA3c6cb38' as const
 // Partner Reserve Distributor (Base only)
 export const PARTNER_RESERVE_DISTRIBUTOR = '0x7FD2aF60B309f872a2cDAcCa853A9F7885466577' as const
-// RevNet Project IDs per chain (MARKEE token)
-// Users receive tokens on the chain they pay from
-export const REVNET_CONFIG = {
-  [base.id]: {
-    projectId: 119,
-    terminal: JB_TERMINAL,
-  },
-  [optimism.id]: {
-    projectId: 63,
-    terminal: JB_TERMINAL,
-  },
-  [arbitrum.id]: {
-    projectId: 62,
-    terminal: JB_TERMINAL,
-  },
-  [mainnet.id]: {
-    projectId: 56,
-    terminal: JB_TERMINAL,
-  },
-} as const
+// Markee Cooperative multisig — default beneficiary for non-partner strategies
+export const COOPERATIVE_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB' as const
+
+// RevNet v6 config (to be wired up once v6 is deployed — no code changes needed,
+// admin calls to setRevNetTerminal / setRevNetProjectId on each strategy will re-enable routing)
+// export const REVNET_V6_CONFIG = {
+//   [base.id]: { projectId: TBD, terminal: '0x...' },
+// }
 // Strategy Contract Addresses (Base only - canonical chain)
 // All strategies and Markees exist on Base
 export const CONTRACTS = {
@@ -99,5 +85,3 @@ export function getAllStrategyAddresses(): string[] {
 export const SUBGRAPH_URLS = {
   [base.id]: `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`,
 }
-// Type exports
-export type SupportedChainId = keyof typeof REVNET_CONFIG

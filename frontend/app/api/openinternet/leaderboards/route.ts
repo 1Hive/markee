@@ -45,7 +45,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: 'https://markee.xyz',
     status: 'verified' as const,
     isCooperative: true,
-    percentToBeneficiary: 0,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'gardens',
@@ -56,7 +56,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: 'https://app.gardens.fund',
     status: 'verified' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'bread-cooperative',
@@ -67,7 +67,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: null,
     status: 'pending' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'revnets',
@@ -78,7 +78,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: null,
     status: 'pending' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'juicebox',
@@ -89,7 +89,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: null,
     status: 'pending' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'giveth',
@@ -100,7 +100,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: null,
     status: 'pending' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'flow-state',
@@ -111,7 +111,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: null,
     status: 'pending' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'superfluid',
@@ -122,7 +122,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: 'https://campaigns.superfluid.org',
     status: 'verified' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
   {
     slug: 'clawchemy',
@@ -133,7 +133,7 @@ const LEGACY_PARTNERS = [
     verifiedUrl: 'https://clawchemy.xyz/',
     status: 'verified' as const,
     isCooperative: false,
-    percentToBeneficiary: 6200,
+    percentToBeneficiary: 10000,
   },
 ] as const
 
