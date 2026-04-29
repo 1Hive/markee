@@ -20,8 +20,8 @@ import { createClient } from 'redis'
 // ─── Fill in before running ───────────────────────────────────────────────────
 
 const MIGRATIONS = [
-  // ['0xOLD_MARKEE_ADDRESS', '0xNEW_MARKEE_ADDRESS'],
-  // ['0xOLD_MARKEE_ADDRESS', '0xNEW_MARKEE_ADDRESS'],
+  ['0x8F670c82a17AA3d1cbEf24813b02DF5398dC9637', '0x8B06b9eFaaffE15F17848D1eC61a4682fC9B2cf8'],
+  ['0x8198Bd516f0b683C216157470a170Fbd1fb70993', '0xC8363B3E28db6296F3A0e3e04Feb31e4952e69Aa'],
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
