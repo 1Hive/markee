@@ -15,7 +15,7 @@
 //
 // Get KV_URL from: Vercel dashboard → Storage → your KV store → .env.local tab
 
-import { createClient } from 'redis'
+import { kv } from '@vercel/kv'
 
 // ─── Fill in before running ───────────────────────────────────────────────────
 
@@ -28,17 +28,17 @@ const MIGRATIONS = [
 
 const DRY_RUN = process.env.DRY_RUN === '1'
 
-async function migrateOne(client, oldAddr, newAddr) {
+async function migrateOne(oldAddr, newAddr) {
   const old = oldAddr.toLowerCase()
   const neo = newAddr.toLowerCase()
 
   console.log(`\n${old}\n  → ${neo}${DRY_RUN ? '  [DRY RUN]' : ''}`)
 
   // Total views
-  const total = await client.get(`views:total:${old}`)
+  const total = await kv.get(`views:total:${old}`)
   if (total !== null) {
     console.log(`  views:total  ${total}`)
-    if (!DRY_RUN) await client.set(`views:total:${neo}`, total)
+    if (!DRY_RUN) await kv.set(`views:total:${neo}`, total)
   } else {
     console.log(`  views:total  (none)`)
   }
@@ -47,16 +47,13 @@ async function migrateOne(client, oldAddr, newAddr) {
   let cursor = 0
   let count = 0
   do {
-    const result = await client.scan(cursor, {
-      MATCH: `views:msg:${old}:*`,
-      COUNT: 100,
-    })
-    cursor = result.cursor
-    for (const key of result.keys) {
-      const value = await client.get(key)
+    const [nextCursor, keys] = await kv.scan(cursor, { match: `views:msg:${old}:*`, count: 100 })
+    cursor = nextCursor
+    for (const key of keys) {
+      const value = await kv.get(key)
       const newKey = `views:msg:${neo}:${key.split(':').pop()}`
       console.log(`  ${key}  →  ${newKey}  (${value})`)
-      if (!DRY_RUN) await client.set(newKey, value)
+      if (!DRY_RUN) await kv.set(newKey, value)
       count++
     }
   } while (cursor !== 0)
@@ -70,24 +67,18 @@ async function main() {
     process.exit(1)
   }
 
-  const url = process.env.KV_URL || process.env.REDIS_URL
-  if (!url) {
-    console.error('Missing env var: set KV_URL or REDIS_URL to your Vercel KV connection string.')
-    console.error('Find it at: Vercel dashboard → Storage → your KV store → .env.local tab')
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    console.error('Missing KV env vars. Run: vercel env pull .env.local')
+    console.error('Then: source .env.local && node migrate-views.mjs')
     process.exit(1)
   }
-
-  const client = createClient({ url })
-  client.on('error', (err) => console.error('Redis error:', err))
-  await client.connect()
 
   console.log(`Running ${MIGRATIONS.length} migration(s)${DRY_RUN ? ' — DRY RUN, no writes' : ''}`)
 
   for (const [oldAddr, newAddr] of MIGRATIONS) {
-    await migrateOne(client, oldAddr, newAddr)
+    await migrateOne(oldAddr, newAddr)
   }
 
-  await client.quit()
   console.log('\nDone.')
 }
 
