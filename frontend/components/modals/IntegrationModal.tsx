@@ -288,7 +288,8 @@ Two components:
 - "Edit messages you own on the Markee app." link (or "See more messages and edit messages you own." if > 5 entries) shown ABOVE the payment section, linking to ${buyUrl}
 - Amount to Pay section (no Minimum button, only Take Top Spot + custom input)
   - Take top spot amount for the selected entry = topFundsAdded - selectedEntryFunds + 0.001 ETH
-  - If the selected entry IS already the top, show Take Top Spot button with selectedFunds + 0.001 ETH
+  - If the selected entry IS already the top, HIDE the Take Top Spot button entirely -- show only the custom input and the note above it
+- Destructure isError from both useReadContract (getTopMarkees) and useReadContracts (per-markee data); if either errors, show an error message in the boost tab instead of the list
 - "Add Funds to this Message" submit button
 
 ### Success state
@@ -297,7 +298,7 @@ When a transaction confirms, replace the entire modal body (below the header) wi
 - "Transaction confirmed!"
 - "View on Basescan" link to https://basescan.org/tx/{hash}
 - "Refreshing in a moment..." note
-The modal stays open indefinitely. When the user closes it after success, trigger the data refresh.
+The modal stays open. The close button remains visible in the header. When the user closes the modal after a successful transaction, trigger the data refresh (call the onSuccess callback from handleClose only when isSuccess is true).
 
 ## Contract interactions
 
@@ -342,10 +343,22 @@ const { address, isConnected, chainId } = useAccount()
 const isOnBase = isConnected && chainId === base.id
 
 ### Wallet connect and dialog z-index
-The modal should use the native <dialog> element with showModal(). When opening the RainbowKit connect modal, close the dialog first so it appears on top, then reopen it when the connect modal closes:
-  dialogRef.current?.close()
-  openConnectModal?.()
-  // useEffect: if (!connectModalOpen && !dialogRef.current?.open) dialogRef.current?.showModal()
+The modal should use the native <dialog> element with showModal(). When opening the RainbowKit connect modal, the dialog must be closed first so RainbowKit appears on top. Handle this in the trigger component (MarkeeSign), not MarkeeModal:
+  // In MarkeeSign:
+  const [pendingReopenModal, setPendingReopenModal] = useState(false)
+  function handleConnectWallet() {
+    dialogRef.current?.close()
+    setPendingReopenModal(true)
+    openConnectModal?.()
+  }
+  // Reopen the dialog once the connect modal has closed:
+  useEffect(() => {
+    if (pendingReopenModal && !connectModalOpen) {
+      dialogRef.current?.showModal()
+      setPendingReopenModal(false)
+    }
+  }, [pendingReopenModal, connectModalOpen])
+Pass handleConnectWallet as a prop to MarkeeModal. MarkeeModal calls it when the user clicks "Connect Wallet" -- MarkeeModal itself does not manage the dialog open/close.
 
 ## Packages required
 - wagmi v2
@@ -360,9 +373,11 @@ wagmi config: getDefaultConfig({ appName, projectId, chains: [base], ssr: true }
 Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in your environment (get a free ID at cloud.walletconnect.com).
 
 ## Implementation notes
-- The data-markee-address attribute must be in the server-rendered HTML for verification. In Next.js, placing it in JSX inside a 'use client' component is fine -- Next.js SSRs client components. Avoid setting it only via useEffect or document.setAttribute().
+- The data-markee-address attribute must be in the server-rendered HTML for verification. In Next.js, placing it in JSX inside a 'use client' component is fine -- Next.js SSRs client components. Avoid setting it only via useEffect or document.setAttribute() (those run client-side only and will fail verification).
 - takeTopSpot passed to the modal = topFundsAdded + 0.001 ETH (MIN_INCREMENT). If no competition yet, use minimumPrice.
+- Form state (message, name, ethAmount, boostAmount) must live in MarkeeSign (parent), not MarkeeModal. The <dialog> element unmounts/remounts when closed and reopened during wallet connect, so state inside MarkeeModal will be lost. Lift all form inputs to the parent and pass them down as props.
 - On fetch error from the proxy route, fall back to the default message and still allow the modal to open -- the modal works fully from on-chain data alone.
+- NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is required. Optionally set NEXT_PUBLIC_BASE_RPC_URL for a custom transport in the wagmi config (e.g. an Alchemy or Infura endpoint).
 - Style to match your site's existing design system. The pattern works with any CSS framework.
 
 Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.`

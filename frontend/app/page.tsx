@@ -19,6 +19,7 @@ import { Eye } from 'lucide-react'
 import { formatEther } from 'viem'
 
 import { formatDistanceToNow } from 'date-fns'
+import { NETWORK_PAUSED } from '@/lib/paused'
 import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
@@ -93,18 +94,21 @@ export default function Home() {
   }, [refetch])
 
   const handleCreateNew = useCallback(() => {
+    if (NETWORK_PAUSED) return
     setSelectedMarkee(null)
     setModalMode('create')
     setIsModalOpen(true)
   }, [])
 
   const handleEditMessage = useCallback((markee: Markee) => {
+    if (NETWORK_PAUSED) return
     setSelectedMarkee(markee)
     setModalMode('updateMessage')
     setIsModalOpen(true)
   }, [])
 
   const handleAddFunds = useCallback((markee: Markee) => {
+    if (NETWORK_PAUSED) return
     setSelectedMarkee(markee)
     setModalMode('addFunds')
     setIsModalOpen(true)
@@ -140,6 +144,7 @@ export default function Home() {
   }, [])
 
   const handleFixedMarkeeClick = useCallback((fixedMarkee: FixedMarkee) => {
+    if (NETWORK_PAUSED) return
     setSelectedFixedMarkee(fixedMarkee)
     setIsFixedModalOpen(true)
   }, [])

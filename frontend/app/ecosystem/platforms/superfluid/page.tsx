@@ -15,6 +15,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Image from 'next/image'
 import { RewardsModal } from '@/components/modals/RewardsModal'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { NETWORK_PAUSED } from '@/lib/paused'
 import { useViews } from '@/hooks/useViews'
 import type { Markee } from '@/types'
 
@@ -231,13 +232,15 @@ export default function SuperfluidPlatformPage() {
                 <Star size={16} />
                 View SUP Rewards
               </button>
-              <button
-                onClick={() => setCreateModalOpen(true)}
-                className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-              >
-                <Plus size={18} />
-                Create a Markee
-              </button>
+              {!NETWORK_PAUSED && (
+                <button
+                  onClick={() => setCreateModalOpen(true)}
+                  className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
+                >
+                  <Plus size={18} />
+                  Create a Markee
+                </button>
+              )}
             </div>
           </div>
 
@@ -372,14 +375,16 @@ export default function SuperfluidPlatformPage() {
                     </span>
                   </div>
 
-                  <div className="flex justify-center">
-                    <button
-                      onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
-                      className="w-full sm:w-auto bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
-                    >
-                      {buyPriceFormatted} ETH to change
-                    </button>
-                  </div>
+                  {!NETWORK_PAUSED && (
+                    <div className="flex justify-center">
+                      <button
+                        onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
+                        className="w-full sm:w-auto bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
+                      >
+                        {buyPriceFormatted} ETH to change
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -428,13 +433,15 @@ export default function SuperfluidPlatformPage() {
               <Zap size={40} className="text-[#1DB227] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">No active signs yet</p>
               <p className="text-[#8A8FBF] text-sm mb-6">Be the first Superfluid project to buy a message.</p>
-              <button
-                onClick={() => setCreateModalOpen(true)}
-                className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-              >
-                <Plus size={18} />
-                Create a Markee
-              </button>
+              {!NETWORK_PAUSED && (
+                <button
+                  onClick={() => setCreateModalOpen(true)}
+                  className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+                >
+                  <Plus size={18} />
+                  Create a Markee
+                </button>
+              )}
             </div>
           ) : (
             <div>

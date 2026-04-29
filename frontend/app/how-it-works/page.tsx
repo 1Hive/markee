@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { ChevronDown, Zap, DollarSign, TrendingUp, Clock, Globe, Users, Sparkles, Check } from 'lucide-react'
+import { ChevronDown, Zap, DollarSign, TrendingUp, Clock, Users } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 
@@ -42,29 +42,18 @@ function FeeReceiverSection() {
           Incoming funds from messages are split according to the Golden Ratio.
         </p>
 
-        <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto">
-          {/* Box 1: Markee Beneficiary - 62% width */}
-          <div className="md:flex-[62]">
-            <FeeReceiverCard
-              percentage="62%"
-              title="Your Beneficiary Address"
-              description="Direct funding for your website, community, or digital organization."
-              color="soft-pink"
-              icon={<Users className="w-12 h-12" />}
-            />
-          </div>
-
-          {/* Box 2: Cooperative Ownership - 38% width */}
-          <div className="md:flex-[38]">
-            <FeeReceiverCard
-              percentage="38%"
-              title="Markee Cooperative"
-              description="Issues MARKEE in the RevNet."
-              color="cool-sky-blue"
-              icon={<Globe className="w-12 h-12" />}
-            />
-          </div>
+        <div className="max-w-2xl mx-auto">
+          <FeeReceiverCard
+            percentage="100%"
+            title="Your Beneficiary Address"
+            description="All funds go directly to the beneficiary address set for your Markee — your wallet, your community treasury, or any address you choose."
+            color="soft-pink"
+            icon={<Users className="w-12 h-12" />}
+          />
         </div>
+        <p className="text-center text-sm text-[#8A8FBF] mt-6">
+          Revenue sharing with the Markee Cooperative via RevNet will resume when v6 is live.
+        </p>
       </div>
     </section>
   )
@@ -317,7 +306,7 @@ function CollectSection() {
           {/* CTA 3 */}
           <CollectCTACard
             title="Join Markee"
-            subtitle="Buy a Message to issue MARKEE tokens from the RevNet"
+            subtitle="Buy a message to support the Markee Cooperative and earn your place on the leaderboard"
             buttonText="Buy a Message"
             buttonLink="https://www.markee.xyz/ecosystem/markee-cooperative"
             color="soft-pink"
@@ -372,8 +361,8 @@ function CondensedFAQ() {
       question: "How do I become an owner?",
       answer: (
         <div>
-          <p className="mb-3">Buy a message on any Markee Network platform and you'll receive MARKEE tokens from the RevNet. Holding any amount of MARKEE makes you an Owner of the Markee Network including the ability to redeem from the Revnet's treasury.</p>
-          <p className="mb-3">MARKEE tokens are freely transferable and can also be allocated from the Community Reserve to organizations and participants who advance the Cooperative's mission.</p>
+          <p className="mb-3">MARKEE tokens are the governance and ownership token of the Markee Network. Holding any amount of MARKEE makes you an Owner, giving you access to governance through the Gardens community.</p>
+          <p className="mb-3">Token issuance will resume when the network migrates to RevNet v6. In the meantime, tokens can be allocated from the Community Reserve to organizations and participants who advance the Cooperative's mission.</p>
           <Link href="/owners" className="text-soft-pink hover:underline font-semibold">
             Learn about ownership →
           </Link>
@@ -387,22 +376,7 @@ function CondensedFAQ() {
           <p>MARKEE is the governance and ownership token of the Markee Network. Holding MARKEE means you are a co-owner of the network and its assets.</p>
           <p><strong className="text-soft-white">Governance:</strong> Vote on proposals in the Gardens community using conviction voting to direct the future of the network.</p>
           <p><strong className="text-soft-white">Ownership:</strong> MARKEE holders collectively own the Markee Network, including its smart contracts, domains, brand, and treasury.</p>
-          <p><strong className="text-soft-white">Accrue Revenue:</strong> Pre-scheduled price increases are locked in the Revnet's smart contract, and permissionlessly distribute revenue to MARKEE holders over time</p>
-          <a href="https://www.revnet.app/v5:base:119/terms" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
-            View token terms on Revnets →
-          </a>
-        </div>
-      )
-    },
-    {
-      question: "What are RevNets?",
-      answer: (
-        <div>
-          <p className="mb-3">Revnets are 100% automated tokenized revenue systems built on Juicebox smart contracts. They apply crowdfunding concepts to revenue-generating digital cooperatives with preset terms for how revenue is shared.</p>
-          <p className="mb-3">The Markee RevNet's token issuance rules are immutable. The only configurable parameter is where the 38% community reserve is distributed</p>
-          <a href="https://revnet.eth.sucks/" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
-            See project on Revnets →
-          </a>
+          <p><strong className="text-soft-white">Revenue sharing:</strong> Revenue sharing with token holders via RevNet will resume once the network migrates to v6.</p>
         </div>
       )
     },

@@ -6,10 +6,17 @@ import "./Interfaces.sol";
 /// @title Markee
 /// @notice A message board contract that stores a message and name, tracks total funds,
 ///         and routes payments to a community beneficiary and the Markee Cooperative RevNet.
-/// @dev Payment routing is handled entirely within this contract. The pricing strategy
-///      determines *whether* a payment is valid and calls pay(), but cannot alter where
-///      funds go. RevNet terminal, RevNet project ID, and percent to beneficiary are all
-///      set once at initialization and never change.
+///
+/// @dev Payment routing is handled within this contract. The pricing strategy determines
+///      *whether* a payment is valid and calls pay(), but cannot alter where funds go
+///      without being explicitly set as the pricingStrategy by the current strategy (admin-gated).
+///
+/// @dev All five routing parameters (beneficiaryAddress, percentToBeneficiary, revNetEnabled,
+///      revNetTerminal, revNetProjectId) are read dynamically from the pricingStrategy at pay time.
+///      This means a single admin call on the Leaderboard updates routing for every connected
+///      Markee instantly — including the RevNet terminal when v6 goes live. No per-Markee
+///      migrations are ever needed.
+///
 /// @dev Deployed as a minimal proxy clone by Leaderboard (EIP-1167). Do not deploy directly.
 /// @dev All instances deployed on Base (canonical chain).
 contract Markee {
@@ -17,19 +24,13 @@ contract Markee {
     // Constants
     // ─────────────────────────────────────────────
 
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "1.1.0";
     address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
     uint256 public constant BASIS_POINTS_DIVISOR = 10000;
 
     // ─────────────────────────────────────────────
     // Initialized-once config (set by initialize(), never changes after)
     // ─────────────────────────────────────────────
-
-    /// @notice Juicebox multi-terminal used for RevNet payments
-    address public revNetTerminal;
-
-    /// @notice The Markee Cooperative RevNet project ID
-    uint256 public revNetProjectId;
 
     /// @notice Guard preventing initialize() from being called more than once
     bool public initialized;
@@ -44,9 +45,11 @@ contract Markee {
     /// @notice The optional display name associated with this Markee's owner
     string public name;
 
-    /// @notice Cumulative ETH (in wei) ever sent through pay() on this Markee
-    /// @dev Used as the leaderboard ranking metric. Reflects economic weight over the lifetime
-    ///      of this Markee regardless of which strategy is currently active.
+    /// @notice Cumulative ETH (in wei) ever credited to this Markee
+    /// @dev Used as the leaderboard ranking metric and as a tamper-proof economic signal for
+    ///      funding allocation (e.g. MARKEE token grants from the Community Reserve). Reflects
+    ///      real ETH paid through pay() plus any historical funds seeded at initialization.
+    ///      Cannot be incremented except through pay() — verifiable on-chain.
     uint256 public totalFundsAdded;
 
     /// @notice The address authorised to call setMessage, setName, and pay on this Markee
@@ -66,7 +69,8 @@ contract Markee {
     event PaymentReceived(
         uint256 totalAmount,
         uint256 beneficiaryAmount,
-        uint256 revNetAmount,
+        uint256 revNetBuyerAmount,
+        uint256 revNetFeeReceiverAmount,
         address indexed tokenRecipient,
         uint256 newTotalFundsAdded
     );
@@ -78,34 +82,35 @@ contract Markee {
     // ─────────────────────────────────────────────
 
     /// @notice Initialises a cloned Markee. Called once by Leaderboard immediately after cloning.
-    /// @dev Reverts if called a second time.
+    /// @dev Reverts if called a second time. RevNet terminal and project ID are NOT stored here —
+    ///      they are read from the strategy at pay time so a single admin call on the Leaderboard
+    ///      applies to all connected Markees simultaneously.
     /// @param _owner The initial owner (typically the buyer/creator)
     /// @param _pricingStrategy The strategy contract authorised to call mutations (typically a Leaderboard)
-    /// @param _revNetTerminal Address of the Juicebox terminal for RevNet payments
-    /// @param _revNetProjectId The Markee Cooperative RevNet project ID
     /// @param _initialMessage The initial message to display
-    /// @param _name The optional display name (max 22 chars enforced by strategy)
+    /// @param _name The optional display name (max chars enforced by strategy)
+    /// @param _historicalFunds Funds to credit from a prior deployment (0 for new Markees).
+    ///        Only the strategy (admin-controlled) can call initialize, so this value cannot be
+    ///        inflated by an external party. For migration via migrateFromLegacy() on Leaderboard,
+    ///        the strategy reads the old clone's totalFundsAdded directly from on-chain state.
     function initialize(
         address _owner,
         address _pricingStrategy,
-        address _revNetTerminal,
-        uint256 _revNetProjectId,
         string calldata _initialMessage,
-        string calldata _name
+        string calldata _name,
+        uint256 _historicalFunds
     ) external {
         require(!initialized, "Already initialized");
         require(_owner != address(0), "Owner cannot be zero address");
         require(_pricingStrategy != address(0), "Strategy cannot be zero address");
-        require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
 
         initialized = true;
 
         owner = _owner;
         pricingStrategy = _pricingStrategy;
-        revNetTerminal = _revNetTerminal;
-        revNetProjectId = _revNetProjectId;
         message = _initialMessage;
         name = _name;
+        totalFundsAdded = _historicalFunds;
 
         emit MessageChanged(_initialMessage, _pricingStrategy);
         if (bytes(_name).length > 0) {
@@ -121,32 +126,26 @@ contract Markee {
     ///         and records the full amount against totalFundsAdded.
     /// @dev Only callable by pricingStrategy. The strategy is responsible for validating the payment
     ///      conditions (minimum price, caller permissions, etc.) before forwarding here.
-    ///      beneficiaryAddress is read dynamically from the strategy so a single admin call on
-    ///      the Leaderboard updates routing for every Markee it manages.
-    /// @param tokenRecipient Address that should receive MARKEE tokens from the RevNet
+    ///      All five routing parameters are read dynamically from the strategy — including the RevNet
+    ///      terminal and project ID — so admin only ever needs to update one place to apply changes
+    ///      across every connected Markee (including the v5 → v6 terminal switch).
+    /// @param tokenRecipient Address that should receive MARKEE tokens from the RevNet (when enabled)
     function pay(address tokenRecipient) external payable {
         require(initialized, "Not initialized");
         require(msg.sender == pricingStrategy, "Only pricing strategy can call pay");
         require(msg.value > 0, "Payment must be greater than zero");
 
-        uint256 amount = msg.value;
-
-        // Read routing config dynamically from strategy so a single admin call propagates instantly
         IPricingStrategy strategy = IPricingStrategy(pricingStrategy);
         address beneficiary = strategy.beneficiaryAddress();
-        uint256 pct = strategy.percentToBeneficiary();
-        bool rvEnabled = strategy.revNetEnabled();
 
         uint256 beneficiaryAmount;
         uint256 revNetAmount;
 
-        if (!rvEnabled || beneficiary == address(0)) {
-            // RevNet disabled or no beneficiary: route everything to beneficiary
-            beneficiaryAmount = amount;
-            revNetAmount = 0;
+        if (!strategy.revNetEnabled() || beneficiary == address(0)) {
+            beneficiaryAmount = msg.value;
         } else {
-            beneficiaryAmount = (amount * pct) / BASIS_POINTS_DIVISOR;
-            revNetAmount = amount - beneficiaryAmount;
+            beneficiaryAmount = (msg.value * strategy.percentToBeneficiary()) / BASIS_POINTS_DIVISOR;
+            revNetAmount = msg.value - beneficiaryAmount;
         }
 
         if (beneficiary != address(0) && beneficiaryAmount > 0) {
@@ -154,21 +153,45 @@ contract Markee {
             require(success, "Transfer to beneficiary failed");
         }
 
-        if (revNetAmount > 0) {
-            IJBMultiTerminal(revNetTerminal).pay{value: revNetAmount}(
-                revNetProjectId,
-                NATIVE_TOKEN,
-                revNetAmount,
-                tokenRecipient,
-                0,
-                "",
-                ""
+        (uint256 revNetBuyerAmount, uint256 revNetFeeReceiverAmount) =
+            _routeRevNet(strategy, revNetAmount, tokenRecipient);
+
+        totalFundsAdded += msg.value;
+
+        emit PaymentReceived(msg.value, beneficiaryAmount, revNetBuyerAmount, revNetFeeReceiverAmount, tokenRecipient, totalFundsAdded);
+    }
+
+    function _routeRevNet(
+        IPricingStrategy strategy,
+        uint256 revNetAmount,
+        address tokenRecipient
+    ) internal returns (uint256 buyerAmount, uint256 feeAmount) {
+        if (revNetAmount == 0) return (0, 0);
+
+        address terminal = strategy.revNetTerminal();
+        uint256 projectId = strategy.revNetProjectId();
+        address feeReceiver = strategy.platformFeeReceiver();
+        uint256 feePct = strategy.percentToPlatformFeeReceiver();
+
+        if (feeReceiver == address(0) || feePct == 0) {
+            buyerAmount = revNetAmount;
+            IJBMultiTerminal(terminal).pay{value: buyerAmount}(
+                projectId, NATIVE_TOKEN, buyerAmount, tokenRecipient, 0, "", ""
             );
+        } else {
+            feeAmount = (revNetAmount * feePct) / BASIS_POINTS_DIVISOR;
+            buyerAmount = revNetAmount - feeAmount;
+            if (feeAmount > 0) {
+                IJBMultiTerminal(terminal).pay{value: feeAmount}(
+                    projectId, NATIVE_TOKEN, feeAmount, feeReceiver, 0, "", ""
+                );
+            }
+            if (buyerAmount > 0) {
+                IJBMultiTerminal(terminal).pay{value: buyerAmount}(
+                    projectId, NATIVE_TOKEN, buyerAmount, tokenRecipient, 0, "", ""
+                );
+            }
         }
-
-        totalFundsAdded += amount;
-
-        emit PaymentReceived(amount, beneficiaryAmount, revNetAmount, tokenRecipient, totalFundsAdded);
     }
 
     // ─────────────────────────────────────────────
@@ -197,8 +220,7 @@ contract Markee {
 
     /// @notice Switches the pricing strategy for this Markee
     /// @dev Only callable by the current pricingStrategy. When a Markee leaves a Leaderboard,
-    ///      the Leaderboard calls this on the Markee's behalf, then the Leaderboard's markeeLeft()
-    ///      can be called to clean up the array.
+    ///      the Leaderboard calls this, then removes the Markee from its registry.
     /// @param _newStrategy The new pricing strategy contract address
     function setPricingStrategy(address _newStrategy) external {
         require(msg.sender == pricingStrategy, "Only current pricing strategy can change strategy");

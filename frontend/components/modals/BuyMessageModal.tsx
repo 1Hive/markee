@@ -74,30 +74,6 @@ interface BuyMessageModalProps {
   platformId?: 'github' | 'superfluid'
 }
 
-// ─── MARKEE token helpers ─────────────────────────────────────────────────────
-
-const PHASES = [
-  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
-  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
-  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
-  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
-]
-
-function getCurrentPhaseRate(): number {
-  const now = new Date()
-  for (const phase of PHASES) {
-    if (now < phase.endDate) return phase.rate
-  }
-  return PHASES[PHASES.length - 1].rate
-}
-
-function calculateMarkeeTokens(ethAmount: number): number {
-  // 62% of ETH goes to the beneficiary; only 38% reaches RevNet for token issuance.
-  // The buyer receives 62% of the tokens issued against that 38%.
-  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BuyMessageModal({
@@ -324,40 +300,13 @@ export function BuyMessageModal({
     </div>
   )
 
-  // ── Token + beneficiary split display ────────────────────────────────────
+  // ── Beneficiary display ───────────────────────────────────────────────────
   const shortBeneficiary = beneficiaryAddress
     ? `${beneficiaryAddress.slice(0, 6)}…${beneficiaryAddress.slice(-4)}`
     : null
   const basescanUrl = beneficiaryAddress
     ? `https://basescan.org/address/${beneficiaryAddress}`
     : null
-
-  const tokenDisplayJSX = amount && parseFloat(amount) > 0 ? (
-    <div className={`grid ${beneficiaryAddress ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
-        <p className="text-sm text-[#F897FE] font-medium mb-2">You&apos;ll receive</p>
-        <p className="text-4xl font-bold text-[#F897FE] mb-1">
-          {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-        </p>
-        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-      </div>
-
-      {beneficiaryAddress && (
-        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
-          <p className="text-sm text-[#FFA94D] font-medium mb-2">Beneficiary receives</p>
-          <p className="text-4xl font-bold text-[#FFA94D] mb-1">
-            {(() => {
-              const value = parseFloat(amount) * 0.62
-              if (value === 0) return '0'
-              if (value < 0.00001) return '< 0.00001'
-              return Number(value.toFixed(5)).toString()
-            })()}
-          </p>
-          <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-        </div>
-      )}
-    </div>
-  ) : null
 
   // ── Revenue split info panel ──────────────────────────────────────────────
   const revenueSplitJSX = (
@@ -375,13 +324,9 @@ export function BuyMessageModal({
             <ExternalLink size={11} className="opacity-60" />
           </a>
         ) : (
-          <span className="text-[#EDEEFF]">Project treasury</span>
+          <span className="text-[#EDEEFF]">Beneficiary</span>
         )}
-        <span className="text-[#FFA94D] font-semibold">62%</span>
-      </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-[#EDEEFF]">Markee Cooperative</span>
-        <span className="text-[#7C9CFF] font-semibold">38%</span>
+        <span className="text-[#FFA94D] font-semibold">100%</span>
       </div>
     </div>
   )
@@ -512,9 +457,6 @@ export function BuyMessageModal({
                 )}
 
                 {amountSelectorJSX}
-
-                {/* MARKEE token display + optional partner ETH panel */}
-                {tokenDisplayJSX}
 
                 {/* Payment info panel */}
                 {isAddFunds && existingMarkee ? (

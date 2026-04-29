@@ -20,6 +20,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { Emoji } from '@/components/ui/Emoji'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { NETWORK_PAUSED } from '@/lib/paused'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -278,24 +279,26 @@ export default function MarkeeDetailPage() {
             </ModeratedContent>
 
             {/* ── Action Buttons ─────────────────────────────────── */}
-            <div className="flex justify-end gap-2">
-              {isOwner && (
+            {!NETWORK_PAUSED && (
+              <div className="flex justify-end gap-2">
+                {isOwner && (
+                  <button
+                    onClick={() => setIsEditOpen(true)}
+                    className="flex items-center gap-2 border border-[#F897FE]/40 text-[#F897FE] hover:bg-[#F897FE]/10 font-semibold px-5 py-2.5 rounded-lg transition-colors"
+                  >
+                    <MessageSquare size={16} />
+                    Edit Message
+                  </button>
+                )}
                 <button
-                  onClick={() => setIsEditOpen(true)}
-                  className="flex items-center gap-2 border border-[#F897FE]/40 text-[#F897FE] hover:bg-[#F897FE]/10 font-semibold px-5 py-2.5 rounded-lg transition-colors"
+                  onClick={() => setIsAddFundsOpen(true)}
+                  className="flex items-center gap-2 bg-[#F897FE] hover:bg-[#F897FE]/90 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
                 >
-                  <MessageSquare size={16} />
-                  Edit Message
+                  <Plus size={16} />
+                  Add Funds
                 </button>
-              )}
-              <button
-                onClick={() => setIsAddFundsOpen(true)}
-                className="flex items-center gap-2 bg-[#F897FE] hover:bg-[#F897FE]/90 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
-              >
-                <Plus size={16} />
-                Add Funds
-              </button>
-            </div>
+              </div>
+            )}
 
             {/* ── Stats Grid ─────────────────────────────────────── */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
