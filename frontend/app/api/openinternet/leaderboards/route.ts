@@ -34,30 +34,11 @@ const NO_CACHE = {
 // ─── Hardcoded legacy TopDawg partner metadata ────────────────────────────────
 // These partners use legacy TopDawg strategy contracts (not the factory).
 // verified = has a live public URL; status is set accordingly.
+//
+// Removed: markee-cooperative, gardens, clawchemy — migrated to v1.1 OI factory
+// leaderboards and discovered automatically via getLeaderboards().
 
 const LEGACY_PARTNERS = [
-  {
-    slug: 'markee-cooperative',
-    name: 'Markee Cooperative',
-    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a',
-    logoUrl: '/markee-logo.png',
-    siteUrl: 'https://markee.xyz',
-    verifiedUrl: 'https://markee.xyz',
-    status: 'verified' as const,
-    isCooperative: true,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'gardens',
-    name: 'Gardens',
-    strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE',
-    logoUrl: '/partners/gardens.png',
-    siteUrl: 'https://app.gardens.fund',
-    verifiedUrl: 'https://app.gardens.fund',
-    status: 'verified' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
   {
     slug: 'bread-cooperative',
     name: 'Bread Cooperative',
@@ -120,17 +101,6 @@ const LEGACY_PARTNERS = [
     logoUrl: '/partners/superfluid.png',
     siteUrl: 'https://campaigns.superfluid.org',
     verifiedUrl: 'https://campaigns.superfluid.org',
-    status: 'verified' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'clawchemy',
-    name: 'Clawchemy',
-    strategyAddress: '0x89e608223BEc645227f11d8241e8175A9A95597E',
-    logoUrl: '/partners/clawchemy.png',
-    siteUrl: 'https://clawchemy.xyz/',
-    verifiedUrl: 'https://clawchemy.xyz/',
     status: 'verified' as const,
     isCooperative: false,
     percentToBeneficiary: 10000,
