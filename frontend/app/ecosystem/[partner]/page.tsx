@@ -446,7 +446,9 @@ export default function PartnerPage() {
         userMarkee={selectedMarkee}
         initialMode={modalMode}
         onSuccess={handleTransactionSuccess}
-        strategyAddress={partner.leaderboardAddress ?? (partner.isCooperative ? undefined : partner.strategyAddress as `0x${string}`)}
+        strategyAddress={selectedMarkee
+          ? selectedMarkee.pricingStrategy as `0x${string}`
+          : (partner.leaderboardAddress ?? (partner.isCooperative ? undefined : partner.strategyAddress as `0x${string}`))}
         partnerName={partner.isCooperative ? undefined : partner.name}
         partnerSplitPercentage={partner.isCooperative ? undefined : partner.percentToBeneficiary / 100}
         topFundsAdded={markees[0]?.totalFundsAdded}

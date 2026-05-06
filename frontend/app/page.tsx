@@ -459,7 +459,9 @@ export default function Home() {
         userMarkee={selectedMarkee}
         initialMode={modalMode}
         onSuccess={handleTransactionSuccess}
-        strategyAddress={LEGACY_STRATEGY_TO_LEADERBOARD['0x558eb41ec9cc90b86550617eef5f180ea60e0e3a']}
+        strategyAddress={selectedMarkee
+          ? selectedMarkee.pricingStrategy as `0x${string}`
+          : LEGACY_STRATEGY_TO_LEADERBOARD['0x558eb41ec9cc90b86550617eef5f180ea60e0e3a']}
         topFundsAdded={markees[0]?.totalFundsAdded}
       />
 

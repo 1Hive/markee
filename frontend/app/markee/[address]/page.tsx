@@ -21,8 +21,6 @@ import { Emoji } from '@/components/ui/Emoji'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
-import { LEGACY_STRATEGY_TO_LEADERBOARD } from '@/lib/contracts/addresses'
-
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function formatTimestamp(ts: bigint | number): string {
@@ -530,7 +528,7 @@ export default function MarkeeDetailPage() {
           userMarkee={markee as any}
           initialMode="addFunds"
           onSuccess={() => setIsAddFundsOpen(false)}
-          strategyAddress={(LEGACY_STRATEGY_TO_LEADERBOARD[markee.pricingStrategy?.toLowerCase()] ?? markee.pricingStrategy) as `0x${string}`}
+          strategyAddress={markee.pricingStrategy as `0x${string}`}
           partnerName={markee.isPartnerStrategy ? markee.strategyName : undefined}
           partnerSplitPercentage={markee.isPartnerStrategy ? markee.partnerPercentage : undefined}
           topFundsAdded={markee.totalFundsAdded}
@@ -545,7 +543,7 @@ export default function MarkeeDetailPage() {
           userMarkee={markee as any}
           initialMode="updateMessage"
           onSuccess={() => setIsEditOpen(false)}
-          strategyAddress={(LEGACY_STRATEGY_TO_LEADERBOARD[markee.pricingStrategy?.toLowerCase()] ?? markee.pricingStrategy) as `0x${string}`}
+          strategyAddress={markee.pricingStrategy as `0x${string}`}
         />
       )}
     </div>
