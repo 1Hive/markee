@@ -13,6 +13,8 @@ const CACHE_TTL = 60 // seconds
 
 const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
 const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
+// Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees (2026-05-05)
+const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as `0x${string}`
 
 const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
@@ -176,7 +178,7 @@ export async function GET(request: Request) {
     const client = getClient()
 
     // Run leaderboard RPC calls and featured message subgraph fetch in parallel
-    const [addresses, featuredMessage] = await Promise.all([
+    const [factoryAddresses, featuredMessage] = await Promise.all([
       client.readContract({
         address: SUPERFLUID_FACTORY_ADDRESS,
         abi: FACTORY_ABI,
@@ -186,7 +188,10 @@ export async function GET(request: Request) {
       fetchFeaturedMessage(),
     ])
 
-    if (!addresses || addresses.length === 0) {
+    // Include the standalone migration leaderboard (TopDawg markees migrated to v1.1)
+    const addresses = [...(factoryAddresses ?? []), SF_MIGRATION_LEADERBOARD]
+
+    if (addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage }, {
         headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
       })
