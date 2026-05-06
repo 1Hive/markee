@@ -15,6 +15,7 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { LEGACY_STRATEGY_TO_LEADERBOARD } from '@/lib/contracts/addresses'
 import { Eye } from 'lucide-react'
 import { formatEther } from 'viem'
 
@@ -458,7 +459,8 @@ export default function Home() {
         userMarkee={selectedMarkee}
         initialMode={modalMode}
         onSuccess={handleTransactionSuccess}
-        topFundsAdded={markees[0]?.totalFundsAdded} 
+        strategyAddress={LEGACY_STRATEGY_TO_LEADERBOARD['0x558eb41ec9cc90b86550617eef5f180ea60e0e3a']}
+        topFundsAdded={markees[0]?.totalFundsAdded}
       />
 
       <FixedPriceModal

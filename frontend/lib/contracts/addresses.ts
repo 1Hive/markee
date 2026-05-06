@@ -73,6 +73,15 @@ export const CONTRACTS = {
     ],
   },
 } as const
+// Maps legacy v0.1 TopDawg strategy addresses → their migrated v1.1 Leaderboard.
+// Used at purchase call sites so createMarkee/addFunds hits the new contract.
+export const LEGACY_STRATEGY_TO_LEADERBOARD: Record<string, `0x${string}`> = {
+  '0x558eb41ec9cc90b86550617eef5f180ea60e0e3a': '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4', // Markee Cooperative
+  '0x346419315740f085ba14ca7239d82105a9a2bdbe': '0x660a5805384a68dE57709bd89124B73B8C03371C', // Gardens
+  '0x89e608223bec645227f11d8241e8175a9a95597e': '0x824f948Bb0afd7a9bc360DF134fA353fD3cE7CE5', // Clawchemy
+  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e': '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580', // Superfluid TopDawg
+}
+
 // Helper to get all strategy addresses (useful for subgraph indexing)
 export function getAllStrategyAddresses(): string[] {
   const baseContracts = CONTRACTS[base.id]

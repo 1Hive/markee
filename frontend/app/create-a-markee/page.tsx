@@ -11,6 +11,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { CreateOpenInternetModal } from '@/components/modals/CreateOpenInternetModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
+import { LEGACY_STRATEGY_TO_LEADERBOARD } from '@/lib/contracts/addresses'
 import { ModerationProvider } from '@/components/moderation'
 
 const INITIAL_SHOW = 9
@@ -545,7 +546,7 @@ export default function EcosystemPage() {
           isOpen={!!topDawgModalData}
           onClose={() => setTopDawgModalData(null)}
           onSuccess={() => { setTopDawgModalData(null); fetchLeaderboards(true) }}
-          strategyAddress={topDawgModalData.address as `0x${string}`}
+          strategyAddress={(LEGACY_STRATEGY_TO_LEADERBOARD[topDawgModalData.address.toLowerCase()] ?? topDawgModalData.address) as `0x${string}`}
           partnerName={topDawgModalData.isCooperative ? undefined : topDawgModalData.name}
           partnerSplitPercentage={
             topDawgModalData.isCooperative ? undefined :
