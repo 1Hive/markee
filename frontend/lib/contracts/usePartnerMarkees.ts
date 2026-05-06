@@ -2,13 +2,16 @@ import { useState, useEffect } from 'react'
 import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
-// Partner configuration
+// Partner configuration.
+// strategyAddress — legacy v0.1 TopDawg strategy used for subgraph data reads (read-only).
+// leaderboardAddress — v1.1 Leaderboard to send new purchases to; null for unmigrated partners.
 export const PARTNERS = [
   {
     slug: 'markee-cooperative',
     name: 'Markee Cooperative',
     description: 'The home message for markee.xyz — 100% of funds go to the Markee Cooperative treasury',
     strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a',
+    leaderboardAddress: '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4' as `0x${string}` | null,
     logo: '/markee-logo.png',
     fundingSplit: '100% to Markee Cooperative',
     percentToBeneficiary: 10000,
@@ -20,6 +23,7 @@ export const PARTNERS = [
     name: 'Gardens',
     description: 'Community governance platform built on conviction voting',
     strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE',
+    leaderboardAddress: '0x660a5805384a68dE57709bd89124B73B8C03371C' as `0x${string}` | null,
     logo: '/partners/gardens.png',
     fundingSplit: '100% to Gardens',
     percentToBeneficiary: 10000,
@@ -31,6 +35,7 @@ export const PARTNERS = [
     name: 'Bread Cooperative',
     description: 'A collective of communities building worker-owned financial infrastructure',
     strategyAddress: '0x05A40489965B355e0404c05134dA68626a5a927c',
+    leaderboardAddress: null as `0x${string}` | null,
     logo: '/partners/breadcoop.png',
     fundingSplit: '100% to Bread Cooperative',
     percentToBeneficiary: 10000,
@@ -42,6 +47,7 @@ export const PARTNERS = [
     name: 'RevNets',
     description: 'Autonomous revenue-sharing networks with immutable tokenomics rules',
     strategyAddress: '0xe68CbEf87B710B379654Dfd3c0BEC8779bBCcEbB',
+    leaderboardAddress: null as `0x${string}` | null,
     logo: '/partners/revnets.png',
     fundingSplit: '100% to RevNets',
     percentToBeneficiary: 10000,
@@ -53,6 +59,7 @@ export const PARTNERS = [
     name: 'Juicebox',
     description: 'Programmable fundraising protocol for community-owned treasury formation',
     strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
+    leaderboardAddress: null as `0x${string}` | null,
     logo: '/partners/juicebox.png',
     fundingSplit: '100% to Juicebox',
     percentToBeneficiary: 10000,
@@ -64,6 +71,7 @@ export const PARTNERS = [
     name: 'Giveth',
     description: 'Web3 crowdfunding platform for nonprofits and social causes',
     strategyAddress: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431',
+    leaderboardAddress: null as `0x${string}` | null,
     logo: '/partners/giveth.png',
     fundingSplit: '100% to Giveth',
     percentToBeneficiary: 10000,
@@ -75,6 +83,7 @@ export const PARTNERS = [
     name: 'Flow State',
     description: 'Continuous funding apps, incentive systems & governance mechanisms',
     strategyAddress: '0x24512EE8E5f9138e2Bfca0c8253e7525035f4989',
+    leaderboardAddress: null as `0x${string}` | null,
     logo: '/partners/flowstate.png',
     fundingSplit: '100% to Flow State',
     percentToBeneficiary: 10000,
@@ -85,7 +94,9 @@ export const PARTNERS = [
     slug: 'superfluid',
     name: 'Superfluid',
     description: 'Protocol for money streaming - send and receive tokens continuously',
+    // Legacy TopDawg strategy kept for subgraph reads; purchases now go to the v1.1 leaderboard
     strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
+    leaderboardAddress: '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as `0x${string}` | null,
     logo: '/partners/superfluid.png',
     fundingSplit: '100% to Superfluid',
     percentToBeneficiary: 10000,
@@ -97,13 +108,14 @@ export const PARTNERS = [
     name: 'Clawchemy',
     description: 'Autonomous element discovery engine for AI agents on Base Network',
     strategyAddress: '0x89e608223BEc645227f11d8241e8175A9A95597E',
+    leaderboardAddress: '0x824f948Bb0afd7a9bc360DF134fA353fD3cE7CE5' as `0x${string}` | null,
     logo: '/partners/clawchemy.png',
     fundingSplit: '100% to Clawchemy',
     percentToBeneficiary: 10000,
     isCooperative: false,
     liveUrl: 'https://clawchemy.xyz/',
   },
-] as const
+]
 
 interface PartnerData {
   partner: typeof PARTNERS[number]
