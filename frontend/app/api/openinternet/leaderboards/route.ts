@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 const CACHE_KEY = 'cache:openinternet:leaderboards'
 const CACHE_TTL = 60 // seconds
 
-const OI_FACTORY_ADDRESS = '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const
+const OI_FACTORY_ADDRESS = '0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D' as const
 
 const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
@@ -114,23 +114,23 @@ const LEGACY_PARTNERS = [
     percentToBeneficiary: 10000,
   },
   {
-    slug: 'superfluid',
-    name: 'Superfluid',
-    strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
-    logoUrl: '/partners/superfluid.png',
-    siteUrl: 'https://campaigns.superfluid.org',
-    verifiedUrl: 'https://campaigns.superfluid.org',
-    status: 'verified' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
     slug: 'clawchemy',
     name: 'Clawchemy',
     strategyAddress: '0x89e608223BEc645227f11d8241e8175A9A95597E',
     logoUrl: '/partners/clawchemy.png',
     siteUrl: 'https://clawchemy.xyz/',
     verifiedUrl: 'https://clawchemy.xyz/',
+    status: 'verified' as const,
+    isCooperative: false,
+    percentToBeneficiary: 10000,
+  },
+  {
+    slug: 'superfluid',
+    name: 'Superfluid',
+    strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
+    logoUrl: '/partners/superfluid.png',
+    siteUrl: 'https://campaigns.superfluid.org',
+    verifiedUrl: 'https://campaigns.superfluid.org',
     status: 'verified' as const,
     isCooperative: false,
     percentToBeneficiary: 10000,
