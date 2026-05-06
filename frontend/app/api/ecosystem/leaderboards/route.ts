@@ -30,11 +30,17 @@ export async function GET(request: Request) {
     const origin = new URL(request.url).origin
     const bustParam = bust ? '?bust=1' : ''
 
+    // Add bypass header so internal fetches work on protected preview deployments
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+    const internalHeaders: HeadersInit = bypassSecret
+      ? { 'x-vercel-protection-bypass': bypassSecret }
+      : {}
+
     // Fetch all three platform APIs in parallel
     const [oiRes, githubRes, sfRes] = await Promise.all([
-      fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store' }),
-      fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store' }),
-      fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store' }),
+      fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
+      fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
+      fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
     ])
 
     const [oiData, githubData, sfData] = await Promise.all([
