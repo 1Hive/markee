@@ -33,6 +33,8 @@ export const maxDuration = 300
 
 const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
+// Standalone v1.1 leaderboard holding the 32 migrated TopDawg markees — not in factory
+const SF_MIGRATION_LEADERBOARD = '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580'
 
 const FACTORY_DEPLOY_BLOCK = 43452028n
 
@@ -367,7 +369,7 @@ export async function GET(req: NextRequest) {
 
   if (ALCHEMY_URL) {
     try {
-      const leaderboardAddresses = await fetchLeaderboardAddresses()
+      const leaderboardAddresses = [...await fetchLeaderboardAddresses(), SF_MIGRATION_LEADERBOARD]
       results.factory.leaderboards = leaderboardAddresses.length
       console.log(`[cron] Factory: ${leaderboardAddresses.length} leaderboard(s)`)
 

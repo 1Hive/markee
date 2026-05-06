@@ -5,7 +5,7 @@ import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt,
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy } from 'lucide-react'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import type { Markee } from '@/types'
@@ -13,8 +13,9 @@ import type { Markee } from '@/types'
 // Strategies where fund events earn Superfluid campaign points.
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
-  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg
-  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // LeaderboardFactory
+  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg (historical)
+  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // SF LeaderboardFactory
+  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580', // SF v1.1 migration leaderboard
 ])
 
 interface TopDawgModalProps {
@@ -61,7 +62,7 @@ export function TopDawgModal({
   })
 
   // Get strategy address - use custom one if provided, otherwise default TopDawg
-  const strategyAddress = customStrategyAddress || CONTRACTS[CANONICAL_CHAIN.id]?.topDawgStrategies?.[0]?.address
+  const strategyAddress = customStrategyAddress || '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4' as `0x${string}`
 
   // Use the appropriate ABI based on whether it's a partner strategy
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
