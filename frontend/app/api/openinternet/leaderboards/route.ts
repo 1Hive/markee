@@ -66,6 +66,48 @@ const MARKEE_ABI = [
   { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
 
+// ─── Hardcoded partner meta ───────────────────────────────────────────────────
+// These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
+// They live in the legacy OI factory but have no KV meta, so we hardcode
+// verified status here rather than requiring a one-time KV write.
+
+const PARTNER_META: Record<string, {
+  logoUrl: string | null
+  siteUrl: string
+  verifiedUrl: string
+  verifiedUrls: string[]
+  status: 'verified'
+}> = {
+  '0xc981e99bfb1349904c56bdafc429ce04e5ad9ce4': { // Markee Cooperative
+    logoUrl: '/markee-logo.png',
+    siteUrl: 'https://markee.xyz',
+    verifiedUrl: 'https://markee.xyz',
+    verifiedUrls: ['https://markee.xyz'],
+    status: 'verified',
+  },
+  '0x660a5805384a68de57709bd89124b73b8c03371c': { // Gardens
+    logoUrl: '/partners/gardens.png',
+    siteUrl: 'https://app.gardens.fund',
+    verifiedUrl: 'https://app.gardens.fund',
+    verifiedUrls: ['https://app.gardens.fund'],
+    status: 'verified',
+  },
+  '0x824f948bb0afd7a9bc360df134fa353fd3ce7ce5': { // Clawchemy
+    logoUrl: '/partners/clawchemy.png',
+    siteUrl: 'https://clawchemy.xyz',
+    verifiedUrl: 'https://clawchemy.xyz',
+    verifiedUrls: ['https://clawchemy.xyz'],
+    status: 'verified',
+  },
+  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580': { // Superfluid (migration leaderboard)
+    logoUrl: '/partners/superfluid.png',
+    siteUrl: 'https://campaigns.superfluid.org',
+    verifiedUrl: 'https://campaigns.superfluid.org',
+    verifiedUrls: ['https://campaigns.superfluid.org'],
+    status: 'verified',
+  },
+}
+
 // ─── Client ───────────────────────────────────────────────────────────────────
 
 function getClient() {
@@ -224,7 +266,9 @@ export async function GET(request: Request) {
         markeeCallIndex += 3
       }
 
-      const meta = kvMetas[i]
+      const kvMeta = kvMetas[i]
+      const partnerMeta = PARTNER_META[addr.toLowerCase()]
+      const meta = partnerMeta ?? kvMeta
       return {
         address: addr,
         name,
