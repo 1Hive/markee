@@ -62,12 +62,28 @@ export async function GET(request: Request) {
       verifiedUrl: undefined,
     }))
 
-    const sfLeaderboards = (sfData.leaderboards ?? []).map((l: any) => ({
-      ...l,
-      platform: 'superfluid',
-      status: undefined,
-      verifiedUrl: undefined,
-    }))
+    // The SF migration leaderboard is a partner leaderboard (migrated from v0.1 TopDawg),
+    // not a Superfluid project. Treat it as a verified website entry so it appears in
+    // the Verified section alongside Cooperative, Gardens, and Clawchemy.
+    const SF_MIGRATION = '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580'
+    const sfLeaderboards = (sfData.leaderboards ?? []).map((l: any) => {
+      if (l.address.toLowerCase() === SF_MIGRATION) {
+        return {
+          ...l,
+          platform: 'website',
+          status: 'verified',
+          verifiedUrl: 'https://campaigns.superfluid.org',
+          verifiedUrls: ['https://campaigns.superfluid.org'],
+          logoUrl: l.logoUrl ?? '/partners/superfluid.png',
+        }
+      }
+      return {
+        ...l,
+        platform: 'superfluid',
+        status: undefined,
+        verifiedUrl: undefined,
+      }
+    })
 
     const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards]
 
