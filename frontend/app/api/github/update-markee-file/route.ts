@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
       let foundEnd = END
 
       if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
-        // Fall back to legacy (pre-migration) delimiters — migrate-on-write
+        // Fall back to known legacy addresses from the migration map
         for (const oldAddr of legacyAddressesFor(normalizedAddress)) {
           const legacyStart = startDelimiter(oldAddr)
           const legacyEnd   = endDelimiter(oldAddr)
@@ -291,6 +291,21 @@ export async function POST(request: NextRequest) {
             endIdx   = ei
             foundEnd = legacyEnd
             break
+          }
+        }
+      }
+
+      if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+        // Last resort: accept any address-shaped markee delimiter (pre-migration files)
+        const startMatch = /<!-- MARKEE:START:(0x[0-9a-fA-F]{40}) -->/.exec(currentContent)
+        if (startMatch) {
+          const anyEnd = endDelimiter(startMatch[1])
+          const si = currentContent.indexOf(startMatch[0])
+          const ei = currentContent.indexOf(anyEnd)
+          if (si !== -1 && ei !== -1 && ei > si) {
+            startIdx = si
+            endIdx   = ei
+            foundEnd = anyEnd
           }
         }
       }

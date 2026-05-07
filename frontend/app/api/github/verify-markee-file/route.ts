@@ -35,9 +35,12 @@ export async function POST(request: NextRequest) {
     const content = await fileRes.text()
     const normalizedNew = leaderboardAddress.toLowerCase()
     const legacyAddrs = legacyAddressesFor(normalizedNew)
+    const anyMarkeeBlock = /<!-- MARKEE:START:0x[0-9a-fA-F]{40} -->/.test(content) &&
+                           /<!-- MARKEE:END:0x[0-9a-fA-F]{40} -->/.test(content)
     const verified =
       (content.includes(startDelimiter(normalizedNew)) && content.includes(endDelimiter(normalizedNew))) ||
-      legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old)))
+      legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old))) ||
+      anyMarkeeBlock
 
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoFullName && e.filePath === filePath)

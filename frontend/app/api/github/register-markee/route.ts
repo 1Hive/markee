@@ -25,7 +25,8 @@ async function checkDelimiters(
     const content = await res.text()
     const legacyAddrs = legacyAddressesFor(leaderboardAddress)
     return (content.includes(startDelimiter(leaderboardAddress)) && content.includes(endDelimiter(leaderboardAddress))) ||
-           legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old)))
+           legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old))) ||
+           (/<!-- MARKEE:START:0x[0-9a-fA-F]{40} -->/.test(content) && /<!-- MARKEE:END:0x[0-9a-fA-F]{40} -->/.test(content))
   } catch {
     return false
   }
