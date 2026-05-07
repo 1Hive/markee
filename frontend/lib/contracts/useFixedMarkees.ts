@@ -28,6 +28,13 @@ const FixedPriceStrategyABI = [
   },
   {
     inputs: [],
+    name: "revNetEnabled",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
     name: "maxMessageLength",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
     stateMutability: "view",
@@ -60,6 +67,7 @@ export type FixedMarkee = {
   priceWei: string        // raw wei string — use BigInt() to consume
   maxMessageLength: number
   owner: string
+  revNetEnabled: boolean
   chainId: number
 }
 
@@ -69,7 +77,7 @@ export function useFixedMarkees() {
 
   const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
 
-  // Step 1: Read from FixedPriceStrategy contracts (4 fields each)
+  // Step 1: Read from FixedPriceStrategy contracts (5 fields each)
   const strategyContracts = fixedStrategies.flatMap((strategy) => [
     {
       address: strategy.address,
@@ -95,6 +103,12 @@ export function useFixedMarkees() {
       functionName: 'maxMessageLength' as const,
       chainId: CANONICAL_CHAIN_ID,
     },
+    {
+      address: strategy.address,
+      abi: FixedPriceStrategyABI,
+      functionName: 'revNetEnabled' as const,
+      chainId: CANONICAL_CHAIN_ID,
+    },
   ])
 
   const {
@@ -113,7 +127,7 @@ export function useFixedMarkees() {
   useEffect(() => {
     if (!strategyData || !fixedStrategies.length) return
     const addresses = fixedStrategies.map((_, i) => {
-      const result = strategyData[i * 4]
+      const result = strategyData[i * 5]
       return (result?.result as string) || null
     })
     setMarkeeAddresses(addresses)
@@ -153,16 +167,17 @@ export function useFixedMarkees() {
     if (!strategyData || !fixedStrategies.length) return
 
     const result: FixedMarkee[] = fixedStrategies.map((strategyConfig, i) => {
-      const base = i * 4
+      const base = i * 5
 
-      const markeeAddr      = (strategyData[base]?.result as string)     || ''
-      const priceWei        = strategyData[base + 1]?.result
-                                ? String(strategyData[base + 1].result as bigint)
-                                : '0'
-      const owner           = (strategyData[base + 2]?.result as string) || ''
+      const markeeAddr       = (strategyData[base]?.result as string)     || ''
+      const priceWei         = strategyData[base + 1]?.result
+                                 ? String(strategyData[base + 1].result as bigint)
+                                 : '0'
+      const owner            = (strategyData[base + 2]?.result as string) || ''
       const maxMessageLength = strategyData[base + 3]?.result
-                                ? Number(strategyData[base + 3].result as bigint)
-                                : 280
+                                 ? Number(strategyData[base + 3].result as bigint)
+                                 : 280
+      const revNetEnabled    = (strategyData[base + 4]?.result as boolean) ?? false
 
       let message = ''
       let markeeName = ''
@@ -184,6 +199,7 @@ export function useFixedMarkees() {
         priceWei,
         maxMessageLength,
         owner,
+        revNetEnabled,
         chainId: CANONICAL_CHAIN_ID,
       }
     })

@@ -596,20 +596,9 @@ export const MarkeeABI = [
   }
 ] as const
 
+// v1.1 FixedPriceStrategy — single-markee fixed-price strategy implementing IPricingStrategy.
+// Constructor: (markeeImplementation, initialMessage, initialName, beneficiaryAddress, price, maxMessageLength, maxNameLength)
 export const FixedPriceStrategyABI = [
-  {
-    inputs: [
-      { internalType: "address", name: "_revNetTerminal", type: "address" },
-      { internalType: "uint256", name: "_revNetProjectId", type: "uint256" },
-      { internalType: "string", name: "_initialMessage", type: "string" },
-      { internalType: "string", name: "_initialName", type: "string" },
-      { internalType: "uint256", name: "_price", type: "uint256" },
-      { internalType: "uint256", name: "_maxMessageLength", type: "uint256" },
-      { internalType: "uint256", name: "_maxNameLength", type: "uint256" }
-    ],
-    stateMutability: "nonpayable",
-    type: "constructor"
-  },
   {
     anonymous: false,
     inputs: [
@@ -675,7 +664,76 @@ export const FixedPriceStrategyABI = [
     outputs: [{ internalType: "address", name: "", type: "address" }],
     stateMutability: "view",
     type: "function"
+  },
+  {
+    inputs: [],
+    name: "totalFundsRaised",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "beneficiaryAddress",
+    outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "revNetEnabled",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function"
   }
+] as const
+
+export const LeaderboardV11ABI = [
+  {
+    inputs: [{ name: 'limit', type: 'uint256' }],
+    name: 'getTopMarkees',
+    outputs: [
+      { name: 'topAddresses', type: 'address[]' },
+      { name: 'topFunds', type: 'uint256[]' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'leaderboardName',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalLeaderboardFunds',
+    outputs: [{ name: 'total', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'markeeCount',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'minimumPrice',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'admin',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const
 
 // Legacy exports for backward compatibility during migration

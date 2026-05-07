@@ -22,7 +22,7 @@ import type { Markee } from '@/types'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
-const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
+const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580'
 
 const FACTORY_ABI = [
   {
@@ -489,7 +489,7 @@ export default function SuperfluidPlatformPage() {
         isOpen={featuredModalOpen}
         onClose={() => setFeaturedModalOpen(false)}
         onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true, true) }}
-        strategyAddress={LEGACY_TOPDAWG_ADDRESS as `0x${string}`}
+        strategyAddress={SF_MIGRATION_LEADERBOARD as `0x${string}`}
         partnerName="Superfluid"
         partnerSplitPercentage={62}
         topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}

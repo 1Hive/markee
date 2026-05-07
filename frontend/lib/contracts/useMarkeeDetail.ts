@@ -1,103 +1,11 @@
 'use client'
 
-/**
- * useMarkeeDetail
- * 
- * Fetches a single markee by address with full history:
- *   - Message update history
- *   - Funds added history  
- *   - Name update history
- *   - Created date, owner, strategy info
- * 
- * Data comes from The Graph subgraph.
- */
-
 import { useState, useEffect } from 'react'
-import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { usePublicClient } from 'wagmi'
+import { parseAbiItem } from 'viem'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { MarkeeABI, LeaderboardV11ABI } from '@/lib/contracts/abis'
 import type { Markee, FundsAdded, MessageUpdate, NameUpdate } from '@/types'
-
-// Full detail query — pulls all related events
-const MARKEE_DETAIL_QUERY = `
-  query GetMarkeeDetail($id: ID!) {
-    markee(id: $id) {
-      id
-      address
-      owner
-      message
-      name
-      totalFundsAdded
-      pricingStrategy
-      createdAt
-      createdAtBlock
-      updatedAt
-      updatedAtBlock
-      fundsAddedCount
-      messageUpdateCount
-      nameUpdateCount
-      strategy {
-        id
-        instanceName
-        totalInstanceFunds
-      }
-      partnerStrategy {
-        id
-        instanceName
-        beneficiaryAddress
-        percentToBeneficiary
-        totalInstanceFunds
-      }
-      fundsAddedEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
-        id
-        addedBy
-        amount
-        newMarkeeTotal
-        timestamp
-        blockNumber
-        transactionHash
-      }
-      messageUpdates(orderBy: timestamp, orderDirection: desc, first: 100) {
-        id
-        updatedBy
-        oldMessage
-        newMessage
-        timestamp
-        blockNumber
-        transactionHash
-      }
-      nameUpdates(orderBy: timestamp, orderDirection: desc, first: 50) {
-        id
-        updatedBy
-        oldName
-        newName
-        timestamp
-        blockNumber
-        transactionHash
-      }
-    }
-  }
-`
-
-// Also try PartnerFundsAdded for partner strategies
-const PARTNER_FUNDS_QUERY = `
-  query GetPartnerFunds($markeeId: String!) {
-    partnerFundsAddeds(
-      where: { markee: $markeeId }
-      orderBy: timestamp
-      orderDirection: desc
-      first: 100
-    ) {
-      id
-      addedBy
-      amount
-      beneficiaryAmount
-      revNetAmount
-      newMarkeeTotal
-      timestamp
-      blockNumber
-      transactionHash
-    }
-  }
-`
 
 export interface MarkeeDetail extends Markee {
   createdAt: number
@@ -115,20 +23,27 @@ export interface MarkeeDetail extends Markee {
   isPartnerStrategy: boolean
   partnerBeneficiary?: string
   partnerPercentage?: number
-  // Partner-specific fund events (with split info)
-  partnerFundsEvents?: Array<FundsAdded & {
-    beneficiaryAmount: bigint
-    revNetAmount: bigint
-  }>
 }
+
+const FUNDS_ADDED = parseAbiItem(
+  'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
+)
+const MESSAGE_CHANGED = parseAbiItem(
+  'event MessageChanged(string newMessage, address indexed changedBy)'
+)
+const NAME_CHANGED = parseAbiItem(
+  'event NameChanged(string newName, address indexed changedBy)'
+)
 
 export function useMarkeeDetail(markeeAddress: string | undefined) {
   const [markee, setMarkee] = useState<MarkeeDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  const client = usePublicClient({ chainId: CANONICAL_CHAIN_ID })
+
   useEffect(() => {
-    if (!markeeAddress) {
+    if (!markeeAddress || !client) {
       setIsLoading(false)
       return
     }
@@ -138,118 +53,130 @@ export function useMarkeeDetail(markeeAddress: string | undefined) {
         setIsLoading(true)
         setError(null)
 
-        const subgraphUrl = SUBGRAPH_URLS[CANONICAL_CHAIN_ID]
-        if (!subgraphUrl) throw new Error('Subgraph URL not configured')
+        const addr = markeeAddress as `0x${string}`
 
-        // The subgraph uses the contract address (lowercased) as the entity ID
-        const id = markeeAddress!.toLowerCase()
-
-        const response = await fetch(subgraphUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: MARKEE_DETAIL_QUERY,
-            variables: { id },
+        // Parallel: read current state + event history
+        const [multicallResults, fundsLogs, messageLogs, nameLogs] = await Promise.all([
+          client!.multicall({
+            contracts: [
+              { address: addr, abi: MarkeeABI, functionName: 'message' },
+              { address: addr, abi: MarkeeABI, functionName: 'name' },
+              { address: addr, abi: MarkeeABI, functionName: 'owner' },
+              { address: addr, abi: MarkeeABI, functionName: 'pricingStrategy' },
+              { address: addr, abi: MarkeeABI, functionName: 'totalFundsAdded' },
+            ],
           }),
-        })
+          client!.getLogs({ address: addr, event: FUNDS_ADDED, fromBlock: 0n, toBlock: 'latest' }),
+          client!.getLogs({ address: addr, event: MESSAGE_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
+          client!.getLogs({ address: addr, event: NAME_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
+        ])
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const message = (multicallResults[0]?.result as string) ?? ''
+        const name = (multicallResults[1]?.result as string) ?? ''
+        const owner = (multicallResults[2]?.result as string) ?? ''
+        const pricingStrategy = (multicallResults[3]?.result as string) ?? ''
+        const totalFundsAdded = (multicallResults[4]?.result as bigint) ?? 0n
 
-        const result = await response.json()
-        if (result.errors) throw new Error(result.errors[0]?.message)
+        // Fetch block timestamps for all unique blocks
+        const allBlockNumbers = [
+          ...fundsLogs.map(l => l.blockNumber),
+          ...messageLogs.map(l => l.blockNumber),
+          ...nameLogs.map(l => l.blockNumber),
+        ].filter((n): n is bigint => n !== null)
 
-        const m = result.data?.markee
-        if (!m) throw new Error('Markee not found')
+        const uniqueBlocks = [...new Set(allBlockNumbers.map(String))].map(BigInt)
+        const blockTimestamps = new Map<string, number>()
 
-        const isPartner = !!m.partnerStrategy
-        const strategyInfo = isPartner ? m.partnerStrategy : m.strategy
-
-        // Transform to typed data
-        const detail: MarkeeDetail = {
-          address: m.address,
-          owner: m.owner,
-          message: m.message || '',
-          name: m.name || '',
-          totalFundsAdded: BigInt(m.totalFundsAdded),
-          pricingStrategy: m.pricingStrategy,
-          chainId: CANONICAL_CHAIN_ID,
-          createdAt: Number(m.createdAt),
-          createdAtBlock: Number(m.createdAtBlock),
-          updatedAt: Number(m.updatedAt),
-          updatedAtBlock: Number(m.updatedAtBlock),
-          fundsAddedCount: Number(m.fundsAddedCount),
-          messageUpdateCount: Number(m.messageUpdateCount),
-          nameUpdateCount: Number(m.nameUpdateCount || 0),
-          strategyName: strategyInfo?.instanceName,
-          strategyId: strategyInfo?.id,
-          isPartnerStrategy: isPartner,
-          partnerBeneficiary: isPartner ? m.partnerStrategy.beneficiaryAddress : undefined,
-          partnerPercentage: isPartner ? Number(m.partnerStrategy.percentToBeneficiary) / 100 : undefined,
-          fundsAddedEvents: (m.fundsAddedEvents || []).map((e: any) => ({
-            id: e.id,
-            markee: m.address,
-            addedBy: e.addedBy,
-            amount: BigInt(e.amount),
-            newTotal: BigInt(e.newMarkeeTotal),
-            timestamp: BigInt(e.timestamp),
-            blockNumber: BigInt(e.blockNumber),
-            transactionHash: e.transactionHash,
-          })),
-          messageUpdates: (m.messageUpdates || []).map((e: any) => ({
-            id: e.id,
-            markee: m.address,
-            updatedBy: e.updatedBy,
-            oldMessage: e.oldMessage,
-            newMessage: e.newMessage,
-            timestamp: BigInt(e.timestamp),
-            blockNumber: BigInt(e.blockNumber),
-            transactionHash: e.transactionHash,
-          })),
-          nameUpdates: (m.nameUpdates || []).map((e: any) => ({
-            id: e.id,
-            markee: m.address,
-            updatedBy: e.updatedBy,
-            oldName: e.oldName,
-            newName: e.newName,
-            timestamp: BigInt(e.timestamp),
-            blockNumber: BigInt(e.blockNumber),
-            transactionHash: e.transactionHash,
-          })),
+        if (uniqueBlocks.length > 0) {
+          const blocks = await Promise.all(
+            uniqueBlocks.map(n => client!.getBlock({ blockNumber: n }))
+          )
+          blocks.forEach(b => { blockTimestamps.set(b.number.toString(), Number(b.timestamp)) })
         }
 
-        // If partner strategy, also fetch partner-specific fund events
-        if (isPartner) {
+        const ts = (blockNumber: bigint | null) =>
+          blockNumber ? (blockTimestamps.get(blockNumber.toString()) ?? 0) : 0
+
+        // Fetch leaderboard name
+        let strategyName: string | undefined
+        if (pricingStrategy) {
           try {
-            const partnerRes = await fetch(subgraphUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: PARTNER_FUNDS_QUERY,
-                variables: { markeeId: id },
-              }),
+            const lbName = await client!.readContract({
+              address: pricingStrategy as `0x${string}`,
+              abi: LeaderboardV11ABI,
+              functionName: 'leaderboardName',
             })
-            const partnerResult = await partnerRes.json()
-            const partnerEvents = partnerResult.data?.partnerFundsAddeds || []
-            detail.partnerFundsEvents = partnerEvents.map((e: any) => ({
-              id: e.id,
-              markee: m.address,
-              addedBy: e.addedBy,
-              amount: BigInt(e.amount),
-              newTotal: BigInt(e.newMarkeeTotal),
-              beneficiaryAmount: BigInt(e.beneficiaryAmount),
-              revNetAmount: BigInt(e.revNetAmount),
-              timestamp: BigInt(e.timestamp),
-              blockNumber: BigInt(e.blockNumber),
-              transactionHash: e.transactionHash,
-            }))
-          } catch {
-            // Non-critical — fall back to regular funds events
-          }
+            strategyName = lbName as string
+          } catch { /* skip if not a v1.1 leaderboard */ }
         }
 
-        setMarkee(detail)
+        const allEvents = [...fundsLogs, ...messageLogs, ...nameLogs]
+        const allBlockNums = allEvents.map(l => l.blockNumber).filter((n): n is bigint => n !== null)
+        const firstBlock = allBlockNums.length ? allBlockNums.reduce((a, b) => a < b ? a : b) : 0n
+        const lastBlock = allBlockNums.length ? allBlockNums.reduce((a, b) => a > b ? a : b) : 0n
+        const createdAtBlock = Number(firstBlock)
+        const updatedAtBlock = Number(lastBlock)
+        const createdAt = firstBlock ? (blockTimestamps.get(firstBlock.toString()) ?? 0) : 0
+        const updatedAt = lastBlock ? (blockTimestamps.get(lastBlock.toString()) ?? 0) : 0
+
+        const fundsAddedEvents: FundsAdded[] = fundsLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          markee: addr,
+          addedBy: ((log.args as any).addedBy as string) ?? '',
+          amount: ((log.args as any).amount as bigint) ?? 0n,
+          newTotal: ((log.args as any).newTotal as bigint) ?? 0n,
+          timestamp: BigInt(ts(log.blockNumber)),
+          blockNumber: log.blockNumber ?? 0n,
+          transactionHash: log.transactionHash ?? '',
+        })).reverse()
+
+        const messageUpdates: MessageUpdate[] = messageLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          markee: addr,
+          updatedBy: ((log.args as any).changedBy as string) ?? '',
+          oldMessage: '',
+          newMessage: ((log.args as any).newMessage as string) ?? '',
+          timestamp: BigInt(ts(log.blockNumber)),
+          blockNumber: log.blockNumber ?? 0n,
+          transactionHash: log.transactionHash ?? '',
+        })).reverse()
+
+        const nameUpdates: NameUpdate[] = nameLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          markee: addr,
+          updatedBy: ((log.args as any).changedBy as string) ?? '',
+          oldName: '',
+          newName: ((log.args as any).newName as string) ?? '',
+          timestamp: BigInt(ts(log.blockNumber)),
+          blockNumber: log.blockNumber ?? 0n,
+          transactionHash: log.transactionHash ?? '',
+        })).reverse()
+
+        setMarkee({
+          address: addr,
+          owner,
+          message,
+          name,
+          totalFundsAdded,
+          pricingStrategy,
+          chainId: CANONICAL_CHAIN_ID,
+          createdAt,
+          createdAtBlock,
+          updatedAt,
+          updatedAtBlock,
+          fundsAddedCount: fundsLogs.length,
+          messageUpdateCount: messageLogs.length,
+          nameUpdateCount: nameLogs.length,
+          fundsAddedEvents,
+          messageUpdates,
+          nameUpdates,
+          strategyName,
+          strategyId: pricingStrategy,
+          isPartnerStrategy: !!pricingStrategy,
+          partnerPercentage: 100,
+        })
       } catch (err) {
-        console.error('[useMarkeeDetail] Error:', err)
+        console.error('[useMarkeeDetail] error:', err)
         setError(err instanceof Error ? err : new Error('Unknown error'))
       } finally {
         setIsLoading(false)
@@ -257,7 +184,7 @@ export function useMarkeeDetail(markeeAddress: string | undefined) {
     }
 
     fetchDetail()
-  }, [markeeAddress])
+  }, [markeeAddress, client])
 
   return { markee, isLoading, error }
 }

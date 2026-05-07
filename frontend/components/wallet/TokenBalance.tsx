@@ -60,14 +60,7 @@ export function TokenBalance() {
   return (
     <div className="bg-[#060A2A] border border-[#8A8FBF]/30 rounded-lg px-4 py-2 flex items-center gap-2">
       <span className="text-[#8A8FBF] font-medium">{formattedBalance}</span>
-        <a 
-        href="https://app.revnet.eth.sucks/v5:base:119/ops" 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="text-[#F897FE] font-medium hover:text-[#8A8FBF] transition-colors"
-        >
-        MARKEE
-        </a>
+      <span className="text-[#F897FE] font-medium">MARKEE</span>
     </div>
   )
 }

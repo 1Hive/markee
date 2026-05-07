@@ -3,13 +3,15 @@
 import { useState, useEffect } from 'react'
 import {
   Trophy, X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Plus, ExternalLink,
+  CreditCard, Wallet,
 } from 'lucide-react'
 import {
   useWriteContract, useWaitForTransactionReceipt,
   useAccount, useSwitchChain, useBalance, useReadContract,
 } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { base } from 'viem/chains'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 
@@ -72,30 +74,6 @@ interface BuyMessageModalProps {
   platformId?: 'github' | 'superfluid'
 }
 
-// ─── MARKEE token helpers ─────────────────────────────────────────────────────
-
-const PHASES = [
-  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
-  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
-  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
-  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
-]
-
-function getCurrentPhaseRate(): number {
-  const now = new Date()
-  for (const phase of PHASES) {
-    if (now < phase.endDate) return phase.rate
-  }
-  return PHASES[PHASES.length - 1].rate
-}
-
-function calculateMarkeeTokens(ethAmount: number): number {
-  // 62% of ETH goes to the beneficiary; only 38% reaches RevNet for token issuance.
-  // The buyer receives 62% of the tokens issued against that 38%.
-  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BuyMessageModal({
@@ -113,6 +91,9 @@ export function BuyMessageModal({
   const { switchChain } = useSwitchChain()
   const { data: balanceData } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
+  const { login } = usePrivy()
+  const { fundWallet } = useFundWallet()
+  const [isFunding, setIsFunding] = useState(false)
 
   const { data: beneficiaryAddress } = useReadContract({
     address: leaderboardAddress,
@@ -319,40 +300,13 @@ export function BuyMessageModal({
     </div>
   )
 
-  // ── Token + beneficiary split display ────────────────────────────────────
+  // ── Beneficiary display ───────────────────────────────────────────────────
   const shortBeneficiary = beneficiaryAddress
     ? `${beneficiaryAddress.slice(0, 6)}…${beneficiaryAddress.slice(-4)}`
     : null
   const basescanUrl = beneficiaryAddress
     ? `https://basescan.org/address/${beneficiaryAddress}`
     : null
-
-  const tokenDisplayJSX = amount && parseFloat(amount) > 0 ? (
-    <div className={`grid ${beneficiaryAddress ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6 text-center">
-        <p className="text-sm text-[#F897FE] font-medium mb-2">You&apos;ll receive</p>
-        <p className="text-4xl font-bold text-[#F897FE] mb-1">
-          {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-        </p>
-        <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-      </div>
-
-      {beneficiaryAddress && (
-        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6 text-center">
-          <p className="text-sm text-[#FFA94D] font-medium mb-2">Beneficiary receives</p>
-          <p className="text-4xl font-bold text-[#FFA94D] mb-1">
-            {(() => {
-              const value = parseFloat(amount) * 0.62
-              if (value === 0) return '0'
-              if (value < 0.00001) return '< 0.00001'
-              return Number(value.toFixed(5)).toString()
-            })()}
-          </p>
-          <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-        </div>
-      )}
-    </div>
-  ) : null
 
   // ── Revenue split info panel ──────────────────────────────────────────────
   const revenueSplitJSX = (
@@ -370,13 +324,9 @@ export function BuyMessageModal({
             <ExternalLink size={11} className="opacity-60" />
           </a>
         ) : (
-          <span className="text-[#EDEEFF]">Project treasury</span>
+          <span className="text-[#EDEEFF]">Beneficiary</span>
         )}
-        <span className="text-[#FFA94D] font-semibold">62%</span>
-      </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-[#EDEEFF]">Markee Cooperative</span>
-        <span className="text-[#7C9CFF] font-semibold">38%</span>
+        <span className="text-[#FFA94D] font-semibold">100%</span>
       </div>
     </div>
   )
@@ -407,8 +357,15 @@ export function BuyMessageModal({
 
             {!isConnected ? (
               <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Connect your wallet to continue.</p>
-                <ConnectButton />
+                <p className="text-[#8A8FBF] text-sm">Sign in to buy a message -- use email, social, or a crypto wallet.</p>
+                <button
+                  onClick={login}
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2 bg-[#7C9CFF] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#F897FE] transition-colors"
+                >
+                  <Wallet size={18} />
+                  Sign in to continue
+                </button>
               </div>
             ) : !isCorrectChain ? (
               <div className="space-y-4">
@@ -501,9 +458,6 @@ export function BuyMessageModal({
 
                 {amountSelectorJSX}
 
-                {/* MARKEE token display + optional partner ETH panel */}
-                {tokenDisplayJSX}
-
                 {/* Payment info panel */}
                 {isAddFunds && existingMarkee ? (
                   <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm space-y-2">
@@ -529,6 +483,37 @@ export function BuyMessageModal({
                   </div>
                 ) : (
                   revenueSplitJSX
+                )}
+
+                {!isUpdateMessage && !canAfford && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[#8A8FBF] text-center">
+                      Your wallet balance is too low for this amount.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isFunding}
+                      onClick={async () => {
+                        if (!address) return
+                        setIsFunding(true)
+                        try {
+                          await fundWallet({
+                            address,
+                            options: { chain: base, amount: amount || undefined },
+                          })
+                        } finally {
+                          setIsFunding(false)
+                        }
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isFunding ? (
+                        <><Loader2 size={18} className="animate-spin" /> Opening payment…</>
+                      ) : (
+                        <><CreditCard size={18} /> Fund with card / Apple Pay / PayPal</>
+                      )}
+                    </button>
+                  </div>
                 )}
 
                 {(error || writeError) && (

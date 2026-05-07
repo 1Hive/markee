@@ -15,9 +15,16 @@ interface IJBMultiTerminal {
 }
 
 /// @notice Required interface for any contract acting as a pricingStrategy on a Markee.
-/// @dev Markee reads beneficiaryAddress() dynamically at payment time so that a single
-///      admin update on the strategy propagates to all connected Markees instantly.
+/// @dev Markee reads these dynamically at payment time — a single admin update on the
+///      strategy propagates to all connected Markees instantly.
 interface IPricingStrategy {
-    /// @notice Returns the address that receives the community share of every payment
+    /// @notice Returns the address that receives the beneficiary share of every payment
     function beneficiaryAddress() external view returns (address);
+
+    /// @notice Returns the beneficiary share in basis points (10000 = 100%)
+    function percentToBeneficiary() external view returns (uint256);
+
+    /// @notice Returns true if the RevNet should receive the remaining share of each payment
+    /// @dev When false, 100% of funds route to beneficiaryAddress regardless of percentToBeneficiary
+    function revNetEnabled() external view returns (bool);
 }

@@ -21,7 +21,6 @@ import { Emoji } from '@/components/ui/Emoji'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
-
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function formatTimestamp(ts: bigint | number): string {

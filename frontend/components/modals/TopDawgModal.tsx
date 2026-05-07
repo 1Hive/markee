@@ -5,7 +5,7 @@ import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt,
 import { parseEther, formatEther } from 'viem'
 import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy } from 'lucide-react'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CONTRACTS, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import type { Markee } from '@/types'
@@ -13,8 +13,9 @@ import type { Markee } from '@/types'
 // Strategies where fund events earn Superfluid campaign points.
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
-  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg
-  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // LeaderboardFactory
+  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg (historical)
+  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // SF LeaderboardFactory
+  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580', // SF v1.1 migration leaderboard
 ])
 
 interface TopDawgModalProps {
@@ -39,7 +40,6 @@ export function TopDawgModal({
   onSuccess, 
   strategyAddress: customStrategyAddress,
   partnerName,
-  partnerSplitPercentage,
   topFundsAdded
 }: TopDawgModalProps) {
   const { address, isConnected, chain } = useAccount()
@@ -62,46 +62,13 @@ export function TopDawgModal({
   })
 
   // Get strategy address - use custom one if provided, otherwise default TopDawg
-  const strategyAddress = customStrategyAddress || CONTRACTS[CANONICAL_CHAIN.id]?.topDawgStrategies?.[0]?.address
+  const strategyAddress = customStrategyAddress || '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4' as `0x${string}`
 
   // Use the appropriate ABI based on whether it's a partner strategy
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
 
   // Check if user is on the correct chain
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
-
-  // Get current phase rate from RevNet schedule
-  const getCurrentPhaseRate = () => {
-    const PHASES = [
-      { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-      { rate: 50000, endDate: new Date('2026-06-21T00:00:00Z') },
-      { rate: 25000, endDate: new Date('2026-09-21T00:00:00Z') },
-      { rate: 12500, endDate: new Date('2026-12-21T00:00:00Z') },
-      { rate: 6250, endDate: new Date('2027-03-21T00:00:00Z') },
-    ]
-    
-    const now = new Date()
-    for (const phase of PHASES) {
-      if (now < phase.endDate) {
-        return phase.rate
-      }
-    }
-    return PHASES[PHASES.length - 1].rate
-  }
-
-  const calculateMarkeeTokens = (ethAmount: number) => {
-    const baseRate = getCurrentPhaseRate()
-    const USER_PERCENT = 0.62
-    
-    if (partnerSplitPercentage) {
-      const revnetPercentage = (100 - partnerSplitPercentage) / 100
-      const tokensIssued = ethAmount * baseRate * revnetPercentage
-      return tokensIssued * USER_PERCENT
-    }
-    
-    const tokensIssued = ethAmount * baseRate
-    return tokensIssued * USER_PERCENT
-  }
 
   // Read minimum price and max message length from strategy
   const { data: minimumPrice } = useReadContract({
@@ -617,38 +584,16 @@ export function TopDawgModal({
 
                   {amountSelectorJSX}
 
-                  {/* Token/Partner Distribution Display */}
-                  {amount && parseFloat(amount) > 0 && (
-                    <div className={`grid ${partnerName ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
-                        <div className="text-center">
-                          <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
-                          <p className="text-4xl font-bold text-[#F897FE] mb-2">
-                            {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-                          </p>
-                          <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-                        </div>
+                  {/* Beneficiary split info */}
+                  {amount && parseFloat(amount) > 0 && partnerName && (
+                    <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
+                      <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#EDEEFF]">{partnerName}</span>
+                        <span className="text-[#FFA94D] font-semibold">100%</span>
                       </div>
-
-                      {partnerName && partnerSplitPercentage && (
-                        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
-                          <div className="text-center">
-                            <p className="text-sm text-[#FFA94D] font-medium mb-2">{partnerName} receives</p>
-                            <p className="text-4xl font-bold text-[#FFA94D] mb-2">
-                              {(parseFloat(amount) * (partnerSplitPercentage / 100)).toFixed(3)}
-                            </p>
-                            <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
-
-                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20">
-                    <p className="text-sm text-[#B8B6D9]">
-                      You'll receive MARKEE tokens for your purchase and become an owner of the Markee Network.
-                    </p>
-                  </div>
 
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
@@ -667,43 +612,9 @@ export function TopDawgModal({
                 <div className="space-y-4">
                   {amountSelectorJSX}
 
-                  {/* Token/Partner Distribution Display */}
-                  {amount && parseFloat(amount) > 0 && (
-                    <div className={`grid ${partnerName ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
-                        <div className="text-center">
-                          <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
-                          <p className="text-4xl font-bold text-[#F897FE] mb-2">
-                            {calculateMarkeeTokens(parseFloat(amount)).toLocaleString()}
-                          </p>
-                          <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-                        </div>
-                      </div>
-
-                      {partnerName && partnerSplitPercentage && (
-                        <div className="bg-gradient-to-r from-[#FFA94D]/20 to-[#FF8E3D]/20 border-2 border-[#FFA94D]/50 rounded-xl p-6">
-                          <div className="text-center">
-                            <p className="text-sm text-[#FFA94D] font-medium mb-2">
-                              {partnerName} receives
-                            </p>
-                            <p className="text-4xl font-bold text-[#FFA94D] mb-2">
-                              {(() => {
-                                const value = parseFloat(amount) * (partnerSplitPercentage / 100)
-                                if (value === 0) return '0'
-                                if (value < 0.00001) return '< 0.00001'
-                                return Number(value.toFixed(5)).toString()
-                              })()}
-                            </p>
-                            <p className="text-xl font-semibold text-[#FFA94D]">ETH</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20 space-y-3">
                     <p className="text-sm text-[#B8B6D9]">
-                      💰 Add more funds to climb the leaderboard! You'll get the same amount of MARKEE tokens as you would for creating a new message.
+                      💰 Add more funds to climb the leaderboard!
                     </p>
                     <div className="border-t border-[#F897FE]/20 pt-3 space-y-2">
                       <div className="flex items-center justify-between">
