@@ -14,6 +14,12 @@ export function formatEth(wei: bigint): string {
   return (Number(wei) / 1e18).toFixed(3)
 }
 
+export function formatUsd(usd: number): string {
+  if (usd >= 10000) return `$${Math.round(usd).toLocaleString()}`
+  if (usd >= 100) return `$${usd.toFixed(0)}`
+  return `$${usd.toFixed(2)}`
+}
+
 /**
  * Get display name with priority: Custom Name > ENS > Formatted Address
  */

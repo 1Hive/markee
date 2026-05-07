@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { TokenBalance } from '@/components/wallet/TokenBalance'
+import { EthBalance } from '@/components/wallet/EthBalance'
 
 interface HeaderProps {
   activePage?: 'home' | 'how-it-works' | 'create-a-markee' | 'owners'
@@ -69,6 +70,7 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
           </div>
           
           <div className="flex items-center gap-4">
+            <EthBalance />
             <TokenBalance />
             <ConnectButton />
             <button

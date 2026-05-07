@@ -21,11 +21,14 @@ import { formatEther } from 'viem'
 
 import { formatDistanceToNow } from 'date-fns'
 import { NETWORK_PAUSED } from '@/lib/paused'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
 import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 export default function Home() {
   const { address } = useAccount()
+  const ethPrice = useEthPrice()
 
   const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
@@ -206,7 +209,9 @@ export default function Home() {
                     <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
                       <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
                         {fixedMarkee.priceWei && fixedMarkee.priceWei !== '0'
-                          ? `${formatEther(BigInt(fixedMarkee.priceWei))} ETH to Change`
+                          ? ethPrice
+                            ? `${formatUsd(parseFloat(formatEther(BigInt(fixedMarkee.priceWei))) * ethPrice)} to Change`
+                            : `${formatEther(BigInt(fixedMarkee.priceWei))} ETH to Change`
                           : 'Change Message'}
                       </div>
                     </div>
@@ -299,6 +304,15 @@ export default function Home() {
               <span className="w-2.5 h-2.5 rounded-full bg-[#7C9CFF] animate-pulse" />
               {isLoadingEco ? (
                 <span className="text-[#7C9CFF] font-semibold text-3xl animate-pulse">--</span>
+              ) : ethPrice ? (
+                <div className="flex flex-col items-start">
+                  <span className="text-[#7C9CFF] font-semibold text-3xl">
+                    {formatUsd(parseFloat(ecoTotalFunds) * ethPrice)}
+                  </span>
+                  <span className="text-[#8A8FBF] text-xs">
+                    {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
+                  </span>
+                </div>
               ) : (
                 <span className="text-[#7C9CFF] font-semibold text-3xl">
                   {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}

@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft } from 'lucide-react'
+import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, CreditCard } from 'lucide-react'
+import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 interface FixedPriceModalProps {
@@ -22,12 +25,18 @@ export function FixedPriceModal({
   fixedMarkee,
   onSuccess
 }: FixedPriceModalProps) {
+  const { authenticated } = usePrivy()
   const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
+  const ethPrice = useEthPrice()
 
-  const { data: balanceData } = useBalance({
+  const { data: balanceData, refetch: refetchBalance } = useBalance({
     address: address,
     chainId: CANONICAL_CHAIN.id,
+  })
+
+  const { fundWallet } = useFundWallet({
+    onUserExited: () => { refetchBalance() },
   })
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
@@ -49,7 +58,10 @@ export function FixedPriceModal({
   // All price data comes from the hook — no RPC calls here
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
   const priceEth: string = formatEther(priceWei)
-  const priceDisplay = priceWei > 0n ? `${priceEth} ETH` : '...'
+  const priceEthNum = parseFloat(priceEth)
+  const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
+  const priceDisplay = priceWei > 0n ? (priceUsd ? formatUsd(priceUsd) : `${priceEth} ETH`) : '...'
+  const priceSubDisplay = priceUsd ? `${priceEth} ETH` : null
   const revNetEnabled = fixedMarkee?.revNetEnabled ?? false
   const markeeTokens = revNetEnabled && priceWei > 0n ? parseFloat(priceEth) * 62000 : 0
   const maxLength = fixedMarkee?.maxMessageLength ?? null
@@ -176,14 +188,26 @@ export function FixedPriceModal({
               <div className="mb-6 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-[#B8B6D9] font-medium">Price to Change Message</p>
-                  <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
+                    {priceSubDisplay && (
+                      <p className="text-xs text-[#8A8FBF] mt-0.5">{priceSubDisplay}</p>
+                    )}
+                  </div>
                 </div>
                 {balanceData && (
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
                     <p className="text-xs text-[#B8B6D9]">Your Balance</p>
-                    <p className="text-sm font-medium text-[#EDEEFF]">
-                      {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                    </p>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-[#EDEEFF]">
+                        {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+                      </p>
+                      {ethPrice && (
+                        <p className="text-xs text-[#7C9CFF]">
+                          {formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -233,9 +257,18 @@ export function FixedPriceModal({
               {insufficientBalance && balanceWarning && !error && !isError && (
                 <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                   <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
-                    <p className="text-xs text-yellow-400">{balanceWarning}</p>
+                    <p className="text-xs text-yellow-400 mb-3">{balanceWarning}</p>
+                    {authenticated && address && (
+                      <button
+                        onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
+                        className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#F897FE]/90 transition-colors"
+                      >
+                        <CreditCard size={16} />
+                        Fund with card
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

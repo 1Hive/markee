@@ -3,11 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy } from 'lucide-react'
+import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy, CreditCard } from 'lucide-react'
+import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
 import type { Markee } from '@/types'
 
 // Strategies where fund events earn Superfluid campaign points.
@@ -42,8 +45,10 @@ export function TopDawgModal({
   partnerName,
   topFundsAdded
 }: TopDawgModalProps) {
+  const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
+  const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
   const [name, setName] = useState('')
@@ -56,9 +61,13 @@ export function TopDawgModal({
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
 
   // Get user's ETH balance
-  const { data: balanceData } = useBalance({
+  const { data: balanceData, refetch: refetchBalance } = useBalance({
     address: address,
     chainId: CANONICAL_CHAIN.id,
+  })
+
+  const { fundWallet } = useFundWallet({
+    onUserExited: () => { refetchBalance() },
   })
 
   // Get strategy address - use custom one if provided, otherwise default TopDawg
@@ -398,7 +407,12 @@ export function TopDawgModal({
                 <p className="text-xs font-medium text-[#F897FE]">Featured Message</p>
                 <span className="text-[10px]">👑</span>
               </div>
-              <p className="text-sm font-bold text-[#EDEEFF]">{takeFirstAmountFormatted} ETH</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-sm font-bold text-[#EDEEFF]">
+                  {ethPrice ? formatUsd(parseFloat(takeFirstAmountFormatted!) * ethPrice) : `${takeFirstAmountFormatted} ETH`}
+                </p>
+                {ethPrice && <p className="text-xs text-[#8A8FBF]">{takeFirstAmountFormatted} ETH</p>}
+              </div>
               <p className="text-[10px] text-[#F897FE] mt-0.5">
                 {activeTab === 'addFunds'
                   ? 'Additional ETH needed to take the top spot'
@@ -420,7 +434,12 @@ export function TopDawgModal({
               } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
               <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
-              <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-sm font-bold text-[#EDEEFF]">
+                  {ethPrice ? formatUsd(parseFloat(minimumAmountFormatted) * ethPrice) : `${minimumAmountFormatted} ETH`}
+                </p>
+                {ethPrice && <p className="text-xs text-[#8A8FBF]">{minimumAmountFormatted} ETH</p>}
+              </div>
               <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
             </button>
           )}
@@ -448,6 +467,11 @@ export function TopDawgModal({
       {balanceData && (
         <p className="text-xs text-[#8A8FBF]">
           Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+          {ethPrice && (
+            <span className="text-[#7C9CFF] ml-1">
+              ({formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)})
+            </span>
+          )}
         </p>
       )}
     </div>
@@ -598,9 +622,18 @@ export function TopDawgModal({
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                       <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                      <div>
+                      <div className="flex-1">
                         <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
-                        <p className="text-xs text-yellow-400">{balanceWarning}</p>
+                        <p className="text-xs text-yellow-400 mb-3">{balanceWarning}</p>
+                        {authenticated && address && (
+                          <button
+                            onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount } })}
+                            className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#F897FE]/90 transition-colors"
+                          >
+                            <CreditCard size={16} />
+                            Fund with card
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -644,9 +677,18 @@ export function TopDawgModal({
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                       <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                      <div>
+                      <div className="flex-1">
                         <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
-                        <p className="text-xs text-yellow-400">{balanceWarning}</p>
+                        <p className="text-xs text-yellow-400 mb-3">{balanceWarning}</p>
+                        {authenticated && address && (
+                          <button
+                            onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount } })}
+                            className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#F897FE]/90 transition-colors"
+                          >
+                            <CreditCard size={16} />
+                            Fund with card
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

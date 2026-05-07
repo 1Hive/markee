@@ -12,6 +12,8 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { CreateOpenInternetModal } from '@/components/modals/CreateOpenInternetModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ModerationProvider } from '@/components/moderation'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
 
 const INITIAL_SHOW = 9
 
@@ -286,6 +288,7 @@ function LeaderboardSection({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EcosystemPage() {
+  const ethPrice = useEthPrice()
   const [leaderboards, setLeaderboards] = useState<EcosystemLeaderboard[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [isLoading, setIsLoading] = useState(true)
@@ -383,7 +386,14 @@ export default function EcosystemPage() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Trophy size={14} className="text-[#7C9CFF]" />
-                <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
+                {ethPrice ? (
+                  <span className="text-[#7C9CFF] font-semibold">
+                    {formatUsd(parseFloat(totalPlatformFunds) * ethPrice)}
+                    <span className="text-[#8A8FBF] font-normal ml-1 text-xs">({formatFunds(totalPlatformFunds)})</span>
+                  </span>
+                ) : (
+                  <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
+                )}
                 <span className="text-[#8A8FBF]">total raised</span>
               </div>
             </div>
