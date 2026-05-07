@@ -50,7 +50,8 @@ export function FixedPriceModal({
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
   const priceEth: string = formatEther(priceWei)
   const priceDisplay = priceWei > 0n ? `${priceEth} ETH` : '...'
-  const markeeTokens = priceWei > 0n ? parseFloat(priceEth) * 62000 : 0
+  const revNetEnabled = fixedMarkee?.revNetEnabled ?? false
+  const markeeTokens = revNetEnabled && priceWei > 0n ? parseFloat(priceEth) * 62000 : 0
   const maxLength = fixedMarkee?.maxMessageLength ?? null
 
   useEffect(() => {
@@ -223,7 +224,9 @@ export function FixedPriceModal({
 
               <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
                 <p className="text-sm text-[#B8B6D9]">
-                  This is PRIME digital real estate... for big bag holders only. If you decide to purchase, you'll receive MARKEE tokens and become an owner of the Markee Network.
+                  {revNetEnabled
+                    ? "This is PRIME digital real estate... for big bag holders only. If you decide to purchase, you'll receive MARKEE tokens and become an owner of the Markee Network."
+                    : "This is PRIME digital real estate... for big bag holders only. Your payment funds the Markee Network directly."}
                 </p>
               </div>
 
