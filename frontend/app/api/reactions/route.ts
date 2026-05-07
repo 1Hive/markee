@@ -70,15 +70,35 @@ async function verifyBalance(address: string, chainId: number): Promise<boolean>
   }
 }
 
-// GET /api/reactions?markeeAddress=0x...
+// GET /api/reactions?markeeAddress=0x... (omit param to fetch all)
 export async function GET(request: NextRequest) {
   try {
     const markeeAddress = request.nextUrl.searchParams.get('markeeAddress')
-    if (!markeeAddress) {
-      return NextResponse.json({ reactions: [] })
+
+    if (markeeAddress) {
+      const reactions = await getReactionsForMarkee(markeeAddress)
+      return NextResponse.json({ reactions })
     }
-    const reactions = await getReactionsForMarkee(markeeAddress)
-    return NextResponse.json({ reactions })
+
+    // No markeeAddress — scan all reaction keys
+    const allReactions: Reaction[] = []
+    let cursor = 0
+    do {
+      const [nextCursor, keys] = await kv.scan(cursor, { match: 'reactions:v2:*', count: 100 })
+      cursor = Number(nextCursor)
+      if (keys.length > 0) {
+        const hashes = await Promise.all(
+          keys.map(key => kv.hgetall<Record<string, string>>(key))
+        )
+        for (const hash of hashes) {
+          if (hash) {
+            allReactions.push(...Object.values(hash).map(v => JSON.parse(v) as Reaction))
+          }
+        }
+      }
+    } while (cursor !== 0)
+
+    return NextResponse.json({ reactions: allReactions })
   } catch (error) {
     console.error('[Reactions] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch reactions' }, { status: 500 })

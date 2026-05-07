@@ -146,7 +146,7 @@ function DetailSkeleton() {
 
 // ── Tab Component ────────────────────────────────────────────────────
 
-type TabId = 'funds' | 'messages' | 'names'
+type TabId = 'funds' | 'history'
 
 function TabButton({ 
   active, 
@@ -364,24 +364,15 @@ export default function MarkeeDetailPage() {
                   onClick={() => setActiveTab('funds')}
                   count={markee.fundsAddedCount}
                 >
-                  <Coins size={14} /> Funding
+                  <Coins size={14} /> Funds Added
                 </TabButton>
                 <TabButton
-                  active={activeTab === 'messages'}
-                  onClick={() => setActiveTab('messages')}
-                  count={markee.messageUpdateCount}
+                  active={activeTab === 'history'}
+                  onClick={() => setActiveTab('history')}
+                  count={markee.messageUpdateCount + markee.nameUpdates.length}
                 >
-                  <MessageSquare size={14} /> Messages
+                  <MessageSquare size={14} /> Message History
                 </TabButton>
-                {markee.nameUpdates.length > 0 && (
-                  <TabButton
-                    active={activeTab === 'names'}
-                    onClick={() => setActiveTab('names')}
-                    count={markee.nameUpdates.length}
-                  >
-                    <User size={14} /> Names
-                  </TabButton>
-                )}
               </div>
 
               {/* ── Funding History ──────────────────────────────── */}
@@ -429,90 +420,69 @@ export default function MarkeeDetailPage() {
               )}
 
               {/* ── Message History ──────────────────────────────── */}
-              {activeTab === 'messages' && (
-                <div className="space-y-2">
-                  {markee.messageUpdates.length === 0 ? (
-                    <p className="text-[#8A8FBF] text-sm text-center py-8">No message changes yet.</p>
-                  ) : (
-                    markee.messageUpdates.map((event) => (
-                      <div
-                        key={event.id}
-                        className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
-                      >
-                        <div className="flex flex-col gap-2">
-                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                <MessageSquare size={14} className="text-[#F897FE]" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-xs text-[#8A8FBF] line-through mb-1 truncate" title={event.oldMessage}>
-                                  {event.oldMessage || '(empty)'}
-                                </div>
-                                <div className="font-jetbrains text-sm text-[#EDEEFF] break-words">
-                                  {event.newMessage}
-                                </div>
-                                <div className="text-xs text-[#8A8FBF] mt-1">
-                                  by <AddressLink address={event.updatedBy} />
-                                </div>
-                              </div>
-                            </div>
+              {activeTab === 'history' && (() => {
+                const combined = [
+                  ...markee.messageUpdates.map(e => ({ ...e, kind: 'message' as const })),
+                  ...markee.nameUpdates.map(e => ({ ...e, kind: 'name' as const })),
+                ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
 
-                            <div className="flex items-center gap-3 text-xs text-[#8A8FBF] flex-shrink-0 sm:text-right">
-                              <span title={formatTimestamp(event.timestamp)}>
-                                {timeAgo(event.timestamp)}
-                              </span>
-                              <TxLink hash={event.transactionHash} />
+                return (
+                  <div className="space-y-2">
+                    {combined.length === 0 ? (
+                      <p className="text-[#8A8FBF] text-sm text-center py-8">No history yet.</p>
+                    ) : (
+                      combined.map((event) => (
+                        <div
+                          key={event.id}
+                          className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
+                        >
+                          {event.kind === 'message' ? (
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                              <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div className="w-8 h-8 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                  <MessageSquare size={14} className="text-[#F897FE]" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-jetbrains text-sm text-[#EDEEFF] break-words">
+                                    {event.newMessage}
+                                  </div>
+                                  <div className="text-xs text-[#8A8FBF] mt-1">
+                                    by <AddressLink address={event.updatedBy} />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-[#8A8FBF] flex-shrink-0 sm:text-right">
+                                <span title={formatTimestamp(event.timestamp)}>{timeAgo(event.timestamp)}</span>
+                                <TxLink hash={event.transactionHash} />
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0">
+                                  <User size={14} className="text-[#FFA94D]" />
+                                </div>
+                                <div>
+                                  <div className="text-sm text-[#EDEEFF] font-medium">
+                                    {event.newName || <span className="italic text-[#8A8FBF]">Name cleared</span>}
+                                  </div>
+                                  <div className="text-xs text-[#8A8FBF] mt-0.5">
+                                    name set by <AddressLink address={event.updatedBy} />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-[#8A8FBF] sm:text-right">
+                                <span title={formatTimestamp(event.timestamp)}>{timeAgo(event.timestamp)}</span>
+                                <TxLink hash={event.transactionHash} />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* ── Name History ─────────────────────────────────── */}
-              {activeTab === 'names' && (
-                <div className="space-y-2">
-                  {markee.nameUpdates.length === 0 ? (
-                    <p className="text-[#8A8FBF] text-sm text-center py-8">No name changes yet.</p>
-                  ) : (
-                    markee.nameUpdates.map((event) => (
-                      <div
-                        key={event.id}
-                        className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0">
-                              <User size={14} className="text-[#FFA94D]" />
-                            </div>
-                            <div>
-                              <span className="text-xs text-[#8A8FBF] line-through mr-2">
-                                {event.oldName || '(none)'}
-                              </span>
-                              <span className="text-sm text-[#EDEEFF] font-medium">
-                                {event.newName || '(cleared)'}
-                              </span>
-                              <div className="text-xs text-[#8A8FBF] mt-0.5">
-                                by <AddressLink address={event.updatedBy} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-[#8A8FBF] sm:text-right">
-                            <span title={formatTimestamp(event.timestamp)}>
-                              {timeAgo(event.timestamp)}
-                            </span>
-                            <TxLink hash={event.transactionHash} />
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+                      ))
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         )}

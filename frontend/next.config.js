@@ -4,7 +4,7 @@ const cspDirectives = {
   'default-src':     ["'self'"],
   // Next.js injects inline scripts; 'unsafe-inline' is required without nonces.
   // 'unsafe-eval' is required by some wallet SDKs (WalletConnect, MetaMask SDK).
-  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com'],
+  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com', 'https://vercel.live'],
   'style-src':       ["'self'", "'unsafe-inline'"],
   // Partner logos come from arbitrary HTTPS sources stored in KV — allow all HTTPS images.
   'img-src':         ["'self'", 'data:', 'blob:', 'https:'],
