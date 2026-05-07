@@ -18,7 +18,10 @@ export const dynamic = 'force-dynamic'
 const CACHE_KEY = 'cache:openinternet:leaderboards'
 const CACHE_TTL = 60 // seconds
 
-const OI_FACTORY_ADDRESS = '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const
+const OI_FACTORY_ADDRESSES = [
+  '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254', // legacy (Coop, Gardens, Clawchemy + early partners)
+  '0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D', // new (Honeyswap, NORD, Gitcoin, Mati's, OwnerSync, Hello!)
+] as const
 
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -88,11 +91,10 @@ async function resolveCreators(
   if (missingIndices.length === 0) return cached
 
   try {
-    const logs = await client.getLogs({
-      address: OI_FACTORY_ADDRESS,
-      fromBlock: 0n,
-      toBlock: 'latest',
-    })
+    const logsPerFactory = await Promise.all(
+      OI_FACTORY_ADDRESSES.map(addr => client.getLogs({ address: addr, fromBlock: 0n, toBlock: 'latest' }))
+    )
+    const logs = logsPerFactory.flat()
 
     const lbToTxHash = new Map<string, `0x${string}`>()
     for (const log of logs) {
@@ -148,12 +150,14 @@ export async function GET(request: Request) {
       return results
     }
 
-    const addresses = (await client.readContract({
-      address: OI_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }) as `0x${string}`[]) ?? []
+    const addressesPerFactory = await Promise.all(
+      OI_FACTORY_ADDRESSES.map(factory =>
+        client.readContract({ address: factory, abi: FACTORY_ABI, functionName: 'getLeaderboards', args: [0n, 1000n] })
+          .then(r => r as `0x${string}`[])
+          .catch(() => [] as `0x${string}`[])
+      )
+    )
+    const addresses = addressesPerFactory.flat()
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
