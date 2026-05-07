@@ -20,122 +20,12 @@ const CACHE_TTL = 60 // seconds
 
 const OI_FACTORY_ADDRESS = '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const
 
-const SUBGRAPH_URL =
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE_STUDIO
-
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
-
-// ─── Hardcoded legacy TopDawg partner metadata ────────────────────────────────
-// These partners use legacy TopDawg strategy contracts (not the factory).
-// verified = has a live public URL; status is set accordingly.
-
-const LEGACY_PARTNERS = [
-  {
-    slug: 'markee-cooperative',
-    name: 'Markee Cooperative',
-    strategyAddress: '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a',
-    logoUrl: '/markee-logo.png',
-    siteUrl: 'https://markee.xyz',
-    verifiedUrl: 'https://markee.xyz',
-    status: 'verified' as const,
-    isCooperative: true,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'gardens',
-    name: 'Gardens',
-    strategyAddress: '0x346419315740F085Ba14cA7239D82105a9a2BDBE',
-    logoUrl: '/partners/gardens.png',
-    siteUrl: 'https://app.gardens.fund',
-    verifiedUrl: 'https://app.gardens.fund',
-    status: 'verified' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'bread-cooperative',
-    name: 'Bread Cooperative',
-    strategyAddress: '0x05A40489965B355e0404c05134dA68626a5a927c',
-    logoUrl: '/partners/breadcoop.png',
-    siteUrl: null,
-    verifiedUrl: null,
-    status: 'pending' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'revnets',
-    name: 'RevNets',
-    strategyAddress: '0xe68CbEf87B710B379654Dfd3c0BEC8779bBCcEbB',
-    logoUrl: '/partners/revnets.png',
-    siteUrl: null,
-    verifiedUrl: null,
-    status: 'pending' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'juicebox',
-    name: 'Juicebox',
-    strategyAddress: '0x2a84960367832039C188C75FD6D6D5f2E8F640e2',
-    logoUrl: '/partners/juicebox.png',
-    siteUrl: null,
-    verifiedUrl: null,
-    status: 'pending' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'giveth',
-    name: 'Giveth',
-    strategyAddress: '0x00A60bA8351a69EF8d10F6c9b2b0E03aDE2E7431',
-    logoUrl: '/partners/giveth.png',
-    siteUrl: null,
-    verifiedUrl: null,
-    status: 'pending' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'flow-state',
-    name: 'Flow State',
-    strategyAddress: '0x24512EE8E5f9138e2Bfca0c8253e7525035f4989',
-    logoUrl: '/partners/flowstate.png',
-    siteUrl: null,
-    verifiedUrl: null,
-    status: 'pending' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'clawchemy',
-    name: 'Clawchemy',
-    strategyAddress: '0x89e608223BEc645227f11d8241e8175A9A95597E',
-    logoUrl: '/partners/clawchemy.png',
-    siteUrl: 'https://clawchemy.xyz/',
-    verifiedUrl: 'https://clawchemy.xyz/',
-    status: 'verified' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-  {
-    slug: 'superfluid',
-    name: 'Superfluid',
-    strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
-    logoUrl: '/partners/superfluid.png',
-    siteUrl: 'https://campaigns.superfluid.org',
-    verifiedUrl: 'https://campaigns.superfluid.org',
-    status: 'verified' as const,
-    isCooperative: false,
-    percentToBeneficiary: 10000,
-  },
-] as const
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 
@@ -183,69 +73,6 @@ function getClient() {
       { fetchOptions: { cache: 'no-store' } },
     ),
   })
-}
-
-// ─── Subgraph: batch fetch all legacy partner data ────────────────────────────
-
-interface LegacySubgraphData {
-  totalFundsRaised: string
-  totalMarkeesCreated: string
-  topMessage: string | null
-  topMessageOwner: string | null
-  topMarkeeAddress: string | null
-  topFundsAddedRaw: string
-}
-
-async function fetchLegacyPartnerData(): Promise<(LegacySubgraphData | null)[]> {
-  if (!SUBGRAPH_URL) return LEGACY_PARTNERS.map(() => null)
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const graphToken = process.env.GRAPH_TOKEN || process.env.NEXT_PUBLIC_GRAPH_TOKEN
-  if (graphToken) headers['Authorization'] = `Bearer ${graphToken}`
-
-  // Build a batch GraphQL query using aliases for each partner
-  const markeeFields = `
-    totalFundsRaised
-    totalMarkeesCreated
-    markees(orderBy: totalFundsAdded, orderDirection: desc, first: 1) {
-      id
-      message
-      totalFundsAdded
-      owner { id }
-    }
-  `
-  const aliases = LEGACY_PARTNERS.map((p, i) => {
-    const id = p.strategyAddress.toLowerCase()
-    const typeName = p.isCooperative ? 'topDawgStrategy' : 'topDawgPartnerStrategy'
-    return `p${i}: ${typeName}(id: "${id}") { ${markeeFields} }`
-  }).join('\n')
-
-  try {
-    const res = await fetch(SUBGRAPH_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ query: `{ ${aliases} }` }),
-    })
-    const json = await res.json()
-    const data = json.data ?? {}
-
-    return LEGACY_PARTNERS.map((_, i) => {
-      const d = data[`p${i}`]
-      if (!d) return null
-      const top = d.markees?.[0]
-      return {
-        totalFundsRaised: d.totalFundsRaised ?? '0',
-        totalMarkeesCreated: d.totalMarkeesCreated ?? '0',
-        topMessage: top?.message ?? null,
-        topMessageOwner: top?.owner?.id ?? null,
-        topMarkeeAddress: top?.id ?? null,
-        topFundsAddedRaw: top?.totalFundsAdded ?? '0',
-      }
-    })
-  } catch (e: any) {
-    console.error('[openinternet/leaderboards] subgraph error:', e.message)
-    return LEGACY_PARTNERS.map(() => null)
-  }
 }
 
 // ─── Creator resolution for factory leaderboards ──────────────────────────────
@@ -321,18 +148,12 @@ export async function GET(request: Request) {
       return results
     }
 
-    // Fetch factory addresses and legacy subgraph data in parallel
-    const [factoryAddresses, legacyData] = await Promise.all([
-      client.readContract({
-        address: OI_FACTORY_ADDRESS,
-        abi: FACTORY_ABI,
-        functionName: 'getLeaderboards',
-        args: [0n, 1000n],
-      }) as Promise<`0x${string}`[]>,
-      fetchLegacyPartnerData(),
-    ])
-
-    const addresses = factoryAddresses ?? []
+    const addresses = (await client.readContract({
+      address: OI_FACTORY_ADDRESS,
+      abi: FACTORY_ABI,
+      functionName: 'getLeaderboards',
+      args: [0n, 1000n],
+    }) as `0x${string}`[]) ?? []
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
@@ -374,7 +195,6 @@ export async function GET(request: Request) {
         : Promise.resolve([]),
     ])
 
-    // Assemble OI factory leaderboards
     let totalFundsRaw = 0n
     let markeeCallIndex = 0
 
@@ -426,38 +246,7 @@ export async function GET(request: Request) {
       }
     })
 
-    // Assemble legacy TopDawg leaderboards
-    const legacyLeaderboards = LEGACY_PARTNERS.map((partner, i) => {
-      const d = legacyData[i]
-      const totalFundsWei = BigInt(d?.totalFundsRaised ?? '0')
-      totalFundsRaw += totalFundsWei
-      return {
-        address: partner.strategyAddress,
-        name: partner.name,
-        platform: 'website' as const,
-        isLegacy: true,
-        totalFunds: formatEther(totalFundsWei),
-        totalFundsRaw: totalFundsWei.toString(),
-        markeeCount: Number(d?.totalMarkeesCreated ?? 0),
-        admin: null,
-        creator: null,
-        minimumPrice: '0',
-        minimumPriceRaw: '0',
-        topFundsAddedRaw: d?.topFundsAddedRaw ?? '0',
-        topMessage: d?.topMessage ?? null,
-        topMessageOwner: d?.topMessageOwner ?? null,
-        topMarkeeAddress: d?.topMarkeeAddress ?? null,
-        logoUrl: partner.logoUrl,
-        siteUrl: partner.siteUrl,
-        verifiedUrl: partner.verifiedUrl,
-        status: partner.status,
-        slug: partner.slug,
-        isCooperative: partner.isCooperative,
-        percentToBeneficiary: partner.percentToBeneficiary,
-      }
-    })
-
-    const leaderboards = [...factoryLeaderboards, ...legacyLeaderboards]
+    const leaderboards = factoryLeaderboards
     leaderboards.sort((a, b) => {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return diff > 0n ? 1 : diff < 0n ? -1 : 0

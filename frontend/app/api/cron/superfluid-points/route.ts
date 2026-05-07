@@ -31,7 +31,6 @@ export const maxDuration = 300
 
 // ─── Contract addresses ───────────────────────────────────────────────────────
 
-const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
 // Standalone v1.1 leaderboard holding the 32 migrated TopDawg markees — not in factory
 const SF_MIGRATION_LEADERBOARD = '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580'
@@ -40,97 +39,18 @@ const FACTORY_DEPLOY_BLOCK = 43452028n
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const SUBGRAPH_URL =
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE_STUDIO
-
 const ALCHEMY_URL = process.env.ALCHEMY_BASE_URL
 const MARKEE_FARCASTER_FID = process.env.MARKEE_FARCASTER_FID
 const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY
 
 // ─── KV keys ─────────────────────────────────────────────────────────────────
 
-const KV_SUBGRAPH_LAST_BLOCK = 'superfluid:cron:lastBlock'
 const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'
 const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'
 
 const API_BATCH_SIZE = 100
-const SUBGRAPH_PAGE_SIZE = 1000
 
-// ─── 1. Subgraph (Legacy TopDawg) ────────────────────────────────────────────
-
-const FUNDS_ADDED_QUERY = `
-  query FundsAddedSince($strategies: [String!]!, $afterBlock: BigInt!, $skip: Int!) {
-    fundsAddeds(
-      where: {
-        markee_: { pricingStrategy_in: $strategies }
-        blockNumber_gt: $afterBlock
-      }
-      orderBy: blockNumber
-      orderDirection: asc
-      first: ${SUBGRAPH_PAGE_SIZE}
-      skip: $skip
-    ) {
-      id
-      addedBy
-      amount
-      transactionHash
-      blockNumber
-      markee { pricingStrategy }
-    }
-  }
-`
-
-interface SubgraphFundsEvent {
-  id: string
-  addedBy: string
-  amount: string
-  transactionHash: string
-  blockNumber: string
-  markee: { pricingStrategy: string }
-}
-
-async function fetchSubgraphEvents(afterBlock: number): Promise<SubgraphFundsEvent[]> {
-  if (!SUBGRAPH_URL) throw new Error('NEXT_PUBLIC_SUBGRAPH_URL_BASE is not set')
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const graphToken = process.env.GRAPH_TOKEN || process.env.NEXT_PUBLIC_GRAPH_TOKEN
-  if (graphToken) headers['Authorization'] = `Bearer ${graphToken}`
-
-  const all: SubgraphFundsEvent[] = []
-  let skip = 0
-
-  while (true) {
-    const res = await fetch(SUBGRAPH_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        query: FUNDS_ADDED_QUERY,
-        variables: {
-          strategies: [LEGACY_TOPDAWG_ADDRESS],
-          afterBlock: String(afterBlock),
-          skip,
-        },
-      }),
-    })
-
-    const json = await res.json()
-    if (!res.ok || json.errors) {
-      console.error(`[cron] Subgraph HTTP ${res.status}:`, json.errors?.[0]?.message ?? JSON.stringify(json))
-      throw new Error(`Subgraph error: ${json.errors?.[0]?.message ?? res.status}`)
-    }
-
-    const page: SubgraphFundsEvent[] = json.data?.fundsAddeds ?? []
-    all.push(...page)
-
-    if (page.length < SUBGRAPH_PAGE_SIZE) break
-    skip += SUBGRAPH_PAGE_SIZE
-  }
-
-  return all
-}
-
-// ─── 2. RPC (LeaderboardFactory children) ────────────────────────────────────
+// ─── RPC (LeaderboardFactory children + SF migration leaderboard) ─────────────
 
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
@@ -326,46 +246,12 @@ export async function GET(req: NextRequest) {
 
   const startTime = Date.now()
   const results = {
-    legacy: { fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
     factory: { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
     farcaster: { followers: 0, newAwards: 0, failed: 0 },
     durationMs: 0,
   }
 
-  // ── 1. Legacy TopDawg via subgraph ────────────────────────────────────────
-
-  try {
-    const lastBlockRaw = await kv.get<number | string>(KV_SUBGRAPH_LAST_BLOCK)
-    const lastBlock = lastBlockRaw ? Number(lastBlockRaw) : 0
-    console.log(`[cron] Legacy: fetching after block ${lastBlock}`)
-
-    const events = await fetchSubgraphEvents(lastBlock)
-    results.legacy.fetched = events.length
-    console.log(`[cron] Legacy: found ${events.length} events`)
-
-    if (events.length > 0) {
-      const pushInputs: PushEventInput[] = events
-        .filter(e => e.addedBy.toLowerCase() !== e.markee.pricingStrategy.toLowerCase())
-        .map(e => ({
-          event: 'ADD_FUNDS' as const,
-          account: e.addedBy.toLowerCase(),
-          points: ethToPoints(e.amount),
-          uniqueId: `${e.transactionHash}-${e.id.split('-').pop()}`,
-        }))
-
-      const { pushed, failed } = await pushInBatches(pushInputs)
-      results.legacy.pushed = pushed
-      results.legacy.failed = failed
-
-      const highestBlock = Math.max(...events.map(e => parseInt(e.blockNumber, 10)))
-      await kv.set(KV_SUBGRAPH_LAST_BLOCK, highestBlock)
-      results.legacy.newHighBlock = highestBlock
-    }
-  } catch (e: any) {
-    console.error('[cron] Legacy subgraph error:', e.message)
-  }
-
-  // ── 2. LeaderboardFactory children via RPC ────────────────────────────────
+  // ── LeaderboardFactory children + SF migration leaderboard via RPC ─────────
 
   if (ALCHEMY_URL) {
     try {
@@ -412,7 +298,7 @@ export async function GET(req: NextRequest) {
     console.log('[cron] Skipping factory — ALCHEMY_BASE_URL not set')
   }
 
-  // ── 3. Farcaster follows ──────────────────────────────────────────────────
+  // ── Farcaster follows ─────────────────────────────────────────────────────
 
   if (MARKEE_FARCASTER_FID) {
     try {

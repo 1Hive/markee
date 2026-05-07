@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
-import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+'use client'
+
+import { useReadContracts } from 'wagmi'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import type { Markee } from '@/types'
 
 // Partner configuration.
-// strategyAddress — legacy v0.1 TopDawg strategy used for subgraph data reads (read-only).
-// leaderboardAddress — v1.1 Leaderboard to send new purchases to; null for unmigrated partners.
+// leaderboardAddress — v1.1 Leaderboard to query and send new purchases to; null for unmigrated partners.
+// strategyAddress — kept for reference only (no longer queried).
 export const PARTNERS = [
   {
     slug: 'markee-cooperative',
@@ -94,7 +97,6 @@ export const PARTNERS = [
     slug: 'superfluid',
     name: 'Superfluid',
     description: 'Protocol for money streaming - send and receive tokens continuously',
-    // Legacy TopDawg strategy kept for subgraph reads; purchases now go to the v1.1 leaderboard
     strategyAddress: '0x7A6CE4d457AC1A31513BDEFf924FF942150D293E',
     leaderboardAddress: '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as `0x${string}` | null,
     logo: '/partners/superfluid.png',
@@ -124,151 +126,95 @@ interface PartnerData {
   markeeCount: bigint
 }
 
-const COOPERATIVE_QUERY = `
-  query GetCooperativeMarkees {
-    topDawgStrategy(id: "0x558eb41ec9cc90b86550617eef5f180ea60e0e3a") {
-      totalFundsRaised
-      totalMarkeesCreated
-      markees(
-        orderBy: totalFundsAdded
-        orderDirection: desc
-        first: 1
-      ) {
-        id
-        address
-        message
-        name
-        owner
-        totalFundsAdded
-        pricingStrategy
-      }
-    }
-  }
-`
-
-const PARTNER_QUERY = `
-  query GetPartnerMarkees($strategyId: ID!) {
-    topDawgPartnerStrategy(id: $strategyId) {
-      totalFundsRaised
-      totalMarkeesCreated
-      markees(
-        orderBy: totalFundsAdded
-        orderDirection: desc
-        first: 1
-      ) {
-        id
-        address
-        message
-        name
-        owner
-        totalFundsAdded
-        pricingStrategy
-      }
-    }
-  }
-`
-
 export function usePartnerMarkees() {
-  const [partnerData, setPartnerData] = useState<PartnerData[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const partnersWithLb = PARTNERS.filter(p => p.leaderboardAddress)
 
-  useEffect(() => {
-    async function fetchPartnerData() {
-      try {
-        setIsLoading(true)
-        setError(null)
+  // Step 1: getTopMarkees(1) + totalLeaderboardFunds + markeeCount for each leaderboard
+  const step1Contracts = partnersWithLb.flatMap(p => [
+    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] as const, chainId: CANONICAL_CHAIN_ID },
+    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const, chainId: CANONICAL_CHAIN_ID },
+  ])
 
-        const subgraphUrl = SUBGRAPH_URLS[CANONICAL_CHAIN_ID]
-        
-        if (!subgraphUrl) {
-          throw new Error('Subgraph URL not configured')
-        }
+  const { data: step1Data, isLoading: isLoadingStep1 } = useReadContracts({
+    contracts: step1Contracts,
+    query: { refetchInterval: 30_000 },
+  })
 
-        const results = await Promise.all(
-          PARTNERS.map(async (partner) => {
-            try {
-              const query = partner.isCooperative ? COOPERATIVE_QUERY : PARTNER_QUERY
-              const variables = partner.isCooperative ? {} : { strategyId: partner.strategyAddress.toLowerCase() }
+  // Extract top markee addresses from step 1
+  const topAddresses: (`0x${string}` | null)[] = partnersWithLb.map((_, i) => {
+    const result = step1Data?.[i * 3]?.result as [string[], bigint[]] | undefined
+    return (result?.[0]?.[0] ?? null) as `0x${string}` | null
+  })
 
-              const response = await fetch(subgraphUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query, variables })
-              })
+  const validTopAddresses = topAddresses.filter((a): a is `0x${string}` => !!a)
 
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`)
-              }
+  // Step 2: message + name + owner + pricingStrategy for each top markee
+  const step2Contracts = validTopAddresses.flatMap(addr => [
+    { address: addr, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: addr, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: addr, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: addr, abi: MarkeeABI, functionName: 'pricingStrategy' as const, chainId: CANONICAL_CHAIN_ID },
+  ])
 
-              const result = await response.json()
+  const { data: step2Data, isLoading: isLoadingStep2 } = useReadContracts({
+    contracts: step2Contracts,
+    query: { enabled: validTopAddresses.length > 0, refetchInterval: 30_000 },
+  })
 
-              if (result.errors) {
-                console.error('GraphQL errors:', result.errors)
-                throw new Error(result.errors[0]?.message || 'GraphQL query failed')
-              }
+  // Assemble results
+  let step2Index = 0
+  const lbResults: Map<string, {
+    winningMarkee: Markee | null
+    totalFunds: bigint
+    markeeCount: bigint
+  }> = new Map()
 
-              const strategyData = partner.isCooperative 
-                ? result.data?.topDawgStrategy
-                : result.data?.topDawgPartnerStrategy
+  partnersWithLb.forEach((partner, i) => {
+    const topResult = step1Data?.[i * 3]?.result as [string[], bigint[]] | undefined
+    const topFunds0 = topResult?.[1]?.[0] ?? 0n
+    const totalFunds = (step1Data?.[i * 3 + 1]?.result as bigint) ?? 0n
+    const markeeCount = (step1Data?.[i * 3 + 2]?.result as bigint) ?? 0n
+    const topAddr = topAddresses[i]
 
-              if (!strategyData) {
-                return {
-                  partner,
-                  winningMarkee: null,
-                  totalFunds: BigInt(0),
-                  markeeCount: BigInt(0)
-                }
-              }
-
-              const winningMarkeeData = strategyData.markees?.[0]
-              const winningMarkee = winningMarkeeData ? {
-                address: winningMarkeeData.address,
-                message: winningMarkeeData.message,
-                name: winningMarkeeData.name,
-                owner: winningMarkeeData.owner,
-                totalFundsAdded: BigInt(winningMarkeeData.totalFundsAdded),
-                pricingStrategy: winningMarkeeData.pricingStrategy,
-                strategyAddress: partner.strategyAddress,
-                chainId: CANONICAL_CHAIN_ID
-              } as Markee : null
-
-              return {
-                partner,
-                winningMarkee,
-                totalFunds: BigInt(strategyData.totalFundsRaised || '0'),
-                markeeCount: BigInt(strategyData.totalMarkeesCreated || '0')
-              }
-            } catch (err) {
-              console.error(`Error fetching data for ${partner.name}:`, err)
-              return {
-                partner,
-                winningMarkee: null,
-                totalFunds: BigInt(0),
-                markeeCount: BigInt(0)
-              }
-            }
-          })
-        )
-
-        // Sort: Cooperative first, then by total funds raised
-        results.sort((a, b) => {
-          if (a.partner.isCooperative) return -1
-          if (b.partner.isCooperative) return 1
-          return Number(b.totalFunds - a.totalFunds)
-        })
-
-        setPartnerData(results)
-      } catch (err) {
-        console.error('Error fetching partner data:', err)
-        setError(err instanceof Error ? err : new Error('Failed to fetch partner data'))
-      } finally {
-        setIsLoading(false)
+    let winningMarkee: Markee | null = null
+    if (topAddr && step2Data) {
+      const b = step2Index * 4
+      winningMarkee = {
+        address: topAddr,
+        message: (step2Data[b]?.result as string) ?? '',
+        name: (step2Data[b + 1]?.result as string) ?? '',
+        owner: (step2Data[b + 2]?.result as string) ?? '',
+        pricingStrategy: (step2Data[b + 3]?.result as string) ?? topAddr,
+        totalFundsAdded: topFunds0,
+        chainId: CANONICAL_CHAIN_ID,
       }
+      step2Index++
     }
 
-    fetchPartnerData()
-  }, [])
+    lbResults.set(partner.slug, { winningMarkee, totalFunds, markeeCount })
+  })
 
-  return { partnerData, isLoading, error }
+  const partnerData: PartnerData[] = PARTNERS.map(partner => {
+    const r = lbResults.get(partner.slug)
+    return {
+      partner,
+      winningMarkee: r?.winningMarkee ?? null,
+      totalFunds: r?.totalFunds ?? 0n,
+      markeeCount: r?.markeeCount ?? 0n,
+    }
+  })
+
+  // Sort: Cooperative first, then by total funds
+  partnerData.sort((a, b) => {
+    if (a.partner.isCooperative) return -1
+    if (b.partner.isCooperative) return 1
+    return Number(b.totalFunds - a.totalFunds)
+  })
+
+  return {
+    partnerData,
+    isLoading: isLoadingStep1 || isLoadingStep2,
+    error: null,
+  }
 }

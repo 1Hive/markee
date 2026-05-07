@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
-import { useAccount } from 'wagmi'
+import { useAccount, useReadContracts } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
@@ -13,60 +13,16 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { useReactions } from '@/hooks/useReactions'
 import { useViews } from '@/hooks/useViews'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
-import { SUBGRAPH_URLS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { formatDistanceToNow } from 'date-fns'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import type { Markee } from '@/types'
 
-// GraphQL queries for fetching ALL markees from a partner strategy
-const COOPERATIVE_ALL_MARKEES_QUERY = `
-  query GetAllCooperativeMarkees {
-    topDawgStrategy(id: "0x558eb41ec9cc90b86550617eef5f180ea60e0e3a") {
-      totalFundsRaised
-      totalMarkeesCreated
-      markees(
-        orderBy: totalFundsAdded
-        orderDirection: desc
-        first: 1000
-      ) {
-        id
-        address
-        message
-        name
-        owner
-        totalFundsAdded
-        pricingStrategy
-      }
-    }
-  }
-`
-
-const PARTNER_ALL_MARKEES_QUERY = `
-  query GetAllPartnerMarkees($strategyId: ID!) {
-    topDawgPartnerStrategy(id: $strategyId) {
-      totalFundsRaised
-      totalMarkeesCreated
-      markees(
-        orderBy: totalFundsAdded
-        orderDirection: desc
-        first: 1000
-      ) {
-        id
-        address
-        message
-        name
-        owner
-        totalFundsAdded
-        pricingStrategy
-      }
-    }
-  }
-`
-
 export default function PartnerPage() {
   const params = useParams()
   const { address } = useAccount()
-  
+
   const {
     reactions,
     toggleReaction,
@@ -74,17 +30,72 @@ export default function PartnerPage() {
     isLoading: reactionsLoading,
     error: reactionsError,
   } = useReactions()
-  
-  const [markees, setMarkees] = useState<Markee[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
   const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
 
   const partner = PARTNERS.find(p => p.slug === params.partner)
+
+  // Step 1: fetch sorted markee addresses from the partner's v1.1 leaderboard
+  const {
+    data: topData,
+    isLoading: isLoadingTop,
+    refetch: refetchTop,
+  } = useReadContracts({
+    contracts: partner?.leaderboardAddress ? [{
+      address: partner.leaderboardAddress,
+      abi: LeaderboardV11ABI,
+      functionName: 'getTopMarkees' as const,
+      args: [100n] as const,
+      chainId: CANONICAL_CHAIN_ID,
+    }] : [],
+    query: { refetchInterval: 30_000 },
+  })
+
+  const topAddresses: string[] = (topData?.[0]?.result?.[0] as string[]) ?? []
+  const topFunds: bigint[] = (topData?.[0]?.result?.[1] as bigint[]) ?? []
+
+  // Step 2: fetch per-markee data
+  const markeeContracts = topAddresses.flatMap(addr => [
+    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
+    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'pricingStrategy' as const, chainId: CANONICAL_CHAIN_ID },
+  ])
+
+  const {
+    data: markeeData,
+    isLoading: isLoadingMarkees,
+    refetch: refetchMarkees,
+  } = useReadContracts({
+    contracts: markeeContracts,
+    query: { enabled: topAddresses.length > 0, refetchInterval: 30_000 },
+  })
+
+  const isLoading = isLoadingTop || isLoadingMarkees
+  const error = !isLoading && topData?.[0]?.error ? new Error('Failed to load leaderboard') : null
+
+  const markees: Markee[] = (() => {
+    if (!topAddresses.length) return []
+    return topAddresses.map((addr, i) => {
+      const b = i * 4
+      return {
+        address: addr,
+        message: (markeeData?.[b]?.result as string) ?? '',
+        name: (markeeData?.[b + 1]?.result as string) ?? '',
+        owner: (markeeData?.[b + 2]?.result as string) ?? '',
+        pricingStrategy: (markeeData?.[b + 3]?.result as string) ?? addr,
+        totalFundsAdded: topFunds[i] ?? 0n,
+        chainId: CANONICAL_CHAIN_ID,
+      }
+    })
+  })()
+
+  useEffect(() => {
+    if (markees.length > 0) setLastUpdated(new Date())
+  }, [markeeData])
 
   // ── View tracking ──────────────────────────────────────────────────
   const { views, trackView } = useViews(markees)
@@ -100,75 +111,6 @@ export default function PartnerPage() {
     return { totalViews: v?.totalViews, messageViews: v?.messageViews }
   }
   // ──────────────────────────────────────────────────────────────────
-
-  const fetchMarkees = useCallback(async () => {
-    if (!partner) return
-
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      const subgraphUrl = SUBGRAPH_URLS[CANONICAL_CHAIN_ID]
-      
-      if (!subgraphUrl) {
-        throw new Error('Subgraph URL not configured')
-      }
-
-      const query = partner.isCooperative ? COOPERATIVE_ALL_MARKEES_QUERY : PARTNER_ALL_MARKEES_QUERY
-      const variables = partner.isCooperative ? {} : { strategyId: partner.strategyAddress.toLowerCase() }
-
-      const response = await fetch(subgraphUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, variables })
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result = await response.json()
-
-      if (result.errors) {
-        console.error('GraphQL errors:', result.errors)
-        throw new Error(result.errors[0]?.message || 'GraphQL query failed')
-      }
-
-      const strategyData = partner.isCooperative 
-        ? result.data?.topDawgStrategy
-        : result.data?.topDawgPartnerStrategy
-
-      if (!strategyData || !strategyData.markees) {
-        setMarkees([])
-        setLastUpdated(new Date())
-        setIsLoading(false)
-        return
-      }
-
-      const transformedMarkees: Markee[] = strategyData.markees.map((m: any) => ({
-        address: m.address,
-        message: m.message,
-        name: m.name,
-        owner: m.owner,
-        totalFundsAdded: BigInt(m.totalFundsAdded),
-        pricingStrategy: m.pricingStrategy,
-        strategyAddress: partner.strategyAddress,
-        chainId: CANONICAL_CHAIN_ID
-      }))
-
-      setMarkees(transformedMarkees)
-      setLastUpdated(new Date())
-    } catch (err) {
-      console.error('Error fetching markees:', err)
-      setError(err instanceof Error ? err : new Error('Failed to fetch markees'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [partner])
-
-  useEffect(() => {
-    fetchMarkees()
-  }, [fetchMarkees])
 
   const handleCreateNew = () => {
     if (NETWORK_PAUSED) return
@@ -222,7 +164,8 @@ export default function PartnerPage() {
 
   const handleTransactionSuccess = () => {
     setTimeout(() => {
-      fetchMarkees()
+      refetchTop()
+      refetchMarkees()
     }, 3000)
   }
 

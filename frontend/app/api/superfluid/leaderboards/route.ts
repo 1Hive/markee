@@ -12,13 +12,8 @@ const CACHE_TTL = 60 // seconds
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
-const LEGACY_TOPDAWG_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
-// Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees (2026-05-05)
+// Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees
 const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as `0x${string}`
-
-const SUBGRAPH_URL =
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE ||
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE_STUDIO
 
 const FACTORY_ABI = [
   {
@@ -63,55 +58,6 @@ function getClient() {
       { fetchOptions: { cache: 'no-store' } }, // prevent Next.js caching RPC responses
     ),
   })
-}
-
-// ─── Featured message (legacy TopDawg via subgraph) ───────────────────────────
-
-async function fetchFeaturedMessage() {
-  if (!SUBGRAPH_URL) return null
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const graphToken = process.env.GRAPH_TOKEN || process.env.NEXT_PUBLIC_GRAPH_TOKEN
-  if (graphToken) headers['Authorization'] = `Bearer ${graphToken}`
-
-  try {
-    const res = await fetch(SUBGRAPH_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        query: `{
-          topDawgPartnerStrategy(id: "${LEGACY_TOPDAWG_ADDRESS}") {
-            totalFundsRaised
-            totalMarkeesCreated
-          }
-          markees(
-            where: { pricingStrategy: "${LEGACY_TOPDAWG_ADDRESS}" }
-            orderBy: totalFundsAdded
-            orderDirection: desc
-            first: 1
-          ) {
-            message
-            totalFundsAdded
-            owner { id }
-          }
-        }`,
-      }),
-    })
-    const json = await res.json()
-    const m = json.data?.markees?.[0]
-    const strategy = json.data?.topDawgPartnerStrategy
-    if (!m?.message) return null
-    return {
-      message: m.message as string,
-      owner: (m.owner?.id ?? '') as string,
-      totalFundsAdded: (m.totalFundsAdded ?? '0') as string,
-      totalFunds: (strategy?.totalFundsRaised ?? '0') as string,
-      markeeCount: Number(strategy?.totalMarkeesCreated ?? 0),
-    }
-  } catch (e: any) {
-    console.error('[superfluid/leaderboards] featured message error:', e.message)
-    return null
-  }
 }
 
 // ─── Creator lookup via factory logs ─────────────────────────────────────────
@@ -177,22 +123,18 @@ export async function GET(request: Request) {
 
     const client = getClient()
 
-    // Run leaderboard RPC calls and featured message subgraph fetch in parallel
-    const [factoryAddresses, featuredMessage] = await Promise.all([
-      client.readContract({
-        address: SUPERFLUID_FACTORY_ADDRESS,
-        abi: FACTORY_ABI,
-        functionName: 'getLeaderboards',
-        args: [0n, 1000n],
-      }) as Promise<`0x${string}`[]>,
-      fetchFeaturedMessage(),
-    ])
+    const factoryAddresses = await client.readContract({
+      address: SUPERFLUID_FACTORY_ADDRESS,
+      abi: FACTORY_ABI,
+      functionName: 'getLeaderboards',
+      args: [0n, 1000n],
+    }) as `0x${string}`[]
 
     // Include the standalone migration leaderboard (TopDawg markees migrated to v1.1)
     const addresses = [...(factoryAddresses ?? []), SF_MIGRATION_LEADERBOARD]
 
     if (addresses.length === 0) {
-      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage }, {
+      return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage: null }, {
         headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
       })
     }
@@ -289,6 +231,18 @@ export async function GET(request: Request) {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return diff > 0n ? 1 : diff < 0n ? -1 : 0
     })
+
+    // Derive featuredMessage from the SF migration leaderboard entry
+    const migrationEntry = leaderboards.find(
+      l => l.address.toLowerCase() === SF_MIGRATION_LEADERBOARD.toLowerCase()
+    )
+    const featuredMessage = migrationEntry?.topMessage ? {
+      message: migrationEntry.topMessage,
+      owner: migrationEntry.topMessageOwner ?? '',
+      totalFundsAdded: migrationEntry.topFundsAddedRaw,
+      totalFunds: migrationEntry.totalFundsRaw,
+      markeeCount: migrationEntry.markeeCount,
+    } : null
 
     const payload = { leaderboards, totalPlatformFunds: formatEther(totalFundsRaw), featuredMessage }
     await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
