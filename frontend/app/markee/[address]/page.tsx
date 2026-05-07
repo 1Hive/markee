@@ -357,6 +357,11 @@ export default function MarkeeDetailPage() {
             </div>
 
             {/* ── History Tabs ────────────────────────────────────── */}
+            <ModeratedContent
+              chainId={CANONICAL_CHAIN_ID}
+              markeeId={markee.address}
+              overlayText="🚩 this message history has been flagged"
+            >
             <div>
               <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
                 <TabButton
@@ -484,6 +489,7 @@ export default function MarkeeDetailPage() {
                 )
               })()}
             </div>
+            </ModeratedContent>
           </div>
         )}
       </main>

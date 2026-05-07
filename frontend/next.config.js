@@ -25,6 +25,7 @@ const cspDirectives = {
     'https://verify.walletconnect.com',
     'https://verify.walletconnect.org',
     'https://challenges.cloudflare.com',
+    'https://vercel.live',
   ],
   'connect-src': [
     "'self'",
