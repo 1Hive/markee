@@ -32,10 +32,14 @@ export const maxDuration = 300
 // ─── Contract addresses ───────────────────────────────────────────────────────
 
 const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
-// Standalone v1.1 leaderboard holding the 32 migrated TopDawg markees — not in factory
+// Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees
 const SF_MIGRATION_LEADERBOARD = '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580'
+// Legacy Superfluid partner strategy — emits FundsAddedToMarkee (different event)
+const TOPDAWG_LEGACY_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 
 const FACTORY_DEPLOY_BLOCK = 43452028n
+// From subgraph.yaml — TopDawgPartnerStrategySuperfluid startBlock
+const TOPDAWG_DEPLOY_BLOCK = 41984295n
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -45,15 +49,25 @@ const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY
 
 // ─── KV keys ─────────────────────────────────────────────────────────────────
 
-const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'
+// Each address family has its own last-processed block so adding a new source
+// doesn't cause it to silently skip events that happened before the addition.
+const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'        // factory leaderboards
+const KV_SF_MIG_LAST_BLOCK = 'superfluid:cron:sfMigLastBlock'   // SF migration leaderboard
+const KV_TOPDAWG_LAST_BLOCK = 'superfluid:cron:topDawgLastBlock' // legacy TopDawg
 const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'
 
 const API_BATCH_SIZE = 100
 
-// ─── RPC (LeaderboardFactory children + SF migration leaderboard) ─────────────
+// ─── RPC events ───────────────────────────────────────────────────────────────
 
+// v1.1 leaderboard contracts (factory children + SF migration leaderboard)
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
+)
+
+// Legacy TopDawg partner strategy — different event name and extra fields
+const FUNDS_ADDED_TO_MARKEE_EVENT = parseAbiItem(
+  'event FundsAddedToMarkee(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 beneficiaryAmount, uint256 revNetAmount, uint256 newMarkeeTotal, uint256 newInstanceTotal)'
 )
 
 const FACTORY_ABI = [
@@ -97,6 +111,7 @@ async function fetchRpcEvents(
   leaderboardAddresses: string[],
   fromBlock: bigint,
   toBlock: bigint,
+  event: typeof FUNDS_ADDED_EVENT | typeof FUNDS_ADDED_TO_MARKEE_EVENT = FUNDS_ADDED_EVENT,
 ): Promise<RpcFundsEvent[]> {
   if (leaderboardAddresses.length === 0) return []
 
@@ -110,7 +125,7 @@ async function fetchRpcEvents(
 
     const logs = await client.getLogs({
       address: leaderboardAddresses as `0x${string}`[],
-      event: FUNDS_ADDED_EVENT,
+      event,
       fromBlock: start,
       toBlock: end,
     })
@@ -246,32 +261,30 @@ export async function GET(req: NextRequest) {
 
   const startTime = Date.now()
   const results = {
-    factory: { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
+    factory:  { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
+    sfMig:    { fetched: 0, pushed: 0, failed: 0 },
+    topDawg:  { fetched: 0, pushed: 0, failed: 0 },
     farcaster: { followers: 0, newAwards: 0, failed: 0 },
     durationMs: 0,
   }
 
-  // ── LeaderboardFactory children + SF migration leaderboard via RPC ─────────
-
   if (ALCHEMY_URL) {
+    const client = getRpcClient()
+    const latestBlock = await client.getBlockNumber()
+
+    // ── 1. LeaderboardFactory children (v1.1 FundsAdded event) ────────────────
     try {
-      const leaderboardAddresses = [...await fetchLeaderboardAddresses(), SF_MIGRATION_LEADERBOARD]
+      const leaderboardAddresses = await fetchLeaderboardAddresses()
       results.factory.leaderboards = leaderboardAddresses.length
       console.log(`[cron] Factory: ${leaderboardAddresses.length} leaderboard(s)`)
 
       if (leaderboardAddresses.length > 0) {
-        const client = getRpcClient()
-        const latestBlock = await client.getBlockNumber()
-
         const storedBlock = await kv.get<string>(KV_RPC_LAST_BLOCK)
         const fromBlock = storedBlock ? BigInt(storedBlock) : FACTORY_DEPLOY_BLOCK
-        const toBlock = latestBlock
 
-        console.log(`[cron] Factory: getLogs from ${fromBlock} to ${toBlock}`)
-
-        const events = await fetchRpcEvents(leaderboardAddresses, fromBlock, toBlock)
+        console.log(`[cron] Factory: getLogs ${fromBlock}→${latestBlock}`)
+        const events = await fetchRpcEvents(leaderboardAddresses, fromBlock, latestBlock)
         results.factory.fetched = events.length
-        console.log(`[cron] Factory: found ${events.length} events`)
 
         if (events.length > 0) {
           const pushInputs: PushEventInput[] = events
@@ -282,20 +295,84 @@ export async function GET(req: NextRequest) {
               points: ethToPoints(e.amount),
               uniqueId: `${e.transactionHash}-${e.logIndex}`,
             }))
-
           const { pushed, failed } = await pushInBatches(pushInputs)
           results.factory.pushed = pushed
           results.factory.failed = failed
         }
 
-        await kv.set(KV_RPC_LAST_BLOCK, toBlock.toString())
-        results.factory.newHighBlock = Number(toBlock.toString())
+        await kv.set(KV_RPC_LAST_BLOCK, latestBlock.toString())
+        results.factory.newHighBlock = Number(latestBlock)
       }
     } catch (e: any) {
       console.error('[cron] Factory RPC error:', e.message)
     }
+
+    // ── 2. SF migration leaderboard (v1.1 FundsAdded, separate block key) ─────
+    // Uses its own block key so it backfills from FACTORY_DEPLOY_BLOCK regardless
+    // of when it was added to the cron — uniqueId dedup prevents double-awards.
+    try {
+      const storedBlock = await kv.get<string>(KV_SF_MIG_LAST_BLOCK)
+      const fromBlock = storedBlock ? BigInt(storedBlock) : FACTORY_DEPLOY_BLOCK
+
+      console.log(`[cron] SF migration: getLogs ${fromBlock}→${latestBlock}`)
+      const events = await fetchRpcEvents([SF_MIGRATION_LEADERBOARD], fromBlock, latestBlock)
+      results.sfMig.fetched = events.length
+
+      if (events.length > 0) {
+        const pushInputs: PushEventInput[] = events
+          .filter(e => e.addedBy !== SF_MIGRATION_LEADERBOARD)
+          .map(e => ({
+            event: 'ADD_FUNDS' as const,
+            account: e.addedBy,
+            points: ethToPoints(e.amount),
+            uniqueId: `${e.transactionHash}-${e.logIndex}`,
+          }))
+        const { pushed, failed } = await pushInBatches(pushInputs)
+        results.sfMig.pushed = pushed
+        results.sfMig.failed = failed
+      }
+
+      await kv.set(KV_SF_MIG_LAST_BLOCK, latestBlock.toString())
+    } catch (e: any) {
+      console.error('[cron] SF migration RPC error:', e.message)
+    }
+
+    // ── 3. Legacy TopDawg partner strategy (FundsAddedToMarkee event) ─────────
+    // Backfills historical points from the old Superfluid strategy contract.
+    // Safe to re-run — uniqueId (txHash-logIndex) deduplicates at the API layer.
+    try {
+      const storedBlock = await kv.get<string>(KV_TOPDAWG_LAST_BLOCK)
+      const fromBlock = storedBlock ? BigInt(storedBlock) : TOPDAWG_DEPLOY_BLOCK
+
+      console.log(`[cron] TopDawg legacy: getLogs ${fromBlock}→${latestBlock}`)
+      const events = await fetchRpcEvents(
+        [TOPDAWG_LEGACY_ADDRESS],
+        fromBlock,
+        latestBlock,
+        FUNDS_ADDED_TO_MARKEE_EVENT,
+      )
+      results.topDawg.fetched = events.length
+
+      if (events.length > 0) {
+        const pushInputs: PushEventInput[] = events
+          .filter(e => e.addedBy !== TOPDAWG_LEGACY_ADDRESS)
+          .map(e => ({
+            event: 'ADD_FUNDS' as const,
+            account: e.addedBy,
+            points: ethToPoints(e.amount),
+            uniqueId: `${e.transactionHash}-${e.logIndex}`,
+          }))
+        const { pushed, failed } = await pushInBatches(pushInputs)
+        results.topDawg.pushed = pushed
+        results.topDawg.failed = failed
+      }
+
+      await kv.set(KV_TOPDAWG_LAST_BLOCK, latestBlock.toString())
+    } catch (e: any) {
+      console.error('[cron] TopDawg legacy RPC error:', e.message)
+    }
   } else {
-    console.log('[cron] Skipping factory — ALCHEMY_BASE_URL not set')
+    console.log('[cron] Skipping RPC scans — ALCHEMY_BASE_URL not set')
   }
 
   // ── Farcaster follows ─────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
-import { getLinkedFiles, startDelimiter, endDelimiter } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor } from '@/lib/github/linkedFiles'
 
 // ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
 // Emoji and CJK characters occupy 2 columns; everything else occupies 1.
@@ -275,15 +275,32 @@ export async function POST(request: NextRequest) {
       const fileData = await fileRes.json()
       const currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
 
-      const startIdx = currentContent.indexOf(START)
-      const endIdx   = currentContent.indexOf(END)
+      let startIdx = currentContent.indexOf(START)
+      let endIdx   = currentContent.indexOf(END)
+      let foundEnd = END
+
+      if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+        // Fall back to legacy (pre-migration) delimiters — migrate-on-write
+        for (const oldAddr of legacyAddressesFor(normalizedAddress)) {
+          const legacyStart = startDelimiter(oldAddr)
+          const legacyEnd   = endDelimiter(oldAddr)
+          const si = currentContent.indexOf(legacyStart)
+          const ei = currentContent.indexOf(legacyEnd)
+          if (si !== -1 && ei !== -1 && ei > si) {
+            startIdx = si
+            endIdx   = ei
+            foundEnd = legacyEnd
+            break
+          }
+        }
+      }
 
       if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
         results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Address-specific delimiters not found in file' })
         continue
       }
 
-      const updated = currentContent.slice(0, startIdx) + markeeBlock + currentContent.slice(endIdx + END.length)
+      const updated = currentContent.slice(0, startIdx) + markeeBlock + currentContent.slice(endIdx + foundEnd.length)
 
       const putRes = await fetch(
         `https://api.github.com/repos/${file.repoFullName}/contents/${encodeURIComponent(file.filePath)}`,
