@@ -25,6 +25,7 @@ const LEADERBOARD_ABI = [
   { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'maxMessageLength', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'VERSION', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
   {
     inputs: [{ name: 'limit', type: 'uint256' }],
     name: 'getTopMarkees',
@@ -138,6 +139,7 @@ export default function SuperfluidLeaderboardPage() {
     { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },
     { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'admin' as const },
     { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'maxMessageLength' as const },
+    { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'VERSION' as const },
     { address: leaderboardAddress, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [100n] as const },
   ], [leaderboardAddress])
 
@@ -150,7 +152,9 @@ export default function SuperfluidLeaderboardPage() {
   const markeeCount = meta?.[2]?.result as bigint | undefined
   const minimumPrice = meta?.[3]?.result as bigint | undefined
   const maxMessageLength = meta?.[5]?.result as bigint | undefined
-  const topResult = meta?.[6]?.result as [string[], bigint[]] | undefined
+  const contractVersion = meta?.[6]?.result as string | undefined
+  const isLegacyContract = contractVersion !== undefined && contractVersion !== '1.1.0'
+  const topResult = meta?.[7]?.result as [string[], bigint[]] | undefined
 
   const topAddresses = topResult?.[0] ?? []
   const topFunds = topResult?.[1] ?? []
@@ -265,7 +269,7 @@ export default function SuperfluidLeaderboardPage() {
               </div>
             </div>
 
-            {!NETWORK_PAUSED && (
+            {!NETWORK_PAUSED && !isLegacyContract && (
               <button
                 onClick={() => { setSelectedMarkee(null); setBuyModalOpen(true) }}
                 className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
@@ -298,6 +302,17 @@ export default function SuperfluidLeaderboardPage() {
         </div>
       </section>
 
+      {/* Legacy contract warning */}
+      {!isMetaLoading && isLegacyContract && (
+        <section className="bg-[#FF8E8E]/10 border-y border-[#FF8E8E]/40 py-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="text-sm text-[#FF8E8E]">
+              This sign uses an older contract version. New purchases are disabled to prevent funds from routing through a deprecated payment terminal.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* Top message spotlight */}
       {isLoading
         ? <TopMessageSkeleton />
@@ -318,7 +333,7 @@ export default function SuperfluidLeaderboardPage() {
                       <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
                     )}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
-                    {!NETWORK_PAUSED && (
+                    {!NETWORK_PAUSED && !isLegacyContract && (
                       <button
                         onClick={() => { setSelectedMarkee(topMarkee); setBuyModalOpen(true) }}
                         className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
@@ -339,7 +354,7 @@ export default function SuperfluidLeaderboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-[#EDEEFF]">All Messages</h2>
-            {!NETWORK_PAUSED && (
+            {!NETWORK_PAUSED && !isLegacyContract && (
               <button
                 onClick={() => { setSelectedMarkee(null); setBuyModalOpen(true) }}
                 className="flex items-center gap-1.5 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors border border-[#8A8FBF]/30 hover:border-[#F897FE]/40 px-4 py-2 rounded-lg"
@@ -361,7 +376,7 @@ export default function SuperfluidLeaderboardPage() {
               <Trophy size={40} className="text-[#8A8FBF] mx-auto mb-4" />
               <p className="text-[#EDEEFF] font-semibold mb-2">No messages yet</p>
               <p className="text-[#8A8FBF] text-sm mb-6">Be the first to buy a message on this sign.</p>
-              {!NETWORK_PAUSED && (
+              {!NETWORK_PAUSED && !isLegacyContract && (
                 <button
                   onClick={() => setBuyModalOpen(true)}
                   className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
@@ -381,8 +396,8 @@ export default function SuperfluidLeaderboardPage() {
                   formatFunds={formatFunds}
                   trackView={trackView}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
-                  onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
-                  onEditMessage={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
+                  onAddFunds={NETWORK_PAUSED || isLegacyContract ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
+                  onEditMessage={NETWORK_PAUSED || isLegacyContract ? undefined : () => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                 />
               ))}
             </div>
@@ -392,7 +407,7 @@ export default function SuperfluidLeaderboardPage() {
 
       <Footer />
 
-      {buyModalOpen && (
+      {buyModalOpen && !isLegacyContract && (
         <BuyMessageModal
           leaderboardAddress={leaderboardAddress}
           minimumPrice={minimumPrice ?? 0n}
