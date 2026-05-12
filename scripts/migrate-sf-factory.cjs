@@ -28,7 +28,9 @@ const fs = require('fs');
 const DRY_RUN = process.argv.includes('--dry-run');
 const RESUME_FACTORY = process.env.RESUME_FACTORY || null;
 const RPC = 'https://base-mainnet.g.alchemy.com/v2/MfatE-JTmlEIgHxhW40pO';
-const AUTOMATION_WALLET_PK = '0xc78bb955aa01f6dfc6b7c108349906b26f6d4d248892737a0c2eba5797e56af7';
+// Fresh EOA for this migration — the original automation wallet has EIP-7702 delegation
+// that immediately forwards any received ETH, making it unusable for gas.
+const AUTOMATION_WALLET_PK = '0x79a2f8669bec361add9f5ea7327d645f32d14a16c1969df9087f318bc6acb8d0';
 
 // V1.1 implementations (same as OpenInternet and GitHub platforms)
 const LEADERBOARD_IMPL = '0x63BABD83834ED8Ed55Ab2212416fE38c27F1Cf81';
@@ -172,8 +174,8 @@ async function main() {
   if (RESUME_FACTORY) console.log('Resuming with factory:', RESUME_FACTORY);
   console.log('');
 
-  if (!DRY_RUN && ethers.formatEther(balance) < 0.05) {
-    console.error('ERROR: Automation wallet needs at least 0.05 ETH for gas.');
+  if (!DRY_RUN && balance < ethers.parseEther('0.0005')) {
+    console.error('ERROR: Automation wallet needs at least 0.0005 ETH for gas.');
     console.error(`Fund: ${wallet.address}`);
     process.exit(1);
   }

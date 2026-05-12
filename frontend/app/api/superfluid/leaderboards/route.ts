@@ -11,9 +11,8 @@ const CACHE_TTL = 60 // seconds
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// v1.1 Superfluid factory — set to actual address after running scripts/migrate-sf-factory.cjs
-// Until then, points to the legacy v1.0 factory (payments blocked on old leaderboards via UI).
-const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
+// v1.1 Superfluid factory (deployed via scripts/migrate-sf-factory.cjs)
+const SUPERFLUID_FACTORY_ADDRESS = '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const
 // Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees
 const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as `0x${string}`
 

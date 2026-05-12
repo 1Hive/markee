@@ -25,7 +25,7 @@ export const V11_LEADERBOARDS = {
 
 // Factory contract addresses
 export const FACTORIES = {
-  SUPERFLUID: '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const,
+  SUPERFLUID: '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const,
   OPEN_INTERNET: '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const,
   GITHUB: '0xb1E2dC95b50b4Ee3b1BD4F4F87e6B07b41bE4e07' as const,
 } as const
