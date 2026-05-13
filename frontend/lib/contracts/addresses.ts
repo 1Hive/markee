@@ -27,7 +27,7 @@ export const V11_LEADERBOARDS = {
 export const FACTORIES = {
   SUPERFLUID: '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const,
   OPEN_INTERNET: '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const,
-  GITHUB: '0xb1E2dC95b50b4Ee3b1BD4F4F87e6B07b41bE4e07' as const,
+  GITHUB: '0xb1E2dC9582810124Fed3Cdb4B8Bb944A5495D85a' as const,
 } as const
 
 // Fixed-price strategy contracts (still in use for the fixed-price leaderboard on the home page)
