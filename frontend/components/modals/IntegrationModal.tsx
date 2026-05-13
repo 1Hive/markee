@@ -329,7 +329,7 @@ Create app/api/markee/leaderboards/route.ts:
 
 Then fetch /api/markee/leaderboards in the trigger component.
 Find the entry where address matches "${address}" (case-insensitive).
-Fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice
+Fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice, topMarkeeAddress
 
 ### On-chain reads
 Use wagmi useReadContract / useReadContracts for:
@@ -359,6 +359,82 @@ The modal should use the native <dialog> element with showModal(). When opening 
     }
   }, [pendingReopenModal, connectModalOpen])
 Pass handleConnectWallet as a prop to MarkeeModal. MarkeeModal calls it when the user clicks "Connect Wallet" -- MarkeeModal itself does not manage the dialog open/close.
+
+## View tracking
+
+Add a proxy route to forward view increments to Markee:
+
+// app/api/markee/views/route.ts
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null)
+  if (!body?.address || !body?.message) {
+    return Response.json({ error: 'Missing fields' }, { status: 400 })
+  }
+  const res = await fetch('https://markee.xyz/api/views', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return Response.json(await res.json())
+}
+
+In MarkeeSign, fire this once per session per markee when the top message is first displayed:
+  const viewTracked = useRef(false)
+  useEffect(() => {
+    if (!topMessage || !topMarkeeAddress || viewTracked.current) return
+    viewTracked.current = true
+    fetch('/api/markee/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: topMarkeeAddress, message: topMessage }),
+    }).catch(() => {})
+  }, [topMessage, topMarkeeAddress])
+
+The API rate-limits to 1 increment per IP per markee per hour, so calling this on every page load is safe.
+
+## Moderation
+
+Add a proxy route to fetch the flagged content list:
+
+// app/api/markee/moderation/route.ts
+export async function GET() {
+  const res = await fetch('https://markee.xyz/api/moderation', { next: { revalidate: 60 } })
+  if (!res.ok) return Response.json({ flagged: [] })
+  return Response.json(await res.json())
+}
+
+In MarkeeSign (and in MarkeeModal's boost tab), fetch this once on mount and build a Set:
+  const [flagged, setFlagged] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    fetch('/api/markee/moderation')
+      .then(r => r.json())
+      .then(d => setFlagged(new Set((d.flagged ?? []) as string[])))
+      .catch(() => {})
+  }, [])
+  function isFlagged(markeeAddr: string) {
+    return flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`)
+  }
+
+Flagging behavior:
+- MarkeeSign: if isFlagged(topMarkeeAddress), show "Content unavailable" instead of the message. Still allow the modal to open so users can buy a new top message.
+- MarkeeModal Boost tab: omit flagged entries from the list. If all are flagged, show "No messages available."
+- MarkeeModal Buy tab: always show the current top message (users can replace it by outbidding), even if flagged.
+
+## Optional: health endpoint
+
+Add this route so the Markee integration dashboard can verify your setup:
+
+// app/api/markee/health/route.ts
+export async function GET() {
+  return Response.json({
+    overall: 'ok',
+    checks: {
+      leaderboards: { status: 'ok' },
+      views: { status: 'ok' },
+      moderation: { status: 'ok' },
+    },
+  })
+}
 
 ## Packages required
 - wagmi v2
@@ -444,10 +520,10 @@ Please look at this codebase and implement both components. Choose an appropriat
             }
             <span>
               {platform === 'unknown'
-                ? 'Site does not appear to be on Vercel. Moderation uses @vercel/kv — swap for any Redis client if deploying elsewhere.'
+                ? 'Site does not appear to be on Vercel. The integration works on any host — view tracking and moderation are proxied through markee.xyz.'
                 : moderationStatus === 'error'
-                  ? 'Vercel detected. Add KV_REST_API_URL and KV_REST_API_TOKEN in your Vercel project settings to enable moderation.'
-                  : 'Vercel detected. Moderation is active.'
+                  ? 'Vercel detected. Add /api/markee/health to enable integration health monitoring (see the Full Modal tab).'
+                  : 'Vercel detected. Integration healthy — view tracking and moderation active.'
               }
             </span>
           </div>
