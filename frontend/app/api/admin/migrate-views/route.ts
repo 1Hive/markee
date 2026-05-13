@@ -184,10 +184,10 @@ export async function GET(request: NextRequest) {
       totalViews += total
     }
 
-    let cursor = 0
+    let cursor: string | number = 0
     do {
       const [nextCursor, keys] = await kv.scan(cursor, { match: `views:msg:${oldAddr}:*`, count: 100 })
-      cursor = nextCursor as number
+      cursor = nextCursor
       for (const key of keys) {
         const value = await kv.get<number>(key)
         if (value && value > 0) {
@@ -197,7 +197,7 @@ export async function GET(request: NextRequest) {
           totalMsgKeys++
         }
       }
-    } while (cursor !== 0)
+    } while (cursor !== '0' && cursor !== 0)
 
     if (totalMoved > 0 || msgKeysMoved > 0) {
       details.push({ old: oldAddr, new: newAddr, totalMoved, msgKeysMoved })
