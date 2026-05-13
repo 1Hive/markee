@@ -18,10 +18,11 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { useViews } from '@/hooks/useViews'
 import type { Markee } from '@/types'
+import { FACTORIES } from '@/lib/contracts/addresses'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
+const SUPERFLUID_FACTORY_ADDRESS = FACTORIES.SUPERFLUID
 const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580'
 
 const FACTORY_ABI = [
