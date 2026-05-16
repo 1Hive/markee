@@ -184,10 +184,9 @@ export async function GET(request: Request) {
     ])
 
     // 4. Assemble response
-    let totalFundsRaw = 0n
     let markeeCallIndex = 0
 
-    const leaderboards = addresses.map((addr, i) => {
+    const allLeaderboards = addresses.map((addr, i) => {
       const b = i * 6
       const name         = (metaResults[b]?.result as string) ?? addr
       const totalFunds   = (metaResults[b + 1]?.result as bigint) ?? 0n
@@ -196,8 +195,6 @@ export async function GET(request: Request) {
       const admin        = (metaResults[b + 4]?.result as string) ?? ''
       const topResult    = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
       const topFunds0    = topResult?.[1]?.[0] ?? 0n
-
-      totalFundsRaw += totalFunds
 
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
@@ -224,6 +221,20 @@ export async function GET(request: Request) {
         topMarkeeAddress: topMarkeeAddresses[i] ?? null,
       }
     })
+
+    // Deduplicate: concurrent migration runs may have created identical copies in the
+    // v1.3 factory. Among entries sharing the same (name, totalFundsRaw, admin), keep
+    // the first (lowest factory index = canonical migrated one).
+    const dedupeKey = new Set<string>()
+    const leaderboards = allLeaderboards.filter(l => {
+      const k = `${l.name.toLowerCase().trim()}|${l.totalFundsRaw}|${l.admin.toLowerCase()}`
+      if (dedupeKey.has(k)) return false
+      dedupeKey.add(k)
+      return true
+    })
+
+    let totalFundsRaw = 0n
+    for (const l of leaderboards) totalFundsRaw += BigInt(l.totalFundsRaw)
 
     leaderboards.sort((a, b) => {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
