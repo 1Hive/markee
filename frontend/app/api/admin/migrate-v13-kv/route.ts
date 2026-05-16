@@ -93,6 +93,20 @@ export async function GET(request: NextRequest) {
     } else if (ghContract && ghContractNew) {
       results[oldAddr].skipped.push(ghContractKey + ' (dest exists)')
     }
+
+    // Migrate views:total entries
+    const viewsKey = `views:total:${oldAddr}`
+    const viewsNewKey = `views:total:${newAddr}`
+    const [views, viewsNew] = await Promise.all([
+      kv.get<number>(viewsKey),
+      kv.get<number>(viewsNewKey),
+    ])
+    if (views && !viewsNew) {
+      await kv.set(viewsNewKey, views)
+      results[oldAddr].copied.push(viewsKey)
+    } else if (views && viewsNew) {
+      results[oldAddr].skipped.push(viewsKey + ' (dest exists)')
+    }
   }
 
   return NextResponse.json({ ok: true, results })
