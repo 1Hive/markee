@@ -135,9 +135,9 @@ export async function POST(req: NextRequest) {
       const newViews = kvValues[i * 2 + 1] ?? null
 
       if (!oldViews) { noOldViews++; continue }
-      if (newViews) {
+      if ((newViews ?? 0) >= oldViews) {
         skipped++
-        details[owner] = `skipped — ${newAddr} already has ${newViews}`
+        details[owner] = `skipped — ${newAddr} already has ${newViews} (≥ old ${oldViews})`
         continue
       }
 
