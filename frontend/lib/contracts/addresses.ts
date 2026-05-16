@@ -10,11 +10,13 @@ export const PARTNER_RESERVE_DISTRIBUTOR = '0x7FD2aF60B309f872a2cDAcCa853A9F7885
 // Markee Cooperative multisig — default beneficiary for non-partner strategies
 export const COOPERATIVE_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB' as const
 
-// RevNet v6 config (to be wired up once v6 is deployed — no code changes needed,
-// admin calls to setRevNetTerminal / setRevNetProjectId on each strategy will re-enable routing)
-// export const REVNET_V6_CONFIG = {
-//   [base.id]: { projectId: TBD, terminal: '0x...' },
-// }
+// RevNet v6 config — JB terminal and project ID on Base
+export const REVNET_V6_CONFIG = {
+  [base.id]: {
+    projectId: 152,
+    terminal: '0x27da30646502e2f642bE5281322Ae8C394F7668a' as const,
+  },
+} as const
 // V1.1 Leaderboard addresses (Base only)
 export const V11_LEADERBOARDS = {
   COOPERATIVE: '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4' as const,
@@ -26,7 +28,7 @@ export const V11_LEADERBOARDS = {
 // Factory contract addresses
 export const FACTORIES = {
   SUPERFLUID: '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const,
-  OPEN_INTERNET: '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const,
+  OPEN_INTERNET: '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const, // v1.1 — Coop/Gardens/Clawchemy + OI leaderboards
   GITHUB: '0xb1E2dC9582810124Fed3Cdb4B8Bb944A5495D85a' as const,
 } as const
 

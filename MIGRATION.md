@@ -18,10 +18,10 @@ Every v1.1 `Leaderboard` contract acts as the single pricing-strategy for all co
 
 | Factory | Address | Status |
 |---|---|---|
-| v1.1 (active) | `0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D` | ✅ in use |
-| v1.1 (legacy OI) | `0xb9922E2bdbA79190F0da51Fe362297Ef214eD254` | legacy — Coop/Gardens/Clawchemy |
+| v1.0 (legacy) | `0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D` | legacy v1.0 leaderboards (Honeyswap, NORD, OwnerSyncSafe, Hello!) |
+| v1.1 (active) | `0xb9922E2bdbA79190F0da51Fe362297Ef214eD254` | ✅ Coop/Gardens/Clawchemy + Honeyswap/Gitcoin/Matias v1.1 |
 
-**Active leaderboards** (new factory): Honeyswap, NORD, Gitcoin, Mati's Markee, OwnerSyncSafe, Hello!
+**v1.0 leaderboards** (old factory `0x3f9f7C...`): Honeyswap, NORD, OwnerSyncSafe, Hello! — these remain on v1.0; v1.1 replacements were deployed for Honeyswap, Gitcoin, Matias
 
 **Legacy leaderboards** (old factory `0xb9922E...`): Markee Cooperative, Gardens, Clawchemy
 - Markees were migrated from v0.1 TopDawg → v1.1 via `migrateFromLegacy()` (19 total: 10 Coop + 7 Gardens + 2 Clawchemy)
@@ -47,7 +47,8 @@ No pending work.
 
 | Factory | Address | Status |
 |---|---|---|
-| v1.0 (active) | `0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d` | 94 leaderboards, v1.1 migration pending |
+| v1.0 (legacy) | `0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d` | 94 leaderboards — TopDawgStrategy, cannot participate in RevNet v6 |
+| v1.1 (active) | `0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8` | new leaderboard creation as of 2026-05-15 |
 | TopDawg strategy (legacy) | `0x7A6CE4d457AC1A31513BDEFf924FF942150D293E` | LEGACY_PARTNERS entry in frontend |
 
 **Completed on 2026-05-05:**
@@ -57,22 +58,24 @@ No pending work.
   - Platform fee receiver: Coop multisig `0xAf4401E765dFf079aB6021BBb8d46E53E27613DB`
 - Ran `migrateFromLegacy()` for all 32 legacy Superfluid TopDawg markees ✓
 - Transferred admin to Coop multisig ✓
-
-**Remaining Superfluid work:**
-- [ ] Wire `0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580` into the frontend Superfluid leaderboards API route
+- Frontend Superfluid leaderboards API wired to serve SF migration leaderboard ✓
+- Frontend create flow updated to use v1.1 factory (`0x1E1b0C22...`) ✓
 
 ---
 
 ## RevNet v6 activation checklist
 
-Run these `onlyAdmin` calls on **every active v1.1 Leaderboard** once RevNet v6 is deployed and the terminal/project ID are known:
+**Terminal:** `0x27da30646502e2f642bE5281322Ae8C394F7668a`  
+**Project ID:** `152` (Base)
+
+Run these `onlyAdmin` calls on **every active v1.1 Leaderboard**:
 
 ```solidity
 // 1. Wire the terminal and project ID
-leaderboard.setRevNetTerminal(<revnet_v6_terminal_address>);
-leaderboard.setRevNetProjectId(<revnet_v6_project_id>);
+leaderboard.setRevNetTerminal(0x27da30646502e2f642bE5281322Ae8C394F7668a);
+leaderboard.setRevNetProjectId(152);
 
-// 2. Restore the fund split (62% to RevNet buyer, 38% platform fee via RevNet)
+// 2. Restore the fund split (62% to beneficiary, 38% to RevNet)
 leaderboard.setPercentToBeneficiary(6200);
 
 // 3. Set the Coop multisig as the platform fee receiver (if not already set at deploy)
@@ -84,16 +87,20 @@ leaderboard.setRevNetEnabled(true);
 
 **Important order:** set terminal, projectId, and percentToBeneficiary *before* calling `setRevNetEnabled(true)` — enabling it with stale/zero values would misroute payments.
 
+**Shortcut:** `node scripts/enable-revnet.mjs` generates a Safe Transaction Builder batch JSON for all Coop-admin leaderboards. Import at app.safe.global → New Transaction → Transaction Builder.
+
 ### Leaderboards to update
 
-All leaderboards across all three factories:
+Only **v1.1 Leaderboard** contracts support `setRevNetTerminal` / `setRevNetEnabled`. The 94 v1.0 Superfluid leaderboards use `TopDawgStrategy` which has no RevNet setter — they are **excluded** from this activation.
 
-| Platform | Factory | Leaderboards |
-|---|---|---|
-| OpenInternet | `0x3f9f7C...` | Honeyswap, NORD, Gitcoin, Mati's Markee, OwnerSyncSafe, Hello! (+ any added later) |
-| OpenInternet | `0xb9922E...` | Markee Cooperative, Gardens, Clawchemy |
-| GitHub | `0xb1E2dC...` | all GitHub leaderboards |
-| Superfluid | `0x45Ce642...` | all 94 Superfluid leaderboards |
+| Platform | Factory | Leaderboards | Coop admin? |
+|---|---|---|---|
+| OpenInternet | `0x3f9f7C...` | Honeyswap, NORD, Gitcoin, Mati's Markee, OwnerSyncSafe, Hello! | check per leaderboard |
+| OpenInternet | `0xb9922E...` | Markee Cooperative, Gardens, Clawchemy | ✅ Coop multisig |
+| GitHub | `0xb1E2dC...` | all GitHub leaderboards | leaderboard creator |
+| Superfluid (v1.1) | `0x1E1b0C...` | new leaderboards created post 2026-05-15 | leaderboard creator |
+| Standalone | — | SF Migration `0xb6CCc63...` | ✅ Coop multisig |
+| Superfluid (v1.0) | `0x45Ce642...` | 94 legacy TopDawgStrategy leaderboards | **excluded — not v1.1** |
 
 ---
 
@@ -110,8 +117,11 @@ All leaderboards across all three factories:
 | Name | Address |
 |---|---|
 | Coop multisig (beneficiary / admin) | `0xAf4401E765dFf079aB6021BBb8d46E53E27613DB` |
-| OI factory v1.1 (new) | `0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D` |
-| OI factory v1.1 (legacy Coop/Gardens/Clawchemy) | `0xb9922E2bdbA79190F0da51Fe362297Ef214eD254` |
+| OI factory v1.0 (legacy) | `0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D` |
+| OI factory v1.1 (active) | `0xb9922E2bdbA79190F0da51Fe362297Ef214eD254` |
 | GitHub factory v1.1 | `0xb1E2dC9582810124Fed3Cdb4B8Bb944A5495D85a` |
-| Superfluid factory v1.0 | `0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d` |
+| Superfluid factory v1.1 (active) | `0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8` |
+| Superfluid factory v1.0 (legacy) | `0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d` |
 | Superfluid TopDawg strategy (legacy) | `0x7A6CE4d457AC1A31513BDEFf924FF942150D293E` |
+| RevNet v6 JB terminal (Base) | `0x27da30646502e2f642bE5281322Ae8C394F7668a` |
+| RevNet v6 project ID (Base) | `152` |
