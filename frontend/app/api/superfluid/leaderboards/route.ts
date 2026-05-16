@@ -131,8 +131,8 @@ export async function GET(request: Request) {
       args: [0n, 1000n],
     }) as `0x${string}`[]
 
-    // Include the standalone migration leaderboard (TopDawg markees migrated to v1.1)
-    const addresses = [...(factoryAddresses ?? []), SF_MIGRATION_LEADERBOARD]
+    // v1.2: all SF leaderboards (including the migrated Superfluid one) are factory children
+    const addresses = factoryAddresses ?? []
 
     if (addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage: null }, {

@@ -261,7 +261,7 @@ export default function SuperfluidLeaderboardPage() {
   const minimumPrice = meta?.[3]?.result as bigint | undefined
   const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const contractVersion = meta?.[6]?.result as string | undefined
-  const isLegacyContract = contractVersion !== undefined && contractVersion !== '1.1.0'
+  const isLegacyContract = contractVersion !== undefined && contractVersion !== '1.1.0' && contractVersion !== '1.2.0'
   const topResult = meta?.[7]?.result as [string[], bigint[]] | undefined
 
   const topAddresses = topResult?.[0] ?? []
