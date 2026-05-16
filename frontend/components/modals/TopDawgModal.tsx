@@ -48,9 +48,6 @@ const REV_NET_ENABLED_ABI = [
 // Strategies where fund events earn Superfluid campaign points.
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
-  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg (historical)
-  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // SF v1.0 LeaderboardFactory (historical)
-  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580', // SF v1.1 migration leaderboard (historical)
   '0x2eff03c0cb4c09583462adea1abbcee92b52a742', // SF v1.2 leaderboard
 ])
 
