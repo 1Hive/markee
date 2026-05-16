@@ -19,8 +19,20 @@ const CACHE_KEY = 'cache:openinternet:leaderboards'
 const CACHE_TTL = 60 // seconds
 
 const OI_FACTORY_ADDRESSES = [
-  '0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5', // v1.2 — all OI leaderboards (migrated from v1.1)
+  '0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5', // v1.2 — all OI leaderboards
+  '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254', // v1.1 legacy — non-migrated leaderboards (0BTC Life, Tipsdeck, etc.)
+  '0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D', // v1.1 legacy — non-migrated leaderboards (NORD, OwnerSyncSafe, etc.)
 ] as const
+
+// v1.1 addresses migrated to v1.2 — exclude from legacy factory results to avoid duplicates
+const OI_MIGRATED_V11 = new Set([
+  '0x9eb8939fbc11a546617bc4c55e9afa4d4d847d80', // Honeyswap
+  '0x56f0e84de401198d485bbe30fe13651b0f03b165', // Gitcoin
+  '0xf47cbd51123d4e74128d144c65be092c16134bea', // Matias
+  '0xc981e99bfb1349904c56bdafc429ce04e5ad9ce4', // Markee Cooperative
+  '0x660a5805384a68de57709bd89124b73b8c03371c', // Gardens
+  '0x824f948bb0afd7a9bc360df134fa353fd3ce7ce5', // Clawchemy
+])
 
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -191,7 +203,7 @@ export async function GET(request: Request) {
           .catch(() => [] as `0x${string}`[])
       )
     )
-    const addresses = addressesPerFactory.flat()
+    const addresses = addressesPerFactory.flat().filter(a => !OI_MIGRATED_V11.has(a.toLowerCase()))
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [

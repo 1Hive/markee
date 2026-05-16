@@ -13,8 +13,14 @@ const CACHE_TTL = 60 // seconds
 
 // v1.2 Superfluid factory
 const SUPERFLUID_FACTORY_ADDRESS = '0x72AB2bf7A691Dc331bC0736050A02E7F3a82d352' as const
+// v1.1 Superfluid factory — still queried for the 108 user-created leaderboards not migrated to v1.2
+const SF_LEGACY_FACTORY_ADDRESS = '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const
 // v1.2 Superfluid leaderboard (migrated from v1.1 via migrate-to-v12-eoa.sh)
 const SF_MIGRATION_LEADERBOARD = '0x2EfF03c0cB4c09583462adEA1abbCeE92b52a742' as `0x${string}`
+// v1.1 addresses that were migrated to v1.2 — exclude from legacy factory results to avoid duplicates
+const SF_MIGRATED_V11 = new Set([
+  '0xaec94b5fc02c3b7c3aedd79522bc0c62309486a7', // Gardens 🌱 → now 0x5dCD5003...
+])
 
 const FACTORY_ABI = [
   {
@@ -124,15 +130,26 @@ export async function GET(request: Request) {
 
     const client = getClient()
 
-    const factoryAddresses = await client.readContract({
-      address: SUPERFLUID_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }) as `0x${string}`[]
+    const [v12Addresses, legacyAddresses] = await Promise.all([
+      client.readContract({
+        address: SUPERFLUID_FACTORY_ADDRESS,
+        abi: FACTORY_ABI,
+        functionName: 'getLeaderboards',
+        args: [0n, 1000n],
+      }) as Promise<`0x${string}`[]>,
+      client.readContract({
+        address: SF_LEGACY_FACTORY_ADDRESS,
+        abi: FACTORY_ABI,
+        functionName: 'getLeaderboards',
+        args: [0n, 1000n],
+      }).catch(() => []) as Promise<`0x${string}`[]>,
+    ])
 
-    // v1.2: all SF leaderboards (including the migrated Superfluid one) are factory children
-    const addresses = factoryAddresses ?? []
+    // Combine v1.2 factory children with legacy factory, excluding addresses already migrated to v1.2
+    const addresses = [
+      ...(v12Addresses ?? []),
+      ...(legacyAddresses ?? []).filter(a => !SF_MIGRATED_V11.has(a.toLowerCase())),
+    ]
 
     if (addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage: null }, {
