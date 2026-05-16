@@ -87,6 +87,15 @@ for i in "${!ADDRS[@]}"; do
   num=$((i + 1))
   echo "[$num/$TOTAL] $name  $addr"
 
+  # Skip if already fully configured
+  if [[ "$DRY" != "1" ]]; then
+    already=$(cast call "$addr" "revNetEnabled()(bool)" --rpc-url "$RPC" 2>/dev/null || echo "false")
+    if [[ "$already" == "true" ]]; then
+      echo "  ↩ already enabled, skipping"
+      continue
+    fi
+  fi
+
   if [[ "$DRY" == "1" ]]; then
     echo "  [dry] setRevNetTerminal($TERMINAL)"
     echo "  [dry] setRevNetProjectId($PROJECT_ID)"
@@ -94,10 +103,10 @@ for i in "${!ADDRS[@]}"; do
     echo "  [dry] setRevNetEnabled(true)"
   else
     # shellcheck disable=SC2086
-    cast send "$addr" "setRevNetTerminal(address)" "$TERMINAL" --rpc-url "$RPC" $SIGN_FLAGS
-    cast send "$addr" "setRevNetProjectId(uint256)" "$PROJECT_ID" --rpc-url "$RPC" $SIGN_FLAGS
-    cast send "$addr" "setPercentToBeneficiary(uint256)" "$PERCENT" --rpc-url "$RPC" $SIGN_FLAGS
-    cast send "$addr" "setRevNetEnabled(bool)" "true" --rpc-url "$RPC" $SIGN_FLAGS
+    cast send "$addr" "setRevNetTerminal(address)" "$TERMINAL" --rpc-url "$RPC" $SIGN_FLAGS; sleep 3
+    cast send "$addr" "setRevNetProjectId(uint256)" "$PROJECT_ID" --rpc-url "$RPC" $SIGN_FLAGS; sleep 3
+    cast send "$addr" "setPercentToBeneficiary(uint256)" "$PERCENT" --rpc-url "$RPC" $SIGN_FLAGS; sleep 3
+    cast send "$addr" "setRevNetEnabled(bool)" "true" --rpc-url "$RPC" $SIGN_FLAGS; sleep 3
   fi
 
   echo "  ✓"
