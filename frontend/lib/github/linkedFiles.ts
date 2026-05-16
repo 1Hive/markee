@@ -60,9 +60,8 @@ export function legacyAddressesFor(newAddress: string): string[] {
 
 // ── KV helpers ────────────────────────────────────────────────────────────────
 
-export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
-  const kvKey = `github:markee:${leaderboardAddress.toLowerCase()}`
-
+async function readLinkedFilesFromKV(addr: string): Promise<LinkedFile[]> {
+  const kvKey = `github:markee:${addr}`
   // Use Upstash REST API directly with strong consistency to avoid
   // read replica lag causing verified status to flicker on page refresh
   const url = `${process.env.KV_REST_API_URL}/get/${encodeURIComponent(kvKey)}`
@@ -92,6 +91,27 @@ export async function getLinkedFiles(leaderboardAddress: string): Promise<Linked
       if (typeof parsed === 'object' && parsed !== null) return legacyToArray(parsed as Record<string, unknown>)
     } catch { /* ignore */ }
   }
+  return []
+}
+
+export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
+  const addr = leaderboardAddress.toLowerCase()
+
+  // Try current address first
+  const files = await readLinkedFilesFromKV(addr)
+  if (files.length > 0) return files
+
+  // Fall back to legacy predecessor addresses (v1.0→v1.1 and v1.2→v1.3 migrations).
+  // On first hit, lazily migrate the data to the current address key so future
+  // reads are fast and don't need to check legacy keys.
+  for (const legacyAddr of legacyAddressesFor(addr)) {
+    const legacyFiles = await readLinkedFilesFromKV(legacyAddr)
+    if (legacyFiles.length > 0) {
+      await saveLinkedFiles(addr, legacyFiles)
+      return legacyFiles
+    }
+  }
+
   return []
 }
 
