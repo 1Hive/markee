@@ -13,6 +13,38 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import type { Markee } from '@/types'
 
+// ─── MARKEE token phases ──────────────────────────────────────────────────────
+
+const PHASES = [
+  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
+  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
+  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
+  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
+  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
+]
+
+function getCurrentPhaseRate(): number {
+  const now = new Date()
+  for (const phase of PHASES) {
+    if (now < phase.endDate) return phase.rate
+  }
+  return PHASES[PHASES.length - 1].rate
+}
+
+function calculateMarkeeTokens(ethAmount: number): number {
+  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
+}
+
+const REV_NET_ENABLED_ABI = [
+  {
+    inputs: [],
+    name: 'revNetEnabled',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
 // Strategies where fund events earn Superfluid campaign points.
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
@@ -100,6 +132,16 @@ export function TopDawgModal({
     functionName: 'maxNameLength',
     chainId: CANONICAL_CHAIN.id,
   })
+
+  // v1.1 Leaderboards support revNetEnabled; legacy TopDawg strategies don't.
+  // wagmi returns undefined on failure — treat as false.
+  const { data: revNetEnabledData } = useReadContract({
+    address: strategyAddress,
+    abi: REV_NET_ENABLED_ABI,
+    functionName: 'revNetEnabled',
+    chainId: CANONICAL_CHAIN.id,
+  })
+  const revNetEnabled = revNetEnabledData ?? false
 
   // ---------------------------------------------------------------------------
   // Preset amount calculations
@@ -608,14 +650,31 @@ export function TopDawgModal({
 
                   {amountSelectorJSX}
 
+                  {/* MARKEE token display */}
+                  {revNetEnabled && amount && parseFloat(amount) > 0 && (
+                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-4 text-center">
+                      <p className="text-sm text-[#F897FE] font-medium mb-1">You'll receive</p>
+                      <p className="text-3xl font-bold text-[#F897FE] mb-1">
+                        {Math.floor(calculateMarkeeTokens(parseFloat(amount))).toLocaleString()}
+                      </p>
+                      <p className="text-sm font-semibold text-[#F897FE]">MARKEE tokens</p>
+                    </div>
+                  )}
+
                   {/* Beneficiary split info */}
                   {amount && parseFloat(amount) > 0 && partnerName && (
                     <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
                       <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
                       <div className="flex justify-between items-center">
                         <span className="text-[#EDEEFF]">{partnerName}</span>
-                        <span className="text-[#FFA94D] font-semibold">100%</span>
+                        <span className="text-[#FFA94D] font-semibold">{revNetEnabled ? '62%' : '100%'}</span>
                       </div>
+                      {revNetEnabled && (
+                        <div className="flex justify-between items-center mt-1.5">
+                          <span className="text-[#EDEEFF]">Markee Cooperative</span>
+                          <span className="text-[#7C9CFF] font-semibold">38%</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -644,6 +703,17 @@ export function TopDawgModal({
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
                   {amountSelectorJSX}
+
+                  {/* MARKEE token display */}
+                  {revNetEnabled && amount && parseFloat(amount) > 0 && (
+                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-4 text-center">
+                      <p className="text-sm text-[#F897FE] font-medium mb-1">You'll receive</p>
+                      <p className="text-3xl font-bold text-[#F897FE] mb-1">
+                        {Math.floor(calculateMarkeeTokens(parseFloat(amount))).toLocaleString()}
+                      </p>
+                      <p className="text-sm font-semibold text-[#F897FE]">MARKEE tokens</p>
+                    </div>
+                  )}
 
                   <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20 space-y-3">
                     <p className="text-sm text-[#B8B6D9]">

@@ -46,7 +46,36 @@ const LEADERBOARD_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [],
+    name: 'revNetEnabled',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const
+
+// ─── MARKEE token phases ──────────────────────────────────────────────────────
+
+const PHASES = [
+  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
+  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
+  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
+  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
+  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
+]
+
+function getCurrentPhaseRate(): number {
+  const now = new Date()
+  for (const phase of PHASES) {
+    if (now < phase.endDate) return phase.rate
+  }
+  return PHASES[PHASES.length - 1].rate
+}
+
+function calculateMarkeeTokens(ethAmount: number): number {
+  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +128,13 @@ export function BuyMessageModal({
     address: leaderboardAddress,
     abi: LEADERBOARD_ABI,
     functionName: 'beneficiaryAddress',
+    chainId: CANONICAL_CHAIN.id,
+  })
+
+  const { data: revNetEnabled } = useReadContract({
+    address: leaderboardAddress,
+    abi: LEADERBOARD_ABI,
+    functionName: 'revNetEnabled',
     chainId: CANONICAL_CHAIN.id,
   })
 
@@ -326,8 +362,14 @@ export function BuyMessageModal({
         ) : (
           <span className="text-[#EDEEFF]">Beneficiary</span>
         )}
-        <span className="text-[#FFA94D] font-semibold">100%</span>
+        <span className="text-[#FFA94D] font-semibold">{revNetEnabled ? '62%' : '100%'}</span>
       </div>
+      {revNetEnabled && (
+        <div className="flex justify-between items-center mt-1.5">
+          <span className="text-[#EDEEFF]">Markee Cooperative</span>
+          <span className="text-[#7C9CFF] font-semibold">38%</span>
+        </div>
+      )}
     </div>
   )
 
@@ -457,6 +499,17 @@ export function BuyMessageModal({
                 )}
 
                 {amountSelectorJSX}
+
+                {/* MARKEE token display */}
+                {revNetEnabled && amountWei > 0n && (
+                  <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-4 text-center">
+                    <p className="text-sm text-[#F897FE] font-medium mb-1">You'll receive</p>
+                    <p className="text-3xl font-bold text-[#F897FE] mb-1">
+                      {Math.floor(calculateMarkeeTokens(parseFloat(amount || '0'))).toLocaleString()}
+                    </p>
+                    <p className="text-sm font-semibold text-[#F897FE]">MARKEE tokens</p>
+                  </div>
+                )}
 
                 {/* Payment info panel */}
                 {isAddFunds && existingMarkee ? (
