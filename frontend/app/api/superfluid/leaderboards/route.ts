@@ -223,11 +223,12 @@ export async function GET(request: Request) {
     })
 
     // Deduplicate: concurrent migration runs may have created identical copies in the
-    // v1.3 factory. Among entries sharing the same (name, totalFundsRaw, admin), keep
-    // the first (lowest factory index = canonical migrated one).
+    // v1.3 factory. Among entries sharing the same (name, admin), keep the first
+    // (lowest factory index = canonical migrated one). Funds are excluded from the
+    // key because duplicates can diverge slightly after receiving new payments.
     const dedupeKey = new Set<string>()
     const leaderboards = allLeaderboards.filter(l => {
-      const k = `${l.name.toLowerCase().trim()}|${l.totalFundsRaw}|${l.admin.toLowerCase()}`
+      const k = `${l.name.toLowerCase().trim()}|${l.admin.toLowerCase()}`
       if (dedupeKey.has(k)) return false
       dedupeKey.add(k)
       return true
