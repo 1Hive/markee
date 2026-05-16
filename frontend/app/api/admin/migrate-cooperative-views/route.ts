@@ -22,11 +22,11 @@ const OLD_COOPERATIVE = '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a' as `0x${str
 // v1.3 Cooperative leaderboard (new markee contracts)
 const NEW_COOPERATIVE = '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
 
-const OLD_STRATEGY_ABI = [
+const GETTOPMARKEES_ABI = [
   {
-    inputs: [{ name: 'offset', type: 'uint256' }, { name: 'limit', type: 'uint256' }],
-    name: 'getMarkees',
-    outputs: [{ name: 'result', type: 'address[]' }],
+    inputs: [{ name: 'limit', type: 'uint256' }],
+    name: 'getTopMarkees',
+    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
     stateMutability: 'view',
     type: 'function',
   },
@@ -82,13 +82,13 @@ export async function POST(req: NextRequest) {
     const client = getClient()
 
     // 1. Fetch all markee addresses from both contracts
-    const [oldMarkees, newTopResult] = await Promise.all([
+    const [oldTopResult, newTopResult] = await Promise.all([
       client.readContract({
         address: OLD_COOPERATIVE,
-        abi: OLD_STRATEGY_ABI,
-        functionName: 'getMarkees',
-        args: [0n, 1000n],
-      }) as Promise<`0x${string}`[]>,
+        abi: GETTOPMARKEES_ABI,
+        functionName: 'getTopMarkees',
+        args: [1000n],
+      }) as Promise<readonly [`0x${string}`[], bigint[]]>,
       client.readContract({
         address: NEW_COOPERATIVE,
         abi: LEADERBOARD_ABI,
@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
       }) as Promise<readonly [`0x${string}`[], bigint[]]>,
     ])
 
+    const oldMarkees = oldTopResult[0] as `0x${string}`[]
     const newMarkees = newTopResult[0] as `0x${string}`[]
 
     // 2. Multicall owner() on all markees from both contracts
