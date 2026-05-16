@@ -118,42 +118,44 @@ export async function POST(req: NextRequest) {
     if (owner) ownerToNew.set(owner.toLowerCase(), newMarkees[i].toLowerCase())
   }
 
-  // 4. For each matched owner, copy views:total if old has data and new is empty
-  let copied = 0
-  let skipped = 0
+  // 4. Build matched pairs, then batch-fetch all KV values in one mget
+  type Pair = { owner: string; oldAddr: string; newAddr: string }
+  const matched: Pair[] = []
   let noNewMarkee = 0
-  let noOldViews = 0
-  const details: Record<string, string> = {}
 
   for (const [owner, oldAddr] of ownerToOld) {
     const newAddr = ownerToNew.get(owner)
-    if (!newAddr) {
-      noNewMarkee++
-      continue
-    }
+    if (!newAddr) { noNewMarkee++; continue }
+    matched.push({ owner, oldAddr, newAddr })
+  }
 
-    const oldKey = `views:total:${oldAddr}`
-    const newKey = `views:total:${newAddr}`
-    const [oldViews, newViews] = await Promise.all([
-      kv.get<number>(oldKey),
-      kv.get<number>(newKey),
-    ])
+  // Fetch all old + new view counts in one round trip
+  const kvKeys = matched.flatMap(p => [`views:total:${p.oldAddr}`, `views:total:${p.newAddr}`])
+  const kvValues = kvKeys.length > 0 ? await kv.mget<(number | null)[]>(...kvKeys) : []
 
-    if (!oldViews) {
-      noOldViews++
-      continue
-    }
+  let copied = 0
+  let skipped = 0
+  let noOldViews = 0
+  const details: Record<string, string> = {}
 
+  const writes: Promise<unknown>[] = []
+  for (let i = 0; i < matched.length; i++) {
+    const { owner, oldAddr, newAddr } = matched[i]
+    const oldViews = kvValues[i * 2] ?? null
+    const newViews = kvValues[i * 2 + 1] ?? null
+
+    if (!oldViews) { noOldViews++; continue }
     if (newViews) {
       skipped++
       details[owner] = `skipped — ${newAddr} already has ${newViews}`
       continue
     }
 
-    await kv.set(newKey, oldViews)
+    writes.push(kv.set(`views:total:${newAddr}`, oldViews))
     copied++
     details[owner] = `copied ${oldViews} → ${newAddr}`
   }
+  await Promise.all(writes)
 
   return NextResponse.json({
     ok: true,
