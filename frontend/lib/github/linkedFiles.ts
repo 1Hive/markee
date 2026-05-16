@@ -23,8 +23,9 @@ export function endDelimiter(leaderboardAddress: string): string {
   return `<!-- MARKEE:END:${leaderboardAddress.toLowerCase()} -->`
 }
 
-// Maps new v1.1 GitHub leaderboard addresses → their old v1.0 predecessor(s).
+// Maps current GitHub leaderboard addresses → their old predecessor address(es).
 // All addresses lowercase. Used to grandfather in pre-migration delimiters.
+// v1.1 → v1.0 pairs (original migration)
 const GITHUB_NEW_TO_OLD: Record<string, string[]> = {
   '0xc6c2e9efb898a42db4137b07b727b45e0c353d81': ['0xb974d9df9b6302ff99b9cc18b1a14ff363aaee21'],
   '0xaf4401e765dff079ab6021bbb8d46e53e27613db': ['0x670986ce867674b280b19b0e406c840113224fb6'],
@@ -37,6 +38,20 @@ const GITHUB_NEW_TO_OLD: Record<string, string[]> = {
   '0xd68d8c09a1067814de8b08eca443b0595a2b48ba': ['0x7858da9eae7c811c71c2eeaa9948c5ef570c43a2'],
   '0x022a49df8aae2f38491800019a0b25c615fb0172': ['0x284e7c8d31f0235230e549d475591ad91b0c12b9'],
   '0xefb17b8f14f013aa18d9e6f110ccdbfc4dfb3298': ['0x6459b0b0a3f8c19cb28464b248dff6a8cc8ca210'],
+  // v1.3 → v1.2 pairs (v1.2→v1.3 migration)
+  '0x43d025ea7f0bfcc508c5dc1708415fe2e41c464a': ['0xdbb405000bcc0662b0d72f620acb91ec7e8dcaea'], // pglavin2/honeyswap-interface
+  '0x5e2d08d07b2c771abe15af29fb30826bfeef2151': ['0x84bc9feff57ae16307a4a01b7babff05dbd6b4e1'], // 1Hive/markee
+  '0x0ed8e4f89b2e7ebdbc7ba2f1bf7d1f9012f00746': ['0x172e45b38dc98a11299c3ff9a308f81132e0934c'], // 1Hive/gardens-v2
+  '0xe871f0282224ef727bfc69fc54ec3ebe2908f489': ['0x0246c6dd1cd13e460dadac694cb4abbc8ed4b034'], // web3devz/VeriNet
+  '0xce0b603d7d72cd665e7bf917a339d1b8585a61c1': ['0xb64aa75d72ecfc0009053852a656ec84ea65f30e'], // bitpixi2/deviantclaw
+  '0xee3c567b5ff302d7a0d8a3105a911804da576cf9': ['0x23172551399f19a988a3df12680305ab2ca50214'], // JimmyNagles/AVN #1
+  '0xb57d3a145cb0245f598cda68a676eeb0a4333b2b': ['0x688e6e140314dfdc6817420f27f29c97b5947171'], // web3devz/agentcred
+  '0xc2a42b3edbfcdfa3c64108336a7f3492a3aca887': ['0x3569d07f2007ca4ac5ea4aed2f40f4a61255cfd1'], // Timidan/synth-x
+  '0x1e95812f4ce5178339d55d17727e7355a4ced67b': ['0x8d0e06422bf9e860a9543abb64d5304eaeeff5e8'], // nativ3ai/hermes
+  '0x029bcbce4b21be6e9686993616965eade321de37': ['0x64d232ef48580160663f96983f4ba2bad735c701'], // JimmyNagles/AVN #2
+  '0x8aa3136d599886910cbde882268c4f276ccfe6f6': ['0x9dab2b08033268b0414016282152fcb82017fbc8'], // web3devz/Soulbyte
+  '0xcb4108cb6900a09a51176ef1f1ec9b1141d7179f': ['0x98f4235fbe3a134b21ef75d6319bf5fc2fe8ccb0'], // web3sim/PolicyPay
+  '0x0b63a27f25d69c0fc636eccf7b5f338206bb9e40': ['0x713af7f43d51470f0b9d40133203611ba729c596'], // web3sim/HelixChain
 }
 
 export function legacyAddressesFor(newAddress: string): string[] {
