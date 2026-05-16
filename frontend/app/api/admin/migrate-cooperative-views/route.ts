@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { createPublicClient, http, parseAbiItem } from 'viem'
+import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 
 export const dynamic = 'force-dynamic'
@@ -25,10 +25,25 @@ const OLD_COOPERATIVE = '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a' as `0x${str
 // v1.3 Cooperative leaderboard (new markee contracts)
 const NEW_COOPERATIVE = '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
 
-// MarkeeCreated(address indexed markeeAddress, address indexed owner, ...)
-const MARKEE_CREATED_EVENT = parseAbiItem(
-  'event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name, uint256 amount, uint256 partnerAmount, uint256 revNetAmount)'
-)
+// Old strategy ABI — reads the markees[] array length and individual entries
+// (getMarkees/getTopMarkees revert because some underlying markee contracts are broken;
+//  markeeCount + markees(index) are simpler and don't call external contracts)
+const OLD_STRATEGY_ABI = [
+  {
+    inputs: [],
+    name: 'markeeCount',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: '', type: 'uint256' }],
+    name: 'markees',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
 
 const LEADERBOARD_ABI = [
   {
@@ -79,24 +94,25 @@ export async function POST(req: NextRequest) {
   try {
     const client = getClient()
 
-    // 1. Get old markees + owners from MarkeeCreated event logs — avoids calling
-    //    contract view functions that revert due to broken underlying markee contracts.
-    const oldLogs = await client.getLogs({
+    // 1. Read all old markee addresses from the public markees[] array.
+    //    getMarkees/getTopMarkees revert on this contract; markeeCount() + markees(index)
+    //    are simpler view functions that don't call external contracts so they succeed.
+    const count = await client.readContract({
       address: OLD_COOPERATIVE,
-      event: MARKEE_CREATED_EVENT,
-      fromBlock: 0n,
-      toBlock: 'latest',
-    })
+      abi: OLD_STRATEGY_ABI,
+      functionName: 'markeeCount',
+    }) as bigint
 
-    // Both markeeAddress and owner are indexed — available directly from decoded args
-    const ownerToOld = new Map<string, string>()
-    for (const log of oldLogs) {
-      const markeeAddr = log.args.markeeAddress
-      const owner = log.args.owner
-      if (markeeAddr && owner) {
-        ownerToOld.set(owner.toLowerCase(), markeeAddr.toLowerCase())
-      }
-    }
+    const indexCalls = Array.from({ length: Number(count) }, (_, i) => ({
+      address: OLD_COOPERATIVE,
+      abi: OLD_STRATEGY_ABI,
+      functionName: 'markees' as const,
+      args: [BigInt(i)] as [bigint],
+    }))
+    const indexResults = await chunkedMulticall(client, indexCalls as Parameters<typeof client.multicall>[0]['contracts'])
+    const oldMarkees = indexResults
+      .map(r => r?.result as `0x${string}` | undefined)
+      .filter((a): a is `0x${string}` => !!a)
 
     // 2. Get new markees from v1.3 Cooperative
     const newTopResult = await client.readContract({
@@ -108,13 +124,22 @@ export async function POST(req: NextRequest) {
 
     const newMarkees = newTopResult[0] as `0x${string}`[]
 
-    // 3. Multicall owner() on new markees only (old owners come from logs)
-    const ownerCalls = newMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const }))
+    // 3. Multicall owner() on both old and new markees
+    const ownerCalls = [
+      ...oldMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
+      ...newMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
+    ]
     const ownerResults = await chunkedMulticall(client, ownerCalls as Parameters<typeof client.multicall>[0]['contracts'])
+
+    const ownerToOld = new Map<string, string>()
+    for (let i = 0; i < oldMarkees.length; i++) {
+      const owner = ownerResults[i]?.result as string | undefined
+      if (owner) ownerToOld.set(owner.toLowerCase(), oldMarkees[i].toLowerCase())
+    }
 
     const ownerToNew = new Map<string, string>()
     for (let i = 0; i < newMarkees.length; i++) {
-      const owner = ownerResults[i]?.result as string | undefined
+      const owner = ownerResults[oldMarkees.length + i]?.result as string | undefined
       if (owner) ownerToNew.set(owner.toLowerCase(), newMarkees[i].toLowerCase())
     }
 
@@ -162,7 +187,7 @@ export async function POST(req: NextRequest) {
       skipped,
       noNewMarkee,
       noOldViews,
-      oldMarkeeCount: ownerToOld.size,
+      oldMarkeeCount: oldMarkees.length,
       newMarkeeCount: newMarkees.length,
       matchedCount: matched.length,
       details,
