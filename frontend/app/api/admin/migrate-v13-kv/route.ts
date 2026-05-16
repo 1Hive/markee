@@ -13,6 +13,14 @@ import { kv } from '@vercel/kv'
 
 export const dynamic = 'force-dynamic'
 
+// v0.1 TopDawg strategy → v1.3 address (for views:total migration only)
+const TOPDAWG_TO_V13: Record<string, string> = {
+  '0x558eb41ec9cc90b86550617eef5f180ea60e0e3a': '0x0590b56430426a38d0fa065b839c10d542e75ccd', // Markee Cooperative
+  '0x346419315740f085ba14ca7239d82105a9a2bdbe': '0x2768bc6e90266248bd8bcf5401c36d8049cdf671', // Gardens
+  '0x89e608223bec645227f11d8241e8175a9a95597e': '0xdf4769a9593cb8e40d0409def2645651412a8a97', // Clawchemy
+  '0x7a6ce4d457ac1a31513bdeff924ff942150d293e': '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79', // Superfluid
+}
+
 // v1.2 address → v1.3 address for all migrated leaderboards
 const ADDRESS_MAP: Record<string, string> = {
   // OI leaderboards
@@ -109,5 +117,22 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, results })
+  // Migrate views:total from legacy TopDawg strategy addresses to v1.3
+  const topDawgResults: Record<string, string> = {}
+  for (const [oldAddr, newAddr] of Object.entries(TOPDAWG_TO_V13)) {
+    const [views, viewsNew] = await Promise.all([
+      kv.get<number>(`views:total:${oldAddr}`),
+      kv.get<number>(`views:total:${newAddr}`),
+    ])
+    if (views && !viewsNew) {
+      await kv.set(`views:total:${newAddr}`, views)
+      topDawgResults[oldAddr] = `copied ${views} → ${newAddr}`
+    } else if (views && viewsNew) {
+      topDawgResults[oldAddr] = `skipped (dest has ${viewsNew})`
+    } else {
+      topDawgResults[oldAddr] = 'missing'
+    }
+  }
+
+  return NextResponse.json({ ok: true, results, topDawgViews: topDawgResults })
 }
