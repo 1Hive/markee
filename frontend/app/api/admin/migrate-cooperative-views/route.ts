@@ -15,6 +15,7 @@ import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 // v0.1 TopDawg Cooperative strategy (old markee contracts)
 const OLD_COOPERATIVE = '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a' as `0x${string}`
@@ -77,94 +78,99 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const client = getClient()
+  try {
+    const client = getClient()
 
-  // 1. Fetch all markee addresses from both contracts
-  const [oldMarkees, newTopResult] = await Promise.all([
-    client.readContract({
-      address: OLD_COOPERATIVE,
-      abi: OLD_STRATEGY_ABI,
-      functionName: 'getMarkees',
-      args: [0n, 1000n],
-    }) as Promise<`0x${string}`[]>,
-    client.readContract({
-      address: NEW_COOPERATIVE,
-      abi: LEADERBOARD_ABI,
-      functionName: 'getTopMarkees',
-      args: [1000n],
-    }) as Promise<readonly [`0x${string}`[], bigint[]]>,
-  ])
+    // 1. Fetch all markee addresses from both contracts
+    const [oldMarkees, newTopResult] = await Promise.all([
+      client.readContract({
+        address: OLD_COOPERATIVE,
+        abi: OLD_STRATEGY_ABI,
+        functionName: 'getMarkees',
+        args: [0n, 1000n],
+      }) as Promise<`0x${string}`[]>,
+      client.readContract({
+        address: NEW_COOPERATIVE,
+        abi: LEADERBOARD_ABI,
+        functionName: 'getTopMarkees',
+        args: [1000n],
+      }) as Promise<readonly [`0x${string}`[], bigint[]]>,
+    ])
 
-  const newMarkees = newTopResult[0] as `0x${string}`[]
+    const newMarkees = newTopResult[0] as `0x${string}`[]
 
-  // 2. Multicall owner() on all markees from both contracts
-  const ownerCalls = [
-    ...oldMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
-    ...newMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
-  ]
+    // 2. Multicall owner() on all markees from both contracts
+    const ownerCalls = [
+      ...oldMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
+      ...newMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
+    ]
 
-  const ownerResults = await chunkedMulticall(client, ownerCalls as Parameters<typeof client.multicall>[0]['contracts'])
+    const ownerResults = await chunkedMulticall(client, ownerCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
-  // 3. Build owner → address maps
-  const ownerToOld = new Map<string, string>()
-  for (let i = 0; i < oldMarkees.length; i++) {
-    const owner = ownerResults[i]?.result as string | undefined
-    if (owner) ownerToOld.set(owner.toLowerCase(), oldMarkees[i].toLowerCase())
-  }
-
-  const ownerToNew = new Map<string, string>()
-  for (let i = 0; i < newMarkees.length; i++) {
-    const owner = ownerResults[oldMarkees.length + i]?.result as string | undefined
-    if (owner) ownerToNew.set(owner.toLowerCase(), newMarkees[i].toLowerCase())
-  }
-
-  // 4. Build matched pairs, then batch-fetch all KV values in one mget
-  type Pair = { owner: string; oldAddr: string; newAddr: string }
-  const matched: Pair[] = []
-  let noNewMarkee = 0
-
-  for (const [owner, oldAddr] of ownerToOld) {
-    const newAddr = ownerToNew.get(owner)
-    if (!newAddr) { noNewMarkee++; continue }
-    matched.push({ owner, oldAddr, newAddr })
-  }
-
-  // Fetch all old + new view counts in one round trip
-  const kvKeys = matched.flatMap(p => [`views:total:${p.oldAddr}`, `views:total:${p.newAddr}`])
-  const kvValues = kvKeys.length > 0 ? await kv.mget<(number | null)[]>(...kvKeys) : []
-
-  let copied = 0
-  let skipped = 0
-  let noOldViews = 0
-  const details: Record<string, string> = {}
-
-  const writes: Promise<unknown>[] = []
-  for (let i = 0; i < matched.length; i++) {
-    const { owner, oldAddr, newAddr } = matched[i]
-    const oldViews = kvValues[i * 2] ?? null
-    const newViews = kvValues[i * 2 + 1] ?? null
-
-    if (!oldViews) { noOldViews++; continue }
-    if (newViews) {
-      skipped++
-      details[owner] = `skipped — ${newAddr} already has ${newViews}`
-      continue
+    // 3. Build owner → address maps
+    const ownerToOld = new Map<string, string>()
+    for (let i = 0; i < oldMarkees.length; i++) {
+      const owner = ownerResults[i]?.result as string | undefined
+      if (owner) ownerToOld.set(owner.toLowerCase(), oldMarkees[i].toLowerCase())
     }
 
-    writes.push(kv.set(`views:total:${newAddr}`, oldViews))
-    copied++
-    details[owner] = `copied ${oldViews} → ${newAddr}`
-  }
-  await Promise.all(writes)
+    const ownerToNew = new Map<string, string>()
+    for (let i = 0; i < newMarkees.length; i++) {
+      const owner = ownerResults[oldMarkees.length + i]?.result as string | undefined
+      if (owner) ownerToNew.set(owner.toLowerCase(), newMarkees[i].toLowerCase())
+    }
 
-  return NextResponse.json({
-    ok: true,
-    copied,
-    skipped,
-    noNewMarkee,
-    noOldViews,
-    oldMarkeeCount: oldMarkees.length,
-    newMarkeeCount: newMarkees.length,
-    details,
-  })
+    // 4. Build matched pairs, then batch-fetch all KV values in one mget
+    type Pair = { owner: string; oldAddr: string; newAddr: string }
+    const matched: Pair[] = []
+    let noNewMarkee = 0
+
+    for (const [owner, oldAddr] of ownerToOld) {
+      const newAddr = ownerToNew.get(owner)
+      if (!newAddr) { noNewMarkee++; continue }
+      matched.push({ owner, oldAddr, newAddr })
+    }
+
+    // Fetch all old + new view counts in one round trip
+    const kvKeys = matched.flatMap(p => [`views:total:${p.oldAddr}`, `views:total:${p.newAddr}`])
+    const kvValues = kvKeys.length > 0 ? await kv.mget<(number | null)[]>(...kvKeys) : []
+
+    let copied = 0
+    let skipped = 0
+    let noOldViews = 0
+    const details: Record<string, string> = {}
+
+    const writes: Promise<unknown>[] = []
+    for (let i = 0; i < matched.length; i++) {
+      const { owner, oldAddr, newAddr } = matched[i]
+      const oldViews = kvValues[i * 2] ?? null
+      const newViews = kvValues[i * 2 + 1] ?? null
+
+      if (!oldViews) { noOldViews++; continue }
+      if (newViews) {
+        skipped++
+        details[owner] = `skipped — ${newAddr} already has ${newViews}`
+        continue
+      }
+
+      writes.push(kv.set(`views:total:${newAddr}`, oldViews))
+      copied++
+      details[owner] = `copied ${oldViews} → ${newAddr}`
+    }
+    await Promise.all(writes)
+
+    return NextResponse.json({
+      ok: true,
+      copied,
+      skipped,
+      noNewMarkee,
+      noOldViews,
+      oldMarkeeCount: oldMarkees.length,
+      newMarkeeCount: newMarkees.length,
+      details,
+    })
+  } catch (err: any) {
+    console.error('[migrate-cooperative-views] error:', err)
+    return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 })
+  }
 }
