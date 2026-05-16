@@ -33,7 +33,7 @@ const ADDRESS_MAP: Record<string, string> = {
   // SF leaderboards
   '0x5dcd5003b06506c1fdab4e77721ce879575ae3c9': '0xc76bf8291151ecfe4554dda29f56b06c0f48260b', // Gardens 🌱
   '0x2eff03c0cb4c09583462adea1abbcee92b52a742': '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79', // Superfluid
-  // GH leaderboards
+  // GH leaderboards (v1.1 → v1.3 — GitHub never had a v1.2)
   '0xdbb405000bcc0662b0d72f620acb91ec7e8dcaea': '0x43d025ea7f0bfcc508c5dc1708415fe2e41c464a', // pglavin2/honeyswap-interface
   '0x84bc9feff57ae16307a4a01b7babff05dbd6b4e1': '0x5e2d08d07b2c771abe15af29fb30826bfeef2151', // 1Hive/markee
   '0x172e45b38dc98a11299c3ff9a308f81132e0934c': '0x0ed8e4f89b2e7ebdbc7ba2f1bf7d1f9012f00746', // 1Hive/gardens-v2

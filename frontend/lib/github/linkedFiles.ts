@@ -38,7 +38,7 @@ const GITHUB_NEW_TO_OLD: Record<string, string[]> = {
   '0xd68d8c09a1067814de8b08eca443b0595a2b48ba': ['0x7858da9eae7c811c71c2eeaa9948c5ef570c43a2'],
   '0x022a49df8aae2f38491800019a0b25c615fb0172': ['0x284e7c8d31f0235230e549d475591ad91b0c12b9'],
   '0xefb17b8f14f013aa18d9e6f110ccdbfc4dfb3298': ['0x6459b0b0a3f8c19cb28464b248dff6a8cc8ca210'],
-  // v1.3 → v1.2 pairs (v1.2→v1.3 migration)
+  // v1.3 → v1.1 pairs (v1.1→v1.3 migration — GitHub never had a v1.2)
   '0x43d025ea7f0bfcc508c5dc1708415fe2e41c464a': ['0xdbb405000bcc0662b0d72f620acb91ec7e8dcaea'], // pglavin2/honeyswap-interface
   '0x5e2d08d07b2c771abe15af29fb30826bfeef2151': ['0x84bc9feff57ae16307a4a01b7babff05dbd6b4e1'], // 1Hive/markee
   '0x0ed8e4f89b2e7ebdbc7ba2f1bf7d1f9012f00746': ['0x172e45b38dc98a11299c3ff9a308f81132e0934c'], // 1Hive/gardens-v2
