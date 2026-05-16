@@ -261,7 +261,7 @@ export default function SuperfluidPlatformPage() {
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt / 0.0001 ETH</span>
+                <span className="text-[#1DB227] font-semibold">10M pts / ETH</span>
                 <span className="text-[#8A8FBF]">funded</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
