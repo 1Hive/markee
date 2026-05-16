@@ -231,10 +231,9 @@ export async function GET(request: Request) {
         : Promise.resolve([]),
     ])
 
-    let totalFundsRaw = 0n
     let markeeCallIndex = 0
 
-    const factoryLeaderboards = addresses.map((addr, i) => {
+    const allLeaderboards = addresses.map((addr, i) => {
       const b = i * 6
       const name          = (metaResults[b]?.result as string) ?? addr
       const totalFunds    = (metaResults[b + 1]?.result as bigint) ?? 0n
@@ -243,8 +242,6 @@ export async function GET(request: Request) {
       const admin         = (metaResults[b + 4]?.result as string) ?? ''
       const topResult     = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
       const topFunds0     = topResult?.[1]?.[0] ?? 0n
-
-      totalFundsRaw += totalFunds
 
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
@@ -284,7 +281,19 @@ export async function GET(request: Request) {
       }
     })
 
-    const leaderboards = factoryLeaderboards
+    // Deduplicate: concurrent migration runs may have created identical copies.
+    // Among entries sharing the same (name, admin), keep the first (canonical).
+    const dedupeKey = new Set<string>()
+    const leaderboards = allLeaderboards.filter(l => {
+      const k = `${l.name.toLowerCase().trim()}|${l.admin.toLowerCase()}`
+      if (dedupeKey.has(k)) return false
+      dedupeKey.add(k)
+      return true
+    })
+
+    let totalFundsRaw = 0n
+    for (const l of leaderboards) totalFundsRaw += BigInt(l.totalFundsRaw)
+
     leaderboards.sort((a, b) => {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return diff > 0n ? 1 : diff < 0n ? -1 : 0
