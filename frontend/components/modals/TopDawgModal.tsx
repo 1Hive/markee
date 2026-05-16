@@ -49,8 +49,9 @@ const REV_NET_ENABLED_ABI = [
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
   '0x7a6ce4d457ac1a31513bdeff924ff942150d293e', // Legacy TopDawg (historical)
-  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // SF LeaderboardFactory
-  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580', // SF v1.1 migration leaderboard
+  '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d', // SF v1.0 LeaderboardFactory (historical)
+  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580', // SF v1.1 migration leaderboard (historical)
+  '0x2eff03c0cb4c09583462adea1abbcee92b52a742', // SF v1.2 leaderboard
 ])
 
 interface TopDawgModalProps {
@@ -103,7 +104,7 @@ export function TopDawgModal({
   })
 
   // Get strategy address - use custom one if provided, otherwise default TopDawg
-  const strategyAddress = customStrategyAddress || '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4' as `0x${string}`
+  const strategyAddress = customStrategyAddress || '0x07a8d34c350C66D6A7e30dbf9b3f8dcC67b70aff' as `0x${string}`
 
   // Use the appropriate ABI based on whether it's a partner strategy
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI

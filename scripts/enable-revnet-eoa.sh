@@ -54,6 +54,7 @@ NAMES=(
   "web3devz/Soulbyte"
   "web3sim/PolicyPay"
   "web3sim/HelixChain"
+  "SF / 0xAec94b5f"
 )
 
 ADDRS=(
@@ -73,6 +74,7 @@ ADDRS=(
   "0x3718f5B053e8427dF99c486cB5A6E60066345223"
   "0x284e7C8d31f0235230e549D475591ad91B0c12B9"
   "0x6459b0b0a3F8C19cb28464B248DfF6A8Cc8cA210"
+  "0xAec94b5fC02c3B7C3AEDd79522bc0c62309486A7"
 )
 
 TOTAL=${#ADDRS[@]}

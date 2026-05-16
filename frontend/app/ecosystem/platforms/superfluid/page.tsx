@@ -18,12 +18,12 @@ import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { useViews } from '@/hooks/useViews'
 import type { Markee } from '@/types'
-import { FACTORIES } from '@/lib/contracts/addresses'
+import { FACTORIES, REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = FACTORIES.SUPERFLUID
-const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580'
+const SF_MIGRATION_LEADERBOARD = '0x2EfF03c0cB4c09583462adEA1abbCeE92b52a742'
 
 const FACTORY_ABI = [
   {
@@ -632,6 +632,23 @@ function LeaderboardCard({
 
 // ─── Create Markee Modal ──────────────────────────────────────────────────────
 
+const REVNET_SETUP_ABI = [
+  { inputs: [{ name: '_newTerminal', type: 'address' }], name: 'setRevNetTerminal', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newProjectId', type: 'uint256' }], name: 'setRevNetProjectId', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newPercent', type: 'uint256' }], name: 'setPercentToBeneficiary', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_enabled', type: 'bool' }], name: 'setRevNetEnabled', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+] as const
+
+const REVNET_TERMINAL = REVNET_V6_CONFIG[8453].terminal
+const REVNET_PROJECT_ID = BigInt(REVNET_V6_CONFIG[8453].projectId)
+
+const SETUP_LABELS: Record<number, string> = {
+  1: 'Set JB terminal address',
+  2: 'Set RevNet project ID',
+  3: 'Set 62%/38% fee split',
+  4: 'Enable RevNet routing',
+}
+
 function CreateMarkeeModal({
   myLeaderboards,
   walletAddress,
@@ -649,10 +666,15 @@ function CreateMarkeeModal({
   const [beneficiary, setBeneficiary] = useState('')
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [setupStep, setSetupStep] = useState(0) // 0=idle, 1-4=in progress, 5=done
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
+  const { writeContract: writeSetup, data: setupHash, isPending: isSetupPending, error: setupError } = useWriteContract()
+  const { isLoading: isSetupConfirming, isSuccess: isSetupSuccess } = useWaitForTransactionReceipt({ hash: setupHash })
+
+  // Extract leaderboard address from factory receipt and start RevNet setup
   useEffect(() => {
     if (!isSuccess || !receipt) return
     let foundAddress: string | null = null
@@ -667,7 +689,33 @@ function CreateMarkeeModal({
     }
     setNewLeaderboardAddress(foundAddress)
     onSuccess()
+    if (foundAddress) setSetupStep(1)
   }, [isSuccess, receipt, onSuccess])
+
+  // Trigger each RevNet setup tx when the step advances
+  useEffect(() => {
+    if (!newLeaderboardAddress || setupStep < 1 || setupStep > 4) return
+    const addr = newLeaderboardAddress as `0x${string}`
+    if (setupStep === 1) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setRevNetTerminal', args: [REVNET_TERMINAL] })
+    else if (setupStep === 2) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setRevNetProjectId', args: [REVNET_PROJECT_ID] })
+    else if (setupStep === 3) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setPercentToBeneficiary', args: [6200n] })
+    else if (setupStep === 4) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setRevNetEnabled', args: [true] })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupStep, newLeaderboardAddress])
+
+  // Advance to next step when setup tx confirms
+  useEffect(() => {
+    if (isSetupSuccess) setSetupStep(s => s + 1)
+  }, [isSetupSuccess])
+
+  const handleRetrySetup = () => {
+    if (!newLeaderboardAddress || setupStep < 1 || setupStep > 4) return
+    const addr = newLeaderboardAddress as `0x${string}`
+    if (setupStep === 1) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setRevNetTerminal', args: [REVNET_TERMINAL] })
+    else if (setupStep === 2) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setRevNetProjectId', args: [REVNET_PROJECT_ID] })
+    else if (setupStep === 3) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setPercentToBeneficiary', args: [6200n] })
+    else if (setupStep === 4) writeSetup({ address: addr, abi: REVNET_SETUP_ABI, functionName: 'setRevNetEnabled', args: [true] })
+  }
 
   const handleCreate = () => {
     setError(null)
@@ -699,26 +747,58 @@ function CreateMarkeeModal({
           <div className="flex flex-col items-center gap-4 py-4">
             <CheckCircle2 size={44} className="text-green-400" />
             <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
-            <p className="text-[#8A8FBF] text-sm text-center">
-              Your sign is live on the Superfluid platform.
-            </p>
-            <div className="flex flex-col gap-3 w-full mt-2">
-              <button
-                onClick={() =>
-                  newLeaderboardAddress &&
-                  router.push(`/ecosystem/platforms/superfluid/${newLeaderboardAddress}`)
-                }
-                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
-              >
-                View your Markee →
-              </button>
-              <button
-                onClick={onClose}
-                className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center"
-              >
-                Close
-              </button>
-            </div>
+
+            {setupStep < 5 ? (
+              <div className="w-full space-y-3">
+                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#F897FE]/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-[#F897FE]">Activating RevNet</p>
+                    <p className="text-xs text-[#8A8FBF]">{Math.min(setupStep - 1, 4)}/4 done</p>
+                  </div>
+                  <p className="text-xs text-[#EDEEFF]">
+                    {isSetupPending || isSetupConfirming
+                      ? `⏳ ${SETUP_LABELS[setupStep]}…`
+                      : setupError
+                        ? `❌ ${SETUP_LABELS[setupStep]} — rejected`
+                        : `⏳ ${SETUP_LABELS[setupStep]}…`}
+                  </p>
+                  {setupError && (
+                    <button
+                      onClick={handleRetrySetup}
+                      className="text-xs text-[#F897FE] hover:underline"
+                    >
+                      Retry →
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-[#8A8FBF] text-center">
+                  4 quick transactions — confirm each in your wallet.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="text-[#8A8FBF] text-sm text-center">
+                  RevNet active — 62% to your treasury, 38% to Markee Cooperative.
+                </p>
+                <div className="flex flex-col gap-3 w-full mt-2">
+                  <button
+                    onClick={() =>
+                      newLeaderboardAddress &&
+                      router.push(`/ecosystem/platforms/superfluid/${newLeaderboardAddress}`)
+                    }
+                    className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
+                  >
+                    View your Markee →
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <>

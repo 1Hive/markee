@@ -11,10 +11,10 @@ const CACHE_TTL = 60 // seconds
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// v1.1 Superfluid factory (deployed via scripts/migrate-sf-factory.cjs)
-const SUPERFLUID_FACTORY_ADDRESS = '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const
-// Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees
-const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as `0x${string}`
+// v1.2 Superfluid factory
+const SUPERFLUID_FACTORY_ADDRESS = '0x72AB2bf7A691Dc331bC0736050A02E7F3a82d352' as const
+// v1.2 Superfluid leaderboard (migrated from v1.1 via migrate-to-v12-eoa.sh)
+const SF_MIGRATION_LEADERBOARD = '0x2EfF03c0cB4c09583462adEA1abbCeE92b52a742' as `0x${string}`
 
 const FACTORY_ABI = [
   {

@@ -19,8 +19,7 @@ const CACHE_KEY = 'cache:openinternet:leaderboards'
 const CACHE_TTL = 60 // seconds
 
 const OI_FACTORY_ADDRESSES = [
-  '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254', // legacy (Coop, Gardens, Clawchemy + early partners)
-  '0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D', // new (Honeyswap, NORD, Gitcoin, Mati's, OwnerSync, Hello!)
+  '0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5', // v1.2 — all OI leaderboards (migrated from v1.1)
 ] as const
 
 const NO_CACHE = {
@@ -78,32 +77,25 @@ const PARTNER_META: Record<string, {
   verifiedUrls: string[]
   status: 'verified'
 }> = {
-  '0xc981e99bfb1349904c56bdafc429ce04e5ad9ce4': { // Markee Cooperative
+  '0x07a8d34c350c66d6a7e30dbf9b3f8dcc67b70aff': { // Markee Cooperative (v1.2)
     logoUrl: '/markee-logo.png',
     siteUrl: 'https://markee.xyz',
     verifiedUrl: 'https://markee.xyz',
     verifiedUrls: ['https://markee.xyz'],
     status: 'verified',
   },
-  '0x660a5805384a68de57709bd89124b73b8c03371c': { // Gardens
+  '0x03e9b27cbc55aa47bbdf6339a1f525bdfb87fbe0': { // Gardens (v1.2)
     logoUrl: '/partners/gardens.png',
     siteUrl: 'https://app.gardens.fund',
     verifiedUrl: 'https://app.gardens.fund',
     verifiedUrls: ['https://app.gardens.fund'],
     status: 'verified',
   },
-  '0x824f948bb0afd7a9bc360df134fa353fd3ce7ce5': { // Clawchemy
+  '0x753c1a3203ad3143ecef57e986cb72f7da195741': { // Clawchemy (v1.2)
     logoUrl: '/partners/clawchemy.png',
     siteUrl: 'https://clawchemy.xyz',
     verifiedUrl: 'https://clawchemy.xyz',
     verifiedUrls: ['https://clawchemy.xyz'],
-    status: 'verified',
-  },
-  '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580': { // Superfluid (migration leaderboard)
-    logoUrl: '/partners/superfluid.png',
-    siteUrl: 'https://campaigns.superfluid.org',
-    verifiedUrl: 'https://campaigns.superfluid.org',
-    verifiedUrls: ['https://campaigns.superfluid.org'],
     status: 'verified',
   },
 }

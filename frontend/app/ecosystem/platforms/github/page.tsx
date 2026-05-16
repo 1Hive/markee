@@ -14,7 +14,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import type { LinkedFile } from './[address]/page'
 
-const GITHUB_FACTORY_ADDRESS = '0xb1E2dC9582810124Fed3Cdb4B8Bb944A5495D85a' as const
+const GITHUB_FACTORY_ADDRESS = '0x0A880A8C102D16325eaa6b426AD3acd48338B501' as const
 
 const FACTORY_ABI = [
   {

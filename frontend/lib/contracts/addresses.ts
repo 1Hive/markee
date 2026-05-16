@@ -17,19 +17,19 @@ export const REVNET_V6_CONFIG = {
     terminal: '0x2dB6d704058E552DeFE415753465df8dF0361846' as const,
   },
 } as const
-// V1.1 Leaderboard addresses (Base only)
+// V1.2 Leaderboard addresses (Base only) — migrated from v1.1 via migrate-to-v12-eoa.sh
 export const V11_LEADERBOARDS = {
-  COOPERATIVE: '0xC981e99bfB1349904C56bdafC429cE04E5AD9Ce4' as const,
-  GARDENS: '0x660a5805384a68dE57709bd89124B73B8C03371C' as const,
-  CLAWCHEMY: '0x824f948Bb0afd7a9bc360DF134fA353fD3cE7CE5' as const,
-  SUPERFLUID_MIGRATION: '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580' as const,
+  COOPERATIVE: '0x07a8d34c350C66D6A7e30dbf9b3f8dcC67b70aff' as const,
+  GARDENS: '0x03E9b27cbc55Aa47bbDF6339A1f525bdFB87fBE0' as const,
+  CLAWCHEMY: '0x753C1A3203AD3143ecEF57E986CB72f7da195741' as const,
+  SUPERFLUID_MIGRATION: '0x2EfF03c0cB4c09583462adEA1abbCeE92b52a742' as const,
 } as const
 
-// Factory contract addresses
+// Factory contract addresses (v1.2)
 export const FACTORIES = {
-  SUPERFLUID: '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const,
-  OPEN_INTERNET: '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254' as const, // v1.1 — Coop/Gardens/Clawchemy + OI leaderboards
-  GITHUB: '0xb1E2dC9582810124Fed3Cdb4B8Bb944A5495D85a' as const,
+  SUPERFLUID: '0x72AB2bf7A691Dc331bC0736050A02E7F3a82d352' as const,
+  OPEN_INTERNET: '0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5' as const,
+  GITHUB: '0x0A880A8C102D16325eaa6b426AD3acd48338B501' as const,
 } as const
 
 // Fixed-price strategy contracts (still in use for the fixed-price leaderboard on the home page)

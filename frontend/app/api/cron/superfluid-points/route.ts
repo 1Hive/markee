@@ -10,7 +10,7 @@
  * 1. Legacy TopDawg (0x7A6CE4d457AC1A31513BDEFf924FF942150D293E)
  *    → Subgraph (already indexed, reliable)
  *
- * 2. LeaderboardFactory (0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8)
+ * 2. LeaderboardFactory v1.2 (0x72AB2bf7A691Dc331bC0736050A02E7F3a82d352)
  *    → RPC via Alchemy: call getLeaderboards() on factory to get child
  *      strategy addresses, then getLogs for FundsAdded events on each.
  *      Scales automatically as new leaderboards are created.
@@ -31,13 +31,13 @@ export const maxDuration = 300
 
 // ─── Contract addresses ───────────────────────────────────────────────────────
 
-const LEADERBOARD_FACTORY_ADDRESS = '0x1e1b0c22e2c6c7b46abb0f25231c7eecd4f0a2d8'
-// Standalone v1.1 leaderboard holding the 32 migrated Superfluid TopDawg markees
-const SF_MIGRATION_LEADERBOARD = '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580'
+const LEADERBOARD_FACTORY_ADDRESS = '0x72ab2bf7a691dc331bc0736050a02e7f3a82d352'
+// v1.2 Superfluid leaderboard (migrated from v1.1 via migrate-to-v12-eoa.sh)
+const SF_MIGRATION_LEADERBOARD = '0x2eff03c0cb4c09583462adea1abbcee92b52a742'
 // Legacy Superfluid partner strategy — emits FundsAddedToMarkee (different event)
 const TOPDAWG_LEGACY_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 
-const FACTORY_DEPLOY_BLOCK = 45742728n
+const FACTORY_DEPLOY_BLOCK = 46059000n
 // From subgraph.yaml — TopDawgPartnerStrategySuperfluid startBlock
 const TOPDAWG_DEPLOY_BLOCK = 41984295n
 

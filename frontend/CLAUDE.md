@@ -76,6 +76,9 @@ Wagmi config is in `lib/config/wagmi.ts`. RainbowKit handles wallet connection U
 | LeaderboardFactory (v1.0) | `0x9df259De9dF51143e27d062f3B84Ed8D9AaCc3aA` |
 | LeaderboardFactory (v1.0, Superfluid) | `0x45ce642d1dc0638887e3312c95a66fa8fcbae09d` |
 | LeaderboardFactory (v1.1, Superfluid) | `0x1e1b0c22e2c6c7b46abb0f25231c7eecd4f0a2d8` |
+| LeaderboardFactory (v1.2, Open Internet) | `0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5` |
+| LeaderboardFactory (v1.2, GitHub) | `0x0A880A8C102D16325eaa6b426AD3acd48338B501` |
+| LeaderboardFactory (v1.2, Superfluid) | `0x72AB2bf7A691Dc331bC0736050A02E7F3a82d352` |
 | Legacy TopDawg | `0x7a6ce4d457ac1a31513bdeff924ff942150d293e` |
 
 Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contracts/abis.ts`.
