@@ -512,7 +512,7 @@ export function BuyMessageModal({
                 )}
 
                 {/* Payment info panel */}
-                {isAddFunds && existingMarkee ? (
+                {isAddFunds && existingMarkee && (
                   <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm space-y-2">
                     <div className="flex justify-between">
                       <span className="text-[#8A8FBF] text-xs">Current funds</span>
@@ -534,9 +534,9 @@ export function BuyMessageModal({
                       </span>
                     </div>
                   </div>
-                ) : (
-                  revenueSplitJSX
                 )}
+
+                {revenueSplitJSX}
 
                 {!isUpdateMessage && !canAfford && (
                   <div className="space-y-2">

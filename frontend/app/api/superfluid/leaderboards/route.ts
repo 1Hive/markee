@@ -13,14 +13,8 @@ const CACHE_TTL = 60 // seconds
 
 // v1.3 Superfluid factory
 const SUPERFLUID_FACTORY_ADDRESS = '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const
-// v1.1 Superfluid factory — still queried for the 108 user-created leaderboards not migrated to v1.3
-const SF_LEGACY_FACTORY_ADDRESS = '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const
 // v1.3 Superfluid leaderboard (migrated from v1.2 via migrate-to-v13.sh)
 const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as `0x${string}`
-// v1.1 addresses migrated to v1.2/v1.3 — exclude from legacy factory results to avoid duplicates
-const SF_MIGRATED_V11 = new Set([
-  '0xaec94b5fc02c3b7c3aedd79522bc0c62309486a7', // Gardens 🌱 → now 0xC76Bf829...
-])
 
 const FACTORY_ABI = [
   {
@@ -130,26 +124,12 @@ export async function GET(request: Request) {
 
     const client = getClient()
 
-    const [v12Addresses, legacyAddresses] = await Promise.all([
-      client.readContract({
-        address: SUPERFLUID_FACTORY_ADDRESS,
-        abi: FACTORY_ABI,
-        functionName: 'getLeaderboards',
-        args: [0n, 1000n],
-      }) as Promise<`0x${string}`[]>,
-      client.readContract({
-        address: SF_LEGACY_FACTORY_ADDRESS,
-        abi: FACTORY_ABI,
-        functionName: 'getLeaderboards',
-        args: [0n, 1000n],
-      }).catch(() => []) as Promise<`0x${string}`[]>,
-    ])
-
-    // Combine v1.2 factory children with legacy factory, excluding addresses already migrated to v1.2
-    const addresses = [
-      ...(v12Addresses ?? []),
-      ...(legacyAddresses ?? []).filter(a => !SF_MIGRATED_V11.has(a.toLowerCase())),
-    ]
+    const addresses = await client.readContract({
+      address: SUPERFLUID_FACTORY_ADDRESS,
+      abi: FACTORY_ABI,
+      functionName: 'getLeaderboards',
+      args: [0n, 1000n],
+    }) as `0x${string}`[]
 
     if (addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage: null }, {
