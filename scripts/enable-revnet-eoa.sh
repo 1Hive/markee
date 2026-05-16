@@ -22,9 +22,19 @@ PERCENT="6200"
 RPC="${RPC_URL:-https://mainnet.base.org}"
 DRY="${DRY_RUN:-0}"
 
-if [[ -z "${PRIVATE_KEY:-}" && "$DRY" == "0" ]]; then
-  echo "Error: set PRIVATE_KEY=0x... before running"
-  exit 1
+# Auth: prefer encrypted keystore (ACCOUNT) over raw private key (PRIVATE_KEY).
+# To create a keystore: cast wallet import revnet-admin --interactive
+if [[ "$DRY" == "0" ]]; then
+  if [[ -n "${ACCOUNT:-}" ]]; then
+    SIGN_FLAGS="--account $ACCOUNT"
+    [[ -n "${KEYSTORE_PASSWORD:-}" ]] && SIGN_FLAGS="$SIGN_FLAGS --password $KEYSTORE_PASSWORD"
+  elif [[ -n "${PRIVATE_KEY:-}" ]]; then
+    SIGN_FLAGS="--private-key $PRIVATE_KEY"
+  else
+    echo "Error: set ACCOUNT=revnet-admin (keystore) or PRIVATE_KEY=0x..."
+    echo "  To create a keystore: cast wallet import revnet-admin --interactive"
+    exit 1
+  fi
 fi
 
 NAMES=(
@@ -83,10 +93,11 @@ for i in "${!ADDRS[@]}"; do
     echo "  [dry] setPercentToBeneficiary($PERCENT)"
     echo "  [dry] setRevNetEnabled(true)"
   else
-    cast send "$addr" "setRevNetTerminal(address)" "$TERMINAL" --rpc-url "$RPC" --private-key "$PRIVATE_KEY"
-    cast send "$addr" "setRevNetProjectId(uint256)" "$PROJECT_ID" --rpc-url "$RPC" --private-key "$PRIVATE_KEY"
-    cast send "$addr" "setPercentToBeneficiary(uint256)" "$PERCENT" --rpc-url "$RPC" --private-key "$PRIVATE_KEY"
-    cast send "$addr" "setRevNetEnabled(bool)" "true" --rpc-url "$RPC" --private-key "$PRIVATE_KEY"
+    # shellcheck disable=SC2086
+    cast send "$addr" "setRevNetTerminal(address)" "$TERMINAL" --rpc-url "$RPC" $SIGN_FLAGS
+    cast send "$addr" "setRevNetProjectId(uint256)" "$PROJECT_ID" --rpc-url "$RPC" $SIGN_FLAGS
+    cast send "$addr" "setPercentToBeneficiary(uint256)" "$PERCENT" --rpc-url "$RPC" $SIGN_FLAGS
+    cast send "$addr" "setRevNetEnabled(bool)" "true" --rpc-url "$RPC" $SIGN_FLAGS
   fi
 
   echo "  ✓"
