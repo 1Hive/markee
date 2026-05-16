@@ -6,7 +6,7 @@ import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 
-const OI_FACTORY_ADDRESS = '0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5' as const
+const OI_FACTORY_ADDRESS = '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const
 
 const FACTORY_ABI = [
   {

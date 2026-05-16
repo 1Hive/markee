@@ -48,7 +48,7 @@ const REV_NET_ENABLED_ABI = [
 // Strategies where fund events earn Superfluid campaign points.
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
-  '0x2eff03c0cb4c09583462adea1abbcee92b52a742', // SF v1.2 leaderboard
+  '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79', // SF v1.3 leaderboard
 ])
 
 interface TopDawgModalProps {
@@ -101,7 +101,7 @@ export function TopDawgModal({
   })
 
   // Get strategy address - use custom one if provided, otherwise default TopDawg
-  const strategyAddress = customStrategyAddress || '0x07a8d34c350C66D6A7e30dbf9b3f8dcC67b70aff' as `0x${string}`
+  const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
 
   // Use the appropriate ABI based on whether it's a partner strategy
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI

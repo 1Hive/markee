@@ -11,15 +11,15 @@ const CACHE_TTL = 60 // seconds
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// v1.2 Superfluid factory
-const SUPERFLUID_FACTORY_ADDRESS = '0x72AB2bf7A691Dc331bC0736050A02E7F3a82d352' as const
-// v1.1 Superfluid factory — still queried for the 108 user-created leaderboards not migrated to v1.2
+// v1.3 Superfluid factory
+const SUPERFLUID_FACTORY_ADDRESS = '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const
+// v1.1 Superfluid factory — still queried for the 108 user-created leaderboards not migrated to v1.3
 const SF_LEGACY_FACTORY_ADDRESS = '0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8' as const
-// v1.2 Superfluid leaderboard (migrated from v1.1 via migrate-to-v12-eoa.sh)
-const SF_MIGRATION_LEADERBOARD = '0x2EfF03c0cB4c09583462adEA1abbCeE92b52a742' as `0x${string}`
-// v1.1 addresses that were migrated to v1.2 — exclude from legacy factory results to avoid duplicates
+// v1.3 Superfluid leaderboard (migrated from v1.2 via migrate-to-v13.sh)
+const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as `0x${string}`
+// v1.1 addresses migrated to v1.2/v1.3 — exclude from legacy factory results to avoid duplicates
 const SF_MIGRATED_V11 = new Set([
-  '0xaec94b5fc02c3b7c3aedd79522bc0c62309486a7', // Gardens 🌱 → now 0x5dCD5003...
+  '0xaec94b5fc02c3b7c3aedd79522bc0c62309486a7', // Gardens 🌱 → now 0xC76Bf829...
 ])
 
 const FACTORY_ABI = [

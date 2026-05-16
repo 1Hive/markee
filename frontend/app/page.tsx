@@ -15,7 +15,7 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { V11_LEADERBOARDS } from '@/lib/contracts/addresses'
+import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { Eye } from 'lucide-react'
 import { formatEther } from 'viem'
 
@@ -475,7 +475,7 @@ export default function Home() {
         onSuccess={handleTransactionSuccess}
         strategyAddress={selectedMarkee
           ? selectedMarkee.pricingStrategy as `0x${string}`
-          : V11_LEADERBOARDS.COOPERATIVE}
+          : V13_LEADERBOARDS.COOPERATIVE}
         topFundsAdded={markees[0]?.totalFundsAdded}
       />
 

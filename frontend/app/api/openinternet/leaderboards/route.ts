@@ -19,12 +19,12 @@ const CACHE_KEY = 'cache:openinternet:leaderboards'
 const CACHE_TTL = 60 // seconds
 
 const OI_FACTORY_ADDRESSES = [
-  '0x231C5d1374f1Ce0Cc0B9bc3Eda7E03785dD47fe5', // v1.2 — all OI leaderboards
+  '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c', // v1.3 — all OI leaderboards
   '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254', // v1.1 legacy — non-migrated leaderboards (0BTC Life, Tipsdeck, etc.)
   '0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D', // v1.1 legacy — non-migrated leaderboards (NORD, OwnerSyncSafe, etc.)
 ] as const
 
-// v1.1 addresses migrated to v1.2 — exclude from legacy factory results to avoid duplicates
+// v1.1 addresses migrated to v1.2/v1.3 — exclude from legacy factory results to avoid duplicates
 const OI_MIGRATED_V11 = new Set([
   '0x9eb8939fbc11a546617bc4c55e9afa4d4d847d80', // Honeyswap
   '0x56f0e84de401198d485bbe30fe13651b0f03b165', // Gitcoin
@@ -89,21 +89,21 @@ const PARTNER_META: Record<string, {
   verifiedUrls: string[]
   status: 'verified'
 }> = {
-  '0x07a8d34c350c66d6a7e30dbf9b3f8dcc67b70aff': { // Markee Cooperative (v1.2)
+  '0x0590b56430426a38d0fa065b839c10d542e75ccd': { // Markee Cooperative (v1.3)
     logoUrl: '/markee-logo.png',
     siteUrl: 'https://markee.xyz',
     verifiedUrl: 'https://markee.xyz',
     verifiedUrls: ['https://markee.xyz'],
     status: 'verified',
   },
-  '0x03e9b27cbc55aa47bbdf6339a1f525bdfb87fbe0': { // Gardens (v1.2)
+  '0x2768bc6e90266248bd8bcf5401c36d8049cdf671': { // Gardens (v1.3)
     logoUrl: '/partners/gardens.png',
     siteUrl: 'https://app.gardens.fund',
     verifiedUrl: 'https://app.gardens.fund',
     verifiedUrls: ['https://app.gardens.fund'],
     status: 'verified',
   },
-  '0x753c1a3203ad3143ecef57e986cb72f7da195741': { // Clawchemy (v1.2)
+  '0xdf4769a9593cb8e40d0409def2645651412a8a97': { // Clawchemy (v1.3)
     logoUrl: '/partners/clawchemy.png',
     siteUrl: 'https://clawchemy.xyz',
     verifiedUrl: 'https://clawchemy.xyz',

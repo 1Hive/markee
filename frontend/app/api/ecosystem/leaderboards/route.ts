@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     // The SF migration leaderboard is a partner leaderboard (migrated from v0.1 TopDawg),
     // not a Superfluid project. Treat it as a verified website entry so it appears in
     // the Verified section alongside Cooperative, Gardens, and Clawchemy.
-    const SF_MIGRATION = '0x2eff03c0cb4c09583462adea1abbcee92b52a742'
+    const SF_MIGRATION = '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79'
     const sfLeaderboards = (sfData.leaderboards ?? []).map((l: any) => {
       if (l.address.toLowerCase() === SF_MIGRATION) {
         return {

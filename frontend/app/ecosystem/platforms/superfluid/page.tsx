@@ -23,7 +23,7 @@ import { FACTORIES, REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = FACTORIES.SUPERFLUID
-const SF_MIGRATION_LEADERBOARD = '0x2EfF03c0cB4c09583462adEA1abbCeE92b52a742'
+const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79'
 
 const FACTORY_ABI = [
   {

@@ -7,7 +7,7 @@ import { getLinkedFiles } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
-const LEADERBOARD_FACTORY_ADDRESS = '0x0A880A8C102D16325eaa6b426AD3acd48338B501' as const
+const LEADERBOARD_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const
 
 function getClient() {
   return createPublicClient({
