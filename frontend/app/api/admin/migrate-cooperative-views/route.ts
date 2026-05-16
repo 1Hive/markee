@@ -4,9 +4,6 @@
 // for all markees that moved from the v0.1 TopDawg Cooperative to the v1.3 Cooperative.
 // Matching is by owner() — both old and new markee contracts belong to the same wallet.
 //
-// Old markee addresses come from MarkeeCreated event logs (contract view functions revert
-// because some underlying markee contracts are no longer callable).
-//
 // Usage:
 //   curl -X POST -H "x-admin-secret: $ADMIN_SECRET" https://markee.xyz/api/admin/migrate-cooperative-views
 //
@@ -20,30 +17,19 @@ import { base } from 'viem/chains'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// v0.1 TopDawg Cooperative strategy (old markee contracts)
-const OLD_COOPERATIVE = '0x558EB41ec9Cc90b86550617Eef5f180eA60e0e3a' as `0x${string}`
+// v0.1 TopDawg Cooperative markee contracts (hardcoded — contract view functions revert)
+const OLD_MARKEES: `0x${string}`[] = [
+  '0xdbbb9b6a6a29815aba82ff61878da5e6bbd12c36',
+  '0x456d35e37c3163dd661dd6ba044a6abee1b61dcc',
+  '0xb28b3af1c153a06ee24f209e142778b84e085978',
+  '0x517677cf68b2ec7dc311263755567fc1249f45c0',
+  '0x3b6cd27bf95f33f61954b24c929e89d76656ef17',
+  '0x19eb906febe8d3c2a90730ba483c5b60b2d0faa7',
+  '0x94edcc8b6d905b53097e0dcdf30e64a1c1439102',
+]
+
 // v1.3 Cooperative leaderboard (new markee contracts)
 const NEW_COOPERATIVE = '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
-
-// Old strategy ABI — reads the markees[] array length and individual entries
-// (getMarkees/getTopMarkees revert because some underlying markee contracts are broken;
-//  markeeCount + markees(index) are simpler and don't call external contracts)
-const OLD_STRATEGY_ABI = [
-  {
-    inputs: [],
-    name: 'markeeCount',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: '', type: 'uint256' }],
-    name: 'markees',
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
 
 const LEADERBOARD_ABI = [
   {
@@ -94,27 +80,7 @@ export async function POST(req: NextRequest) {
   try {
     const client = getClient()
 
-    // 1. Read all old markee addresses from the public markees[] array.
-    //    getMarkees/getTopMarkees revert on this contract; markeeCount() + markees(index)
-    //    are simpler view functions that don't call external contracts so they succeed.
-    const count = await client.readContract({
-      address: OLD_COOPERATIVE,
-      abi: OLD_STRATEGY_ABI,
-      functionName: 'markeeCount',
-    }) as bigint
-
-    const indexCalls = Array.from({ length: Number(count) }, (_, i) => ({
-      address: OLD_COOPERATIVE,
-      abi: OLD_STRATEGY_ABI,
-      functionName: 'markees' as const,
-      args: [BigInt(i)] as [bigint],
-    }))
-    const indexResults = await chunkedMulticall(client, indexCalls as Parameters<typeof client.multicall>[0]['contracts'])
-    const oldMarkees = indexResults
-      .map(r => r?.result as `0x${string}` | undefined)
-      .filter((a): a is `0x${string}` => !!a)
-
-    // 2. Get new markees from v1.3 Cooperative
+    // 1. Get new markees from v1.3 Cooperative
     const newTopResult = await client.readContract({
       address: NEW_COOPERATIVE,
       abi: LEADERBOARD_ABI,
@@ -124,26 +90,26 @@ export async function POST(req: NextRequest) {
 
     const newMarkees = newTopResult[0] as `0x${string}`[]
 
-    // 3. Multicall owner() on both old and new markees
+    // 2. Multicall owner() on both old and new markees
     const ownerCalls = [
-      ...oldMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
+      ...OLD_MARKEES.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
       ...newMarkees.map(addr => ({ address: addr, abi: MARKEE_ABI, functionName: 'owner' as const })),
     ]
     const ownerResults = await chunkedMulticall(client, ownerCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
     const ownerToOld = new Map<string, string>()
-    for (let i = 0; i < oldMarkees.length; i++) {
+    for (let i = 0; i < OLD_MARKEES.length; i++) {
       const owner = ownerResults[i]?.result as string | undefined
-      if (owner) ownerToOld.set(owner.toLowerCase(), oldMarkees[i].toLowerCase())
+      if (owner) ownerToOld.set(owner.toLowerCase(), OLD_MARKEES[i].toLowerCase())
     }
 
     const ownerToNew = new Map<string, string>()
     for (let i = 0; i < newMarkees.length; i++) {
-      const owner = ownerResults[oldMarkees.length + i]?.result as string | undefined
+      const owner = ownerResults[OLD_MARKEES.length + i]?.result as string | undefined
       if (owner) ownerToNew.set(owner.toLowerCase(), newMarkees[i].toLowerCase())
     }
 
-    // 4. Build matched pairs, then batch-fetch all KV values in one mget
+    // 3. Build matched pairs, then batch-fetch all KV values in one mget
     type Pair = { owner: string; oldAddr: string; newAddr: string }
     const matched: Pair[] = []
     let noNewMarkee = 0
@@ -187,7 +153,7 @@ export async function POST(req: NextRequest) {
       skipped,
       noNewMarkee,
       noOldViews,
-      oldMarkeeCount: oldMarkees.length,
+      oldMarkeeCount: OLD_MARKEES.length,
       newMarkeeCount: newMarkees.length,
       matchedCount: matched.length,
       details,
