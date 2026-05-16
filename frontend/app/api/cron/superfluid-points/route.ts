@@ -34,12 +34,9 @@ export const maxDuration = 300
 const LEADERBOARD_FACTORY_ADDRESS = '0xc497187aaa35c26b0008b43c10a6f6300b7ebcad'
 // v1.3 Superfluid leaderboard (migrated from v1.2 via migrate-to-v13.sh)
 const SF_MIGRATION_LEADERBOARD = '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79'
-// Legacy Superfluid partner strategy — emits FundsAddedToMarkee (different event)
-const TOPDAWG_LEGACY_ADDRESS = '0x7a6ce4d457ac1a31513bdeff924ff942150d293e'
 
 const FACTORY_DEPLOY_BLOCK = 46059000n
 // From subgraph.yaml — TopDawgPartnerStrategySuperfluid startBlock
-const TOPDAWG_DEPLOY_BLOCK = 41984295n
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -53,7 +50,6 @@ const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY
 // doesn't cause it to silently skip events that happened before the addition.
 const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'        // factory leaderboards
 const KV_SF_MIG_LAST_BLOCK = 'superfluid:cron:sfMigLastBlock'   // SF migration leaderboard
-const KV_TOPDAWG_LAST_BLOCK = 'superfluid:cron:topDawgLastBlock' // legacy TopDawg
 const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'
 
 const API_BATCH_SIZE = 100
@@ -65,10 +61,6 @@ const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
 )
 
-// Legacy TopDawg partner strategy — different event name and extra fields
-const FUNDS_ADDED_TO_MARKEE_EVENT = parseAbiItem(
-  'event FundsAddedToMarkee(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 beneficiaryAmount, uint256 revNetAmount, uint256 newMarkeeTotal, uint256 newInstanceTotal)'
-)
 
 const FACTORY_ABI = [
   {
@@ -111,7 +103,6 @@ async function fetchRpcEvents(
   leaderboardAddresses: string[],
   fromBlock: bigint,
   toBlock: bigint,
-  event: typeof FUNDS_ADDED_EVENT | typeof FUNDS_ADDED_TO_MARKEE_EVENT = FUNDS_ADDED_EVENT,
 ): Promise<RpcFundsEvent[]> {
   if (leaderboardAddresses.length === 0) return []
 
@@ -125,7 +116,7 @@ async function fetchRpcEvents(
 
     const logs = await client.getLogs({
       address: leaderboardAddresses as `0x${string}`[],
-      event,
+      event: FUNDS_ADDED_EVENT,
       fromBlock: start,
       toBlock: end,
     })
@@ -263,7 +254,6 @@ export async function GET(req: NextRequest) {
   const results = {
     factory:  { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
     sfMig:    { fetched: 0, pushed: 0, failed: 0 },
-    topDawg:  { fetched: 0, pushed: 0, failed: 0 },
     farcaster: { followers: 0, newAwards: 0, failed: 0 },
     durationMs: 0,
   }
@@ -337,40 +327,6 @@ export async function GET(req: NextRequest) {
       console.error('[cron] SF migration RPC error:', e.message)
     }
 
-    // ── 3. Legacy TopDawg partner strategy (FundsAddedToMarkee event) ─────────
-    // Backfills historical points from the old Superfluid strategy contract.
-    // Safe to re-run — uniqueId (txHash-logIndex) deduplicates at the API layer.
-    try {
-      const storedBlock = await kv.get<string>(KV_TOPDAWG_LAST_BLOCK)
-      const fromBlock = storedBlock ? BigInt(storedBlock) : TOPDAWG_DEPLOY_BLOCK
-
-      console.log(`[cron] TopDawg legacy: getLogs ${fromBlock}→${latestBlock}`)
-      const events = await fetchRpcEvents(
-        [TOPDAWG_LEGACY_ADDRESS],
-        fromBlock,
-        latestBlock,
-        FUNDS_ADDED_TO_MARKEE_EVENT,
-      )
-      results.topDawg.fetched = events.length
-
-      if (events.length > 0) {
-        const pushInputs: PushEventInput[] = events
-          .filter(e => e.addedBy !== TOPDAWG_LEGACY_ADDRESS)
-          .map(e => ({
-            event: 'ADD_FUNDS' as const,
-            account: e.addedBy,
-            points: ethToPoints(e.amount),
-            uniqueId: `${e.transactionHash}-${e.logIndex}`,
-          }))
-        const { pushed, failed } = await pushInBatches(pushInputs)
-        results.topDawg.pushed = pushed
-        results.topDawg.failed = failed
-      }
-
-      await kv.set(KV_TOPDAWG_LAST_BLOCK, latestBlock.toString())
-    } catch (e: any) {
-      console.error('[cron] TopDawg legacy RPC error:', e.message)
-    }
   } else {
     console.log('[cron] Skipping RPC scans — ALCHEMY_BASE_URL not set')
   }
