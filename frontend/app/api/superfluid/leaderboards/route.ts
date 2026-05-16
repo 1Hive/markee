@@ -35,6 +35,7 @@ const LEADERBOARD_ABI = [
   { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
   {
     inputs: [{ name: 'limit', type: 'uint256' }],
     name: 'getTopMarkees',
@@ -149,21 +150,22 @@ export async function GET(request: Request) {
       return results
     }
 
-    // 2. Multicall — fetch metadata for each leaderboard
+    // 2. Multicall — fetch metadata for each leaderboard (7 calls per address)
     const metaCalls = addresses.flatMap(addr => [
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'admin' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] },
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },        // b+0
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },  // b+1
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },            // b+2
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },           // b+3
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'admin' as const },                  // b+4
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'beneficiaryAddress' as const },     // b+5
+      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] }, // b+6
     ])
 
     const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
     // 3. Extract top markee addresses, then fetch their messages
     const topMarkeeAddresses: (`0x${string}` | null)[] = addresses.map((_, i) => {
-      const topResult = metaResults[i * 6 + 5]?.result as [string[], bigint[]] | undefined
+      const topResult = metaResults[i * 7 + 6]?.result as [string[], bigint[]] | undefined
       return (topResult?.[0]?.[0] ?? null) as `0x${string}` | null
     })
 
@@ -187,13 +189,14 @@ export async function GET(request: Request) {
     let markeeCallIndex = 0
 
     const allLeaderboards = addresses.map((addr, i) => {
-      const b = i * 6
+      const b = i * 7
       const name         = (metaResults[b]?.result as string) ?? addr
       const totalFunds   = (metaResults[b + 1]?.result as bigint) ?? 0n
       const markeeCount  = (metaResults[b + 2]?.result as bigint) ?? 0n
       const minimumPrice = (metaResults[b + 3]?.result as bigint) ?? 0n
       const admin        = (metaResults[b + 4]?.result as string) ?? ''
-      const topResult    = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
+      const beneficiary  = (metaResults[b + 5]?.result as string) ?? ''
+      const topResult    = metaResults[b + 6]?.result as [string[], bigint[]] | undefined
       const topFunds0    = topResult?.[1]?.[0] ?? 0n
 
       let topMessage: string | null = null
@@ -212,6 +215,7 @@ export async function GET(request: Request) {
         totalFundsRaw: totalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
+        beneficiary,
         creator: creators[i] ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
@@ -223,12 +227,12 @@ export async function GET(request: Request) {
     })
 
     // Deduplicate: concurrent migration runs may have created identical copies in the
-    // v1.3 factory. Among entries sharing the same (name, admin), keep the first
-    // (lowest factory index = canonical migrated one). Funds are excluded from the
-    // key because duplicates can diverge slightly after receiving new payments.
+    // v1.3 factory. Among entries sharing the same (name, beneficiary), keep the first
+    // (lowest factory index = canonical migrated one). beneficiaryAddress is used instead
+    // of admin because some duplicate copies had setAdmin fail, leaving different admin values.
     const dedupeKey = new Set<string>()
     const leaderboards = allLeaderboards.filter(l => {
-      const k = `${l.name.toLowerCase().trim()}|${l.admin.toLowerCase()}`
+      const k = `${l.name.toLowerCase().trim()}|${l.beneficiary.toLowerCase()}`
       if (dedupeKey.has(k)) return false
       dedupeKey.add(k)
       return true
