@@ -17,6 +17,23 @@ export const dynamic = 'force-dynamic'
 const CACHE_KEY = 'cache:ecosystem:leaderboards'
 const CACHE_TTL = 60 // seconds
 
+// Excluded from totalPlatformFunds — leaderboards with clearly recycled/gamed ETH
+const GAMED_ADDRESSES = new Set([
+  '0x1b4eb52953d865e0dde1c856c2ead826581e2904',
+  '0xb5451c1cb790367d0ddbcbf1249de22b9014ecdc',
+  '0x4e413915c0c1d86084e8dcb36d4dec6b66b45a24',
+  '0x762c0484599d6a75636cc8cffd9fcb23793dc582',
+  '0x8578915859912888407f72f102761b7d21b2e702',
+  '0x566f89accd7e6a497e7b4c9f7992f1fe67e564cb',
+  '0x1be900ecc09edd0590db88723dbcb3b1fea22fe3',
+  '0xe3ee8c369dc37e478bc4b0e7fbbecce5f1dc089f',
+  '0x097b06f778ae2fb32a9a4251ccf04fdbebf3733c',
+  '0x774d8d9ce01151fc5189c13e362f5061dab0fd8f',
+  '0x122140b7714a2aa4507d7742a28d0fd71117a729',
+  '0x4ad89044f5f3f324935747a4bce7ba7954d2aaa4',
+  '0xc936a036b7727865a696398de30f616be98e266b',
+])
+
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
 export async function GET(request: Request) {
@@ -94,9 +111,10 @@ export async function GET(request: Request) {
       return bWei > aWei ? 1 : bWei < aWei ? -1 : 0
     })
 
-    // Compute aggregate total across all platforms
+    // Compute aggregate total across all platforms, excluding gamed leaderboards
     const totalFundsWei = leaderboards.reduce(
-      (sum: bigint, l: any) => sum + BigInt(l.totalFundsRaw ?? '0'),
+      (sum: bigint, l: any) =>
+        GAMED_ADDRESSES.has(l.address?.toLowerCase()) ? sum : sum + BigInt(l.totalFundsRaw ?? '0'),
       0n,
     )
 
