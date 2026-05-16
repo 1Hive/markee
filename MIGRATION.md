@@ -65,14 +65,14 @@ No pending work.
 
 ## RevNet v6 activation checklist
 
-**Terminal:** `0x27da30646502e2f642bE5281322Ae8C394F7668a`  
+**Terminal:** `0x2dB6d704058E552DeFE415753465df8dF0361846`  
 **Project ID:** `152` (Base)
 
 Run these `onlyAdmin` calls on **every active v1.1 Leaderboard**:
 
 ```solidity
 // 1. Wire the terminal and project ID
-leaderboard.setRevNetTerminal(0x27da30646502e2f642bE5281322Ae8C394F7668a);
+leaderboard.setRevNetTerminal(0x2dB6d704058E552DeFE415753465df8dF0361846);
 leaderboard.setRevNetProjectId(152);
 
 // 2. Restore the fund split (62% to beneficiary, 38% to RevNet)
@@ -123,5 +123,5 @@ Only **v1.1 Leaderboard** contracts support `setRevNetTerminal` / `setRevNetEnab
 | Superfluid factory v1.1 (active) | `0x1E1b0C22e2C6C7b46ABb0F25231c7eecD4f0A2d8` |
 | Superfluid factory v1.0 (legacy) | `0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d` |
 | Superfluid TopDawg strategy (legacy) | `0x7A6CE4d457AC1A31513BDEFf924FF942150D293E` |
-| RevNet v6 JB terminal (Base) | `0x27da30646502e2f642bE5281322Ae8C394F7668a` |
+| RevNet v6 JB terminal (Base) | `0x2dB6d704058E552DeFE415753465df8dF0361846` |
 | RevNet v6 project ID (Base) | `152` |

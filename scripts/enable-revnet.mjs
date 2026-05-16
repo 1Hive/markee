@@ -26,7 +26,7 @@ import { writeFileSync } from 'fs'
 
 // ─── RevNet v6 config ──────────────────────────────────────────────────────────
 
-const TERMINAL = '0x27da30646502e2f642bE5281322Ae8C394F7668a'
+const TERMINAL = '0x2dB6d704058E552DeFE415753465df8dF0361846'
 const PROJECT_ID = '152'
 const PERCENT_TO_BENEFICIARY = '6200' // 62% — 38% goes to RevNet
 const COOP_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'

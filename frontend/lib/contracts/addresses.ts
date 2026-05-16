@@ -14,7 +14,7 @@ export const COOPERATIVE_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'
 export const REVNET_V6_CONFIG = {
   [base.id]: {
     projectId: 152,
-    terminal: '0x27da30646502e2f642bE5281322Ae8C394F7668a' as const,
+    terminal: '0x2dB6d704058E552DeFE415753465df8dF0361846' as const,
   },
 } as const
 // V1.1 Leaderboard addresses (Base only)
