@@ -77,7 +77,16 @@ export default function Owners() {
             The Markee Network is cooperatively owned by MARKEE token holders. Governance is onchain through the Gardens community.
           </p>
           <p className="text-sm text-[#8A8FBF] mb-8 bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 inline-block">
-            ⚠️ Token issuance is paused while the network migrates from RevNet v5 to v6. Revenue sharing will resume once v6 is live.
+            ⚠️ Token issuance is using an interim{' '}
+            <a
+              href="https://juicebox.money/v5/base%3A152?tabid=activity"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-[#EDEEFF] transition-colors"
+            >
+              Juicebox fee receiver
+            </a>
+            {' '}while we migrate from Revnet v5 to v6.
           </p>
           <div className="flex gap-4 justify-center">
             <a
