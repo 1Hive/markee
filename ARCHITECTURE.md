@@ -4,9 +4,10 @@
 
 ---
 
-## Smart Contracts
-
-Two-clone architecture. **LeaderboardFactory** deploys **Leaderboard** clones; each Leaderboard deploys **Markee** clones. All pricing strategies implement **IPricingStrategy**.
+**Key behaviours:**
+- Every Markee contract points to an interchangeable `pricingStrategy` that sets the rules for who can change the message and how much it costs.  `setMessage/addFunds` can only be called by `pricingStrategy`.
+- Markee is a simple contract that serves the message, tracks funding raised, and is owned by the Pricing Strategy. At launch there are 2 Pricing Strategies: **Leaderboard** and **Fixed**, but this design enables any imaginable Pricing Strategy to be built and any existing Markee to be migrated without losing its history.
+- **Leaderboard** is a choose-your-price strategy, where the highest funded Markee gets the featured spot. Anyone can pay the minimum price to create a message, and anyone can add funds to any message to move it higher up the Leaderboard. The strategy uses a two-clone architecture. **LeaderboardFactory** deploys **Leaderboard** clones for each integrating Partner, and each Leaderboard deploys **Markee** clones:
 
 ```mermaid
 graph TD
@@ -24,13 +25,8 @@ graph TD
     M -->|"pricingStrategy pointer"| IPS
     IPS -->|"when revNetEnabled\n(v6 — pending)"| RT
 ```
-
-**Key behaviours:**
-- Every Markee's `pricingStrategy` points to its parent Leaderboard. `setMessage/addFunds` can only be called by `pricingStrategy`.
-- A Markee can migrate off a Leaderboard to a different strategy (e.g. FixedStrategy) via `migratePricingStrategy()`.
-- **FixedStrategy** is used only by the 3 static markees on the home page ("this is a sign.", etc.).
-- RevNet (`project 119` on Base, terminal `0x2dB6d704058E552DeFE415753465df8dF0361846`) receives a platform fee when `revNetEnabled = true` — currently `false`, waiting for RevNet v6. Currently 100% of payment goes to beneficiary.
-- Canonical implementation: `contracts/v1.0/` (v1.1 adds `platformFeeReceiver`).
+- **FixedStrategy** is a very basic pricing strategy that has a fixed price that anyone can pay to change the message at any time. It's a proof of concept, and used by the 3 static markees on the home page ("this is a sign.", etc.).
+- RevNet (`project ID` on Base, terminal `0x...`) receives a platform fee when `revNetEnabled = true`. When `false`, 100% of payment goes to beneficiary.
 
 ---
 
@@ -42,9 +38,9 @@ Three factory instances on Base, same underlying contract, different platform co
 |---------|---------------|----------|
 | OpenInternet | `0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c` | Any website owner embeds Markee on their site |
 | GitHub | `0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2` | Repo maintainers add Markee to markdown files |
-| Superfluid | `0xC497187AAa35C26b0008B43C10A6F6300b7eBcad` | Superfluid manages one leaderboard for their campaign ecosystem |
+| Superfluid | `0xC497187AAa35C26b0008B43C10A6F6300b7eBcad` | Superfluid's incentivized Markees for their campaign ecosystem |
 
-**Partner Platform Pattern:** A platform (like Superfluid) deploys one Leaderboard via their factory, adds many Markees on behalf of users, controls the beneficiary, and surfaces the leaderboard in their own UI. Each new platform integration needs its own factory and its own verification standard (see §Integration & Verification).
+**Partner Platform Pattern:** A platform (like Superfluid) has its own Leaderboardfactory, where its users can create their own Leaderboard strategies to integrate based on their use case. LeaderboardFactory contracts are owned by the Markee Cooperative's multisig `0xAf4401E765dFf079aB6021BBb8d46E53E27613DB`
 
 ---
 
