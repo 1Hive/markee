@@ -1,4 +1,4 @@
-# Markee Protocol — Architecture
+# Markee Protocol: Architecture Diagram
 
 > Developer reference: contracts → API layer → integrations → data storage.
 
