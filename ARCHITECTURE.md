@@ -142,17 +142,16 @@ Payment (when revNetEnabled = true — pending RevNet v6 deployment):
     └── 38% → RevNet Terminal 0x2dB6d704...
                 └── project 119 (Base) → mints MARKEE tokens → distributed to holders/reserves
 
-Currently: revNetEnabled = false, 100% → beneficiary.
+Currently using an interim legacy Juicebox project at https://juicebox.money/v5/base:152 while Revnets v6 is completed. 
 ```
 
-Cross-chain RevNet project IDs: Base `119`, Optimism `63`, Arbitrum `62`, Mainnet `56`.
 
 ---
 
 ## Key Dev Notes
 
-- **Base only** — all Markee contracts are on Base mainnet. RevNet accepts cross-chain ETH payments but Markee itself does not.
-- **Clone pattern** — EIP-1167 minimal proxies for both Leaderboard and Markee. Read `contracts/v1.0/` for canonical implementations (v1.1 diff: adds `platformFeeReceiver`).
+- **Base only** — all Markee contracts are on Base mainnet. RevNet accepts cross-chain ETH payments on Ethereum Mainnet, Arbitrum, and Optimism, but Markee itself does not.
+- **Clone pattern** — EIP-1167 minimal proxies for both Leaderboard and Markee. Read `contracts/v1.0/` for canonical implementations (i.e. v1.1 diff: adds `platformFeeReceiver`).
 - **KV strong consistency** — GitHub-linked file reads use Upstash REST API directly with `Upstash-Consistency: strong` to avoid replica lag on page refresh.
 - **Cache busting** — all leaderboard APIs support `?bust=1` to skip the 60s KV cache. Always pass it after leaderboard creation and on the `/account` page.
 - **Creator ≠ admin** — Leaderboard `admin` is the beneficiary address, not the deployer. Creator is derived from factory event logs + `eth_getTransaction.from`, cached permanently as `creator:oi:{address}` / `creator:sf:{address}`.
