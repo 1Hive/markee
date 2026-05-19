@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { TokenBalance } from '@/components/wallet/TokenBalance'
+// import { TokenBalance } from '@/components/wallet/TokenBalance'
 import { EthBalance } from '@/components/wallet/EthBalance'
 
 interface HeaderProps {
@@ -71,7 +71,7 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
           
           <div className="flex items-center gap-4">
             <EthBalance />
-            <TokenBalance />
+            {/* <TokenBalance /> */}
             <ConnectButton />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
