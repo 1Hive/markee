@@ -35,6 +35,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const { searchParams } = new URL(request.url)
+
+  // ?fix=1 — corrects the double-count from running migration twice
+  // views:msg was already at 1066 from a prior session; INCRBY added 1066 again → 2133
+  // views:total for user markee was already at 800; INCRBY added 800 again → 1600
+  if (searchParams.get('fix') === '1') {
+    const ccMsgHash = hashMessage(CHAINCARE_MESSAGE)
+    const msgKey = `views:msg:${CHAINCARE_NEW}:${ccMsgHash}`
+    const userTotalKey = `views:total:${USER_NEW}`
+    const [msgVal, userTotal] = await Promise.all([
+      kv.get<number>(msgKey),
+      kv.get<number>(userTotalKey),
+    ])
+    const msgFixed = await kv.decrby(msgKey, 1066)
+    const userFixed = await kv.decrby(userTotalKey, 800)
+    return NextResponse.json({
+      ok: true,
+      fix: {
+        [msgKey]: { before: msgVal, after: msgFixed },
+        [userTotalKey]: { before: userTotal, after: userFixed },
+      },
+    })
+  }
+
   const results: Record<string, { copied: string[]; skipped: string[] }> = {
     ChainCare: { copied: [], skipped: [] },
     'User markee': { copied: [], skipped: [] },
