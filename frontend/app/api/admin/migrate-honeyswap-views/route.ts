@@ -47,29 +47,22 @@ export async function GET(request: NextRequest) {
     { old: `views:msg:${CHAINCARE_OLD}:${ccMsgHash}`, new: `views:msg:${CHAINCARE_NEW}:${ccMsgHash}` },
   ]
   await Promise.all(ccKeys.map(async ({ old: oldKey, new: newKey }) => {
-    const [oldVal, newVal] = await Promise.all([kv.get<number>(oldKey), kv.get<number>(newKey)])
-    if (oldVal && !newVal) {
-      await kv.set(newKey, oldVal)
-      results['ChainCare'].copied.push(`${oldKey} (${oldVal}) → ${newKey}`)
-    } else if (oldVal && newVal) {
-      results['ChainCare'].skipped.push(`${oldKey} (dest already has ${newVal})`)
-    } else {
+    const oldVal = await kv.get<number>(oldKey)
+    if (!oldVal) {
       results['ChainCare'].skipped.push(`${oldKey} (no source data)`)
+      return
     }
+    const added = await kv.incrby(newKey, oldVal)
+    results['ChainCare'].copied.push(`${oldKey} (+${oldVal} → ${newKey} now ${added})`)
   }))
 
   // --- User markee: views:total only (message changed) ---
-  const [oldTotal, newTotal] = await Promise.all([
-    kv.get<number>(`views:total:${USER_OLD}`),
-    kv.get<number>(`views:total:${USER_NEW}`),
-  ])
-  if (oldTotal && !newTotal) {
-    await kv.set(`views:total:${USER_NEW}`, oldTotal)
-    results['User markee'].copied.push(`views:total:${USER_OLD} (${oldTotal}) → views:total:${USER_NEW}`)
-  } else if (oldTotal && newTotal) {
-    results['User markee'].skipped.push(`views:total:${USER_OLD} (dest already has ${newTotal})`)
-  } else {
+  const oldTotal = await kv.get<number>(`views:total:${USER_OLD}`)
+  if (!oldTotal) {
     results['User markee'].skipped.push(`views:total:${USER_OLD} (no source data)`)
+  } else {
+    const added = await kv.incrby(`views:total:${USER_NEW}`, oldTotal)
+    results['User markee'].copied.push(`views:total:${USER_OLD} (+${oldTotal} → now ${added})`)
   }
 
   return NextResponse.json({ ok: true, results })

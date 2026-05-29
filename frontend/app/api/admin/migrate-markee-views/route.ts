@@ -96,40 +96,28 @@ export async function GET(request: NextRequest) {
     const result = { copied: [] as string[], skipped: [] as string[] }
     results[label] = result
 
-    // Migrate views:total
-    const [oldTotal, newTotal] = await Promise.all([
-      kv.get<number>(`views:total:${oldAddr}`),
-      kv.get<number>(`views:total:${newAddr}`),
-    ])
-    if (oldTotal && !newTotal) {
-      await kv.set(`views:total:${newAddr}`, oldTotal)
-      result.copied.push(`views:total (${oldTotal})`)
-    } else if (oldTotal && newTotal) {
-      result.skipped.push(`views:total (dest already has ${newTotal})`)
-    } else {
+    // Migrate views:total (additive — preserves natural views on new address)
+    const oldTotal = await kv.get<number>(`views:total:${oldAddr}`)
+    if (!oldTotal) {
       result.skipped.push('views:total (no source data)')
+    } else {
+      const added = await kv.incrby(`views:total:${newAddr}`, oldTotal)
+      result.copied.push(`views:total (+${oldTotal} → now ${added})`)
     }
 
-    // Migrate views:msg using message text from multicall
+    // Migrate views:msg using message text from multicall (additive)
     const msgResult = messageResults[i]
     if (msgResult.status !== 'success' || !msgResult.result) {
       result.skipped.push('views:msg (could not read message from contract)')
       return
     }
     const msgHash = hashMessage(msgResult.result)
-    const msgOldKey = `views:msg:${oldAddr}:${msgHash}`
-    const msgNewKey = `views:msg:${newAddr}:${msgHash}`
-    const [oldMsg, newMsg] = await Promise.all([
-      kv.get<number>(msgOldKey),
-      kv.get<number>(msgNewKey),
-    ])
-    if (oldMsg && !newMsg) {
-      await kv.set(msgNewKey, oldMsg)
-      result.copied.push(`views:msg:${msgHash} (${oldMsg})`)
-    } else if (oldMsg && newMsg) {
-      result.skipped.push(`views:msg:${msgHash} (dest already has ${newMsg})`)
-    } else {
+    const oldMsg = await kv.get<number>(`views:msg:${oldAddr}:${msgHash}`)
+    if (!oldMsg) {
       result.skipped.push(`views:msg:${msgHash} (no source data)`)
+    } else {
+      const added = await kv.incrby(`views:msg:${newAddr}:${msgHash}`, oldMsg)
+      result.copied.push(`views:msg:${msgHash} (+${oldMsg} → now ${added})`)
     }
   }))
 
