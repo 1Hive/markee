@@ -27,7 +27,8 @@ const CHAINCARE_MESSAGE =
 const CHAINCARE_OLD = '0x82fb4cd58a4fcc577983b466f424426083dec26d'
 const CHAINCARE_NEW = '0x75ca6217f6525140dcfa6f41987a8ea5ff70fff1'
 const USER_OLD = '0x376f4f8c9cac0629df6b6d5495d6e7d2c687412a'
-const USER_NEW = '0x7a8b352ac19957ceccfcc0b69634ab6d6db7033'
+const USER_NEW = '0x7a8b352ac19957cecccfcc0b69634ab6d6db7033'
+const USER_NEW_TYPO = '0x7a8b352ac19957ceccfcc0b69634ab6d6db7033' // wrong key from earlier runs
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get('x-admin-secret')
@@ -37,24 +38,33 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
 
-  // ?fix=1 — corrects the double-count from running migration twice
-  // views:msg was already at 1066 from a prior session; INCRBY added 1066 again → 2133
-  // views:total for user markee was already at 800; INCRBY added 800 again → 1600
+  // ?fix=1 — corrects all migration errors:
+  //   1. ChainCare views:msg was double-counted (2133 → ~1067): DECRBY 1066
+  //   2. User markee went to a typo address — delete that key, INCRBY 800 on correct address
   if (searchParams.get('fix') === '1') {
     const ccMsgHash = hashMessage(CHAINCARE_MESSAGE)
     const msgKey = `views:msg:${CHAINCARE_NEW}:${ccMsgHash}`
-    const userTotalKey = `views:total:${USER_NEW}`
-    const [msgVal, userTotal] = await Promise.all([
+    const correctUserKey = `views:total:${USER_NEW}`
+    const typoUserKey = `views:total:${USER_NEW_TYPO}`
+
+    const [msgVal, correctUserVal, typoUserVal] = await Promise.all([
       kv.get<number>(msgKey),
-      kv.get<number>(userTotalKey),
+      kv.get<number>(correctUserKey),
+      kv.get<number>(typoUserKey),
     ])
-    const msgFixed = await kv.decrby(msgKey, 1066)
-    const userFixed = await kv.decrby(userTotalKey, 800)
+
+    const [msgFixed, correctUserFixed] = await Promise.all([
+      kv.decrby(msgKey, 1066),
+      kv.incrby(correctUserKey, 800),
+    ])
+    await kv.del(typoUserKey)
+
     return NextResponse.json({
       ok: true,
       fix: {
         [msgKey]: { before: msgVal, after: msgFixed },
-        [userTotalKey]: { before: userTotal, after: userFixed },
+        [correctUserKey]: { before: correctUserVal, after: correctUserFixed },
+        [typoUserKey]: { before: typoUserVal, deleted: true },
       },
     })
   }
