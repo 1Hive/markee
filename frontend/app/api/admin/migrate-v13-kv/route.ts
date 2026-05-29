@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 // v0.1 TopDawg strategy → v1.3 address (for views:total migration only)
 const TOPDAWG_TO_V13: Record<string, string> = {
@@ -51,77 +52,51 @@ const ADDRESS_MAP: Record<string, string> = {
   '0x713af7f43d51470f0b9d40133203611ba729c596': '0x0b63a27f25d69c0fc636eccf7b5f338206bb9e40', // web3sim/HelixChain
 }
 
+async function migrateAddress(oldAddr: string, newAddr: string): Promise<{ copied: string[]; skipped: string[] }> {
+  const result = { copied: [] as string[], skipped: [] as string[] }
+
+  const keys = ['oi:meta', 'github:markee', 'github:contract', 'views:total']
+  await Promise.all(keys.map(async (prefix) => {
+    const oldKey = `${prefix}:${oldAddr}`
+    const newKey = `${prefix}:${newAddr}`
+    const [oldVal, newVal] = await Promise.all([kv.get(oldKey), kv.get(newKey)])
+    if (oldVal && !newVal) {
+      await kv.set(newKey, oldVal)
+      result.copied.push(oldKey)
+    } else if (oldVal && newVal) {
+      result.skipped.push(oldKey + ' (dest exists)')
+    }
+  }))
+
+  return result
+}
+
 export async function GET(request: NextRequest) {
   const secret = request.headers.get('x-admin-secret')
   if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const results: Record<string, { copied: string[]; skipped: string[] }> = {}
+  const { searchParams } = new URL(request.url)
+  const filterAddr = searchParams.get('address')?.toLowerCase()
 
-  for (const [oldAddr, newAddr] of Object.entries(ADDRESS_MAP)) {
-    results[oldAddr] = { copied: [], skipped: [] }
+  const entries = filterAddr
+    ? Object.entries(ADDRESS_MAP).filter(([old]) => old === filterAddr)
+    : Object.entries(ADDRESS_MAP)
 
-    // Migrate oi:meta entries (OI leaderboards only)
-    const oiMetaKey = `oi:meta:${oldAddr}`
-    const oiMetaNewKey = `oi:meta:${newAddr}`
-    const [oiMeta, oiMetaNew] = await Promise.all([
-      kv.get(oiMetaKey),
-      kv.get(oiMetaNewKey),
-    ])
-    if (oiMeta && !oiMetaNew) {
-      await kv.set(oiMetaNewKey, oiMeta)
-      results[oldAddr].copied.push(oiMetaKey)
-    } else if (oiMeta && oiMetaNew) {
-      results[oldAddr].skipped.push(oiMetaKey + ' (dest exists)')
-    }
-
-    // Migrate github:markee entries
-    const ghMarkeeKey = `github:markee:${oldAddr}`
-    const ghMarkeeNewKey = `github:markee:${newAddr}`
-    const [ghMarkee, ghMarkeeNew] = await Promise.all([
-      kv.get(ghMarkeeKey),
-      kv.get(ghMarkeeNewKey),
-    ])
-    if (ghMarkee && !ghMarkeeNew) {
-      await kv.set(ghMarkeeNewKey, ghMarkee)
-      results[oldAddr].copied.push(ghMarkeeKey)
-    } else if (ghMarkee && ghMarkeeNew) {
-      results[oldAddr].skipped.push(ghMarkeeKey + ' (dest exists)')
-    }
-
-    // Migrate github:contract entries
-    const ghContractKey = `github:contract:${oldAddr}`
-    const ghContractNewKey = `github:contract:${newAddr}`
-    const [ghContract, ghContractNew] = await Promise.all([
-      kv.get(ghContractKey),
-      kv.get(ghContractNewKey),
-    ])
-    if (ghContract && !ghContractNew) {
-      await kv.set(ghContractNewKey, ghContract)
-      results[oldAddr].copied.push(ghContractKey)
-    } else if (ghContract && ghContractNew) {
-      results[oldAddr].skipped.push(ghContractKey + ' (dest exists)')
-    }
-
-    // Migrate views:total entries
-    const viewsKey = `views:total:${oldAddr}`
-    const viewsNewKey = `views:total:${newAddr}`
-    const [views, viewsNew] = await Promise.all([
-      kv.get<number>(viewsKey),
-      kv.get<number>(viewsNewKey),
-    ])
-    if (views && !viewsNew) {
-      await kv.set(viewsNewKey, views)
-      results[oldAddr].copied.push(viewsKey)
-    } else if (views && viewsNew) {
-      results[oldAddr].skipped.push(viewsKey + ' (dest exists)')
-    }
+  if (filterAddr && entries.length === 0) {
+    return NextResponse.json({ error: `Address ${filterAddr} not found in ADDRESS_MAP` }, { status: 400 })
   }
 
+  const results: Record<string, { copied: string[]; skipped: string[] }> = {}
+  await Promise.all(entries.map(async ([oldAddr, newAddr]) => {
+    results[oldAddr] = await migrateAddress(oldAddr, newAddr)
+  }))
+
   // Migrate views:total from legacy TopDawg strategy addresses to v1.3
+  const topDawgEntries = filterAddr ? [] : Object.entries(TOPDAWG_TO_V13)
   const topDawgResults: Record<string, string> = {}
-  for (const [oldAddr, newAddr] of Object.entries(TOPDAWG_TO_V13)) {
+  await Promise.all(topDawgEntries.map(async ([oldAddr, newAddr]) => {
     const [views, viewsNew] = await Promise.all([
       kv.get<number>(`views:total:${oldAddr}`),
       kv.get<number>(`views:total:${newAddr}`),
@@ -134,7 +109,7 @@ export async function GET(request: NextRequest) {
     } else {
       topDawgResults[oldAddr] = 'missing'
     }
-  }
+  }))
 
-  return NextResponse.json({ ok: true, results, topDawgViews: topDawgResults })
+  return NextResponse.json({ ok: true, results, ...(Object.keys(topDawgResults).length ? { topDawgViews: topDawgResults } : {}) })
 }
