@@ -24,7 +24,9 @@ const TOPDAWG_TO_V13: Record<string, string> = {
 // v1.2 address → v1.3 address for all migrated leaderboards
 const ADDRESS_MAP: Record<string, string> = {
   // OI leaderboards
-  '0xa9a65432a1daf9bdb67542b75f341e4361aecc54': '0xca7fc7887f6448d3a8232845e6f6e5dee916a286', // Honeyswap
+  '0xa9a65432a1daf9bdb67542b75f341e4361aecc54': '0xca7fc7887f6448d3a8232845e6f6e5dee916a286', // Honeyswap (v1.2)
+  '0x9eb8939fbc11a546617bc4c55e9afa4d4d847d80': '0xca7fc7887f6448d3a8232845e6f6e5dee916a286', // Honeyswap (v1.1)
+  '0x1bd04a82814ff611acdb4ab7f94a767c976cc186': '0xca7fc7887f6448d3a8232845e6f6e5dee916a286', // Honeyswap (v1.0)
   '0xf73cab6d43df28798af171df41ec12155b5c725c': '0x9c86db5cfd00805727929e8b85884df4cadaff07', // Gitcoin
   '0x4ba55b631c23487519dacd909500accd714c4648': '0x357b6352ef44c52c2299b731aa449ffed129ec61', // Matias
   '0x07a8d34c350c66d6a7e30dbf9b3f8dcc67b70aff': '0x0590b56430426a38d0fa065b839c10d542e75ccd', // Markee Cooperative
