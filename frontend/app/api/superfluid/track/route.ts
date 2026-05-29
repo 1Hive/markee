@@ -15,16 +15,20 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { kv } from '@vercel/kv'
 import { pushEvent, ethToPoints, SUPERFLUID_EVENTS, type SuperfluidEventKey } from '@/lib/superfluid/points'
+import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 
 export const dynamic = 'force-dynamic'
 
 const ETH_EVENTS = new Set<string>(['BUY_MESSAGE', 'ADD_FUNDS'])
+const BOOSTED_KEY = 'superfluid:s6:boosted'
+const BOOSTED_MULTIPLIER = 5
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { event, account, amountWei, txHash } = body
+    const { event, account, amountWei, txHash, leaderboardAddress } = body
 
     // ── Validate event ────────────────────────────────────────────────────────
     if (!event || !ETH_EVENTS.has(event)) {
@@ -53,8 +57,16 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Calculate points (server-side) ────────────────────────────────────────
-    // 1 point per 0.0001 ETH (1e14 wei). Minimum 1.
-    const points = ethToPoints(amountWei)
+    let points = ethToPoints(amountWei)
+
+    // Apply 5x multiplier if this leaderboard is boosted
+    if (leaderboardAddress && /^0x[0-9a-fA-F]{40}$/.test(leaderboardAddress)) {
+      const boosted = await kv.get<BoostedMarkee[]>(BOOSTED_KEY)
+      const boostedAddrs = new Set((boosted ?? []).map(b => b.address.toLowerCase()))
+      if (boostedAddrs.has(leaderboardAddress.toLowerCase())) {
+        points *= BOOSTED_MULTIPLIER
+      }
+    }
 
     // ── Push ──────────────────────────────────────────────────────────────────
     const result = await pushEvent({
@@ -73,6 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       points,
+      multiplier: points > ethToPoints(amountWei) ? BOOSTED_MULTIPLIER : 1,
       pushRequestId: result.pushRequestId,
     })
   } catch (e: any) {

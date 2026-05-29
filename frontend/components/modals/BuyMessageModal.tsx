@@ -203,9 +203,9 @@ export function BuyMessageModal({
         const amountWei = (() => { try { return parseEther(amount).toString() } catch { return '0' } })()
         const txHash = receipt.transactionHash
         if (isAddFunds) {
-          trackAddFunds(address, amountWei, txHash).catch(console.error)
+          trackAddFunds(address, amountWei, txHash, leaderboardAddress).catch(console.error)
         } else {
-          trackBuyMessage(address, amountWei, txHash).catch(console.error)
+          trackBuyMessage(address, amountWei, txHash, leaderboardAddress).catch(console.error)
         }
       }
     } else {
