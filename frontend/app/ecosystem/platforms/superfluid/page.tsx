@@ -26,7 +26,6 @@ import { useSignMessage } from 'wagmi'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = FACTORIES.SUPERFLUID
-const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79'
 
 const BOOSTED_MULTIPLIER = 5
 const MODERATION_CHAIN_ID = 8453
@@ -77,13 +76,6 @@ interface BoostedLeaderboardEntry {
   leaderboard: SuperfluidLeaderboard | null
 }
 
-interface FeaturedMessage {
-  message: string
-  owner: string
-  totalFundsAdded: string
-  totalFunds: string
-  markeeCount: number
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -176,8 +168,7 @@ export default function SuperfluidPlatformPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [rewardsModalOpen, setRewardsModalOpen] = useState(false)
-  const [featuredMessage, setFeaturedMessage] = useState<FeaturedMessage | null>(null)
-  const [featuredModalOpen, setFeaturedModalOpen] = useState(false)
+
   const [activeBoostedModal, setActiveBoostedModal] = useState<SuperfluidLeaderboard | null>(null)
   const [adminPanelOpen, setAdminPanelOpen] = useState(false)
 
@@ -198,7 +189,6 @@ export default function SuperfluidPlatformPage() {
         setLeaderboards(data.leaderboards ?? [])
         setBoostedLeaderboards(data.boostedLeaderboards ?? [])
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
-        if (data.featuredMessage) setFeaturedMessage(data.featuredMessage)
       }
     } catch (err) {
       console.error(err)
@@ -416,70 +406,6 @@ export default function SuperfluidPlatformPage() {
         </div>
       </section>
 
-      {/* Featured Message — Superfluid DAO */}
-      {featuredMessage?.message && (() => {
-        const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-        const topFunds = BigInt(featuredMessage.totalFundsAdded ?? '0')
-        const buyPrice = topFunds + minIncrement
-        const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
-        const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(3)
-
-        return (
-          <section className="py-10 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
-            <div className="max-w-2xl mx-auto px-4">
-              <a
-                href="https://campaigns.superfluid.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-              >
-                <ExternalLink size={12} />
-                campaigns.superfluid.org
-              </a>
-
-              <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
-                <div
-                  className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
-                  onClick={() => window.location.href = 'https://www.markee.xyz/ecosystem/superfluid'}
-                >
-                  <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
-                    <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
-                      {featuredMessage.message}
-                    </p>
-                    {featuredMessage.owner && (
-                      <p className="text-[#8A8FBF] text-xs text-right mt-2">
-                        {featuredMessage.owner.slice(0, 6)}...{featuredMessage.owner.slice(-4)}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs mb-4">
-                    <span className="text-[#7C9CFF] font-medium">
-                      {totalFundsEth} ETH total raised.
-                    </span>
-                    <span className="text-[#8A8FBF]">
-                      {Math.max(0, (featuredMessage.markeeCount ?? 0) - 1)} {(featuredMessage.markeeCount ?? 0) - 1 === 1 ? 'message' : 'messages'}
-                    </span>
-                  </div>
-
-                  {!NETWORK_PAUSED && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
-                        className="w-full sm:w-auto bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
-                      >
-                        {buyPriceFormatted} ETH to change
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        )
-      })()}
-
       {/* My Markees */}
       {walletAddress && myLeaderboards.length > 0 && (
         <section className="py-10 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
@@ -592,16 +518,6 @@ export default function SuperfluidPlatformPage() {
         onClose={() => setRewardsModalOpen(false)}
         title="Season 6 SUP Rewards"
         description="Earn points by buying messages. Boosted Markees earn 5× points."
-      />
-
-      <TopDawgModal
-        isOpen={featuredModalOpen}
-        onClose={() => setFeaturedModalOpen(false)}
-        onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true, true) }}
-        strategyAddress={SF_MIGRATION_LEADERBOARD as `0x${string}`}
-        partnerName="Superfluid"
-        partnerSplitPercentage={62}
-        topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
       />
 
       {/* Boosted buy modal */}
