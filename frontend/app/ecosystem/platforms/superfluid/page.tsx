@@ -168,6 +168,7 @@ function LeaderboardCardSkeleton() {
 
 export default function SuperfluidPlatformPage() {
   const { address: walletAddress } = useAccount()
+  const [mounted, setMounted] = useState(false)
   const [leaderboards, setLeaderboards] = useState<SuperfluidLeaderboard[]>([])
   const [boostedLeaderboards, setBoostedLeaderboards] = useState<BoostedLeaderboardEntry[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
@@ -179,8 +180,12 @@ export default function SuperfluidPlatformPage() {
   const [activeBoostedModal, setActiveBoostedModal] = useState<SuperfluidLeaderboard | null>(null)
   const [adminPanelOpen, setAdminPanelOpen] = useState(false)
 
-  const isAdmin = walletAddress
-    ? ADMIN_ADDRESSES.includes(walletAddress.toLowerCase())
+  useEffect(() => { setMounted(true) }, [])
+
+  const connectedAddress = mounted ? walletAddress : undefined
+
+  const isAdmin = connectedAddress
+    ? ADMIN_ADDRESSES.includes(connectedAddress.toLowerCase())
     : false
 
   const fetchLeaderboards = useCallback(async (silent = false, bust = false) => {
@@ -217,9 +222,9 @@ export default function SuperfluidPlatformPage() {
   }, [leaderboards, boostedLeaderboards])
   const { views, trackView } = useViews(viewableMarkees)
 
-  const myLeaderboards = walletAddress
+  const myLeaderboards = connectedAddress
     ? leaderboards.filter(l =>
-        ((l as any).creator ?? l.admin).toLowerCase() === walletAddress.toLowerCase()
+        ((l as any).creator ?? l.admin).toLowerCase() === connectedAddress.toLowerCase()
       )
     : []
 
@@ -420,7 +425,7 @@ export default function SuperfluidPlatformPage() {
       </section>
 
       {/* My Markees */}
-      {walletAddress && myLeaderboards.length > 0 && (
+      {connectedAddress && myLeaderboards.length > 0 && (
         <section className="py-10 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3 mb-6">
@@ -507,7 +512,7 @@ export default function SuperfluidPlatformPage() {
             {adminPanelOpen && (
               <AdminPanel
                 boostedLeaderboards={boostedLeaderboards}
-                walletAddress={walletAddress!}
+                walletAddress={connectedAddress!}
                 onUpdate={() => fetchLeaderboards(true, true)}
               />
             )}
@@ -520,7 +525,7 @@ export default function SuperfluidPlatformPage() {
       {createModalOpen && (
         <CreateMarkeeModal
           myLeaderboards={myLeaderboards}
-          walletAddress={walletAddress}
+          walletAddress={connectedAddress}
           onClose={() => setCreateModalOpen(false)}
           onSuccess={() => fetchLeaderboards(false, true)}
         />
