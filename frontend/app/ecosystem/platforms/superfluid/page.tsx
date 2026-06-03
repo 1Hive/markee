@@ -120,19 +120,19 @@ function HeroStatsSkeleton() {
 
 function BoostedCardSkeleton() {
   return (
-    <div className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 animate-pulse">
-      <div className="flex items-center gap-3 mb-4">
-        <SkeletonBar className="w-12 h-12 rounded-lg flex-shrink-0" />
+    <div className="bg-[#0A0F3D] p-4 rounded-lg border border-[#8A8FBF]/20 animate-pulse">
+      <div className="flex items-center gap-3 mb-3">
+        <SkeletonBar className="w-10 h-10 rounded-lg flex-shrink-0" />
         <div className="flex-1 space-y-2">
-          <SkeletonBar className="w-3/4 h-5" />
+          <SkeletonBar className="w-3/4 h-4" />
           <SkeletonBar className="w-1/3 h-3" />
         </div>
       </div>
-      <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[120px] space-y-2.5 flex flex-col justify-center">
-        <SkeletonBar className="w-full h-3.5" />
-        <SkeletonBar className="w-4/5 h-3.5" />
+      <div className="bg-[#060A2A] rounded-lg p-3 mb-3 border border-[#8A8FBF]/20 h-[90px] space-y-2 flex flex-col justify-center">
+        <SkeletonBar className="w-full h-3" />
+        <SkeletonBar className="w-4/5 h-3" />
       </div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <SkeletonBar className="w-28 h-3" />
         <SkeletonBar className="w-16 h-3" />
       </div>
@@ -143,20 +143,19 @@ function BoostedCardSkeleton() {
 
 function LeaderboardCardSkeleton() {
   return (
-    <div className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20">
-      <div className="flex items-center gap-3 mb-4">
-        <SkeletonBar className="w-12 h-12 rounded-lg flex-shrink-0" />
+    <div className="bg-[#0A0F3D] p-4 rounded-lg border border-[#8A8FBF]/20">
+      <div className="flex items-center gap-3 mb-3">
+        <SkeletonBar className="w-10 h-10 rounded-lg flex-shrink-0" />
         <div className="flex-1 space-y-2">
-          <SkeletonBar className="w-3/4 h-5" />
+          <SkeletonBar className="w-3/4 h-4" />
           <SkeletonBar className="w-1/2 h-3" />
         </div>
       </div>
-      <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[120px] space-y-2.5 flex flex-col justify-center">
-        <SkeletonBar className="w-full h-3.5" />
-        <SkeletonBar className="w-4/5 h-3.5" />
-        <SkeletonBar className="w-1/3 h-3 ml-auto mt-auto" />
+      <div className="bg-[#060A2A] rounded-lg p-3 mb-3 border border-[#8A8FBF]/20 h-[90px] space-y-2 flex flex-col justify-center">
+        <SkeletonBar className="w-full h-3" />
+        <SkeletonBar className="w-4/5 h-3" />
       </div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <SkeletonBar className="w-28 h-3" />
         <SkeletonBar className="w-16 h-3" />
       </div>
@@ -263,7 +262,7 @@ export default function SuperfluidPlatformPage() {
                   </span>
                 </div>
                 <p className="text-[#8A8FBF] max-w-xl">
-                  A digital sign for your Superfluid project anyone can pay to edit. Boosted Markees earn 5x SUP points. Fund your favorite ecosystem project and earn more.
+                  A digital sign for your Superfluid project anyone can pay to edit. Boosted Markees earn 5x SUP points. Fund your favorite ecosystem project and earn!
                 </p>
               </div>
             </div>
@@ -447,7 +446,7 @@ export default function SuperfluidPlatformPage() {
         </section>
       )}
 
-      {/* Active Signs */}
+      {/* All Markee Signs */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {isLoadingLeaderboards ? (
@@ -475,7 +474,7 @@ export default function SuperfluidPlatformPage() {
             <div>
               <div className="flex items-center gap-3 mb-6">
                 <Trophy size={20} className="text-[#F897FE]" />
-                <h2 className="text-2xl font-bold text-[#EDEEFF]">Active Signs</h2>
+                <h2 className="text-2xl font-bold text-[#EDEEFF]">All Markee Signs</h2>
                 <span className="text-[#8A8FBF] text-sm">ranked by Season 6 funds added</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -560,6 +559,7 @@ function BoostedCard({
   onBuy: () => void
 }) {
   const lb = entry.leaderboard
+  const [logoError, setLogoError] = useState(false)
 
   useEffect(() => {
     if (lb?.topMessage) trackView(toMarkeeShape(lb))
@@ -573,48 +573,42 @@ function BoostedCard({
   const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
 
   return (
-    <div className="bg-[#0A0F3D] p-6 rounded-lg border border-[#F897FE]/25 hover:border-[#F897FE]/60 transition-colors">
+    <div className="bg-[#0A0F3D] p-4 rounded-lg border border-[#F897FE]/25 hover:border-[#F897FE]/60 transition-colors">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 overflow-hidden">
-          {entry.logoUrl ? (
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 overflow-hidden">
+          {entry.logoUrl && !logoError ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={entry.logoUrl} alt={entry.name} className="object-contain w-8 h-8" />
+            <img src={entry.logoUrl} alt={entry.name} className="object-contain w-7 h-7" onError={() => setLogoError(true)} />
           ) : (
-            <span className="text-[#F897FE] text-lg font-bold">{entry.name.charAt(0).toUpperCase()}</span>
+            <span className="text-[#F897FE] text-base font-bold">{entry.name.charAt(0).toUpperCase()}</span>
           )}
         </div>
         <div className="flex-1 min-w-0">
           <Link
             href={`/ecosystem/platforms/superfluid/${entry.address}`}
-            className="font-bold text-[#EDEEFF] text-lg truncate hover:text-[#F897FE] transition-colors block"
+            className="font-bold text-[#EDEEFF] text-base truncate hover:text-[#F897FE] transition-colors block"
           >
             {entry.name}
           </Link>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <Rocket size={11} className="text-[#F897FE] flex-shrink-0" />
+            <Rocket size={10} className="text-[#F897FE] flex-shrink-0" />
             <span className="text-xs text-[#F897FE] font-bold">{BOOSTED_MULTIPLIER}x pts</span>
           </div>
         </div>
       </div>
 
-      {/* Message */}
-      {lb?.topMessage ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
-          <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">{lb.topMessage}</p>
-          {lb.topMessageOwner && (
-            <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {lb.topMessageOwner}</p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
-          <div className="text-4xl mb-2">🪧</div>
-          <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
-        </div>
-      )}
+      {/* Message — fixed height so all cards stay the same size */}
+      <div className="bg-[#060A2A] rounded-lg p-3 mb-3 border border-[#8A8FBF]/20 h-[90px] overflow-hidden">
+        {lb?.topMessage ? (
+          <p className="text-[#EDEEFF] font-mono text-xs leading-snug line-clamp-4 break-words">{lb.topMessage}</p>
+        ) : (
+          <p className="text-[#8A8FBF] text-xs italic h-full flex items-center justify-center">Be the first to buy a message</p>
+        )}
+      </div>
 
       {/* Stats */}
-      <div className="flex items-center justify-between text-xs mb-4">
+      <div className="flex items-center justify-between text-xs mb-3">
         <span className="text-[#7C9CFF] font-medium">
           {lb ? formatFunds(lb.totalFunds) : '0 ETH'} total raised.
         </span>
@@ -742,39 +736,32 @@ function LeaderboardCard({
   return (
     <div
       onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
-      className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
+      className="bg-[#0A0F3D] p-4 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
     >
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
-          <Zap size={22} className="text-[#1DB227]" />
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
+          <Zap size={18} className="text-[#1DB227]" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{leaderboard.name}</h3>
+          <h3 className="font-bold text-[#EDEEFF] text-base truncate">{leaderboard.name}</h3>
           <span className="text-[#8A8FBF] text-xs font-mono">
             {leaderboard.address.slice(0, 8)}…{leaderboard.address.slice(-6)}
           </span>
         </div>
       </div>
 
-      {leaderboard.topMessage ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
-          <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
+      {/* Message — fixed height so all cards stay the same size */}
+      <div className="bg-[#060A2A] rounded-lg p-3 mb-3 border border-[#8A8FBF]/20 h-[90px] overflow-hidden hover:border-[#7C9CFF]/50 transition-colors">
+        {leaderboard.topMessage ? (
+          <p className="text-[#EDEEFF] font-mono text-xs leading-snug line-clamp-4 break-words">
             {leaderboard.topMessage}
           </p>
-          {leaderboard.topMessageOwner && (
-            <p className="text-[#8A8FBF] text-xs text-right mt-auto">
-              - {leaderboard.topMessageOwner}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
-          <div className="text-4xl mb-2">🪧</div>
-          <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
-        </div>
-      )}
+        ) : (
+          <p className="text-[#8A8FBF] text-xs italic h-full flex items-center justify-center">Be the first to buy a message</p>
+        )}
+      </div>
 
-      <div className="flex items-center justify-between text-xs mb-4">
+      <div className="flex items-center justify-between text-xs mb-3">
         <span className="text-[#7C9CFF] font-medium">
           {formatFunds(leaderboard.totalFunds)} total raised.
         </span>
