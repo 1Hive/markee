@@ -604,11 +604,11 @@ function BoostedCard({
       </div>
 
       {/* Message — fixed height so all cards stay the same size */}
-      <div className="bg-[#060A2A] rounded-lg p-3 mb-3 border border-[#8A8FBF]/20 h-[90px] overflow-hidden">
+      <div className="bg-[#060A2A] rounded-lg p-3 mb-3 border border-[#8A8FBF]/20 h-[90px] overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#8A8FBF]/30 [&::-webkit-scrollbar-thumb]:rounded-full">
         {lb?.topMessage ? (
-          <p className="text-[#EDEEFF] font-mono text-xs leading-snug line-clamp-4 break-words">{lb.topMessage}</p>
+          <p className="text-[#EDEEFF] font-mono text-sm leading-snug break-words">{lb.topMessage}</p>
         ) : (
-          <p className="text-[#8A8FBF] text-xs italic h-full flex items-center justify-center">Be the first to buy a message</p>
+          <p className="text-[#8A8FBF] text-sm italic h-full flex items-center justify-center">Be the first to buy a message</p>
         )}
       </div>
 
