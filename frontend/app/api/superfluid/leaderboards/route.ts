@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
+
+const BOOSTED_KEY = 'superfluid:s6:boosted'
+const BASELINE_PREFIX = 'superfluid:s6:baseline:'
 
 export const dynamic = 'force-dynamic'
 
@@ -142,6 +146,9 @@ export async function GET(request: Request) {
 
     const client = getClient()
 
+    // Fetch S6 boosted list and any stored baselines in parallel with factory call
+    const boostedListPromise = kv.get<BoostedMarkee[]>(BOOSTED_KEY).then(b => b ?? [])
+
     const addresses = await client.readContract({
       address: SUPERFLUID_FACTORY_ADDRESS,
       abi: FACTORY_ABI,
@@ -195,12 +202,24 @@ export async function GET(request: Request) {
         : []
     )
 
-    const [markeeResults, creators] = await Promise.all([
+    const [markeeResults, creators, boostedList] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
       resolveCreators(client, addresses),
+      boostedListPromise,
     ])
+
+    const boostedAddrs = new Set(boostedList.map(b => b.address.toLowerCase()))
+
+    // Fetch baselines for any address that has one stored
+    const baselineKeys = addresses.map(a => `${BASELINE_PREFIX}${a.toLowerCase()}`)
+    const baselineValues = await kv.mget<(string | null)[]>(...baselineKeys)
+    const baselineMap = new Map<string, bigint>()
+    addresses.forEach((addr, i) => {
+      const val = baselineValues[i]
+      if (val) baselineMap.set(addr.toLowerCase(), BigInt(val))
+    })
 
     // 4. Assemble response
     let markeeCallIndex = 0
@@ -225,21 +244,27 @@ export async function GET(request: Request) {
         markeeCallIndex += 2
       }
 
+      const addrLower = addr.toLowerCase()
+      const baseline = baselineMap.get(addrLower) ?? 0n
+      const adjustedTopFunds = topFunds0 > baseline ? topFunds0 - baseline : 0n
+      const adjustedTotalFunds = totalFunds > baseline ? totalFunds - baseline : 0n
+
       return {
         address: addr,
         name,
-        totalFunds: formatEther(totalFunds),
-        totalFundsRaw: totalFunds.toString(),
+        totalFunds: formatEther(adjustedTotalFunds),
+        totalFundsRaw: adjustedTotalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
         beneficiary,
         creator: creators[i] ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
-        topFundsAddedRaw: topFunds0.toString(),
+        topFundsAddedRaw: adjustedTopFunds.toString(),
         topMessage,
         topMessageOwner,
         topMarkeeAddress: topMarkeeAddresses[i] ?? null,
+        boosted: boostedAddrs.has(addrLower),
       }
     })
 
@@ -279,7 +304,19 @@ export async function GET(request: Request) {
       markeeCount: migrationEntry.markeeCount,
     } : null
 
-    const payload = { leaderboards, totalPlatformFunds: formatEther(totalFundsRaw), featuredMessage }
+    // Build boostedLeaderboards: ordered by the boostedList order, with full metadata merged in
+    const leaderboardMap = new Map(leaderboards.map(l => [l.address.toLowerCase(), l]))
+    const boostedLeaderboards = boostedList.map(b => {
+      const lb = leaderboardMap.get(b.address.toLowerCase())
+      return { ...b, leaderboard: lb ?? null }
+    })
+
+    const payload = {
+      leaderboards,
+      boostedLeaderboards,
+      totalPlatformFunds: formatEther(totalFundsRaw),
+      featuredMessage,
+    }
     await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
   } catch (err) {

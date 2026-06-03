@@ -25,6 +25,10 @@ import { kv } from '@vercel/kv'
 import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { pushBatch, ethToPoints, type PushEventInput } from '@/lib/superfluid/points'
+import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
+
+const BOOSTED_KEY = 'superfluid:s6:boosted'
+const BOOSTED_MULTIPLIER = 5
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -92,6 +96,7 @@ async function fetchLeaderboardAddresses(): Promise<string[]> {
 }
 
 interface RpcFundsEvent {
+  leaderboardAddress: string
   addedBy: string
   amount: bigint
   transactionHash: string
@@ -124,6 +129,7 @@ async function fetchRpcEvents(
     all.push(...logs
       .filter(log => log.transactionHash && log.blockNumber !== null)
       .map(log => ({
+        leaderboardAddress: log.address.toLowerCase(),
         addedBy: ((log.args as any).addedBy as string).toLowerCase(),
         amount: (log.args as any).amount as bigint,
         transactionHash: log.transactionHash!,
@@ -262,6 +268,10 @@ export async function GET(req: NextRequest) {
     const client = getRpcClient()
     const latestBlock = await client.getBlockNumber()
 
+    // Fetch boosted set once for multiplier checks
+    const boostedList = await kv.get<BoostedMarkee[]>(BOOSTED_KEY).catch(() => null)
+    const boostedAddrs = new Set((boostedList ?? []).map(b => b.address.toLowerCase()))
+
     // ── 1. LeaderboardFactory children (v1.1 FundsAdded event) ────────────────
     try {
       const leaderboardAddresses = await fetchLeaderboardAddresses()
@@ -279,12 +289,15 @@ export async function GET(req: NextRequest) {
         if (events.length > 0) {
           const pushInputs: PushEventInput[] = events
             .filter(e => !leaderboardAddresses.includes(e.addedBy))
-            .map(e => ({
-              event: 'ADD_FUNDS' as const,
-              account: e.addedBy,
-              points: ethToPoints(e.amount),
-              uniqueId: `${e.transactionHash}-${e.logIndex}`,
-            }))
+            .map(e => {
+              const multiplier = boostedAddrs.has(e.leaderboardAddress) ? BOOSTED_MULTIPLIER : 1
+              return {
+                event: 'ADD_FUNDS' as const,
+                account: e.addedBy,
+                points: ethToPoints(e.amount) * multiplier,
+                uniqueId: `${e.transactionHash}-${e.logIndex}`,
+              }
+            })
           const { pushed, failed } = await pushInBatches(pushInputs)
           results.factory.pushed = pushed
           results.factory.failed = failed
@@ -311,12 +324,15 @@ export async function GET(req: NextRequest) {
       if (events.length > 0) {
         const pushInputs: PushEventInput[] = events
           .filter(e => e.addedBy !== SF_MIGRATION_LEADERBOARD)
-          .map(e => ({
-            event: 'ADD_FUNDS' as const,
-            account: e.addedBy,
-            points: ethToPoints(e.amount),
-            uniqueId: `${e.transactionHash}-${e.logIndex}`,
-          }))
+          .map(e => {
+            const multiplier = boostedAddrs.has(e.leaderboardAddress) ? BOOSTED_MULTIPLIER : 1
+            return {
+              event: 'ADD_FUNDS' as const,
+              account: e.addedBy,
+              points: ethToPoints(e.amount) * multiplier,
+              uniqueId: `${e.transactionHash}-${e.logIndex}`,
+            }
+          })
         const { pushed, failed } = await pushInBatches(pushInputs)
         results.sfMig.pushed = pushed
         results.sfMig.failed = failed

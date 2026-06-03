@@ -277,9 +277,9 @@ export function TopDawgModal({
     const amountWei = parseEther(amount).toString()
 
     if (activeTab === 'addFunds') {
-      trackAddFunds(address, amountWei, txHash).catch(console.error)
+      trackAddFunds(address, amountWei, txHash, strategyAddress).catch(console.error)
     } else {
-      trackBuyMessage(address, amountWei, txHash).catch(console.error)
+      trackBuyMessage(address, amountWei, txHash, strategyAddress).catch(console.error)
     }
   // amount is intentionally captured at confirmation time — do not add to deps
   // eslint-disable-next-line react-hooks/exhaustive-deps

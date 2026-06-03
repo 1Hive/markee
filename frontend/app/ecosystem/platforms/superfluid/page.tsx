@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
   ChevronRight, Zap, Trophy, Plus, X, Loader2,
   CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink, Eye, User,
+  Rocket, Shield, Trash2,
 } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -19,11 +20,20 @@ import { NETWORK_PAUSED } from '@/lib/paused'
 import { useViews } from '@/hooks/useViews'
 import type { Markee } from '@/types'
 import { FACTORIES } from '@/lib/contracts/addresses'
+import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
+import { useSignMessage } from 'wagmi'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUPERFLUID_FACTORY_ADDRESS = FACTORIES.SUPERFLUID
-const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79'
+
+const BOOSTED_MULTIPLIER = 5
+const MODERATION_CHAIN_ID = 8453
+
+const ADMIN_ADDRESSES = [
+  '0x809c9f8dd8ca93a41c3adca4972fa234c28f7714',
+  '0xaf4401e765dff079ab6021bbb8d46e53e27613db',
+]
 
 const FACTORY_ABI = [
   {
@@ -55,15 +65,17 @@ interface SuperfluidLeaderboard {
   topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
+  boosted: boolean
 }
 
-interface FeaturedMessage {
-  message: string
-  owner: string
-  totalFundsAdded: string
-  totalFunds: string
-  markeeCount: number
+interface BoostedLeaderboardEntry {
+  address: string
+  name: string
+  logoUrl?: string
+  projectUrl?: string
+  leaderboard: SuperfluidLeaderboard | null
 }
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +88,13 @@ function toMarkeeShape(lb: SuperfluidLeaderboard): Markee {
     chainId: 8453,
     pricingStrategy: '',
   }
+}
+
+function formatFunds(eth: string) {
+  const n = parseFloat(eth)
+  if (n === 0) return '0 ETH'
+  if (n < 0.001) return '< 0.001 ETH'
+  return `${n.toFixed(3)} ETH`
 }
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
@@ -98,10 +117,25 @@ function HeroStatsSkeleton() {
   )
 }
 
+function BoostedCardSkeleton() {
+  return (
+    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-3 animate-pulse">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-8 h-8 rounded-lg bg-[#1A1F4D] flex-shrink-0" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3.5 bg-[#1A1F4D] rounded w-3/4" />
+          <div className="h-2.5 bg-[#1A1F4D] rounded w-1/2" />
+        </div>
+      </div>
+      <div className="h-10 bg-[#060A2A] rounded mb-2" />
+      <div className="h-7 bg-[#1A1F4D] rounded" />
+    </div>
+  )
+}
+
 function LeaderboardCardSkeleton() {
   return (
     <div className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <SkeletonBar className="w-12 h-12 rounded-lg flex-shrink-0" />
         <div className="flex-1 space-y-2">
@@ -109,21 +143,15 @@ function LeaderboardCardSkeleton() {
           <SkeletonBar className="w-1/2 h-3" />
         </div>
       </div>
-
-      {/* Message box */}
       <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[120px] space-y-2.5 flex flex-col justify-center">
         <SkeletonBar className="w-full h-3.5" />
         <SkeletonBar className="w-4/5 h-3.5" />
         <SkeletonBar className="w-1/3 h-3 ml-auto mt-auto" />
       </div>
-
-      {/* Footer row */}
       <div className="flex items-center justify-between mb-4">
         <SkeletonBar className="w-28 h-3" />
         <SkeletonBar className="w-16 h-3" />
       </div>
-
-      {/* Button */}
       <SkeletonBar className="w-full h-9 rounded-lg" />
     </div>
   )
@@ -134,13 +162,19 @@ function LeaderboardCardSkeleton() {
 export default function SuperfluidPlatformPage() {
   const { address: walletAddress } = useAccount()
   const [leaderboards, setLeaderboards] = useState<SuperfluidLeaderboard[]>([])
+  const [boostedLeaderboards, setBoostedLeaderboards] = useState<BoostedLeaderboardEntry[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [isLoadingLeaderboards, setIsLoadingLeaderboards] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [rewardsModalOpen, setRewardsModalOpen] = useState(false)
-  const [featuredMessage, setFeaturedMessage] = useState<FeaturedMessage | null>(null)
-  const [featuredModalOpen, setFeaturedModalOpen] = useState(false)
+
+  const [activeBoostedModal, setActiveBoostedModal] = useState<SuperfluidLeaderboard | null>(null)
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false)
+
+  const isAdmin = walletAddress
+    ? ADMIN_ADDRESSES.includes(walletAddress.toLowerCase())
+    : false
 
   const fetchLeaderboards = useCallback(async (silent = false, bust = false) => {
     try {
@@ -153,8 +187,8 @@ export default function SuperfluidPlatformPage() {
       if (res.ok) {
         const data = await res.json()
         setLeaderboards(data.leaderboards ?? [])
+        setBoostedLeaderboards(data.boostedLeaderboards ?? [])
         setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
-        if (data.featuredMessage) setFeaturedMessage(data.featuredMessage)
       }
     } catch (err) {
       console.error(err)
@@ -172,21 +206,17 @@ export default function SuperfluidPlatformPage() {
   const viewableMarkees = useMemo(() => leaderboards.map(toMarkeeShape), [leaderboards])
   const { views, trackView } = useViews(viewableMarkees)
 
-  const formatFunds = (eth: string) => {
-    const n = parseFloat(eth)
-    if (n === 0) return '0 ETH'
-    if (n < 0.001) return '< 0.001 ETH'
-    return `${n.toFixed(3)} ETH`
-  }
-
   const myLeaderboards = walletAddress
     ? leaderboards.filter(l =>
         ((l as any).creator ?? l.admin).toLowerCase() === walletAddress.toLowerCase()
       )
     : []
 
-  // Public listing: only boards where a real purchase has been made
-  const activeLeaderboards = leaderboards.filter(l => BigInt(l.topFundsAddedRaw ?? '0') > 0n)
+  // Regular active signs: exclude boosted leaderboards from this list
+  const boostedAddressSet = new Set(boostedLeaderboards.map(b => b.address.toLowerCase()))
+  const activeLeaderboards = leaderboards.filter(l =>
+    BigInt(l.topFundsAddedRaw ?? '0') > 0n && !boostedAddressSet.has(l.address.toLowerCase())
+  )
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -204,7 +234,7 @@ export default function SuperfluidPlatformPage() {
       </section>
 
       {/* Hero */}
-      <section className="relative py-20 overflow-hidden">
+      <section className="relative py-16 overflow-hidden">
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
@@ -217,11 +247,11 @@ export default function SuperfluidPlatformPage() {
                   <h1 className="text-3xl font-bold text-[#EDEEFF]">Superfluid</h1>
                   <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-1 rounded-full">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#1DB227] animate-pulse" />
-                    Season 5 Rewards Active
+                    Season 6 Rewards Active
                   </span>
                 </div>
                 <p className="text-[#8A8FBF] max-w-xl">
-                  A digital sign for your Superfluid project anyone can pay to edit. Top funds added gets the featured spot in each Markee message.
+                  A digital sign for your Superfluid project anyone can pay to edit. Boosted Markees earn 5× SUP points — fund your favorite ecosystem project and earn more.
                 </p>
               </div>
             </div>
@@ -252,7 +282,7 @@ export default function SuperfluidPlatformPage() {
             <div className="flex items-center gap-6 mt-10 flex-wrap">
               <div className="flex items-center gap-2 text-sm">
                 <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{activeLeaderboards.length}</span>
+                <span className="text-[#F897FE] font-semibold">{activeLeaderboards.length + boostedLeaderboards.length}</span>
                 <span className="text-[#8A8FBF]">active signs</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
@@ -262,7 +292,12 @@ export default function SuperfluidPlatformPage() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-[#1DB227] font-semibold">10M pts / ETH</span>
-                <span className="text-[#8A8FBF]">funded</span>
+                <span className="text-[#8A8FBF]">standard</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Rocket size={12} className="text-[#F897FE]" />
+                <span className="text-[#F897FE] font-semibold">50M pts / ETH</span>
+                <span className="text-[#8A8FBF]">on Boosted Markees</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-[#1DB227] font-semibold">1 pt / follow</span>
@@ -294,8 +329,50 @@ export default function SuperfluidPlatformPage() {
         </div>
       </section>
 
+      {/* Boosted Markees */}
+      <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3 mb-5">
+            <Rocket size={18} className="text-[#F897FE]" />
+            <h2 className="text-xl font-bold text-[#EDEEFF]">Boosted Markees</h2>
+            <span className="flex items-center gap-1 bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE] text-xs font-bold px-2 py-0.5 rounded-full">
+              {BOOSTED_MULTIPLIER}× pts
+            </span>
+            <span className="text-[#8A8FBF] text-sm hidden sm:inline">Season 6 ecosystem projects — buy a message and earn 5× the SUP points</span>
+          </div>
+
+          {isLoadingLeaderboards ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {[...Array(8)].map((_, i) => <BoostedCardSkeleton key={i} />)}
+            </div>
+          ) : boostedLeaderboards.length === 0 ? (
+            <div className="text-center py-8 text-[#8A8FBF] text-sm">
+              No boosted markees configured yet.
+              {isAdmin && (
+                <button
+                  onClick={() => setAdminPanelOpen(true)}
+                  className="ml-2 text-[#F897FE] hover:underline"
+                >
+                  Add one →
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {boostedLeaderboards.map(entry => (
+                <BoostedCard
+                  key={entry.address}
+                  entry={entry}
+                  onBuy={() => entry.leaderboard && setActiveBoostedModal(entry.leaderboard)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* How it works */}
-      <section className="py-12 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
+      <section className="py-12 bg-[#060A2A] border-b border-[#8A8FBF]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
@@ -306,13 +383,13 @@ export default function SuperfluidPlatformPage() {
               },
               {
                 step: '2',
-                title: 'Buy Messages from Top Superfluid Projects',
-                body: 'Featured messages get the most impressions and go towards funding your favorite projects.',
+                title: 'Buy Messages on Boosted Signs',
+                body: 'Fund ecosystem project signs to earn 5× SUP points. Every purchase also goes towards funding the project.',
               },
               {
                 step: '3',
-                title: 'Get Rewarded',
-                body: "Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid's Season 5 Rewards.",
+                title: 'Earn Season 6 SUP Rewards',
+                body: "Every purchase earns SUP in Superfluid's Season 6 Rewards. Boosted Markees earn 5× — fund your favorite projects.",
               },
             ].map(({ step, title, body }) => (
               <div key={step} className="flex gap-4">
@@ -329,73 +406,9 @@ export default function SuperfluidPlatformPage() {
         </div>
       </section>
 
-      {/* Featured Message — Legacy TopDawg */}
-      {featuredMessage?.message && (() => {
-        const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-        const topFunds = BigInt(featuredMessage.totalFundsAdded ?? '0')
-        const buyPrice = topFunds + minIncrement
-        const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
-        const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(3)
-
-        return (
-          <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
-            <div className="max-w-2xl mx-auto px-4">
-              <a
-                href="https://campaigns.superfluid.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-              >
-                <ExternalLink size={12} />
-                campaigns.superfluid.org
-              </a>
-
-              <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
-                <div
-                  className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
-                  onClick={() => window.location.href = 'https://www.markee.xyz/ecosystem/superfluid'}
-                >
-                  <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
-                    <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
-                      {featuredMessage.message}
-                    </p>
-                    {featuredMessage.owner && (
-                      <p className="text-[#8A8FBF] text-xs text-right mt-2">
-                        {featuredMessage.owner.slice(0, 6)}...{featuredMessage.owner.slice(-4)}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs mb-4">
-                    <span className="text-[#7C9CFF] font-medium">
-                      {totalFundsEth} ETH total raised.
-                    </span>
-                    <span className="text-[#8A8FBF]">
-                      {Math.max(0, (featuredMessage.markeeCount ?? 0) - 1)} {(featuredMessage.markeeCount ?? 0) - 1 === 1 ? 'message' : 'messages'}
-                    </span>
-                  </div>
-
-                  {!NETWORK_PAUSED && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
-                        className="w-full sm:w-auto bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
-                      >
-                        {buyPriceFormatted} ETH to change
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        )
-      })()}
-
-      {/* My Markees — visible only to the connected admin */}
+      {/* My Markees */}
       {walletAddress && myLeaderboards.length > 0 && (
-        <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
+        <section className="py-10 bg-[#0A0F3D] border-b border-[#8A8FBF]/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3 mb-6">
               <User size={18} className="text-[#F897FE]" />
@@ -413,14 +426,14 @@ export default function SuperfluidPlatformPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {myLeaderboards.map(lb => (
-                <MyMarkeeCard key={lb.address} leaderboard={lb} formatFunds={formatFunds} />
+                <MyMarkeeCard key={lb.address} leaderboard={lb} />
               ))}
             </div>
           </div>
         </section>
       )}
 
-      {/* Signs grid */}
+      {/* Active Signs */}
       <section className="py-16 bg-[#060A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {isLoadingLeaderboards ? (
@@ -432,8 +445,8 @@ export default function SuperfluidPlatformPage() {
           ) : activeLeaderboards.length === 0 ? (
             <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
               <Zap size={40} className="text-[#1DB227] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No active signs yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Be the first Superfluid project to buy a message.</p>
+              <p className="text-[#EDEEFF] font-semibold mb-2">No community signs yet this season</p>
+              <p className="text-[#8A8FBF] text-sm mb-6">Create a Markee for your Superfluid project to appear here.</p>
               {!NETWORK_PAUSED && (
                 <button
                   onClick={() => setCreateModalOpen(true)}
@@ -449,7 +462,7 @@ export default function SuperfluidPlatformPage() {
               <div className="flex items-center gap-3 mb-6">
                 <Trophy size={20} className="text-[#F897FE]" />
                 <h2 className="text-2xl font-bold text-[#EDEEFF]">Active Signs</h2>
-                <span className="text-[#8A8FBF] text-sm">ranked by total funds added</span>
+                <span className="text-[#8A8FBF] text-sm">ranked by Season 6 funds added</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {activeLeaderboards.map((lb, idx) => (
@@ -457,7 +470,6 @@ export default function SuperfluidPlatformPage() {
                     key={lb.address}
                     leaderboard={lb}
                     rank={idx + 1}
-                    formatFunds={formatFunds}
                     trackView={trackView}
                     viewCount={views.get(lb.address.toLowerCase())?.totalViews}
                   />
@@ -467,6 +479,28 @@ export default function SuperfluidPlatformPage() {
           )}
         </div>
       </section>
+
+      {/* Admin Panel */}
+      {isAdmin && (
+        <section className="py-10 bg-[#0A0F3D] border-t border-[#8A8FBF]/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <button
+              onClick={() => setAdminPanelOpen(p => !p)}
+              className="flex items-center gap-2 text-[#8A8FBF] hover:text-[#F897FE] transition-colors text-sm mb-4"
+            >
+              <Shield size={14} />
+              {adminPanelOpen ? 'Hide' : 'Show'} Admin Panel
+            </button>
+            {adminPanelOpen && (
+              <AdminPanel
+                boostedLeaderboards={boostedLeaderboards}
+                walletAddress={walletAddress!}
+                onUpdate={() => fetchLeaderboards(true, true)}
+              />
+            )}
+          </div>
+        </section>
+      )}
 
       <Footer />
 
@@ -482,32 +516,111 @@ export default function SuperfluidPlatformPage() {
       <RewardsModal
         isOpen={rewardsModalOpen}
         onClose={() => setRewardsModalOpen(false)}
-        title="Season 5 SUP Rewards"
-        description="Earn points by buying messages and adding funds to any Superfluid message."
+        title="Season 6 SUP Rewards"
+        description="Earn points by buying messages. Boosted Markees earn 5× points."
       />
 
-      <TopDawgModal
-        isOpen={featuredModalOpen}
-        onClose={() => setFeaturedModalOpen(false)}
-        onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true, true) }}
-        strategyAddress={SF_MIGRATION_LEADERBOARD as `0x${string}`}
-        partnerName="Superfluid"
-        partnerSplitPercentage={62}
-        topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
-      />
+      {/* Boosted buy modal */}
+      {activeBoostedModal && (
+        <BoostedBuyModal
+          leaderboard={activeBoostedModal}
+          onClose={() => setActiveBoostedModal(null)}
+          onSuccess={() => { setActiveBoostedModal(null); fetchLeaderboards(true, true) }}
+        />
+      )}
     </div>
   )
 }
 
-// ─── My Markee Card (admin-only compact card) ─────────────────────────────────
+// ─── Boosted Card ────────────────────────────────────────────────────────────
 
-function MyMarkeeCard({
+function BoostedCard({
+  entry,
+  onBuy,
+}: {
+  entry: BoostedLeaderboardEntry
+  onBuy: () => void
+}) {
+  const lb = entry.leaderboard
+  const minIncrement = BigInt('1000000000000000')
+  const minPriceRaw = BigInt(lb?.minimumPriceRaw ?? '3000000000000000')
+  const topFunds = BigInt(lb?.topFundsAddedRaw ?? '0')
+  const rawBuyPrice = topFunds + minIncrement
+  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
+  const buyPriceEth = (Number(buyPrice) / 1e18).toFixed(3)
+  const hasMessage = !!lb?.topMessage
+
+  return (
+    <div className="bg-[#0A0F3D] rounded-lg border border-[#F897FE]/25 hover:border-[#F897FE]/60 transition-colors flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <div className="w-8 h-8 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 flex items-center justify-center overflow-hidden">
+          {entry.logoUrl ? (
+            <Image src={entry.logoUrl} alt={entry.name} width={24} height={24} className="object-contain" />
+          ) : (
+            <span className="text-[#F897FE] text-xs font-bold">{entry.name.charAt(0).toUpperCase()}</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[#EDEEFF] text-xs font-semibold truncate">{entry.name}</p>
+          <div className="flex items-center gap-1 mt-0.5">
+            <Rocket size={9} className="text-[#F897FE] flex-shrink-0" />
+            <span className="text-[10px] text-[#F897FE] font-bold">{BOOSTED_MULTIPLIER}× pts</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Message */}
+      <div className="mx-3 mb-2 bg-[#060A2A] rounded border border-[#8A8FBF]/15 px-2.5 py-2 min-h-[48px] flex items-center flex-1">
+        {hasMessage ? (
+          <p className="text-[#EDEEFF] font-mono text-[11px] leading-snug line-clamp-3 break-words">
+            {lb!.topMessage}
+          </p>
+        ) : (
+          <p className="text-[#8A8FBF] text-[11px] italic">Be the first to buy a message</p>
+        )}
+      </div>
+
+      {/* Buy button */}
+      {!NETWORK_PAUSED && (
+        <button
+          onClick={onBuy}
+          className="mx-3 mb-3 bg-[#F897FE]/15 hover:bg-[#F897FE] text-[#F897FE] hover:text-[#060A2A] border border-[#F897FE]/40 hover:border-[#F897FE] px-2 py-1.5 rounded text-xs font-semibold transition-all"
+        >
+          {buyPriceEth} ETH to change
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── Boosted Buy Modal ───────────────────────────────────────────────────────
+
+function BoostedBuyModal({
   leaderboard,
-  formatFunds,
+  onClose,
+  onSuccess,
 }: {
   leaderboard: SuperfluidLeaderboard
-  formatFunds: (eth: string) => string
+  onClose: () => void
+  onSuccess: () => void
 }) {
+  return (
+    <TopDawgModal
+      isOpen
+      onClose={onClose}
+      onSuccess={onSuccess}
+      strategyAddress={leaderboard.address as `0x${string}`}
+      partnerName="Superfluid"
+      partnerSplitPercentage={62}
+      topFundsAdded={BigInt(leaderboard.topFundsAddedRaw ?? '0')}
+    />
+  )
+}
+
+// ─── My Markee Card ──────────────────────────────────────────────────────────
+
+function MyMarkeeCard({ leaderboard }: { leaderboard: SuperfluidLeaderboard }) {
   const router = useRouter()
   const hasPurchase = BigInt(leaderboard.topFundsAddedRaw ?? '0') > 0n
 
@@ -517,7 +630,11 @@ function MyMarkeeCard({
       className="bg-[#060A2A] rounded-lg border border-[#F897FE]/20 hover:border-[#F897FE]/60 transition-colors cursor-pointer p-4 flex items-center gap-4"
     >
       <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
-        <Zap size={18} className="text-[#1DB227]" />
+        {leaderboard.boosted ? (
+          <Rocket size={16} className="text-[#F897FE]" />
+        ) : (
+          <Zap size={18} className="text-[#1DB227]" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-[#EDEEFF] text-sm truncate">{leaderboard.name}</p>
@@ -525,7 +642,12 @@ function MyMarkeeCard({
           {formatFunds(leaderboard.totalFunds)} raised · {Math.max(0, leaderboard.markeeCount - 1)} {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
         </p>
       </div>
-      {!hasPurchase && (
+      {leaderboard.boosted && (
+        <span className="text-[10px] font-bold text-[#F897FE] bg-[#F897FE]/10 border border-[#F897FE]/20 px-2 py-0.5 rounded-full flex-shrink-0">
+          {BOOSTED_MULTIPLIER}×
+        </span>
+      )}
+      {!hasPurchase && !leaderboard.boosted && (
         <span className="text-[10px] font-semibold text-[#7C9CFF] bg-[#7C9CFF]/10 border border-[#7C9CFF]/20 px-2 py-0.5 rounded-full flex-shrink-0">
           Awaiting Activation
         </span>
@@ -534,18 +656,16 @@ function MyMarkeeCard({
   )
 }
 
-// ─── Leaderboard Card ─────────────────────────────────────────────────────────
+// ─── Leaderboard Card ────────────────────────────────────────────────────────
 
 function LeaderboardCard({
   leaderboard,
   rank,
-  formatFunds,
   trackView,
   viewCount,
 }: {
   leaderboard: SuperfluidLeaderboard
   rank: number
-  formatFunds: (eth: string) => string
   trackView: (m: Markee) => void
   viewCount?: number
 }) {
@@ -557,7 +677,7 @@ function LeaderboardCard({
     }
   }, [leaderboard.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
+  const minIncrement = BigInt('1000000000000000')
   const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
   const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
   const rawBuyPrice = topFunds + minIncrement
@@ -626,6 +746,154 @@ function LeaderboardCard({
       >
         {buyPriceFormatted.toFixed(3)} ETH to change
       </button>
+    </div>
+  )
+}
+
+// ─── Admin Panel ─────────────────────────────────────────────────────────────
+
+function AdminPanel({
+  boostedLeaderboards,
+  walletAddress,
+  onUpdate,
+}: {
+  boostedLeaderboards: BoostedLeaderboardEntry[]
+  walletAddress: string
+  onUpdate: () => void
+}) {
+  const { signMessageAsync } = useSignMessage()
+  const [addAddress, setAddAddress] = useState('')
+  const [addName, setAddName] = useState('')
+  const [addLogo, setAddLogo] = useState('')
+  const [addProject, setAddProject] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  async function signAndPost(action: 'add' | 'remove', address: string, metadata?: { name: string; logoUrl?: string; projectUrl?: string }) {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const message = `markee-boosted:${action}:${MODERATION_CHAIN_ID}:${address.toLowerCase()}:${timestamp}`
+      const signature = await signMessageAsync({ message })
+
+      const res = await fetch('/api/superfluid/boosted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          address,
+          name: metadata?.name,
+          logoUrl: metadata?.logoUrl || undefined,
+          projectUrl: metadata?.projectUrl || undefined,
+          adminAddress: walletAddress,
+          signature,
+          timestamp,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'Request failed'); return }
+      setSuccess(`${action === 'add' ? 'Added' : 'Removed'} successfully`)
+      setAddAddress('')
+      setAddName('')
+      setAddLogo('')
+      setAddProject('')
+      onUpdate()
+    } catch (e: any) {
+      setError(e.message ?? 'Unknown error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-[#060A2A] rounded-xl border border-[#F897FE]/20 p-6 space-y-6">
+      <div className="flex items-center gap-2">
+        <Shield size={16} className="text-[#F897FE]" />
+        <h3 className="text-[#EDEEFF] font-bold">Boosted Markees Admin</h3>
+      </div>
+
+      {/* Current list */}
+      {boostedLeaderboards.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[#8A8FBF] text-xs uppercase tracking-wider">Current Boosted ({boostedLeaderboards.length})</p>
+          <div className="space-y-2">
+            {boostedLeaderboards.map(entry => (
+              <div key={entry.address} className="flex items-center gap-3 bg-[#0A0F3D] rounded-lg px-3 py-2 border border-[#8A8FBF]/15">
+                <div className="w-6 h-6 rounded bg-[#060A2A] border border-[#8A8FBF]/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {entry.logoUrl ? (
+                    <Image src={entry.logoUrl} alt={entry.name} width={16} height={16} className="object-contain" />
+                  ) : (
+                    <span className="text-[9px] text-[#F897FE] font-bold">{entry.name.charAt(0)}</span>
+                  )}
+                </div>
+                <span className="text-[#EDEEFF] text-xs flex-1 min-w-0">
+                  <span className="font-medium">{entry.name}</span>
+                  <span className="text-[#8A8FBF] ml-2 font-mono">{entry.address.slice(0, 8)}…</span>
+                </span>
+                <button
+                  onClick={() => signAndPost('remove', entry.address)}
+                  disabled={loading}
+                  className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-40 flex-shrink-0"
+                  title="Remove"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add form */}
+      <div className="space-y-3">
+        <p className="text-[#8A8FBF] text-xs uppercase tracking-wider">Add Boosted Markee</p>
+        <input
+          type="text"
+          placeholder="Leaderboard address (0x…)"
+          value={addAddress}
+          onChange={e => setAddAddress(e.target.value)}
+          className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-3 py-2 text-[#EDEEFF] text-sm font-mono outline-none"
+        />
+        <input
+          type="text"
+          placeholder="Project name"
+          value={addName}
+          onChange={e => setAddName(e.target.value)}
+          className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-3 py-2 text-[#EDEEFF] text-sm outline-none"
+        />
+        <input
+          type="text"
+          placeholder="Logo URL (optional)"
+          value={addLogo}
+          onChange={e => setAddLogo(e.target.value)}
+          className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-3 py-2 text-[#EDEEFF] text-sm outline-none"
+        />
+        <input
+          type="text"
+          placeholder="Project URL (optional)"
+          value={addProject}
+          onChange={e => setAddProject(e.target.value)}
+          className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-3 py-2 text-[#EDEEFF] text-sm outline-none"
+        />
+        {error && <p className="text-red-400 text-xs">{error}</p>}
+        {success && <p className="text-green-400 text-xs">{success}</p>}
+        <button
+          onClick={() => {
+            if (!/^0x[0-9a-fA-F]{40}$/.test(addAddress)) { setError('Invalid address'); return }
+            if (!addName.trim()) { setError('Name is required'); return }
+            signAndPost('add', addAddress, { name: addName, logoUrl: addLogo || undefined, projectUrl: addProject || undefined })
+          }}
+          disabled={loading}
+          className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+          Add to Boosted
+        </button>
+      </div>
     </div>
   )
 }
@@ -728,7 +996,7 @@ function CreateMarkeeModal({
               </div>
               <div>
                 <h2 className="text-[#EDEEFF] font-bold text-lg">Create a Markee</h2>
-                <p className="text-[#8A8FBF] text-xs">Superfluid Season 5</p>
+                <p className="text-[#8A8FBF] text-xs">Superfluid Season 6</p>
               </div>
             </div>
 
