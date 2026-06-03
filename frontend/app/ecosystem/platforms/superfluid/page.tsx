@@ -15,7 +15,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Image from 'next/image'
 import { RewardsModal } from '@/components/modals/RewardsModal'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { useViews } from '@/hooks/useViews'
 import type { Markee } from '@/types'
@@ -65,6 +65,7 @@ interface SuperfluidLeaderboard {
   topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
+  topMarkeeAddress: string | null
   boosted: boolean
 }
 
@@ -553,10 +554,11 @@ function BoostedCard({
   return (
     <div className="bg-[#0A0F3D] rounded-lg border border-[#F897FE]/25 hover:border-[#F897FE]/60 transition-colors flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+      <Link href={`/ecosystem/platforms/superfluid/${entry.address}`} className="flex items-center gap-2 px-3 pt-3 pb-2 hover:opacity-80 transition-opacity">
         <div className="w-8 h-8 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 flex items-center justify-center overflow-hidden">
           {entry.logoUrl ? (
-            <Image src={entry.logoUrl} alt={entry.name} width={24} height={24} className="object-contain" />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={entry.logoUrl} alt={entry.name} width={24} height={24} className="object-contain w-6 h-6" />
           ) : (
             <span className="text-[#F897FE] text-xs font-bold">{entry.name.charAt(0).toUpperCase()}</span>
           )}
@@ -568,7 +570,7 @@ function BoostedCard({
             <span className="text-[10px] text-[#F897FE] font-bold">{BOOSTED_MULTIPLIER}× pts</span>
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* Message */}
       <div className="mx-3 mb-2 bg-[#060A2A] rounded border border-[#8A8FBF]/15 px-2.5 py-2 min-h-[48px] flex items-center flex-1">
@@ -605,15 +607,27 @@ function BoostedBuyModal({
   onClose: () => void
   onSuccess: () => void
 }) {
+  const existingMarkee =
+    leaderboard.topMarkeeAddress && leaderboard.topMessage
+      ? {
+          address: leaderboard.topMarkeeAddress,
+          message: leaderboard.topMessage,
+          name: leaderboard.topMessageOwner ?? '',
+          owner: leaderboard.topMessageOwner ?? '',
+          totalFundsAdded: BigInt(leaderboard.topFundsAddedRaw ?? '0'),
+        }
+      : null
+
   return (
-    <TopDawgModal
-      isOpen
+    <BuyMessageModal
+      leaderboardAddress={leaderboard.address as `0x${string}`}
+      minimumPrice={BigInt(leaderboard.minimumPriceRaw ?? '0')}
+      maxMessageLength={222}
+      existingMarkee={existingMarkee}
+      topFundsAdded={BigInt(leaderboard.topFundsAddedRaw ?? '0')}
+      platformId="superfluid"
       onClose={onClose}
       onSuccess={onSuccess}
-      strategyAddress={leaderboard.address as `0x${string}`}
-      partnerName="Superfluid"
-      partnerSplitPercentage={62}
-      topFundsAdded={BigInt(leaderboard.topFundsAddedRaw ?? '0')}
     />
   )
 }
@@ -825,7 +839,8 @@ function AdminPanel({
               <div key={entry.address} className="flex items-center gap-3 bg-[#0A0F3D] rounded-lg px-3 py-2 border border-[#8A8FBF]/15">
                 <div className="w-6 h-6 rounded bg-[#060A2A] border border-[#8A8FBF]/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {entry.logoUrl ? (
-                    <Image src={entry.logoUrl} alt={entry.name} width={16} height={16} className="object-contain" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={entry.logoUrl} alt={entry.name} width={16} height={16} className="object-contain w-4 h-4" />
                   ) : (
                     <span className="text-[9px] text-[#F897FE] font-bold">{entry.name.charAt(0)}</span>
                   )}
