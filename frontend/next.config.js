@@ -80,7 +80,13 @@ const nextConfig = {
   },
 
   webpack: (config) => {
-    config.resolve.fallback = { fs: false, net: false, tls: false, '@farcaster/mini-app-solana': false }
+    config.resolve.fallback = {
+      fs: false,
+      net: false,
+      tls: false,
+      '@farcaster/mini-app-solana': false,
+      '@react-native-async-storage/async-storage': false,
+    }
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
   },
