@@ -74,7 +74,7 @@ function MetricStat({ n, label, color, dot }: { n: string; label: string; color:
 
 // ─── FeaturedMarkee ────────────────────────────────────────────────────────────
 
-function FeaturedMarkee({ lb, onBid }: { lb: EcosystemLeaderboard; onBid: () => void }) {
+function FeaturedMarkee({ lb, onBid, views }: { lb: EcosystemLeaderboard; onBid: () => void; views: number }) {
   const [hover, setHover] = useState(false)
   return (
     <section
@@ -109,9 +109,7 @@ function FeaturedMarkee({ lb, onBid }: { lb: EcosystemLeaderboard; onBid: () => 
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                 <circle cx="12" cy="12" r="3" />
               </svg>
-              {lb.topFundsAddedRaw
-                ? fmtCompact((parseInt(lb.topFundsAddedRaw) / 1e18) * 3400)
-                : '—'}
+              {views > 0 ? fmtCompact(views) : '—'}
             </span>
           </div>
           <div
@@ -322,6 +320,7 @@ export default function EcosystemPage() {
       {!isLoading && featured && (
         <FeaturedMarkee
           lb={featured}
+          views={viewCounts.get(featured.address.toLowerCase()) ?? 0}
           onBid={() => {
             window.location.href = rowHref(featured)
           }}
@@ -381,32 +380,41 @@ export default function EcosystemPage() {
       {/* Leaderboard */}
       <section className="py-14 px-4 sm:px-10 bg-[#060A2A]">
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          {/* Filter bar */}
-          <div className="flex flex-wrap items-center gap-3 mb-6">
-            {/* Search */}
-            <input
-              type="search"
-              value={search}
-              onChange={e => handleSearch(e.target.value)}
-              placeholder="Search by name, message, address…"
-              className="flex-1 min-w-[200px] bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg px-4 py-2.5 text-[#EDEEFF] placeholder-[#8A8FBF] font-mono text-[13px] outline-none focus:border-[#F897FE]/40 transition-colors"
-            />
-            {/* Platform tabs */}
-            <div className="flex items-center gap-1 bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg p-1">
-              {FACTORY_TABS.map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => handleTabChange(tab.key)}
-                  className={`px-3 py-1.5 rounded-md font-mono text-[12px] tracking-[0.5px] transition-colors ${
-                    activeTab === tab.key
-                      ? 'bg-[#F897FE] text-[#060A2A] font-bold'
-                      : 'text-[#8A8FBF] hover:text-[#EDEEFF]'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+          {/* Heading */}
+          <div className="mb-8">
+            <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-4">
+              <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
+              Marketplace
             </div>
+            <h1 className="text-4xl font-bold text-[#EDEEFF] mb-2">Search the Markee network</h1>
+            <p className="text-[#B8B6D9] text-base">Find and buy messages from any Markee on the internet.</p>
+          </div>
+
+          {/* Search */}
+          <input
+            type="search"
+            value={search}
+            onChange={e => handleSearch(e.target.value)}
+            placeholder="search messages, owners, 0x..."
+            className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] placeholder-[#8A8FBF] font-mono text-[13px] outline-none focus:border-[#F897FE]/40 transition-colors mb-4"
+          />
+
+          {/* Platform tabs */}
+          <div className="flex items-center gap-1 bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg p-1 w-fit mb-6">
+            {FACTORY_TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => handleTabChange(tab.key)}
+                className={`px-3 py-1.5 rounded-md font-mono text-[12px] tracking-[0.5px] transition-colors ${
+                  activeTab === tab.key
+                    ? 'text-[#EDEEFF] font-bold'
+                    : 'text-[#8A8FBF] hover:text-[#EDEEFF]'
+                }`}
+                style={activeTab === tab.key ? { background: '#4B3ACC' } : {}}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {/* Column headers (desktop) */}
