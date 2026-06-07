@@ -110,8 +110,21 @@ const FAQS = [
   },
 ]
 
-const TABS = ['About MARKEE', 'Token Issuance Schedule', 'Founding Team', 'FAQs'] as const
+const TABS = ['About MARKEE', 'Token Issuance Schedule', 'Covenant', 'Founding Team', 'FAQs'] as const
 type Tab = (typeof TABS)[number]
+
+const COVENANT_GATEWAY = 'https://ipfs.io/ipfs/bafkreid4markeecovenantxq7g0placeholderhash5s2cooperative'
+const GARDENS_COVENANT_URL = 'https://app.gardens.fund/gardens/8453/0xee3027f1e021b09d629922d40436c5dea3c6cb38/0xce6b968c8bd130ca08f1fcc97b509a824380d867'
+const COVENANT_IPFS = 'ipfs://bafkreid4markeecovenantxq7g0placeholderhash5s2cooperative'
+
+const COVENANT_CLAUSES = [
+  { h: '1 · Purpose', b: 'The Markee Cooperative exists to operate and grow Markee — the open marketplace for digital real estate — as common property of the people who use and build it, not as a private company.' },
+  { h: '2 · Ownership', b: 'All network assets — protocol revenue, smart contracts, frontends, brand, and treasury backing — belong to MARKEE token holders in proportion to their holdings. There are no special shares and no outside owners.' },
+  { h: '3 · Governance', b: 'Decisions are made onchain by MARKEE holders through Gardens conviction voting. Proposals that reach the conviction threshold execute automatically; no individual can override the membership.' },
+  { h: '4 · Revenue', b: 'All platform revenue flows to the Markee Revnet and issues MARKEE at the scheduled price. A 38% community reserve is distributed to network participants each cycle.' },
+  { h: '5 · Immutability', b: 'The issuance schedule and reserve split are fixed at deployment and can never be changed. Owners can be confident the rules they bought into are the rules forever.' },
+  { h: '6 · Amendments', b: 'This covenant may only be amended by a supermajority vote of MARKEE holders through Gardens. The canonical version is pinned to IPFS and referenced by the cooperative\'s onchain registry.' },
+]
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -544,6 +557,36 @@ export default function Owners() {
                     <div className="text-[#EDEEFF] font-semibold">{member.name}</div>
                     <div className="text-[#8A8FBF] text-sm">{member.role}</div>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Covenant ------------------------------------------------------- */}
+        {activeTab === 'Covenant' && (
+          <div>
+            <h2 className="text-[#EDEEFF] text-2xl font-bold mb-2">The Markee Covenant</h2>
+            <p className="text-[#8A8FBF] text-sm mb-6">The social and technical agreement every owner is bound by. The authoritative copy is pinned to IPFS and ratified on Gardens.</p>
+            <div className="flex gap-3 flex-wrap mb-6">
+              <a href={COVENANT_GATEWAY} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-transparent border border-[#8A8FBF]/30 text-[#B8B6D9] px-4 py-2 rounded-lg text-sm font-medium hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF] transition-colors no-underline">
+                View on IPFS ↗
+              </a>
+              <a href={GARDENS_COVENANT_URL} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-transparent border border-[#8A8FBF]/30 text-[#B8B6D9] px-4 py-2 rounded-lg text-sm font-medium hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF] transition-colors no-underline">
+                Ratified on Gardens ↗
+              </a>
+            </div>
+            <div className="flex items-center gap-3 bg-[rgba(124,156,255,0.08)] border border-[#8A8FBF]/20 rounded-[10px] px-4 py-3 mb-6 font-mono text-[12px] text-[#B8B6D9] break-all">
+              <span className="text-[#7C9CFF] flex-shrink-0">IPFS</span>
+              {COVENANT_IPFS}
+            </div>
+            <div className="flex flex-col gap-[14px] max-w-[760px]">
+              {COVENANT_CLAUSES.map(c => (
+                <div key={c.h} className="bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-[14px] px-[22px] py-5">
+                  <p className="font-mono text-[13px] font-bold text-[#F897FE] mb-2">{c.h}</p>
+                  <p className="text-[#B8B6D9] text-[15px] leading-relaxed m-0">{c.b}</p>
                 </div>
               ))}
             </div>

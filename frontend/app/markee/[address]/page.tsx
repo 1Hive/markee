@@ -115,7 +115,7 @@ function FeaturedCard({ message, owner, ownerAddress, totalFundsAdded, totalView
       {/* price pill */}
       <span className="absolute bottom-[-15px] left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[13px] px-[18px] py-2 rounded-lg whitespace-nowrap shadow-[0_8px_28px_rgba(248,151,254,0.42)] pointer-events-none z-[3] transition-[opacity,transform] duration-[180ms]"
         style={{ transform: `translateX(-50%) translateY(${hover ? '0' : '4px'})`, opacity: hover ? 1 : 0 }}>
-        {ethPrice > 0 ? `${formatEth(totalFundsAdded)} ETH — Add Funds` : 'Buy a Message'}
+        {totalFundsAdded > 0n ? `${formatEth(totalFundsAdded + BigInt('1000000000000000'))} ETH to change` : 'Buy a Message'}
       </span>
     </button>
   )
