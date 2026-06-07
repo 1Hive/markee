@@ -285,6 +285,245 @@ function LeaderboardSection({
   )
 }
 
+// ─── Platform Picker ──────────────────────────────────────────────────────────
+
+type PlatformKey = 'website' | 'github' | 'superfluid'
+
+interface PlatformDef {
+  key: PlatformKey
+  name: string
+  tagline: string
+  summary: string
+  icon: React.ReactNode
+  iconColor: string
+  staticCount: string
+  staticRaised: string
+}
+
+function PlatformPicker({
+  leaderboards,
+  isLoading,
+  onCreateWebsite,
+}: {
+  leaderboards: EcosystemLeaderboard[]
+  isLoading: boolean
+  onCreateWebsite: () => void
+}) {
+  const [selected, setSelected] = useState<PlatformKey | null>(null)
+
+  const websiteCount = !isLoading && leaderboards.length > 0
+    ? leaderboards.filter(lb => lb.platform === 'website').length
+    : null
+  const githubCount = !isLoading && leaderboards.length > 0
+    ? leaderboards.filter(lb => lb.platform === 'github').length
+    : null
+  const superfluidCount = !isLoading && leaderboards.length > 0
+    ? leaderboards.filter(lb => lb.platform === 'superfluid').length
+    : null
+
+  const platforms: PlatformDef[] = [
+    {
+      key: 'website',
+      name: 'Website',
+      tagline: 'Any site you own',
+      summary: 'Add a paid message slot to any website you control.',
+      icon: <Globe2 size={26} className="text-[#F897FE]" />,
+      iconColor: '#F897FE',
+      staticCount: websiteCount !== null ? `${websiteCount} Markees` : '142 Markees',
+      staticRaised: 'active signs',
+    },
+    {
+      key: 'github',
+      name: 'GitHub Repo',
+      tagline: 'README, docs, any markdown',
+      summary: 'Turn your repo README or docs into a monetizable ad slot.',
+      icon: <Github size={26} className="text-[#EDEEFF]" />,
+      iconColor: '#EDEEFF',
+      staticCount: githubCount !== null ? `${githubCount} Markees` : '68 Markees',
+      staticRaised: 'active signs',
+    },
+    {
+      key: 'superfluid',
+      name: 'Superfluid Project',
+      tagline: 'Earn SUP incentives',
+      summary: 'Attach a paid message to your Superfluid project and earn SUP.',
+      icon: <Zap size={26} className="text-[#1DB227]" />,
+      iconColor: '#1DB227',
+      staticCount: superfluidCount !== null ? `${superfluidCount} Markees` : '37 Markees',
+      staticRaised: 'active signs',
+    },
+  ]
+
+  function handleCreate(key: PlatformKey) {
+    if (key === 'website') {
+      onCreateWebsite()
+    } else if (key === 'github') {
+      window.location.href = '/ecosystem/platforms/github'
+    } else {
+      window.location.href = '/ecosystem/platforms/superfluid'
+    }
+  }
+
+  return (
+    <div
+      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(252px, 1fr))' }}
+      className="grid gap-4"
+    >
+      {platforms.map(p => {
+        const isSelected = selected === p.key
+        return (
+          <div
+            key={p.key}
+            onClick={() => setSelected(isSelected ? null : p.key)}
+            className="flex flex-col gap-4 rounded-lg border p-5 cursor-pointer transition-all duration-200"
+            style={{
+              background: isSelected ? 'rgba(248,151,254,0.06)' : '#0A0F3D',
+              borderColor: isSelected ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)',
+            }}
+          >
+            {/* Icon + name + tagline */}
+            <div className="flex items-start gap-3">
+              <div
+                className="flex-shrink-0 flex items-center justify-center rounded-lg border border-[#8A8FBF]/20"
+                style={{ width: 50, height: 50, background: '#060A2A' }}
+              >
+                {p.icon}
+              </div>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <p className="text-[#EDEEFF] font-semibold text-sm leading-tight">{p.name}</p>
+                <p className="text-[#8A8FBF] text-xs mt-0.5">{p.tagline}</p>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <p className="text-[#B8B6D9] text-sm leading-relaxed">{p.summary}</p>
+
+            {/* Stats row */}
+            <div className="flex items-center justify-between text-xs text-[#8A8FBF] mt-auto pt-2 border-t border-[#8A8FBF]/10">
+              <span className="font-medium" style={{ color: p.iconColor }}>{p.staticCount}</span>
+              <span>{p.staticRaised}</span>
+            </div>
+
+            {/* Create button — only when selected */}
+            {isSelected && !NETWORK_PAUSED && (
+              <button
+                onClick={e => { e.stopPropagation(); handleCreate(p.key) }}
+                className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-bold text-sm shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-all duration-[120ms]"
+              >
+                Create a Markee →
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Integration Request Form ─────────────────────────────────────────────────
+
+function IntegrationForm() {
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [form, setForm] = useState({ website: '', name: '', email: '' })
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setStatus('submitting')
+    try {
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_key: 'YOUR-WEB3FORMS-ACCESS-KEY',
+          website: form.website,
+          name: form.name,
+          email: form.email,
+        }),
+      })
+      if (res.ok) {
+        setStatus('success')
+      } else {
+        setStatus('error')
+      }
+    } catch {
+      setStatus('error')
+    }
+  }
+
+  if (status === 'success') {
+    return (
+      <div className="bg-[#0A0F3D] rounded-xl border border-[#8A8FBF]/20 p-8 flex flex-col items-center text-center gap-4">
+        <div className="w-12 h-12 rounded-full bg-[#1DB227]/15 border border-[#1DB227]/40 flex items-center justify-center">
+          <CheckCircle size={24} className="text-[#1DB227]" />
+        </div>
+        <p className="text-[#EDEEFF] font-semibold">Thanks — we'll be in touch.</p>
+      </div>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="bg-[#0A0F3D] rounded-xl border border-[#8A8FBF]/20 p-8 flex flex-col gap-4"
+    >
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[#B8B6D9] text-xs font-medium uppercase tracking-wide">
+          Website name <span className="text-[#F897FE]">*</span>
+        </label>
+        <input
+          required
+          type="text"
+          placeholder="e.g. mycoolapp.xyz"
+          value={form.website}
+          onChange={e => setForm(f => ({ ...f, website: e.target.value }))}
+          className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm placeholder:text-[#8A8FBF] focus:outline-none focus:border-[#F897FE]/50 transition-colors"
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[#B8B6D9] text-xs font-medium uppercase tracking-wide">
+          Your name
+        </label>
+        <input
+          type="text"
+          placeholder="Jane Doe"
+          value={form.name}
+          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+          className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm placeholder:text-[#8A8FBF] focus:outline-none focus:border-[#F897FE]/50 transition-colors"
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[#B8B6D9] text-xs font-medium uppercase tracking-wide">
+          Email <span className="text-[#F897FE]">*</span>
+        </label>
+        <input
+          required
+          type="email"
+          placeholder="you@example.com"
+          value={form.email}
+          onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+          className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm placeholder:text-[#8A8FBF] focus:outline-none focus:border-[#F897FE]/50 transition-colors"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={status === 'submitting'}
+        className="mt-2 w-full bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-bold text-sm shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+      >
+        {status === 'submitting' ? 'Sending…' : 'Send request'}
+      </button>
+      {status === 'error' && (
+        <p className="text-xs text-center text-red-400">Something went wrong — please try again.</p>
+      )}
+      <p className="text-[#8A8FBF] text-xs text-center mt-1">
+        Or email us at{' '}
+        <a href="mailto:hello@markee.xyz" className="text-[#7C9CFF] hover:underline">
+          hello@markee.xyz
+        </a>
+      </p>
+    </form>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EcosystemPage() {
@@ -317,7 +556,6 @@ export default function EcosystemPage() {
           fetch(`/api/views?addresses=${markeeAddrs.join(',')}`)
             .then(r => r.ok ? r.json() : {})
             .then((data: Record<string, { totalViews: number }>) => {
-              // Map view counts back to leaderboard address for easy lookup
               const map = new Map<string, number>()
               for (const lb of active) {
                 const key = lb.topMarkeeAddress?.toLowerCase()
@@ -355,56 +593,159 @@ export default function EcosystemPage() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="raise" />
 
-      {/* Hero */}
+      {/* ── 1. Hero ─────────────────────────────────────────────────────────── */}
       <section className="relative py-24 overflow-hidden">
         <HeroBackground />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-[#EDEEFF] mb-6">Raise funds with Markee</h1>
-          <p className="text-xl md:text-2xl text-[#8A8FBF] mb-8 max-w-3xl mx-auto">
-            Explore the Universe of Markee messages growing across the internet ✨
-          </p>
-          {!NETWORK_PAUSED && (
-            <button
-              onClick={() => setCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-            >
-              Create a Markee
-            </button>
-          )}
+        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          {/* Eyebrow */}
+          <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-5">
+            <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
+            Raise Funding
+          </div>
 
-          {/* Stats */}
-          {!isLoading && active.length > 0 && (
-            <div className="flex items-center justify-center gap-8 mt-10 flex-wrap">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{active.length}</span>
-                <span className="text-[#8A8FBF]">active Markees</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#EDEEFF] font-semibold">{totalMessages.toLocaleString()}</span>
-                <span className="text-[#8A8FBF]">messages bought</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Trophy size={14} className="text-[#7C9CFF]" />
-                {ethPrice ? (
-                  <span className="text-[#7C9CFF] font-semibold">
-                    {formatUsd(parseFloat(totalPlatformFunds) * ethPrice)}
-                    <span className="text-[#8A8FBF] font-normal ml-1 text-xs">({formatFunds(totalPlatformFunds)})</span>
-                  </span>
-                ) : (
-                  <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-                )}
-                <span className="text-[#8A8FBF]">total raised</span>
-              </div>
-            </div>
-          )}
+          <h1 className="text-4xl md:text-5xl font-bold text-[#EDEEFF] mb-5 leading-tight">
+            Add Markee to your site and start{' '}
+            <span style={{ color: '#F897FE' }}>earning</span>
+          </h1>
+
+          <p className="text-lg text-[#B8B6D9] mb-10 max-w-xl mx-auto">
+            Connect your audience to our global network of buyers.
+          </p>
+
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <a
+              href="#platform-picker"
+              className="inline-flex items-center gap-[10px] bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
+            >
+              Create a Markee →
+            </a>
+            <a
+              href="#how"
+              className="inline-flex items-center gap-2 bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-lg px-[22px] py-[13px] font-sans text-[15px] no-underline transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]"
+            >
+              How it works
+            </a>
+          </div>
         </div>
       </section>
 
-      <section className="py-16 bg-[#060A2A]">
+      {/* ── 2. Platform Picker ──────────────────────────────────────────────── */}
+      <section id="platform-picker" className="py-20 bg-[#060A2A]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-4">
+              <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
+              Choose your platform
+            </div>
+            <h2 className="text-3xl font-bold text-[#EDEEFF]">Where do you want to add a Markee?</h2>
+          </div>
+
+          <PlatformPicker
+            leaderboards={leaderboards}
+            isLoading={isLoading}
+            onCreateWebsite={() => setCreateModalOpen(true)}
+          />
+        </div>
+      </section>
+
+      {/* ── 3. How It Works ─────────────────────────────────────────────────── */}
+      <section id="how" className="py-20 bg-[#0A0F3D] border-t border-[#8A8FBF]/10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          {/* Eyebrow */}
+          <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-5">
+            <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
+            How it works
+          </div>
+
+          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4">
+            Embed a paid message to any digital space
+          </h2>
+          <p className="text-[#B8B6D9] text-base max-w-2xl mx-auto mb-14">
+            Markee is a cross-platform marketplace for digital real estate and a sustainable revenue source for any website.
+          </p>
+
+          {/* Step cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-12">
+            {[
+              {
+                num: '01',
+                title: 'Choose your platform',
+                body: 'Pick where your Markee will be embedded.',
+              },
+              {
+                num: '02',
+                title: 'Set up your sign',
+                body: 'Add your info and a wallet to receive funds.',
+              },
+              {
+                num: '03',
+                title: 'Activate your Markee',
+                body: 'Embed to your site in just a few clicks.',
+              },
+            ].map(step => (
+              <div
+                key={step.num}
+                className="bg-[#060A2A] rounded-xl border border-[#8A8FBF]/15 p-6 text-left"
+              >
+                <p className="font-mono text-[#F897FE] text-xs font-bold tracking-widest mb-3">
+                  {step.num}
+                </p>
+                <h3 className="text-[#EDEEFF] font-semibold text-base mb-2">{step.title}</h3>
+                <p className="text-[#8A8FBF] text-sm leading-relaxed">{step.body}</p>
+              </div>
+            ))}
+          </div>
+
+          <a
+            href="#platform-picker"
+            className="inline-flex items-center gap-[10px] bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
+          >
+            Create a Markee →
+          </a>
+        </div>
+      </section>
+
+      {/* ── 4. Integration Request Form ─────────────────────────────────────── */}
+      <section className="py-20 bg-[#060A2A] border-t border-[#8A8FBF]/10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
+            {/* Left column */}
+            <div>
+              <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-5">
+                <span className="w-2 h-2 rounded-full bg-[#7C9CFF] shadow-[0_0_12px_#7C9CFF] flex-shrink-0" />
+                For platforms
+              </div>
+              <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4">
+                Looking for a deeper integration?
+              </h2>
+              <p className="text-[#B8B6D9] text-base mb-8 leading-relaxed">
+                We work directly with platforms and developer tools to build native Markee integrations — custom embed widgets, API access, and co-marketing.
+              </p>
+              <ul className="flex flex-col gap-4">
+                {[
+                  'Native SDK and embed widget support',
+                  'Revenue share tailored to your platform',
+                  'Co-marketing and featured placement',
+                ].map(item => (
+                  <li key={item} className="flex items-start gap-3 text-[#B8B6D9] text-sm">
+                    <span className="w-2 h-2 rounded-full bg-[#7C9CFF] shadow-[0_0_8px_#7C9CFF] flex-shrink-0 mt-1.5" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Right column — form */}
+            <IntegrationForm />
+          </div>
+        </div>
+      </section>
+
+      {/* ── 5. Existing creation wizard ─────────────────────────────────────── */}
+      <section id="create" className="py-16 bg-[#060A2A] border-t border-[#8A8FBF]/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          {/* Platform cards */}
+          {/* Platform cards (existing) */}
           <div className="mb-16">
             <h2 className="text-lg font-semibold text-[#8A8FBF] mb-5">Raise Funding for Your:</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -476,6 +817,33 @@ export default function EcosystemPage() {
 
             </div>
           </div>
+
+          {/* Hero stats */}
+          {!isLoading && active.length > 0 && (
+            <div className="flex items-center justify-center gap-8 mb-12 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <span className="text-[#F897FE] font-semibold">{active.length}</span>
+                <span className="text-[#8A8FBF]">active Markees</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[#EDEEFF] font-semibold">{totalMessages.toLocaleString()}</span>
+                <span className="text-[#8A8FBF]">messages bought</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Trophy size={14} className="text-[#7C9CFF]" />
+                {ethPrice ? (
+                  <span className="text-[#7C9CFF] font-semibold">
+                    {formatUsd(parseFloat(totalPlatformFunds) * ethPrice)}
+                    <span className="text-[#8A8FBF] font-normal ml-1 text-xs">({formatFunds(totalPlatformFunds)})</span>
+                  </span>
+                ) : (
+                  <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
+                )}
+                <span className="text-[#8A8FBF]">total raised</span>
+              </div>
+            </div>
+          )}
 
           {/* Leaderboard sections */}
           <ModerationProvider>

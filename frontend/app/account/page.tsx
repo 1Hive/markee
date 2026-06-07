@@ -143,6 +143,7 @@ export default function AccountPage() {
   const [editingBoard, setEditingBoard] = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
   const [verifyBoard, setVerifyBoard] = useState<WebsiteLeaderboard | null>(null)
+  const [activeTab, setActiveTab] = useState('markees')
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -297,7 +298,7 @@ export default function AccountPage() {
                 <User size={28} className="text-[#F897FE]" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-[#EDEEFF] mb-1">My Markees</h1>
+                <h1 className="text-2xl font-bold text-[#EDEEFF] mb-1">My dashboard</h1>
                 {walletAddress ? (
                   <p className="text-[#8A8FBF] text-sm font-mono">{shortAddr(walletAddress)}</p>
                 ) : (
@@ -309,20 +310,33 @@ export default function AccountPage() {
             {mounted && !isConnected && <ConnectButton />}
           </div>
 
-          {isConnected && !isLoading && allBoards.length > 0 && (
-            <div className="flex flex-wrap items-center gap-8 mt-8">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{allBoards.length}</span>
-                <span className="text-[#8A8FBF]">{allBoards.length === 1 ? 'sign' : 'signs'} created</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Trophy size={14} className="text-[#7C9CFF]" />
-                <span className="text-[#7C9CFF] font-semibold">
-                  {formatFunds((Number(totalRaisedWei) / 1e18).toFixed(6))}
-                </span>
-                <span className="text-[#8A8FBF]">total raised</span>
-              </div>
+          {isConnected && (
+            <div className="grid gap-[14px] mt-7" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+              {(() => {
+                const totalRaisedDisplay = (() => {
+                  const n = Number(totalRaisedWei) / 1e18
+                  if (n === 0) return '0 ETH'
+                  if (n < 0.001) return '< 0.001 ETH'
+                  return `${n.toFixed(3)} ETH`
+                })()
+                const activeCount = activeBoards.length
+                const messagesBoughtCount = myMessages.length
+                const contributedDisplay = '0 ETH'
+                return [
+                  { n: totalRaisedDisplay, label: 'total raised', color: '#F897FE' },
+                  { n: String(activeCount), label: 'active signs', color: '#1DB227' },
+                  { n: String(messagesBoughtCount), label: 'messages bought', color: '#EDEEFF' },
+                  { n: contributedDisplay, label: 'contributed', color: '#7C9CFF' },
+                ].map((c, i) => (
+                  <div key={i} className="bg-[rgba(10,15,61,0.5)] border border-[#8A8FBF]/20 rounded-[14px] p-[22px]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.color, boxShadow: `0 0 12px ${c.color}` }} />
+                      <span className="font-mono text-[24px] font-bold tracking-[-0.5px] leading-[1.1] whitespace-nowrap" style={{ color: c.color }}>{c.n}</span>
+                    </div>
+                    <div className="text-[#B8B6D9] text-[13px] font-semibold">{c.label}</div>
+                  </div>
+                ))
+              })()}
             </div>
           )}
         </div>
@@ -345,158 +359,190 @@ export default function AccountPage() {
               <p className="text-[#8A8FBF] text-sm mb-6">See all the Markees you've created across every platform.</p>
               <ConnectButton />
             </div>
-          ) : allBoards.length === 0 ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
-              <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No Markees yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Create your first sign on one of our platforms.</p>
-              <div className="flex items-center justify-center gap-3 flex-wrap">
-                <Link
-                  href="/create-a-markee"
-                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  <Globe2 size={14} className="text-[#F897FE]" />
-                  Website
-                </Link>
-                <Link
-                  href="/ecosystem/platforms/superfluid"
-                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  <Zap size={14} className="text-[#1DB227]" />
-                  Superfluid
-                </Link>
-                <Link
-                  href="/ecosystem/platforms/github"
-                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  <Github size={14} />
-                  GitHub
-                </Link>
-              </div>
-            </div>
           ) : (
-            <div className="space-y-12">
-              {awaitingVerification.length > 0 && (
-                <div className="bg-[#0A0F3D] rounded-2xl border border-[#F897FE]/30 p-6">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse flex-shrink-0" />
-                    <h2 className="text-xl font-bold text-[#F897FE]">Awaiting Verification</h2>
+            <>
+              {/* Tab bar */}
+              <div className="flex gap-1 border-b border-[#8A8FBF]/20 overflow-x-auto mt-6">
+                {[
+                  { key: 'markees', label: 'My Markees', count: allBoards.length },
+                  { key: 'bought', label: "Messages I've Bought", count: myMessages.length },
+                  { key: 'funded', label: "Messages I've Funded", count: 0 },
+                ].map(item => (
+                  <button key={item.key} onClick={() => setActiveTab(item.key)}
+                    className="bg-transparent border-none cursor-pointer px-[18px] py-[14px] whitespace-nowrap flex items-center gap-2"
+                    style={{
+                      color: activeTab === item.key ? '#EDEEFF' : '#8A8FBF',
+                      fontWeight: activeTab === item.key ? 700 : 500,
+                      fontSize: 15,
+                      borderBottom: `2px solid ${activeTab === item.key ? '#F897FE' : 'transparent'}`,
+                      marginBottom: -1,
+                    }}>
+                    {item.label}
+                    <span className="font-mono text-[12px] px-2 rounded-full"
+                      style={{ color: activeTab === item.key ? '#F897FE' : '#8A8FBF', background: activeTab === item.key ? 'rgba(248,151,254,0.12)' : 'rgba(138,143,191,0.12)' }}>
+                      {item.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab: My Markees */}
+              {activeTab === 'markees' && (
+                allBoards.length === 0 ? (
+                  <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center mt-7">
+                    <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
+                    <p className="text-[#EDEEFF] font-semibold mb-2">No Markees yet</p>
+                    <p className="text-[#8A8FBF] text-sm mb-6">Create your first sign on one of our platforms.</p>
+                    <div className="flex items-center justify-center gap-3 flex-wrap">
+                      <Link
+                        href="/create-a-markee"
+                        className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <Globe2 size={14} className="text-[#F897FE]" />
+                        Website
+                      </Link>
+                      <Link
+                        href="/ecosystem/platforms/superfluid"
+                        className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <Zap size={14} className="text-[#1DB227]" />
+                        Superfluid
+                      </Link>
+                      <Link
+                        href="/ecosystem/platforms/github"
+                        className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <Github size={14} />
+                        GitHub
+                      </Link>
+                    </div>
                   </div>
-                  <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Verify your integration to appear in Top Verified Markees</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {awaitingVerification.map(lb => (
-                      <AccountLeaderboardCard
-                        key={lb.address}
-                        leaderboard={lb}
-                        detailUrl={detailUrl(lb)}
-                        icon={platformIcon(lb)}
-                        platformHref={platformLink(lb)}
-                        variant="active"
-                        onEdit={() => setEditingBoard(lb)}
-                        onIntegrate={() => setIntegrationBoard(lb)}
-                        onVerify={() => setVerifyBoard(lb)}
-                      />
-                    ))}
+                ) : (
+                  <div className="space-y-12 mt-7">
+                    {awaitingVerification.length > 0 && (
+                      <div className="bg-[#0A0F3D] rounded-2xl border border-[#F897FE]/30 p-6">
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse flex-shrink-0" />
+                          <h2 className="text-xl font-bold text-[#F897FE]">Awaiting Verification</h2>
+                        </div>
+                        <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Verify your integration to appear in Top Verified Markees</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {awaitingVerification.map(lb => (
+                            <AccountLeaderboardCard
+                              key={lb.address}
+                              leaderboard={lb}
+                              detailUrl={detailUrl(lb)}
+                              icon={platformIcon(lb)}
+                              platformHref={platformLink(lb)}
+                              variant="active"
+                              onEdit={() => setEditingBoard(lb)}
+                              onIntegrate={() => setIntegrationBoard(lb)}
+                              onVerify={() => setVerifyBoard(lb)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {inactiveBoards.length > 0 && (
+                      <div className="bg-[#0A0F3D] rounded-2xl border border-[#7C9CFF]/30 p-6">
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="w-2 h-2 rounded-full bg-[#7C9CFF] animate-pulse flex-shrink-0" />
+                          <h2 className="text-xl font-bold text-[#7C9CFF]">Awaiting Activation</h2>
+                        </div>
+                        <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Buy a message to activate these Markees</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {inactiveBoards.map(lb => (
+                            <AccountLeaderboardCard
+                              key={lb.address}
+                              leaderboard={lb}
+                              detailUrl={detailUrl(lb)}
+                              icon={platformIcon(lb)}
+                              subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
+                              platformHref={platformLink(lb)}
+                              variant="inactive"
+                              onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
+                              onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeBoards.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-3 mb-6">
+                          <span className="w-2 h-2 rounded-full bg-[#1DB227]" />
+                          <h2 className="text-xl font-bold text-[#EDEEFF]">Active Markees</h2>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {activeBoards.map(lb => (
+                            <AccountLeaderboardCard
+                              key={lb.address}
+                              leaderboard={lb}
+                              detailUrl={detailUrl(lb)}
+                              icon={platformIcon(lb)}
+                              subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
+                              platformHref={platformLink(lb)}
+                              variant="active"
+                              onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
+                              onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
+                              onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
+                )
+              )}
+
+              {/* Tab: Messages I've Bought */}
+              {activeTab === 'bought' && (
+                <div className="mt-7">
+                  {isLoadingMessages ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-5 animate-pulse h-44" />
+                      ))}
+                    </div>
+                  ) : myMessages.length === 0 ? (
+                    <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
+                      <MessageSquare size={32} className="text-[#8A8FBF] mx-auto mb-3" />
+                      <p className="text-[#EDEEFF] font-semibold mb-1">No messages yet</p>
+                      <p className="text-[#8A8FBF] text-sm mb-5">
+                        Buy a message on any Markee leaderboard to get your words in front of an audience.
+                      </p>
+                      <Link
+                        href="/create-a-markee"
+                        className="inline-flex items-center gap-2 bg-[#7C9CFF] text-[#060A2A] px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#F897FE] transition-colors"
+                      >
+                        Browse leaderboards
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {myMessages.map(msg => (
+                        <MessageCard key={msg.address} message={msg} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {inactiveBoards.length > 0 && (
-                <div className="bg-[#0A0F3D] rounded-2xl border border-[#7C9CFF]/30 p-6">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-[#7C9CFF] animate-pulse flex-shrink-0" />
-                    <h2 className="text-xl font-bold text-[#7C9CFF]">Awaiting Activation</h2>
-                  </div>
-                  <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Buy a message to activate these Markees</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {inactiveBoards.map(lb => (
-                      <AccountLeaderboardCard
-                        key={lb.address}
-                        leaderboard={lb}
-                        detailUrl={detailUrl(lb)}
-                        icon={platformIcon(lb)}
-                        subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
-                        platformHref={platformLink(lb)}
-                        variant="inactive"
-                        onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                        onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
-                      />
-                    ))}
-                  </div>
+              {/* Tab: Messages I've Funded */}
+              {activeTab === 'funded' && (
+                <div className="bg-[rgba(10,15,61,0.4)] border border-dashed border-[#8A8FBF]/20 rounded-[16px] p-14 text-center mt-7">
+                  <div className="text-[30px] mb-3">🤝</div>
+                  <p className="m-0 mb-1.5 text-[#EDEEFF] font-bold text-[17px]">No contributions yet</p>
+                  <p className="m-0 mb-5 text-[#8A8FBF] text-[14px] max-w-[42ch] mx-auto leading-[1.55]">Back a message you believe in by adding funds — help it climb and stay on top.</p>
+                  <Link href="/ecosystem" className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline">Browse the Marketplace →</Link>
                 </div>
               )}
-
-              {activeBoards.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <span className="w-2 h-2 rounded-full bg-[#1DB227]" />
-                    <h2 className="text-xl font-bold text-[#EDEEFF]">Active Markees</h2>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activeBoards.map(lb => (
-                      <AccountLeaderboardCard
-                        key={lb.address}
-                        leaderboard={lb}
-                        detailUrl={detailUrl(lb)}
-                        icon={platformIcon(lb)}
-                        subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
-                        platformHref={platformLink(lb)}
-                        variant="active"
-                        onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                        onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
-                        onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            </>
           )}
         </div>
       </section>
-
-      {/* Messages I've Bought */}
-      {mounted && isConnected && (
-        <section className="py-12 bg-[#0A0F3D] border-t border-[#8A8FBF]/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3 mb-2">
-              <MessageSquare size={20} className="text-[#7C9CFF]" />
-              <h2 className="text-xl font-bold text-[#EDEEFF]">Messages I&apos;ve Bought</h2>
-            </div>
-            <p className="text-[#8A8FBF] text-sm mb-8 ml-8">
-              Your messages posted on Markee leaderboards
-            </p>
-
-            {isLoadingMessages ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="bg-[#060A2A] rounded-lg border border-[#8A8FBF]/20 p-5 animate-pulse h-44" />
-                ))}
-              </div>
-            ) : myMessages.length === 0 ? (
-              <div className="bg-[#060A2A] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
-                <MessageSquare size={32} className="text-[#8A8FBF] mx-auto mb-3" />
-                <p className="text-[#EDEEFF] font-semibold mb-1">No messages yet</p>
-                <p className="text-[#8A8FBF] text-sm mb-5">
-                  Buy a message on any Markee leaderboard to get your words in front of an audience.
-                </p>
-                <Link
-                  href="/create-a-markee"
-                  className="inline-flex items-center gap-2 bg-[#7C9CFF] text-[#060A2A] px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#F897FE] transition-colors"
-                >
-                  Browse leaderboards
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {myMessages.map(msg => (
-                  <MessageCard key={msg.address} message={msg} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       <Footer />
 

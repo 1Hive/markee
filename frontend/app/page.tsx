@@ -34,10 +34,50 @@ function MetricStat({ n, label, color, dot }: { n: string; label: string; color:
   )
 }
 
+function RevnetWidget() {
+  const [amount, setAmount] = useState('0.1')
+  const [expanded, setExpanded] = useState(false)
+  const [message, setMessage] = useState('')
+  const rate = 4200
+  const eth = parseFloat(amount) || 0
+  const receive = Math.round(eth * rate)
+  return (
+    <div className="bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-[16px] p-4 shadow-[0_18px_50px_rgba(6,10,42,0.5)]">
+      <label className="block font-mono text-[10px] tracking-[1.5px] uppercase text-[#8A8FBF] mb-2 mt-[2px]">You pay</label>
+      <div className="flex items-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px]">
+        <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" aria-label="ETH amount"
+          className="flex-1 min-w-0 bg-transparent border-none text-[#EDEEFF] font-mono text-[22px] font-bold py-[14px] outline-none tracking-[-0.5px]" />
+        <span className="font-mono text-[14px] font-bold text-[#B8B6D9]">ETH</span>
+      </div>
+      <div className="flex items-center justify-between px-1 pt-[14px]">
+        <span className="text-[#8A8FBF] text-[13px]">You receive</span>
+        <span className="text-[#F897FE] font-extrabold font-mono text-[18px] tracking-[-0.3px]">{receive.toLocaleString()} MARKEE</span>
+      </div>
+      <div className="flex items-center justify-between mt-[14px] pt-[14px] border-t border-[#8A8FBF]/20 font-mono text-[12px]">
+        <button onClick={() => setExpanded(v => !v)}
+          className="bg-transparent border-none cursor-pointer font-mono text-[12px] inline-flex items-center gap-[6px] p-0"
+          style={{ color: expanded ? '#F897FE' : '#B8B6D9' }}>
+          <span className="text-[14px] leading-none">{expanded ? '−' : '+'}</span> Add a message
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-3">
+          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={2} placeholder="Set a message with your payment."
+            className="w-full resize-none bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px] py-[11px] text-[#EDEEFF] font-sans text-[14px] outline-none leading-[1.4] box-border" />
+        </div>
+      )}
+      <a href="https://revnet.app/base/markee" target="_blank" rel="noopener noreferrer"
+        className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] border-none rounded-[10px] py-[15px] px-5 font-sans font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] flex items-center justify-center gap-2 no-underline transition-[transform,box-shadow] duration-[120ms] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px]">
+        Buy MARKEE ↗
+      </a>
+    </div>
+  )
+}
+
 import { formatDistanceToNow } from 'date-fns'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatUsd } from '@/lib/utils'
+import { formatUsd, formatEth } from '@/lib/utils'
 import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
@@ -49,7 +89,7 @@ export default function Home() {
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
 
   // Ecosystem stats (same source as /ecosystem page)
-  const [ecoLeaderboards, setEcoLeaderboards] = useState<{ topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean }[]>([])
+  const [ecoLeaderboards, setEcoLeaderboards] = useState<{ topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean; platform?: string; totalFundsRaw?: string }[]>([])
   const [ecoTotalFunds, setEcoTotalFunds] = useState('0')
   const [isLoadingEco, setIsLoadingEco] = useState(true)
 
@@ -270,137 +310,149 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Leaderboard */}
-      <section className="bg-[#060A2A] py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">A Marketplace for Digital Real Estate</h3>
-
-              <p className="text-lg text-[#8A8FBF] mb-6">
-                Buy a message on your favorite site from these verified Markees.
-              </p>
-
-            <div className="flex gap-4 justify-center mb-8">
-              <button
-                onClick={handleCreateNew}
-                className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
-              >
-                Buy a Message
-              </button>
-              <a
-                href="/how-it-works"
-                className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
-              >
-                How it Works
-              </a>
+      {/* Marketplace teaser */}
+      <section className="bg-[#060A2A] py-[88px] px-4 sm:px-[40px]">
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          {/* Section head */}
+          <div className="flex items-end justify-between gap-6 mb-7 flex-wrap">
+            <div>
+              <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-[14px]">
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0 inline-block" />
+                Marketplace
+              </div>
+              <h2 className="m-0 text-[clamp(26px,3.4vw,38px)] font-extrabold tracking-[-0.6px] text-[#EDEEFF]">Buy a message anywhere on the network</h2>
+              <p className="mt-[10px] text-[#B8B6D9] text-base max-w-[52ch]">Find your audience on Markee's global network, buy a message, and see it live instantly.</p>
             </div>
           </div>
-
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3 ml-auto">
-              {(isFetchingFresh || reactionsLoading) && (
-                <div className="flex items-center gap-2 text-sm text-[#8A8FBF]">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F897FE]" />
-                  <span>Updating...</span>
-                </div>
-              )}
-              {lastUpdated && !isLoading && (
-                <div className="text-sm text-[#8A8FBF]">
-                  Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {reactionsError && (
-            <div className="mb-4 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg max-w-2xl mx-auto">
-              <p className="text-sm text-[#8BC8FF]">{reactionsError}</p>
-            </div>
-          )}
-
-          {isLoading && <LeaderboardSkeleton />}
-
+          {/* Column headers */}
           {!isLoading && markees.length > 0 && (
-            <>
-              {/* #1 Hero */}
-              <Link href={`/markee/${markees[0].address}`} className="block">
-                <MarkeeCard
-                  markee={markees[0]}
-                  rank={1}
-                  size="hero"
-                  userAddress={address}
-                  onEditMessage={handleEditMessage}
-                  onAddFunds={handleAddFunds}
-                  onReact={handleReact}
-                  onRemoveReaction={handleRemoveReaction}
-                  reactions={reactions.get(markees[0].address.toLowerCase())}
-                  {...getViews(markees[0])}
-                />
-              </Link>
-
-              {/* #2-3 Large */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {markees.slice(1, 3).map((markee, i) => (
-                  <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
-                    <MarkeeCard
-                      markee={markee}
-                      rank={i + 2}
-                      size="large"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markee.address.toLowerCase())}
-                      {...getViews(markee)}
-                    />
-                  </Link>
-                ))}
-              </div>
-
-              {/* #4-26 Medium */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {markees.slice(3, 26).map((markee, i) => (
-                  <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
-                    <MarkeeCard
-                      markee={markee}
-                      rank={i + 4}
-                      size="medium"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markee.address.toLowerCase())}
-                      {...getViews(markee)}
-                    />
-                  </Link>
-                ))}
-              </div>
-
-              {/* #27+ List */}
-              {markees.length > 26 && (
-                <div className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20">
-                  {markees.slice(26).map((markee, i) => (
-                    <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
-                      <MarkeeCard
-                        markee={markee}
-                        rank={i + 27}
-                        size="list"
-                        userAddress={address}
-                        onEditMessage={handleEditMessage}
-                        onAddFunds={handleAddFunds}
-                        onReact={handleReact}
-                        onRemoveReaction={handleRemoveReaction}
-                        reactions={reactions.get(markee.address.toLowerCase())}
-                        {...getViews(markee)}
-                      />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
+            <div className="grid gap-4 px-[14px] pb-[10px] font-mono text-[10px] tracking-[1px] text-[#8A8FBF] uppercase hidden md:grid" style={{ gridTemplateColumns: '190px 110px 1fr 74px 120px' }}>
+              <span>Served on</span><span>Total raised</span><span>Current Message</span><span>Views</span><span className="text-right">Price to change</span>
+            </div>
           )}
+          {/* Dense rows */}
+          <div className="bg-[#0A0F3D] rounded-[10px] border border-[#8A8FBF]/20 overflow-hidden">
+            {isLoading ? (
+              [1,2,3,4,5].map(i => (
+                <div key={i} className="h-16 border-b border-[#8A8FBF]/20 last:border-0 animate-pulse bg-[#8A8FBF]/5" />
+              ))
+            ) : (
+              markees.slice(0, 5).map((markee, i) => {
+                const v = views.get(markee.address.toLowerCase())
+                return (
+                  <Link key={markee.address} href={`/markee/${markee.address}`}
+                    className="grid gap-4 px-[14px] py-[13px] border-b border-[#8A8FBF]/20 last:border-0 items-center hover:bg-[#8A8FBF]/5 transition-colors"
+                    style={{ gridTemplateColumns: '1fr' }}
+                  >
+                    {/* Mobile: stacked */}
+                    <div className="flex flex-col gap-1 md:hidden">
+                      <span className="font-mono text-[13px] text-[#EDEEFF] line-clamp-2">{markee.message || '—'}</span>
+                      <div className="flex items-center gap-3 text-[11px] text-[#8A8FBF]">
+                        <span>{formatEth(markee.totalFundsAdded)} ETH</span>
+                        {v?.totalViews ? <span>{fmtViews(v.totalViews)} views</span> : null}
+                      </div>
+                    </div>
+                    {/* Desktop: columnar */}
+                    <div className="hidden md:grid gap-4 items-center" style={{ gridTemplateColumns: '190px 110px 1fr 74px 120px' }}>
+                      <span className="font-mono text-[12.5px] text-[#B8B6D9] truncate">{(markee as any).name || (markee.address.slice(0,6) + '...' + markee.address.slice(-4))}</span>
+                      <span className="font-mono text-[12.5px] text-[#7C9CFF] font-semibold">{formatEth(markee.totalFundsAdded)} ETH</span>
+                      <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{markee.message || '—'}</span>
+                      <span className="font-mono text-[12px] text-[#8A8FBF]">{v?.totalViews ? fmtViews(v.totalViews) : '—'}</span>
+                      <span className="font-mono text-[12px] text-[#B8B6D9] text-right truncate">{formatEth(markee.totalFundsAdded)} ETH</span>
+                    </div>
+                  </Link>
+                )
+              })
+            )}
+          </div>
+          {/* CTA */}
+          <div className="text-center mt-7">
+            <Link href="/ecosystem"
+              className="inline-flex items-center gap-2 bg-transparent text-[#F897FE] border border-[#F897FE] rounded-lg px-6 py-[13px] font-bold text-[15px] transition-[background,color] duration-[140ms] hover:bg-[#F897FE] hover:text-[#060A2A]">
+              View the Marketplace →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Raise Funding teaser */}
+      <section className="bg-[#0A0F3D] py-[88px] px-4 sm:px-[40px] border-t border-[#8A8FBF]/20">
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <div className="flex items-end justify-between gap-6 mb-7 flex-wrap">
+            <div>
+              <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-[14px]">
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0 inline-block" />
+                Raise Funding
+              </div>
+              <h2 className="m-0 text-[clamp(26px,3.4vw,38px)] font-extrabold tracking-[-0.6px] text-[#EDEEFF]">Create a Markee and start earning</h2>
+              <p className="mt-[10px] text-[#B8B6D9] text-base max-w-[52ch]">Add a Markee to your website or open source repo in just a few clicks.</p>
+            </div>
+          </div>
+          <div className="plat-grid-home">
+            {[
+              { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE', href: '/create-a-markee?platform=website' },
+              { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/create-a-markee?platform=github' },
+              { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/create-a-markee?platform=superfluid' },
+            ].map((p) => (
+              <Link key={p.key} href={p.href}
+                className="flex flex-col gap-[18px] no-underline rounded-[14px] p-[22px] border border-[#8A8FBF]/20 bg-[rgba(6,10,42,0.5)] transition-[border-color,transform] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:-translate-y-[2px]">
+                <div className="flex items-start gap-3">
+                  <span className="w-12 h-12 rounded-[12px] bg-[#060A2A] border border-[#8A8FBF]/20 flex items-center justify-center flex-shrink-0">
+                    {p.icon === 'globe' && <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={p.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
+                    {p.icon === 'github' && <svg width="26" height="26" viewBox="0 0 24 24" fill={p.color}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>}
+                    {p.icon === 'zap' && <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={p.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[#EDEEFF] font-bold text-[15px] leading-[1.25]">{p.name}</div>
+                    <div className="text-[#8A8FBF] text-[12.5px] mt-[3px]">{p.blurb}</div>
+                  </div>
+                </div>
+                <div className="flex gap-[22px] border-t border-[#8A8FBF]/20 pt-4">
+                  <div>
+                    <div className="text-[#EDEEFF] font-bold font-mono text-[16px]">{ecoLeaderboards.filter(lb => lb.isLegacy ? lb.platform === p.key || (p.key === 'website' && !lb.platform) : true).length}</div>
+                    <div className="text-[#8A8FBF] text-[11px]">Markees</div>
+                  </div>
+                  <div>
+                    <div className="text-[#7C9CFF] font-bold font-mono text-[16px]">{isLoadingEco ? '...' : (() => { const eth = ecoLeaderboards.reduce((s, lb) => s + parseFloat(lb.totalFundsRaw || '0'), 0); return ethPrice ? formatUsd(eth * ethPrice) : (eth.toFixed(2) + ' ETH') })()}</div>
+                    <div className="text-[#8A8FBF] text-[11px]">raised</div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <div className="text-center mt-7">
+            <Link href="/create-a-markee"
+              className="inline-flex items-center gap-[10px] bg-[#F897FE] text-[#060A2A] border-0 rounded-lg px-[26px] py-[14px] font-sans font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] no-underline transition-[transform,box-shadow] duration-[120ms] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px]">
+              Create a Markee →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Own the Network */}
+      <section className="relative overflow-hidden bg-[#060A2A] py-[96px] px-4 sm:px-[40px] border-t border-[#8A8FBF]/20">
+        <div className="starfield-bg" />
+        <div className="relative z-10 max-w-[760px] mx-auto text-center">
+          <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-[18px]">
+            <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0 inline-block" />
+            Own the Network
+          </div>
+          <h2 className="m-0 text-[clamp(28px,4vw,46px)] font-extrabold tracking-[-1px] text-[#EDEEFF] leading-[1.05]">
+            Markee is cooperatively owned
+          </h2>
+          <p className="mt-5 mx-auto text-[#B8B6D9] text-[17px] max-w-[54ch] leading-[1.6]">
+            We're digital-native, owned and governed on the Ethereum network. 100% owned by MARKEE holders, enforced onchain via Revnets and Gardens.
+          </p>
+          {/* RevnetWidget */}
+          <div className="w-full max-w-[440px] mx-auto my-9 text-left">
+            <RevnetWidget />
+          </div>
+          <div className="flex justify-center">
+            <Link href="/owners"
+              className="bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-lg px-[22px] py-[13px] font-sans text-[15px] no-underline inline-flex items-center gap-2 transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]">
+              How ownership works →
+            </Link>
+          </div>
         </div>
       </section>
 

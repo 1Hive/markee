@@ -2,25 +2,22 @@
 
 /**
  * Markee Detail Page
- * 
+ *
  * Route: /markee/[address]
  */
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check, Eye, Plus } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkeeDetail } from '@/lib/contracts/useMarkeeDetail'
 import { formatEth, formatAddress } from '@/lib/utils'
-import { getTxUrl, getAddressUrl } from '@/lib/explorer'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { Emoji } from '@/components/ui/Emoji'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
-import { NETWORK_PAUSED } from '@/lib/paused'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function formatTimestamp(ts: bigint | number): string {
@@ -47,74 +44,6 @@ function formatViewCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return n.toString()
-}
-
-// ── Copy Button ──────────────────────────────────────────────────────
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="text-[#8A8FBF] hover:text-[#B8B6D9] transition-colors"
-      title="Copy address"
-    >
-      {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-    </button>
-  )
-}
-
-// ── Tx Link ──────────────────────────────────────────────────────────
-
-function TxLink({ hash, label }: { hash: string; label?: string }) {
-  return (
-    <a
-      href={getTxUrl(CANONICAL_CHAIN_ID, hash)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[#7C9CFF] hover:text-[#F897FE] transition-colors text-xs"
-    >
-      {label || `${hash.slice(0, 8)}...${hash.slice(-6)}`}
-      <ExternalLink size={10} />
-    </a>
-  )
-}
-
-// ── Address Link ─────────────────────────────────────────────────────
-
-function AddressLink({ address, label }: { address: string; label?: string }) {
-  return (
-    <a
-      href={getAddressUrl(CANONICAL_CHAIN_ID, address)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
-    >
-      {label || formatAddress(address)}
-      <ExternalLink size={10} />
-    </a>
-  )
-}
-
-// ── Stat Card ────────────────────────────────────────────────────────
-
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20">
-      <div className="flex items-center gap-2 text-[#8A8FBF] text-xs mb-1">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="text-[#EDEEFF] font-bold text-lg">{value}</div>
-    </div>
-  )
 }
 
 // ── Loading Skeleton ─────────────────────────────────────────────────
@@ -144,37 +73,137 @@ function DetailSkeleton() {
   )
 }
 
-// ── Tab Component ────────────────────────────────────────────────────
+// ── FeaturedCard ─────────────────────────────────────────────────────
 
-type TabId = 'funds' | 'history'
-
-function TabButton({ 
-  active, 
-  onClick, 
-  children, 
-  count 
-}: { 
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-  count: number
+function FeaturedCard({ message, owner, ownerAddress, totalFundsAdded, totalViews, onBid }: {
+  message: string
+  owner: string
+  ownerAddress: string
+  totalFundsAdded: bigint
+  totalViews: number | null
+  onBid: () => void
 }) {
+  const [hover, setHover] = useState(false)
+  const ethPrice = parseFloat(formatEth(totalFundsAdded))
   return (
-    <button
-      onClick={onClick}
-      className={`
-        px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2
-        ${active
-          ? 'bg-[#F897FE]/20 text-[#F897FE] border border-[#F897FE]/40'
-          : 'text-[#8A8FBF] hover:text-[#B8B6D9] hover:bg-[#8A8FBF]/10 border border-transparent'
-        }
-      `}
-    >
-      {children}
-      <span className={`text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-[#F897FE]/30' : 'bg-[#8A8FBF]/20'}`}>
-        {count}
+    <button onClick={onBid} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      className="relative w-full text-left cursor-pointer rounded-[16px] p-[18px_26px_22px] backdrop-blur-sm transition-[border-color,transform,box-shadow] duration-[180ms]"
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: `1px solid ${hover ? 'rgba(248,151,254,0.5)' : 'rgba(255,255,255,0.18)'}`,
+        transform: hover ? 'translateY(-2px)' : 'none',
+        boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
+      }}>
+      {/* view count top-right */}
+      <div className="flex items-center justify-end mb-3 font-mono text-[10.5px] tracking-[1.5px] uppercase">
+        <span className="inline-flex items-center gap-1 text-[#7C9CFF]">
+          <Eye size={11} />
+          {totalViews !== null ? formatViewCount(totalViews) : '—'}
+        </span>
+      </div>
+      {/* message */}
+      <div className="font-mono font-bold leading-[1.12] tracking-[-0.02em]"
+        style={{ fontSize: 'clamp(20px,3vw,34px)', background: 'linear-gradient(120deg, #EDEEFF 0%, #F897FE 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+        {message || <span className="opacity-40 italic">No message yet</span>}
+      </div>
+      {/* owner bottom-right */}
+      <div className="mt-[14px] flex items-center justify-end gap-2 text-[13px] flex-wrap">
+        <span className="text-[#8A8FBF]">—</span>
+        <span className="text-[#EDEEFF]">{owner}</span>
+        <span className="text-[#8A8FBF] font-mono text-[11px]">{formatAddress(ownerAddress)}</span>
+      </div>
+      {/* price pill */}
+      <span className="absolute bottom-[-15px] left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[13px] px-[18px] py-2 rounded-lg whitespace-nowrap shadow-[0_8px_28px_rgba(248,151,254,0.42)] pointer-events-none z-[3] transition-[opacity,transform] duration-[180ms]"
+        style={{ transform: `translateX(-50%) translateY(${hover ? '0' : '4px'})`, opacity: hover ? 1 : 0 }}>
+        {ethPrice > 0 ? `${formatEth(totalFundsAdded)} ETH — Add Funds` : 'Buy a Message'}
       </span>
     </button>
+  )
+}
+
+// ── MetricsBar ────────────────────────────────────────────────────────
+
+function MetricsBar({ markee, msgCount, totalViews }: { markee: any, msgCount: number, totalViews: number | null }) {
+  const cells = [
+    { label: 'Total funds added', value: `${formatEth(markee.totalFundsAdded)} ETH`, color: '#1DB227' },
+    { label: 'Total views', value: totalViews !== null ? formatViewCount(totalViews) : '—', color: '#7C9CFF' },
+    { label: 'Messages bought', value: msgCount.toLocaleString(), color: '#EDEEFF' },
+    { label: 'Message edits', value: markee.messageUpdateCount.toString(), color: '#B8B6D9' },
+    { label: 'Contract', value: formatAddress(markee.address), color: '#F897FE', href: `https://basescan.org/address/${markee.address}` },
+  ]
+  return (
+    <div className="max-w-[1100px] grid gap-6 py-[26px] border-t border-b border-[#8A8FBF]/20"
+      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+      {cells.map((c, i) => (
+        <div key={i} className="flex flex-col gap-[7px] min-w-0">
+          <span className="font-mono text-[10px] tracking-[1px] uppercase text-[#8A8FBF]">{c.label}</span>
+          {c.href ? (
+            <a href={c.href} target="_blank" rel="noopener noreferrer"
+              className="font-mono text-[18px] font-bold tracking-[-0.5px] no-underline border-b border-dotted self-start"
+              style={{ color: c.color, borderColor: c.color }}>
+              {c.value} ↗
+            </a>
+          ) : (
+            <span className="font-mono text-[18px] font-bold tracking-[-0.5px]" style={{ color: c.color }}>{c.value}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── FundsLeaderboard ──────────────────────────────────────────────────
+
+function FundsLeaderboard({ events, onAddFunds }: { events: any[], onAddFunds: () => void }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null)
+  if (!events || events.length === 0) return null
+  const cols = '150px 120px 1fr 188px'
+  return (
+    <div className="max-w-[1100px] mx-auto mt-10">
+      <h2 className="m-0 mb-1 text-[clamp(22px,3vw,30px)] font-extrabold tracking-[-0.6px] text-[#EDEEFF]">Leaderboard</h2>
+      <p className="mt-0 mb-5 text-[#B8B6D9] text-[15px]">The message with the most funds added takes the Top Spot.</p>
+      <div className="overflow-x-auto rounded-[10px] border border-[#8A8FBF]/20">
+        <div className="min-w-[580px] bg-[#0A0F3D]">
+          {/* Header */}
+          <div className="grid gap-4 px-4 py-[11px] border-b border-[#8A8FBF]/20 bg-[#060A2A] items-center font-mono text-[10px] font-semibold tracking-[1px] uppercase text-[#8A8FBF]"
+            style={{ gridTemplateColumns: cols }}>
+            <span>Bought by</span><span>Funds added</span><span>Note</span><span></span>
+          </div>
+          {events.map((event, i) => (
+            <div key={event.id || i}>
+              <div className="grid gap-4 px-4 py-[13px] border-b border-[#8A8FBF]/20 items-center"
+                style={{ gridTemplateColumns: cols, background: i === 0 ? 'rgba(248,151,254,0.06)' : 'transparent', borderLeft: i === 0 ? '3px solid #F897FE' : '3px solid transparent' }}>
+                <span className="font-mono text-[12.5px] text-[#B8B6D9] truncate">{formatAddress(event.addedBy)}</span>
+                <span className="font-mono text-[12.5px] text-[#7C9CFF] font-semibold">+{formatEth(event.amount)} ETH</span>
+                <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{timeAgo(event.timestamp)}</span>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setOpenIdx(openIdx === i ? null : i)}
+                    className="inline-flex items-center gap-1 bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-[7px] px-3 py-[7px] text-[12.5px] font-semibold cursor-pointer font-sans whitespace-nowrap">
+                    History <span className="text-[9px]" style={{ transform: openIdx === i ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 160ms' }}>▼</span>
+                  </button>
+                  <button onClick={onAddFunds}
+                    className="bg-[#F897FE] text-[#060A2A] border-none rounded-[7px] px-[14px] py-[7px] text-[12.5px] font-bold cursor-pointer font-sans whitespace-nowrap">
+                    Add Funds
+                  </button>
+                </div>
+              </div>
+              {openIdx === i && (
+                <div className="col-span-full bg-[#060A2A] border-t border-[#8A8FBF]/20 px-4 py-2">
+                  <div className="flex items-center gap-3 py-[9px] font-mono text-[12px]">
+                    <span>+</span>
+                    <span className="text-[#EDEEFF] font-semibold min-w-[130px]">Funds added</span>
+                    <span className="text-[#B8B6D9] flex-1">+{formatEth(event.amount)} ETH</span>
+                    <span className="text-[#8A8FBF]">{formatTimestamp(event.timestamp)}</span>
+                    <a href={`https://basescan.org/tx/${event.transactionHash}`} target="_blank" rel="noopener noreferrer"
+                      className="text-[#7C9CFF] no-underline border-b border-dotted border-[#7C9CFF]">tx ↗</a>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -182,10 +211,8 @@ function TabButton({
 
 export default function MarkeeDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const markeeAddress = params.address as string
   const { markee, isLoading, error } = useMarkeeDetail(markeeAddress)
-  const [activeTab, setActiveTab] = useState<TabId>('funds')
   const [totalViews, setTotalViews] = useState<number | null>(null)
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -233,266 +260,88 @@ export default function MarkeeDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A] text-[#EDEEFF]">
-      <Header />
+      <Header activePage="marketplace" />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        {/* Back link */}
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-2 text-[#8A8FBF] hover:text-[#F897FE] transition-colors mb-6 text-sm"
-        >
-          <ArrowLeft size={16} />
-          Back to leaderboard
-        </button>
+      {isLoading && (
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+          <DetailSkeleton />
+        </main>
+      )}
 
-        {isLoading && <DetailSkeleton />}
-
-        {error && (
+      {error && (
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
             <p className="text-red-400 mb-2">Failed to load markee details</p>
             <p className="text-[#8A8FBF] text-sm">{error.message}</p>
           </div>
-        )}
+        </main>
+      )}
 
-        {markee && (
-          <div className="space-y-6">
-            {/* ── Current Message ────────────────────────────────── */}
-            <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
-              <div className="bg-gradient-to-r from-[#F897FE]/10 to-[#7C9CFF]/10 rounded-xl p-6 sm:p-8 border border-[#F897FE]/30">
-                <div className="font-jetbrains text-2xl sm:text-3xl font-bold text-[#EDEEFF] mb-4 break-words">
-                  {markee.message}
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <p className="text-[#8A8FBF] italic">
-                    <span className={markee.name ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
-                      {markee.name || formatAddress(markee.owner)}
-                    </span>
-                  </p>
-                  <div className="flex items-center gap-3 text-xs text-[#8A8FBF]">
-                    <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} />
-                    <span>Owner: <AddressLink address={markee.owner} /></span>
-                    <CopyButton text={markee.owner} />
-                  </div>
-                </div>
+      {markee && (
+        <>
+          {/* Hero - featured message + metrics */}
+          <section className="relative z-[2] border-b border-[#8A8FBF]/20 py-11 px-4 sm:px-10"
+            style={{ background: 'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(124,156,255,0.2), transparent 55%), linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)' }}>
+            <HeroBackground />
+            <div className="relative z-10 max-w-[1100px] mx-auto">
+              {/* "Top Message" label */}
+              <div className="flex items-center gap-2 mb-4 font-mono text-[12px] text-[#8A8FBF] tracking-[2px] uppercase">
+                <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE]" />
+                Top Message
+                <span className="flex-1 h-px bg-[#8A8FBF]/20 ml-2" />
               </div>
-            </ModeratedContent>
-
-            {/* ── Action Buttons ─────────────────────────────────── */}
-            {!NETWORK_PAUSED && (
-              <div className="flex justify-end gap-2">
-                {isOwner && (
-                  <button
-                    onClick={() => setIsEditOpen(true)}
-                    className="flex items-center gap-2 border border-[#F897FE]/40 text-[#F897FE] hover:bg-[#F897FE]/10 font-semibold px-5 py-2.5 rounded-lg transition-colors"
-                  >
-                    <MessageSquare size={16} />
-                    Edit Message
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsAddFundsOpen(true)}
-                  className="flex items-center gap-2 bg-[#F897FE] hover:bg-[#F897FE]/90 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
-                >
-                  <Plus size={16} />
-                  Add Funds
-                </button>
-              </div>
-            )}
-
-            {/* ── Stats Grid ─────────────────────────────────────── */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <StatCard
-                icon={<Coins size={14} />}
-                label="Total Funded"
-                value={`${formatEth(markee.totalFundsAdded)} ETH`}
+              {/* Featured card */}
+              <FeaturedCard
+                message={markee.message}
+                owner={markee.name || formatAddress(markee.owner)}
+                ownerAddress={markee.owner}
+                totalFundsAdded={markee.totalFundsAdded}
+                totalViews={totalViews}
+                onBid={() => setIsAddFundsOpen(true)}
               />
-              <StatCard
-                icon={<Clock size={14} />}
-                label="Created"
-                value={new Date(markee.createdAt * 1000).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              />
-              <StatCard
-                icon={<MessageSquare size={14} />}
-                label="Message Edits"
-                value={markee.messageUpdateCount.toString()}
-              />
-              <StatCard
-                icon={<User size={14} />}
-                label="Contributions"
-                value={markee.fundsAddedCount.toString()}
-              />
-              <StatCard
-                icon={<Eye size={14} />}
-                label="All-Time Views"
-                value={totalViews !== null ? formatViewCount(totalViews) : ''}
+              {/* Spacer */}
+              <div className="h-7" />
+              {/* MetricsBar */}
+              <MetricsBar
+                markee={markee}
+                msgCount={markee.fundsAddedCount}
+                totalViews={totalViews}
               />
             </div>
+          </section>
 
-            {/* ── Strategy / Contract Info ────────────────────────── */}
-            <div className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
-                <div className="flex items-center gap-3">
-                  {markee.strategyName && (
-                    <span className="text-[#B8B6D9]">
-                      <Emoji className="text-base mr-1">🪧</Emoji>
-                      {markee.strategyName}
-                    </span>
-                  )}
-                  {markee.isPartnerStrategy && markee.partnerPercentage && (
-                    <span className="text-xs bg-[#7C9CFF]/20 text-[#7C9CFF] px-2 py-0.5 rounded-full">
-                      {markee.partnerPercentage}% to partner
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-[#8A8FBF]">
-                  <span>Contract:</span>
-                  <AddressLink address={markee.address} />
-                  <CopyButton text={markee.address} />
-                </div>
-              </div>
+          {/* Leaderboard */}
+          <section className="px-4 sm:px-10 py-2">
+            <FundsLeaderboard
+              events={markee.fundsAddedEvents}
+              onAddFunds={() => setIsAddFundsOpen(true)}
+            />
+          </section>
+
+          {/* Bottom CTAs */}
+          <section className="max-w-[1100px] mx-auto px-4 sm:px-10 py-5 pb-24 flex gap-[14px] flex-wrap justify-center">
+            <button onClick={() => setIsAddFundsOpen(true)}
+              className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] border-none transition-[transform,box-shadow] duration-[120ms] hover:-translate-y-[1px] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)]">
+              Buy a New Message
+            </button>
+            <Link href="/create-a-markee"
+              className="inline-flex items-center gap-2 bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-lg px-[22px] py-[13px] font-sans text-[15px] no-underline transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]">
+              Create Your Own Markee →
+            </Link>
+          </section>
+
+          {/* Owner edit button (floating, bottom-right) — only visible to owner */}
+          {isOwner && (
+            <div className="fixed bottom-6 right-6 z-50">
+              <button
+                onClick={() => setIsEditOpen(true)}
+                className="flex items-center gap-2 border border-[#F897FE]/40 text-[#F897FE] bg-[#060A2A]/90 backdrop-blur-sm hover:bg-[#F897FE]/10 font-semibold px-5 py-2.5 rounded-lg transition-colors shadow-lg">
+                Edit Message
+              </button>
             </div>
-
-            {/* ── History Tabs ────────────────────────────────────── */}
-            <ModeratedContent
-              chainId={CANONICAL_CHAIN_ID}
-              markeeId={markee.address}
-              overlayText="🚩 this message history has been flagged"
-            >
-            <div>
-              <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-                <TabButton
-                  active={activeTab === 'funds'}
-                  onClick={() => setActiveTab('funds')}
-                  count={markee.fundsAddedCount}
-                >
-                  <Coins size={14} /> Funds Added
-                </TabButton>
-                <TabButton
-                  active={activeTab === 'history'}
-                  onClick={() => setActiveTab('history')}
-                  count={markee.messageUpdateCount + markee.nameUpdates.length}
-                >
-                  <MessageSquare size={14} /> Message History
-                </TabButton>
-              </div>
-
-              {/* ── Funding History ──────────────────────────────── */}
-              {activeTab === 'funds' && (
-                <div className="space-y-2">
-                  {markee.fundsAddedEvents.length === 0 ? (
-                    <p className="text-[#8A8FBF] text-sm text-center py-8">No funding events yet.</p>
-                  ) : (
-                    markee.fundsAddedEvents.map((event) => (
-                      <div
-                        key={event.id}
-                        className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-[#7C9CFF]/20 flex items-center justify-center flex-shrink-0">
-                              <Coins size={14} className="text-[#7C9CFF]" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-[#7C9CFF]">
-                                  +{formatEth(event.amount)} ETH
-                                </span>
-                                <span className="text-[#8A8FBF] text-xs">
-                                  → {formatEth(event.newTotal)} total
-                                </span>
-                              </div>
-                              <div className="text-xs text-[#8A8FBF] mt-0.5">
-                                by <AddressLink address={event.addedBy} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-[#8A8FBF] sm:text-right">
-                            <span title={formatTimestamp(event.timestamp)}>
-                              {timeAgo(event.timestamp)}
-                            </span>
-                            <TxLink hash={event.transactionHash} />
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* ── Message History ──────────────────────────────── */}
-              {activeTab === 'history' && (() => {
-                const combined = [
-                  ...markee.messageUpdates.map(e => ({ ...e, kind: 'message' as const })),
-                  ...markee.nameUpdates.map(e => ({ ...e, kind: 'name' as const })),
-                ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
-
-                return (
-                  <div className="space-y-2">
-                    {combined.length === 0 ? (
-                      <p className="text-[#8A8FBF] text-sm text-center py-8">No history yet.</p>
-                    ) : (
-                      combined.map((event) => (
-                        <div
-                          key={event.id}
-                          className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
-                        >
-                          {event.kind === 'message' ? (
-                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                              <div className="flex items-start gap-3 flex-1 min-w-0">
-                                <div className="w-8 h-8 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                  <MessageSquare size={14} className="text-[#F897FE]" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-jetbrains text-sm text-[#EDEEFF] break-words">
-                                    {event.newMessage}
-                                  </div>
-                                  <div className="text-xs text-[#8A8FBF] mt-1">
-                                    by <AddressLink address={event.updatedBy} />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-[#8A8FBF] flex-shrink-0 sm:text-right">
-                                <span title={formatTimestamp(event.timestamp)}>{timeAgo(event.timestamp)}</span>
-                                <TxLink hash={event.transactionHash} />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0">
-                                  <User size={14} className="text-[#FFA94D]" />
-                                </div>
-                                <div>
-                                  <div className="text-sm text-[#EDEEFF] font-medium">
-                                    {event.newName || <span className="italic text-[#8A8FBF]">Name cleared</span>}
-                                  </div>
-                                  <div className="text-xs text-[#8A8FBF] mt-0.5">
-                                    name set by <AddressLink address={event.updatedBy} />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-[#8A8FBF] sm:text-right">
-                                <span title={formatTimestamp(event.timestamp)}>{timeAgo(event.timestamp)}</span>
-                                <TxLink hash={event.transactionHash} />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )
-              })()}
-            </div>
-            </ModeratedContent>
-          </div>
-        )}
-      </main>
+          )}
+        </>
+      )}
 
       <Footer />
 
