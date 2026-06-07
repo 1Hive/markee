@@ -167,7 +167,9 @@ img.emoji {
   font-weight: 700; font-size: 13px; padding: 8px 18px; border-radius: 8px;
   white-space: nowrap; box-shadow: 0 8px 28px rgba(248,151,254,0.42);
   transition: opacity 180ms ease, transform 180ms ease; pointer-events: none; z-index: 3;
+  opacity: 0; transform: translateX(-50%) translateY(4px);
 }
+.reader-card:hover .reader-pill { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ── Layout grids ───────────────────────────────────────────────────────────── */
 .signs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 1080px; margin: 0 auto; }

@@ -19,6 +19,21 @@ import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { Eye } from 'lucide-react'
 import { formatEther } from 'viem'
 
+const fmtViews = (n: number) =>
+  new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+
+function MetricStat({ n, label, color, dot }: { n: string; label: string; color: string; dot: string }) {
+  return (
+    <div className="metric-cell" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="metric-dot" style={{ width: 9, height: 9, borderRadius: 99, background: dot, boxShadow: `0 0 12px ${dot}`, flexShrink: 0, display: 'inline-block' }} />
+        <span className="metric-num" style={{ fontSize: 34, fontWeight: 800, color, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+      </span>
+      <span className="metric-label" style={{ fontSize: 13, color: '#8A8FBF', marginLeft: 17 }}>{label}</span>
+    </div>
+  )
+}
+
 import { formatDistanceToNow } from 'date-fns'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -175,14 +190,12 @@ export default function Home() {
       <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
         <HeroBackground />
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="relative z-10 px-4 sm:px-6 lg:px-8">
+          <div className="signs-grid">
             {isLoadingFixed ? (
               [1, 2, 3].map(i => (
-                <div key={i} className="readerboard-card animate-pulse">
-                  <div className="readerboard-inner">
-                    <div className="h-16 bg-[#8A8FBF]/20 rounded mx-8" />
-                  </div>
+                <div key={i} className="reader-card animate-pulse">
+                  <div className="h-10 bg-[#8A8FBF]/20 rounded w-3/4" />
                 </div>
               ))
             ) : (
@@ -192,28 +205,21 @@ export default function Home() {
                   <button
                     key={index}
                     onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-                    className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
+                    className="reader-card"
                   >
-                    <div className="readerboard-inner">
-                      {/* View count badge — top-right corner */}
-                      {viewData && viewData.totalViews > 0 && (
-                        <div className="absolute top-2 right-2 flex items-center gap-1 bg-[#060A2A]/70 backdrop-blur-sm text-[#8A8FBF] text-xs px-2 py-1 rounded-full pointer-events-none z-10">
-                          <Eye className="w-3 h-3" />
-                          <span>{viewData.totalViews.toLocaleString()}</span>
-                        </div>
-                      )}
-
-                      <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
-                    </div>
-
-                    <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
-                      <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                        {fixedMarkee.priceWei && fixedMarkee.priceWei !== '0'
-                          ? ethPrice
-                            ? `${formatUsd(parseFloat(formatEther(BigInt(fixedMarkee.priceWei))) * ethPrice)} to Change`
-                            : `${formatEther(BigInt(fixedMarkee.priceWei))} ETH to Change`
-                          : 'Change Message'}
-                      </div>
+                    {viewData && viewData.totalViews > 0 && (
+                      <span className="reader-views">
+                        <Eye style={{ width: 11, height: 11 }} />
+                        {fmtViews(viewData.totalViews)}
+                      </span>
+                    )}
+                    <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
+                    <div className="reader-pill">
+                      {fixedMarkee.priceWei && fixedMarkee.priceWei !== '0'
+                        ? ethPrice
+                          ? `${formatUsd(parseFloat(formatEther(BigInt(fixedMarkee.priceWei))) * ethPrice)} to change`
+                          : `${formatEther(BigInt(fixedMarkee.priceWei))} ETH to change`
+                        : 'Change message'}
                     </div>
                   </button>
                 )
@@ -223,111 +229,44 @@ export default function Home() {
         </div>
       </section>
 
-      <style jsx>{`
-        .readerboard-card {
-          position: relative;
-          background: #edeeff;
-          border-radius: 4px;
-          padding: 4px;
-          box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
-          aspect-ratio: 2 / 1;
-        }
-
-        .readerboard-inner {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
-          border-radius: 2px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          overflow: hidden;
-        }
-
-        .readerboard-text {
-          font-family: var(--font-jetbrains-mono), 'Courier New', Consolas, monospace;
-          font-size: clamp(18px, 3vw, 28px);
-          font-weight: 600;
-          line-height: 1.1;
-          letter-spacing: -0.5px;
-          color: #edeeff;
-          text-align: center;
-          word-wrap: break-word;
-          max-width: 100%;
-          transition: all 0.2s ease;
-        }
-
-        .group:hover .readerboard-text {
-          color: #7b6af4;
-          transform: scale(1.02);
-        }
-
-        @media (max-width: 768px) {
-          .readerboard-card {
-            aspect-ratio: 5 / 3;
-          }
-
-          .readerboard-text {
-            font-size: 20px;
-          }
-        }
-      `}</style>
-
-      {/* Raise Funds with Markee */}
-      <section className="bg-[#0A0F3D] py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-[#EDEEFF] mb-4">Raise Funds with Markee</h2>
-          <p className="text-[#8A8FBF] mb-8">Join the growing network of digital communities getting funded with a Markee sign.</p>
-
-          <div className="flex items-center justify-center gap-8 mb-8 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F897FE] animate-pulse" />
-              {isLoadingEco ? (
-                <span className="text-[#F897FE] font-semibold text-3xl animate-pulse">--</span>
-              ) : (
-                <span className="text-[#F897FE] font-semibold text-3xl">{ecoActive.length}</span>
-              )}
-              <span className="text-[#8A8FBF]">active Markees</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#EDEEFF] animate-pulse" />
-              {isLoadingEco ? (
-                <span className="text-[#EDEEFF] font-semibold text-3xl animate-pulse">--</span>
-              ) : (
-                <span className="text-[#EDEEFF] font-semibold text-3xl">{ecoMessages.toLocaleString()}</span>
-              )}
-              <span className="text-[#8A8FBF]">messages bought</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#7C9CFF] animate-pulse" />
-              {isLoadingEco ? (
-                <span className="text-[#7C9CFF] font-semibold text-3xl animate-pulse">--</span>
-              ) : ethPrice ? (
-                <div className="flex flex-col items-start">
-                  <span className="text-[#7C9CFF] font-semibold text-3xl">
-                    {formatUsd(parseFloat(ecoTotalFunds) * ethPrice)}
-                  </span>
-                  <span className="text-[#8A8FBF] text-xs">
-                    {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
-                  </span>
-                </div>
-              ) : (
-                <span className="text-[#7C9CFF] font-semibold text-3xl">
-                  {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
-                </span>
-              )}
-              <span className="text-[#8A8FBF]">total raised</span>
-            </div>
+      {/* Pay to be seen */}
+      <section className="metrics-section bg-[#0A0F3D] py-16 border-b border-[#8A8FBF]/20">
+        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 40px' }}>
+          <h1 className="text-center mb-9" style={{ fontSize: 'clamp(36px,5.5vw,60px)', fontWeight: 800, letterSpacing: -2, lineHeight: 1.02, color: '#EDEEFF' }}>
+            Pay to be <span style={{ color: '#F897FE' }}>seen</span>
+          </h1>
+          <div className="metrics-row">
+            <MetricStat
+              n={isLoadingEco ? '--' : ecoLeaderboards.length.toLocaleString()}
+              label="domains"
+              color="#7B6AF4"
+              dot="#7B6AF4"
+            />
+            <MetricStat
+              n={isLoadingEco ? '--' : ecoActive.length.toLocaleString()}
+              label="active Markees"
+              color="#F897FE"
+              dot="#F897FE"
+            />
+            <MetricStat
+              n={isLoadingEco ? '--' : ecoMessages.toLocaleString()}
+              label="messages bought"
+              color="#EDEEFF"
+              dot="#EDEEFF"
+            />
+            <MetricStat
+              n={isLoadingEco || !ethPrice ? '--' : formatUsd(parseFloat(ecoTotalFunds) * ethPrice)}
+              label="total funds raised"
+              color="#1DB227"
+              dot="#1DB227"
+            />
+            <MetricStat
+              n={(() => { const t = Array.from(views.values()).reduce((s, v) => s + (v.totalViews || 0), 0); return t > 0 ? fmtViews(t) : '--' })()}
+              label="views"
+              color="#7C9CFF"
+              dot="#7C9CFF"
+            />
           </div>
-
-          <a
-            href="/create-a-markee"
-            className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-          >
-            Create a Markee
-          </a>
         </div>
       </section>
 
