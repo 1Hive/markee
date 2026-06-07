@@ -57,23 +57,27 @@ interface TopDawgModalProps {
   userMarkee?: Markee | null
   initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onSuccess?: () => void
-  strategyAddress?: `0x${string}` // Optional: for partner strategies
-  partnerName?: string // Optional: partner display name
-  partnerSplitPercentage?: number // Optional: percentage going to partner (e.g., 62 for 62%)
-  topFundsAdded?: bigint // Optional: current top message's totalFundsAdded for competitive display
+  strategyAddress?: `0x${string}`
+  partnerName?: string
+  partnerSplitPercentage?: number
+  topFundsAdded?: bigint
+  initialAmount?: string
+  initialMessage?: string
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
-export function TopDawgModal({ 
-  isOpen, 
-  onClose, 
-  userMarkee, 
-  initialMode, 
-  onSuccess, 
+export function TopDawgModal({
+  isOpen,
+  onClose,
+  userMarkee,
+  initialMode,
+  onSuccess,
   strategyAddress: customStrategyAddress,
   partnerName,
-  topFundsAdded
+  topFundsAdded,
+  initialAmount,
+  initialMessage,
 }: TopDawgModalProps) {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
@@ -233,7 +237,7 @@ export function TopDawgModal({
     } else {
       setActiveTab('create')
     }
-    setMessage('')
+    setMessage(initialMessage ?? '')
     setError(null)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,7 +246,9 @@ export function TopDawgModal({
   // Set the default amount only when the modal first opens.
   useEffect(() => {
     if (!isOpen) return
-    if (hasCompetition && takeFirstAmountFormatted) {
+    if (initialAmount !== undefined) {
+      setAmount(initialAmount)
+    } else if (hasCompetition && takeFirstAmountFormatted) {
       setAmount(takeFirstAmountFormatted)
     } else {
       setAmount(minimumAmountFormatted)

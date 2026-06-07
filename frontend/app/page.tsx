@@ -34,13 +34,14 @@ function MetricStat({ n, label, color, dot }: { n: string; label: string; color:
   )
 }
 
-function RevnetWidget() {
+function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => void }) {
   const [amount, setAmount] = useState('0.1')
   const [expanded, setExpanded] = useState(false)
   const [message, setMessage] = useState('')
   const rate = 4200
   const eth = parseFloat(amount) || 0
   const receive = Math.round(eth * rate)
+  const defaultMessage = `bought ${receive.toLocaleString()} MARKEE tokens`
   return (
     <div className="bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-[16px] p-4 shadow-[0_18px_50px_rgba(6,10,42,0.5)]">
       <label className="block font-mono text-[10px] tracking-[1.5px] uppercase text-[#8A8FBF] mb-2 mt-[2px]">You pay</label>
@@ -62,14 +63,15 @@ function RevnetWidget() {
       </div>
       {expanded && (
         <div className="mt-3">
-          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={2} placeholder="Set a message with your payment."
+          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={2} placeholder={defaultMessage}
             className="w-full resize-none bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px] py-[11px] text-[#EDEEFF] font-sans text-[14px] outline-none leading-[1.4] box-border" />
         </div>
       )}
-      <a href="https://revnet.app/base/markee" target="_blank" rel="noopener noreferrer"
-        className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] border-none rounded-[10px] py-[15px] px-5 font-sans font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] flex items-center justify-center gap-2 no-underline transition-[transform,box-shadow] duration-[120ms] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px]">
-        Buy MARKEE ↗
-      </a>
+      <button
+        onClick={() => onBuy(amount, message.trim() || defaultMessage)}
+        className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] border-none rounded-[10px] py-[15px] px-5 font-sans font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] flex items-center justify-center gap-2 transition-[transform,box-shadow] duration-[120ms] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px]">
+        Connect wallet to buy
+      </button>
     </div>
   )
 }
@@ -145,6 +147,10 @@ export default function Home() {
 
   const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
   const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
+
+  const [revnetModalOpen, setRevnetModalOpen] = useState(false)
+  const [revnetInitialAmount, setRevnetInitialAmount] = useState('0.1')
+  const [revnetInitialMessage, setRevnetInitialMessage] = useState('')
 
   const handleTransactionSuccess = useCallback(() => {
     setTimeout(() => {
@@ -445,7 +451,7 @@ export default function Home() {
           </p>
           {/* RevnetWidget */}
           <div className="w-full max-w-[440px] mx-auto my-9 text-left">
-            <RevnetWidget />
+            <RevnetWidget onBuy={(amt, msg) => { setRevnetInitialAmount(amt); setRevnetInitialMessage(msg); setRevnetModalOpen(true) }} />
           </div>
           <div className="flex justify-center">
             <Link href="/owners"
@@ -475,6 +481,16 @@ export default function Home() {
         onClose={handleFixedModalClose}
         fixedMarkee={selectedFixedMarkee}
         onSuccess={handleTransactionSuccess}
+      />
+
+      <TopDawgModal
+        isOpen={revnetModalOpen}
+        onClose={() => setRevnetModalOpen(false)}
+        initialMode="create"
+        strategyAddress={V13_LEADERBOARDS.COOPERATIVE}
+        initialAmount={revnetInitialAmount}
+        initialMessage={revnetInitialMessage}
+        onSuccess={() => { setRevnetModalOpen(false); refetch() }}
       />
     </div>
   )

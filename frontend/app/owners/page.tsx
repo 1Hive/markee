@@ -6,6 +6,8 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import TokenomicsSimulator from '@/components/ui/TokenomicsSimulator'
+import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 
 // ---------------------------------------------------------------------------
 // Phase / stage data
@@ -130,13 +132,14 @@ const COVENANT_CLAUSES = [
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function RevnetWidget() {
+function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => void }) {
   const [amount, setAmount] = useState('0.1')
   const [expanded, setExpanded] = useState(false)
   const [message, setMessage] = useState('')
   const rate = 4200
   const eth = parseFloat(amount) || 0
   const receive = Math.round(eth * rate)
+  const defaultMessage = `bought ${receive.toLocaleString()} MARKEE tokens`
 
   return (
     <div className="w-full max-w-[440px] mx-auto my-9 text-left">
@@ -173,18 +176,16 @@ function RevnetWidget() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={2}
-            placeholder="Set a message with your payment."
+            placeholder={defaultMessage}
             className="w-full mt-3 resize-none bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px] py-[11px] text-[#EDEEFF] font-sans text-[14px] outline-none leading-[1.4] box-border"
           />
         )}
-        <a
-          href="https://revnet.app/base/markee"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] rounded-[10px] py-[15px] px-5 font-bold text-[15px] flex items-center justify-center gap-2 no-underline shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
+        <button
+          onClick={() => onBuy(amount, message.trim() || defaultMessage)}
+          className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] border-none rounded-[10px] py-[15px] px-5 font-bold text-[15px] cursor-pointer flex items-center justify-center gap-2 shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
         >
           Connect wallet to buy
-        </a>
+        </button>
       </div>
     </div>
   )
@@ -411,6 +412,9 @@ function FaqAccordion() {
 
 export default function Owners() {
   const [activeTab, setActiveTab] = useState<Tab>('About MARKEE')
+  const [revnetModalOpen, setRevnetModalOpen] = useState(false)
+  const [revnetInitialAmount, setRevnetInitialAmount] = useState('0.1')
+  const [revnetInitialMessage, setRevnetInitialMessage] = useState('')
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -444,7 +448,7 @@ export default function Owners() {
           </p>
 
           {/* Widget */}
-          <RevnetWidget />
+          <RevnetWidget onBuy={(amt, msg) => { setRevnetInitialAmount(amt); setRevnetInitialMessage(msg); setRevnetModalOpen(true) }} />
 
           {/* Ghost buttons */}
           <div className="flex items-center justify-center gap-4 flex-wrap">
@@ -603,6 +607,16 @@ export default function Owners() {
       </div>
 
       <Footer />
+
+      <TopDawgModal
+        isOpen={revnetModalOpen}
+        onClose={() => setRevnetModalOpen(false)}
+        initialMode="create"
+        strategyAddress={V13_LEADERBOARDS.COOPERATIVE}
+        initialAmount={revnetInitialAmount}
+        initialMessage={revnetInitialMessage}
+        onSuccess={() => setRevnetModalOpen(false)}
+      />
     </div>
   )
 }
