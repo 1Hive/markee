@@ -178,6 +178,9 @@ img.emoji {
 @media (max-width: 720px) { .plat-grid-home { grid-template-columns: 1fr; } }
 
 /* ── Metrics row (home + marketplace) ──────────────────────────────────────── */
+.metrics-row { display: flex; flex-wrap: wrap; gap: 32px; justify-content: space-between; align-items: flex-start; }
+.metric-cell { display: flex; flex-direction: column; gap: 4px; }
+
 @media (max-width: 640px) {
   .metrics-section { padding-left: 16px !important; padding-right: 16px !important; }
   .metrics-row { flex-wrap: nowrap !important; gap: 8px !important; justify-content: space-between !important; width: 100%; align-items: flex-start; }
