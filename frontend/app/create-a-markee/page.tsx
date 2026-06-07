@@ -434,7 +434,7 @@ function IntegrationForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          access_key: '5d9a5d34-e246-491d-8f0f-94181ea84cc9',
+          access_key: process.env.NEXT_PUBLIC_WEB3FORMS_KEY ?? '',
           website: form.website,
           name: form.name,
           email: form.email,
