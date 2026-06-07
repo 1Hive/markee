@@ -8,12 +8,9 @@ export function ConnectButton() {
 
   if (!ready) {
     return (
-      <div
-        aria-hidden="true"
-        style={{ opacity: 0, pointerEvents: 'none', userSelect: 'none' }}
-      >
-        <button className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium flex items-center gap-2">
-          <Wallet size={20} />
+      <div aria-hidden="true" style={{ opacity: 0, pointerEvents: 'none', userSelect: 'none' }}>
+        <button style={{ background: '#F897FE', color: '#060A2A', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-jetbrains-mono), JetBrains Mono, monospace' }}>
+          Connect
         </button>
       </div>
     )
@@ -24,15 +21,15 @@ export function ConnectButton() {
       <button
         onClick={login}
         type="button"
-        className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
+        style={{ background: '#F897FE', color: '#060A2A', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-jetbrains-mono), JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, transition: 'opacity 160ms' }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
       >
-        <Wallet size={20} />
-        <span className="hidden sm:inline">Connect</span>
+        Connect
       </button>
     )
   }
 
-  // Resolve display name: wallet address > email > name
   const activeWallet = wallets[0]
   const displayAddress = activeWallet?.address
   const displayName = displayAddress
@@ -43,17 +40,21 @@ export function ConnectButton() {
     <div className="flex items-center gap-2">
       <a
         href="/account"
-        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/30 text-[#8A8FBF] hover:text-[#F897FE] hover:border-[#F897FE]/60 transition-colors"
-        title="My Markees"
+        style={{ width: 38, height: 38, borderRadius: 99, flexShrink: 0, border: '1px solid rgba(138,143,191,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B8B6D9', textDecoration: 'none', transition: 'border-color 160ms, color 160ms' }}
+        title="Account"
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(138,143,191,0.6)'; e.currentTarget.style.color = '#EDEEFF' }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(138,143,191,0.2)'; e.currentTarget.style.color = '#B8B6D9' }}
       >
         <User size={18} />
       </a>
       <button
         onClick={logout}
         type="button"
-        className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
+        style={{ background: 'transparent', color: '#B8B6D9', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 8, padding: '9px 18px', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-jetbrains-mono), JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, transition: 'border-color 160ms, color 160ms' }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(138,143,191,0.5)'; e.currentTarget.style.color = '#EDEEFF' }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(138,143,191,0.2)'; e.currentTarget.style.color = '#B8B6D9' }}
       >
-        <Wallet size={20} />
+        <span style={{ width: 7, height: 7, borderRadius: 99, background: '#1DB227', boxShadow: '0 0 8px #1DB227', display: 'inline-block', flexShrink: 0 }} />
         <span className="hidden sm:inline">{displayName}</span>
       </button>
     </div>
