@@ -719,13 +719,13 @@ export default function EcosystemPage() {
                 Looking for a deeper integration?
               </h2>
               <p className="text-[#B8B6D9] text-base mb-8 leading-relaxed">
-                We work directly with platforms and developer tools to build native Markee integrations — custom embed widgets, API access, and co-marketing.
+                We'll work with you 1-on-1 to build embeddable messages your platform's users will love.
               </p>
               <ul className="flex flex-col gap-4">
                 {[
-                  'Native SDK and embed widget support',
-                  'Revenue share tailored to your platform',
-                  'Co-marketing and featured placement',
+                  'Give your users an easy way to raise funds',
+                  'Earn fees on all your platform\'s Markees',
+                  'Drive engagement and make it fun for people to come back!',
                 ].map(item => (
                   <li key={item} className="flex items-start gap-3 text-[#B8B6D9] text-sm">
                     <span className="w-2 h-2 rounded-full bg-[#7C9CFF] shadow-[0_0_8px_#7C9CFF] flex-shrink-0 mt-1.5" />
