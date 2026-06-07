@@ -418,12 +418,20 @@ export function MarkeeCard({
   // Large view (ranks 2-3)
   if (size === 'large') {
     const [isCardHovering, setIsCardHovering] = useState(false)
+    const nextPrice = markee.totalFundsAdded + BigInt('1000000000000000')
 
     return (
-      <div 
-        className="relative bg-[#0A0F3D] rounded-lg shadow-md p-6 h-full flex flex-col"
+      <div
+        className="relative rounded-lg shadow-md p-6 h-full flex flex-col border"
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
+        style={{
+          background: isCardHovering ? 'rgba(15,27,107,0.5)' : '#0A0F3D',
+          borderColor: isCardHovering ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)',
+          transform: isCardHovering ? 'translateY(-1px)' : 'none',
+          transition: 'border-color 180ms ease, transform 180ms ease, background 180ms ease',
+          overflow: 'visible',
+        }}
       >
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
           <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full flex flex-col">
@@ -440,17 +448,29 @@ export function MarkeeCard({
           </div>
         </ModeratedContent>
 
+        {/* Hover price pill */}
+        <span
+          className="absolute left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[12px] px-[14px] py-[6px] rounded-lg whitespace-nowrap shadow-[0_6px_20px_rgba(248,151,254,0.38)] pointer-events-none z-[3] transition-[opacity,transform] duration-[180ms]"
+          style={{
+            bottom: -11,
+            transform: `translateX(-50%) translateY(${isCardHovering ? '0' : '4px'})`,
+            opacity: isCardHovering ? 1 : 0,
+          }}
+        >
+          {formatEth(nextPrice)} ETH to change
+        </span>
+
         <div className="pt-3 border-t border-[#8A8FBF]/20">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <MarkeeStats 
+              <MarkeeStats
                 messageViews={messageViews}
                 totalViews={totalViews}
                 ethAmount={markee.totalFundsAdded}
                 rank={rank}
                 size={size}
               />
-              <AmountToTop 
+              <AmountToTop
                 currentFunds={markee.totalFundsAdded}
                 topFunds={topFundsAdded}
                 rank={rank}
@@ -459,7 +479,7 @@ export function MarkeeCard({
             </div>
 
             <div className="flex items-center gap-2 justify-between">
-              <button 
+              <button
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddFunds?.(markee) }}
                 className="text-xs px-2 py-1 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
               >
@@ -495,12 +515,20 @@ export function MarkeeCard({
   // Medium view (ranks 4-26)
   if (size === 'medium') {
     const [isCardHovering, setIsCardHovering] = useState(false)
+    const nextPrice = markee.totalFundsAdded + BigInt('1000000000000000')
 
     return (
-      <div 
-        className="relative bg-[#0A0F3D] rounded-lg shadow-sm p-4 h-full flex flex-col"
+      <div
+        className="relative rounded-lg shadow-sm p-4 h-full flex flex-col border"
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
+        style={{
+          background: isCardHovering ? 'rgba(15,27,107,0.5)' : '#0A0F3D',
+          borderColor: isCardHovering ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)',
+          transform: isCardHovering ? 'translateY(-1px)' : 'none',
+          transition: 'border-color 180ms ease, transform 180ms ease, background 180ms ease',
+          overflow: 'visible',
+        }}
       >
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
           <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full flex flex-col">
@@ -517,17 +545,29 @@ export function MarkeeCard({
           </div>
         </ModeratedContent>
 
+        {/* Hover price pill */}
+        <span
+          className="absolute left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[11px] px-[12px] py-[5px] rounded-lg whitespace-nowrap shadow-[0_6px_20px_rgba(248,151,254,0.38)] pointer-events-none z-[3] transition-[opacity,transform] duration-[180ms]"
+          style={{
+            bottom: -10,
+            transform: `translateX(-50%) translateY(${isCardHovering ? '0' : '4px'})`,
+            opacity: isCardHovering ? 1 : 0,
+          }}
+        >
+          {formatEth(nextPrice)} ETH to change
+        </span>
+
         <div className="pt-2 border-t border-[#8A8FBF]/20">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <MarkeeStats 
+              <MarkeeStats
                 messageViews={messageViews}
                 totalViews={totalViews}
                 ethAmount={markee.totalFundsAdded}
                 rank={rank}
                 size={size}
               />
-              <AmountToTop 
+              <AmountToTop
                 currentFunds={markee.totalFundsAdded}
                 topFunds={topFundsAdded}
                 rank={rank}
@@ -536,7 +576,7 @@ export function MarkeeCard({
             </div>
 
             <div className="flex items-center gap-1.5 justify-between">
-              <button 
+              <button
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddFunds?.(markee) }}
                 className="text-[10px] px-2 py-1 bg-[#F897FE] hover:bg-[#F897FE]/80 text-[#060A2A] font-semibold rounded transition"
               >

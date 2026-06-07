@@ -256,6 +256,17 @@ export function TopDawgModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
+  // Close on Escape (unless a tx is in flight)
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isPending && !isConfirming) onClose()
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isPending, isConfirming])
+
   // Reset state and trigger refresh when transaction succeeds
   useEffect(() => {
     if (isSuccess && isOpen) {
@@ -529,7 +540,7 @@ export function TopDawgModal({
       onClick={onClose}
     >
       <div 
-        className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-[560px] w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
