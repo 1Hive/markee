@@ -353,7 +353,7 @@ export default function EcosystemPage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
+      <Header activePage="raise" />
 
       {/* Hero */}
       <section className="relative py-24 overflow-hidden">

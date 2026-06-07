@@ -172,7 +172,7 @@ export default function PartnerPage() {
   if (!partner) {
     return (
       <div className="min-h-screen bg-[#060A2A]">
-        <Header activePage="create-a-markee" />
+        <Header activePage="marketplace" />
         <div className="flex items-center justify-center py-24">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-[#EDEEFF] mb-4">Partner Not Found</h1>
@@ -188,7 +188,7 @@ export default function PartnerPage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
+      <Header activePage="marketplace" />
 
       {/* Breadcrumbs */}
       <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">

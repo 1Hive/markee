@@ -63,7 +63,7 @@ function getCurrentPhase() {
 export default function Owners() {
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="owners" />
+      <Header activePage="own" />
 
       {/* Hero */}
       <section className="relative py-24 overflow-hidden border-b border-[#8A8FBF]/20">

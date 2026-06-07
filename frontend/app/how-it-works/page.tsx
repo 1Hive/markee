@@ -9,7 +9,7 @@ import { Footer } from '@/components/layout/Footer'
 export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-midnight-navy">
-      <Header activePage="how-it-works" />
+      <Header activePage="home" />
 
       {/* Pricing Strategies - Visual Cards */}
       <PricingStrategies />

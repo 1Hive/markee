@@ -272,7 +272,7 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
+      <Header activePage="home" />
 
       {/* Breadcrumbs */}
       <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">

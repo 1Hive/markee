@@ -99,3 +99,100 @@ img.emoji {
   width: 100%;
   margin: 0;
 }
+
+/* ── Starfield hero background ─────────────────────────────────────────────── */
+.starfield-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.starfield-bg::before, .starfield-bg::after {
+  content: ''; position: absolute; inset: 0; background-repeat: no-repeat;
+  background-image:
+    radial-gradient(1.4px 1.4px at 12% 18%, #EDEEFF, transparent),
+    radial-gradient(1.2px 1.2px at 23% 64%, rgba(237,238,255,0.85), transparent),
+    radial-gradient(1.6px 1.6px at 38% 32%, #EDEEFF, transparent),
+    radial-gradient(1.1px 1.1px at 49% 78%, rgba(237,238,255,0.7), transparent),
+    radial-gradient(1.5px 1.5px at 61% 22%, #EDEEFF, transparent),
+    radial-gradient(1.2px 1.2px at 73% 58%, rgba(237,238,255,0.85), transparent),
+    radial-gradient(1.3px 1.3px at 85% 30%, #EDEEFF, transparent),
+    radial-gradient(1.1px 1.1px at 91% 72%, rgba(237,238,255,0.7), transparent),
+    radial-gradient(1.4px 1.4px at 7% 84%, #EDEEFF, transparent),
+    radial-gradient(1.2px 1.2px at 55% 12%, rgba(237,238,255,0.8), transparent);
+  animation: starTwinkle 3.5s ease-in-out infinite;
+}
+.starfield-bg::after {
+  background-image:
+    radial-gradient(1.2px 1.2px at 18% 44%, rgba(237,238,255,0.8), transparent),
+    radial-gradient(1.5px 1.5px at 33% 88%, #EDEEFF, transparent),
+    radial-gradient(1.1px 1.1px at 44% 16%, rgba(237,238,255,0.7), transparent),
+    radial-gradient(1.4px 1.4px at 67% 70%, #EDEEFF, transparent),
+    radial-gradient(1.2px 1.2px at 79% 14%, rgba(237,238,255,0.8), transparent),
+    radial-gradient(1.5px 1.5px at 95% 50%, #EDEEFF, transparent),
+    radial-gradient(1.1px 1.1px at 28% 26%, rgba(237,238,255,0.7), transparent),
+    radial-gradient(1.3px 1.3px at 88% 88%, #EDEEFF, transparent);
+  animation: starTwinkle 3.5s ease-in-out infinite 1.75s;
+}
+@keyframes starTwinkle { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+/* ── Reader / sign cards (home hero + marketplace featured) ─────────────────── */
+.reader-card {
+  position: relative; width: 100%;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 16px; padding: clamp(22px,3vw,38px) clamp(20px,3vw,34px);
+  backdrop-filter: blur(4px); aspect-ratio: 2 / 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  overflow: visible; transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+}
+.reader-card::before {
+  content: ''; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px);
+  mix-blend-mode: overlay;
+}
+.reader-card:hover { border-color: rgba(248,151,254,0.5); transform: translateY(-3px); box-shadow: 0 18px 50px rgba(6,10,42,0.6); }
+.reader-text {
+  font-family: var(--font-jetbrains-mono), 'JetBrains Mono', 'Courier New', monospace;
+  font-size: clamp(20px,2.6vw,32px); font-weight: 700; line-height: 1.08; letter-spacing: -0.02em;
+  text-align: center; text-wrap: balance;
+  background: linear-gradient(120deg, #EDEEFF 0%, #F897FE 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  transition: transform 200ms ease;
+}
+.reader-card:hover .reader-text { transform: scale(1.015); }
+.reader-views {
+  position: absolute; top: 14px; right: 16px; display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 0.5px; color: #8A8FBF; opacity: 0.85;
+}
+.reader-pill {
+  position: absolute; bottom: -16px; left: 50%; display: inline-flex; align-items: center; gap: 6px;
+  background: #F897FE; color: #060A2A;
+  font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  font-weight: 700; font-size: 13px; padding: 8px 18px; border-radius: 8px;
+  white-space: nowrap; box-shadow: 0 8px 28px rgba(248,151,254,0.42);
+  transition: opacity 180ms ease, transform 180ms ease; pointer-events: none; z-index: 3;
+}
+
+/* ── Layout grids ───────────────────────────────────────────────────────────── */
+.signs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 1080px; margin: 0 auto; }
+@media (max-width: 720px) { .signs-grid { grid-template-columns: 1fr; gap: 22px; } .reader-card { aspect-ratio: 5 / 2; } }
+.plat-grid-home { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 720px) { .plat-grid-home { grid-template-columns: 1fr; } }
+
+/* ── Metrics row (home + marketplace) ──────────────────────────────────────── */
+@media (max-width: 640px) {
+  .metrics-section { padding-left: 16px !important; padding-right: 16px !important; }
+  .metrics-row { flex-wrap: nowrap !important; gap: 8px !important; justify-content: space-between !important; width: 100%; align-items: flex-start; }
+  .metric-cell { flex: 1 1 0; min-width: 0; align-items: center; text-align: center; gap: 5px !important; }
+  .metric-head { gap: 4px !important; }
+  .metric-num { font-size: clamp(15px, 4.6vw, 19px) !important; letter-spacing: -0.4px !important; }
+  .metric-label { font-size: 9.5px !important; margin-left: 0 !important; line-height: 1.25; }
+  .metric-dot { width: 5px !important; height: 5px !important; box-shadow: none !important; }
+}
+
+/* ── Design system animations ───────────────────────────────────────────────── */
+@keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes rowHighlight { 0% { background: rgba(248,151,254,0.18); } 100% { background: transparent; } }
+.markee-row--new { animation: rowHighlight 1.6s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .starfield-bg::before, .starfield-bg::after { animation: none; }
+}
