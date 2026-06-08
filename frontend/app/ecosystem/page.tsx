@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { Globe2, Github, Zap } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
@@ -46,6 +46,37 @@ interface EcosystemLeaderboard {
 const fmtCompact = (n: number) =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 
+function useNarrow() {
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    setNarrow(mq.matches)
+    const handler = () => setNarrow(mq.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return narrow
+}
+
+function useCountUp(target: number, started: boolean, duration = 1600) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    if (!started) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setVal(target); return }
+    const t0 = performance.now()
+    let raf: number
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setVal(Math.round(target * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [started, target, duration])
+  return val
+}
+
 function rowHref(lb: EcosystemLeaderboard): string {
   if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
   if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
@@ -60,15 +91,56 @@ function PlatformIcon({ platform, size = 14 }: { platform: string; size?: number
 
 // ─── MetricStat ────────────────────────────────────────────────────────────────
 
-function MetricStat({ n, label, color, dot }: { n: string; label: string; color: string; dot: string }) {
+function MetricStat({ display, label, color, dot }: { display: string; label: string; color: string; dot: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 9, height: 9, borderRadius: 99, background: dot, boxShadow: `0 0 12px ${dot}`, flexShrink: 0, display: 'inline-block' }} />
-        <span style={{ fontSize: 34, fontWeight: 800, color, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+    <div className="metric-cell" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="metric-dot" style={{ width: 9, height: 9, borderRadius: 99, background: dot, boxShadow: `0 0 12px ${dot}`, flexShrink: 0, display: 'inline-block' }} />
+        <span className="metric-num" style={{ fontSize: 34, fontWeight: 800, color, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{display}</span>
       </span>
-      <span style={{ fontSize: 13, color: '#8A8FBF', marginLeft: 17 }}>{label}</span>
+      <span className="metric-label" style={{ fontSize: 13, color: '#8A8FBF', marginLeft: 17 }}>{label}</span>
     </div>
+  )
+}
+
+function MetricsStrip({ domains, activeMarkees, messages, usdRaw, totalViews, ethPriceVal }: {
+  domains: number; activeMarkees: number; messages: number; usdRaw: number; totalViews: number; ethPriceVal: number | null
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [started, setStarted] = useState(false)
+  const narrow = useNarrow()
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let done = false
+    const go = () => { if (!done) { done = true; setStarted(true) } }
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { go(); io.disconnect() } })
+    }, { threshold: 0.4 })
+    io.observe(el)
+    const t = setTimeout(go, 600)
+    return () => { io.disconnect(); clearTimeout(t) }
+  }, [])
+
+  const usdTarget = ethPriceVal ? Math.round(usdRaw * ethPriceVal) : 0
+  const vDomains = useCountUp(domains, started)
+  const vMarkees = useCountUp(activeMarkees, started)
+  const vMessages = useCountUp(messages, started)
+  const vUsd = useCountUp(usdTarget, started)
+  const vViews = useCountUp(totalViews, started)
+  const fmt = (v: number) => narrow ? fmtCompact(v) : v.toLocaleString()
+
+  return (
+    <section className="metrics-section bg-[#0A0F3D] py-10 border-b border-[#8A8FBF]/20">
+      <div ref={ref} className="metrics-row" style={{ maxWidth: 1080, margin: '0 auto', padding: '0 40px' }}>
+        <MetricStat display={fmt(vDomains)} label="domains" color="#7B6AF4" dot="#7B6AF4" />
+        <MetricStat display={fmt(vMarkees)} label="active Markees" color="#F897FE" dot="#F897FE" />
+        <MetricStat display={fmt(vMessages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
+        <MetricStat display={ethPriceVal ? `$${fmt(vUsd)}` : `${usdRaw.toFixed(2)} ETH`} label="total funds raised" color="#1DB227" dot="#1DB227" />
+        <MetricStat display={fmt(vViews)} label="views" color="#7C9CFF" dot="#7C9CFF" />
+      </div>
+    </section>
   )
 }
 
@@ -144,6 +216,31 @@ function FeaturedMarkee({ lb, onBid, views }: { lb: EcosystemLeaderboard; onBid:
         </button>
       </div>
     </section>
+  )
+}
+
+// ─── Sort header ──────────────────────────────────────────────────────────────
+
+function SortHead({ label, col, sortKey, sortDir, onSort, align = 'left' }: {
+  label: string; col: SortKey; sortKey: SortKey; sortDir: SortDir; onSort: (c: SortKey) => void; align?: 'left' | 'right'
+}) {
+  const active = sortKey === col
+  return (
+    <button
+      onClick={() => onSort(col)}
+      style={{
+        background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        justifySelf: align === 'right' ? 'end' : 'start',
+        fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase',
+        color: active ? '#F897FE' : '#8A8FBF', transition: 'color 120ms',
+      }}
+    >
+      {label}
+      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1 }}>
+        {active ? (sortDir === 'asc' ? '▲' : '▼') : '▾'}
+      </span>
+    </button>
   )
 }
 
@@ -300,8 +397,6 @@ export default function EcosystemPage() {
     setPage(0)
   }
 
-  const sortArrow = (key: SortKey) =>
-    sortKey === key ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''
 
   // Row helper: compute buy price
   function buyPriceEth(lb: EcosystemLeaderboard): string {
@@ -328,54 +423,16 @@ export default function EcosystemPage() {
       )}
 
       {/* Metrics strip */}
-      <section className="bg-[#0A0F3D] py-10 border-b border-[#8A8FBF]/20">
-        <div
-          style={{
-            maxWidth: 1080,
-            margin: '0 auto',
-            padding: '0 40px',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 40,
-            alignItems: 'flex-start',
-          }}
-        >
-          <MetricStat
-            n={isLoading ? '--' : leaderboards.length.toLocaleString()}
-            label="domains"
-            color="#7B6AF4"
-            dot="#7B6AF4"
-          />
-          <MetricStat
-            n={isLoading ? '--' : ecoActive.length.toLocaleString()}
-            label="active Markees"
-            color="#F897FE"
-            dot="#F897FE"
-          />
-          <MetricStat
-            n={isLoading ? '--' : ecoMessages.toLocaleString()}
-            label="messages bought"
-            color="#EDEEFF"
-            dot="#EDEEFF"
-          />
-          <MetricStat
-            n={
-              isLoading || !ethPrice
-                ? '--'
-                : formatUsd(parseFloat(totalPlatformFunds) * ethPrice)
-            }
-            label="total funds raised"
-            color="#1DB227"
-            dot="#1DB227"
-          />
-          <MetricStat
-            n={totalViews > 0 ? fmtCompact(totalViews) : '--'}
-            label="views"
-            color="#7C9CFF"
-            dot="#7C9CFF"
-          />
-        </div>
-      </section>
+      {!isLoading && (
+        <MetricsStrip
+          domains={leaderboards.length}
+          activeMarkees={ecoActive.length}
+          messages={ecoMessages}
+          usdRaw={parseFloat(totalPlatformFunds)}
+          totalViews={totalViews}
+          ethPriceVal={ethPrice ?? null}
+        />
+      )}
 
       {/* Leaderboard */}
       <section className="py-14 px-4 sm:px-10 bg-[#060A2A]">
@@ -390,58 +447,54 @@ export default function EcosystemPage() {
             <p className="text-[#B8B6D9] text-base">Find and buy messages from any Markee on the internet.</p>
           </div>
 
-          {/* Search */}
-          <input
-            type="search"
-            value={search}
-            onChange={e => handleSearch(e.target.value)}
-            placeholder="search messages, owners, 0x..."
-            className="w-full bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] placeholder-[#8A8FBF] font-mono text-[13px] outline-none focus:border-[#F897FE]/40 transition-colors mb-4"
-          />
-
-          {/* Platform tabs */}
-          <div className="flex items-center gap-1 bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-lg p-1 w-fit mb-6">
-            {FACTORY_TABS.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => handleTabChange(tab.key)}
-                className={`px-3 py-1.5 rounded-md font-mono text-[12px] tracking-[0.5px] transition-colors ${
-                  activeTab === tab.key
-                    ? 'text-[#EDEEFF] font-bold'
-                    : 'text-[#8A8FBF] hover:text-[#EDEEFF]'
-                }`}
-                style={activeTab === tab.key ? { background: '#4B3ACC' } : {}}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* Filters row */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+            {/* Search with icon + clear */}
+            <div style={{ flex: 1, minWidth: 220, position: 'relative', display: 'flex', alignItems: 'center', background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 8, padding: '0 12px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#8A8FBF', flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                <path d="M21 21l-4.5-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <input
+                value={search}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="search messages, owners, 0x..."
+                style={{ flex: 1, background: 'transparent', border: 'none', color: '#EDEEFF', padding: '11px 10px', fontSize: 13, outline: 'none', fontFamily: "'JetBrains Mono', monospace" }}
+              />
+              {search && (
+                <button onClick={() => handleSearch('')} style={{ background: 'transparent', border: 'none', color: '#8A8FBF', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+              )}
+            </div>
+            {/* Platform tabs */}
+            <div style={{ display: 'flex', gap: 4, overflowX: 'auto', padding: 3, background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 8 }}>
+              {FACTORY_TABS.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => handleTabChange(tab.key)}
+                  style={{
+                    background: activeTab === tab.key ? '#4B3ACC' : 'transparent',
+                    color: activeTab === tab.key ? '#EDEEFF' : '#8A8FBF',
+                    border: 'none', borderRadius: 5, padding: '7px 12px', fontSize: 12,
+                    fontWeight: activeTab === tab.key ? 700 : 500, cursor: 'pointer',
+                    whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'background 120ms, color 120ms',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Column headers (desktop) */}
           <div
-            className="hidden md:grid gap-4 px-[14px] pb-[10px] font-mono text-[10px] tracking-[1px] text-[#8A8FBF] uppercase"
-            style={{ gridTemplateColumns: '200px 120px 1fr 80px 130px' }}
+            className="hidden md:grid gap-4 px-[14px] pb-[10px]"
+            style={{ gridTemplateColumns: '200px 120px 1fr 80px 130px', background: '#060A2A' }}
           >
-            <span>Served on</span>
-            <button
-              onClick={() => handleSort('raised')}
-              className="text-left hover:text-[#EDEEFF] transition-colors bg-transparent border-none cursor-pointer font-mono text-[10px] tracking-[1px] uppercase text-[#8A8FBF] hover:text-[#EDEEFF] p-0"
-            >
-              Total raised{sortArrow('raised')}
-            </button>
-            <span>Current Message</span>
-            <button
-              onClick={() => handleSort('views')}
-              className="text-left hover:text-[#EDEEFF] transition-colors bg-transparent border-none cursor-pointer font-mono text-[10px] tracking-[1px] uppercase text-[#8A8FBF] hover:text-[#EDEEFF] p-0"
-            >
-              Views{sortArrow('views')}
-            </button>
-            <button
-              onClick={() => handleSort('price')}
-              className="text-right hover:text-[#EDEEFF] transition-colors bg-transparent border-none cursor-pointer font-mono text-[10px] tracking-[1px] uppercase text-[#8A8FBF] hover:text-[#EDEEFF] p-0 w-full"
-            >
-              Price to change{sortArrow('price')}
-            </button>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: '#8A8FBF' }}>Served on</span>
+            <SortHead label="Total raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: '#8A8FBF' }}>Current Message</span>
+            <SortHead label="Views" col="views" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+            <SortHead label="Price to change" col="price" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
           </div>
 
           {/* Rows */}
