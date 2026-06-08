@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy, CreditCard } from 'lucide-react'
+import { X, CheckCircle2, AlertCircle, ArrowRightLeft, Trophy, CreditCard } from 'lucide-react'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
@@ -413,13 +413,6 @@ export function TopDawgModal({
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
 
-  const getModalTitle = () => {
-    if (!userMarkee) return 'Buy a Message'
-    if (activeTab === 'addFunds') return 'Add Funds'
-    if (activeTab === 'updateMessage') return 'Update Message'
-    return 'Manage Your Markee'
-  }
-
   // ---------------------------------------------------------------------------
   // Amount selector JSX
   // ---------------------------------------------------------------------------
@@ -544,10 +537,21 @@ export function TopDawgModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
-          <h2 className="text-2xl font-bold text-[#EDEEFF]">
-            {getModalTitle()}
-          </h2>
+        <div className="flex items-center justify-between px-[22px] py-[18px] border-b border-[#8A8FBF]/30">
+          <div className="flex items-center gap-2.5" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#8A8FBF', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: '#F897FE', boxShadow: '0 0 8px #F897FE', flexShrink: 0, animation: 'pulse 1.5s infinite' }} />
+            {isPending
+              ? 'AWAITING SIGNATURE'
+              : isConfirming
+              ? 'CONFIRMING ONCHAIN'
+              : isSuccess
+              ? 'CONFIRMED'
+              : activeTab === 'addFunds'
+              ? 'ADD FUNDS'
+              : activeTab === 'updateMessage'
+              ? 'UPDATE MESSAGE'
+              : 'BUY A NEW MESSAGE'}
+          </div>
           <button
             onClick={onClose}
             disabled={isPending || isConfirming}
@@ -623,6 +627,20 @@ export function TopDawgModal({
               {/* Buy a Message (Create) */}
               {activeTab === 'create' && (
                 <div className="space-y-4">
+                  {/* Live message preview */}
+                  <div style={{ borderRadius: 10, border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: 88 }}>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, color: message ? '#EDEEFF' : '#8A8FBF', minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                      {message || 'Type your message below…'}
+                      {message && <span style={{ color: '#F897FE', animation: 'blink 1s step-end infinite' }}>|</span>}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#8A8FBF', display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontStyle: 'italic' }}>- {name || 'anon'}</span>
+                      <span style={{ color: maxMessageLength && message.length > Number(maxMessageLength) - 20 ? '#F897FE' : '#8A8FBF' }}>
+                        {message.length}/{maxMessageLength ? maxMessageLength.toString() : '223'}
+                      </span>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-[#B8B6D9] mb-2">
                       Your Message
@@ -821,54 +839,56 @@ export function TopDawgModal({
               )}
 
               {/* Error Message */}
-              {(error || isError) && (
+              {(error || isError) && !isPending && !isConfirming && !isSuccess && (
                 <div className="mt-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg flex items-start gap-2">
                   <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" size={20} />
                   <p className="text-sm text-red-300">{error || writeError?.message}</p>
                 </div>
               )}
 
-              {/* Success Message */}
-              {isSuccess && (
-                <div className="mt-4 p-4 bg-green-900/20 border border-green-500/50 rounded-lg flex items-start gap-2">
-                  <CheckCircle2 className="text-green-400 flex-shrink-0 mt-0.5" size={20} />
+              {/* Transaction state overlay */}
+              {(isPending || isConfirming || isSuccess) && (
+                <div className="mt-4 flex flex-col items-center gap-5 py-10 text-center">
+                  {isSuccess ? (
+                    <div style={{ width: 72, height: 72, borderRadius: 99, background: '#F897FE', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 32px rgba(248,151,254,0.3)' }}>
+                      <CheckCircle2 size={32} color="#060A2A" strokeWidth={2.5} />
+                    </div>
+                  ) : (
+                    <div style={{ width: 72, height: 72, borderRadius: 99, border: '2px solid #F897FE', borderTopColor: 'transparent', boxShadow: '0 0 32px rgba(248,151,254,0.3)', animation: 'spin 1s linear infinite' }} />
+                  )}
                   <div>
-                    <p className="text-sm font-medium text-green-300">Transaction successful!</p>
-                    <p className="text-xs text-green-400 mt-1">Refreshing leaderboard...</p>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#F897FE', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 8 }}>
+                      {isPending && 'Waiting for wallet…'}
+                      {isConfirming && 'Transaction pending on Base'}
+                      {isSuccess && (activeTab === 'addFunds' ? '✓ Funds added' : '🎉 Message is live')}
+                    </div>
+                    <div style={{ color: '#8A8FBF', fontSize: 13, maxWidth: 320, lineHeight: 1.5 }}>
+                      {isPending && 'Sign the transaction in your wallet to complete this purchase.'}
+                      {isConfirming && 'Usually under 2 seconds on Base. Sit tight.'}
+                      {isSuccess && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : `"${message}" is now on the leaderboard.`)}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Action Button */}
-              <div className="mt-6">
-                <button
-                  onClick={() => {
-                    if (activeTab === 'create') handleCreateMarkee()
-                    else if (activeTab === 'addFunds') handleAddFunds()
-                    else handleUpdateMessage()
-                  }}
-                  disabled={isPending || isConfirming || isSuccess || (activeTab !== 'updateMessage' && insufficientBalance)}
-                  className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-                >
-                  {isPending || isConfirming ? (
-                    <>
-                      <Loader2 className="animate-spin" size={20} />
-                      {isPending ? 'Confirm in wallet...' : 'Processing...'}
-                    </>
-                  ) : isSuccess ? (
-                    <>
-                      <CheckCircle2 size={20} />
-                      Success!
-                    </>
-                  ) : (
-                    <>
-                      {activeTab === 'create' && 'Buy Message'}
-                      {activeTab === 'addFunds' && 'Add Funds'}
-                      {activeTab === 'updateMessage' && 'Update Message'}
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Action Button — hidden while tx is in flight */}
+              {!isPending && !isConfirming && !isSuccess && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => {
+                      if (activeTab === 'create') handleCreateMarkee()
+                      else if (activeTab === 'addFunds') handleAddFunds()
+                      else handleUpdateMessage()
+                    }}
+                    disabled={activeTab !== 'updateMessage' && insufficientBalance}
+                    className="w-full bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:text-[#8A8FBF] disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                  >
+                    {activeTab === 'create' && 'Buy Message'}
+                    {activeTab === 'addFunds' && 'Add Funds'}
+                    {activeTab === 'updateMessage' && 'Update Message'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
