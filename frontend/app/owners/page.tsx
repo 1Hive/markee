@@ -103,6 +103,8 @@ type TabKey = (typeof TABS)[number]['key']
 // Sub-components
 // ---------------------------------------------------------------------------
 
+const MAX_MSG = 280
+
 function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => void }) {
   const [amount, setAmount] = useState('0.1')
   const [expanded, setExpanded] = useState(false)
@@ -143,13 +145,19 @@ function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => v
           </button>
         </div>
         {expanded && (
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            rows={2}
-            placeholder={defaultMessage}
-            className="w-full mt-3 resize-none bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px] py-[11px] text-[#EDEEFF] font-sans text-[14px] outline-none leading-[1.4] box-border"
-          />
+          <>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value.slice(0, MAX_MSG))}
+              rows={2}
+              maxLength={MAX_MSG}
+              placeholder="tell the world what you have to say..."
+              className="w-full mt-3 resize-none bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px] py-[11px] text-[#EDEEFF] font-sans text-[14px] outline-none leading-[1.4] box-border"
+            />
+            <div className="text-right mt-1 text-[11px]" style={{ color: message.length >= MAX_MSG - 20 ? '#F897FE' : '#8A8FBF' }}>
+              {message.length}/{MAX_MSG}
+            </div>
+          </>
         )}
         <button
           onClick={() => onBuy(amount, message.trim() || defaultMessage)}

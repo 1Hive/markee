@@ -483,7 +483,7 @@ export default function Home() {
                     <div className="text-[#8A8FBF] text-[11px]">Markees</div>
                   </div>
                   <div>
-                    <div className="text-[#7C9CFF] font-bold font-mono text-[16px]">{isLoadingEco ? '...' : (() => { const eth = ecoLeaderboards.reduce((s, lb) => s + parseFloat(lb.totalFundsRaw || '0'), 0); return ethPrice ? formatUsd(eth * ethPrice) : (eth.toFixed(2) + ' ETH') })()}</div>
+                    <div className="text-[#7C9CFF] font-bold font-mono text-[16px]">{isLoadingEco ? '...' : (() => { const eth = ecoLeaderboards.reduce((s, lb) => s + parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0'))), 0); return ethPrice ? formatUsd(eth * ethPrice) : (eth.toFixed(2) + ' ETH') })()}</div>
                     <div className="text-[#8A8FBF] text-[11px]">raised</div>
                   </div>
                 </div>
