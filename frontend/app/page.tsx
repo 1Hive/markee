@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAccount } from 'wagmi'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -22,14 +22,89 @@ import { formatEther } from 'viem'
 const fmtViews = (n: number) =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 
-function MetricStat({ n, label, color, dot }: { n: string; label: string; color: string; dot: string }) {
+function useNarrow() {
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    setNarrow(mq.matches)
+    const handler = () => setNarrow(mq.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return narrow
+}
+
+function useCountUp(target: number, started: boolean, duration = 1600) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    if (!started) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setVal(target); return }
+    const t0 = performance.now()
+    let raf: number
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setVal(Math.round(target * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [started, target, duration])
+  return val
+}
+
+function fmtCompact(n: number) {
+  return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+}
+
+function MetricStat({ display, label, color, dot }: { display: string; label: string; color: string; dot: string }) {
   return (
     <div className="metric-cell" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className="metric-dot" style={{ width: 9, height: 9, borderRadius: 99, background: dot, boxShadow: `0 0 12px ${dot}`, flexShrink: 0, display: 'inline-block' }} />
-        <span className="metric-num" style={{ fontSize: 34, fontWeight: 800, color, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+        <span className="metric-num" style={{ fontSize: 34, fontWeight: 800, color, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{display}</span>
       </span>
       <span className="metric-label" style={{ fontSize: 13, color: '#8A8FBF', marginLeft: 17 }}>{label}</span>
+    </div>
+  )
+}
+
+function MetricsRow({ domains, activeMarkees, messages, usdRaw, totalViews, ethPriceVal }: {
+  domains: number; activeMarkees: number; messages: number; usdRaw: number; totalViews: number; ethPriceVal: number | null
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [started, setStarted] = useState(false)
+  const narrow = useNarrow()
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let done = false
+    const go = () => { if (!done) { done = true; setStarted(true) } }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { go(); io.disconnect() } })
+    }, { threshold: 0.4 })
+    io.observe(el)
+    const t = setTimeout(go, 600)
+    return () => { io.disconnect(); clearTimeout(t) }
+  }, [])
+
+  const usdTarget = ethPriceVal ? Math.round(usdRaw * ethPriceVal) : 0
+  const vDomains = useCountUp(domains, started)
+  const vMarkees = useCountUp(activeMarkees, started)
+  const vMessages = useCountUp(messages, started)
+  const vUsd = useCountUp(usdTarget, started)
+  const vViews = useCountUp(totalViews, started)
+
+  const fmt = (v: number) => narrow ? fmtCompact(v) : v.toLocaleString()
+
+  return (
+    <div ref={ref} className="metrics-row">
+      <MetricStat display={fmt(vDomains)} label="domains" color="#7B6AF4" dot="#7B6AF4" />
+      <MetricStat display={fmt(vMarkees)} label="active Markees" color="#F897FE" dot="#F897FE" />
+      <MetricStat display={fmt(vMessages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
+      <MetricStat display={ethPriceVal ? `$${fmt(vUsd)}` : `${usdRaw.toFixed(2)} ETH`} label="total funds raised" color="#1DB227" dot="#1DB227" />
+      <MetricStat display={fmt(vViews)} label="views" color="#7C9CFF" dot="#7C9CFF" />
     </div>
   )
 }
@@ -281,38 +356,27 @@ export default function Home() {
           <h1 className="text-center mb-9" style={{ fontSize: 'clamp(36px,5.5vw,60px)', fontWeight: 800, letterSpacing: -2, lineHeight: 1.02, color: '#EDEEFF' }}>
             Pay to be <span style={{ color: '#F897FE' }}>seen</span>
           </h1>
-          <div className="metrics-row">
-            <MetricStat
-              n={isLoadingEco ? '--' : ecoLeaderboards.length.toLocaleString()}
-              label="domains"
-              color="#7B6AF4"
-              dot="#7B6AF4"
+          {isLoadingEco ? (
+            <div className="metrics-row">
+              {['#7B6AF4','#F897FE','#EDEEFF','#1DB227','#7C9CFF'].map(c => (
+                <div key={c} className="metric-cell" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="metric-dot" style={{ width: 9, height: 9, borderRadius: 99, background: c, opacity: 0.3 }} />
+                    <span className="metric-num" style={{ fontSize: 34, fontWeight: 800, color: c, opacity: 0.3, letterSpacing: -1, lineHeight: 1 }}>--</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <MetricsRow
+              domains={ecoLeaderboards.length}
+              activeMarkees={ecoActive.length}
+              messages={ecoMessages}
+              usdRaw={parseFloat(ecoTotalFunds)}
+              totalViews={Array.from(views.values()).reduce((s, v) => s + (v.totalViews || 0), 0)}
+              ethPriceVal={ethPrice ?? null}
             />
-            <MetricStat
-              n={isLoadingEco ? '--' : ecoActive.length.toLocaleString()}
-              label="active Markees"
-              color="#F897FE"
-              dot="#F897FE"
-            />
-            <MetricStat
-              n={isLoadingEco ? '--' : ecoMessages.toLocaleString()}
-              label="messages bought"
-              color="#EDEEFF"
-              dot="#EDEEFF"
-            />
-            <MetricStat
-              n={isLoadingEco || !ethPrice ? '--' : formatUsd(parseFloat(ecoTotalFunds) * ethPrice)}
-              label="total funds raised"
-              color="#1DB227"
-              dot="#1DB227"
-            />
-            <MetricStat
-              n={(() => { const t = Array.from(views.values()).reduce((s, v) => s + (v.totalViews || 0), 0); return t > 0 ? fmtViews(t) : '--' })()}
-              label="views"
-              color="#7C9CFF"
-              dot="#7C9CFF"
-            />
-          </div>
+          )}
         </div>
       </section>
 
