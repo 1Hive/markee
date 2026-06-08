@@ -26,7 +26,7 @@ const PLATFORMS: Platform[] = [
     summary: 'Add a paid message slot to any website you control.',
     icon: <Globe2 size={26} />,
     color: '#F897FE',
-    href: '/create-a-markee?platform=website',
+    href: '/create-a-markee?platform=openinternet',
   },
   {
     key: 'github',
@@ -250,7 +250,7 @@ function IntegrateForm() {
 export default function RaiseFunding() {
   return (
     <div style={{ minHeight: '100vh', background: '#060A2A' }}>
-      <Header />
+      <Header activePage="raise" />
 
       {/* Hero */}
       <section style={{ position: 'relative', overflow: 'hidden', borderBottom: '1px solid rgba(138,143,191,0.2)' }}>

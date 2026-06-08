@@ -13,7 +13,7 @@ interface HeaderProps {
 
 const NAV = [
   { label: 'Marketplace', href: '/ecosystem', key: 'marketplace' },
-  { label: 'Raise Funding', href: '/create-a-markee', key: 'raise' },
+  { label: 'Raise Funding', href: '/raise-funding', key: 'raise' },
   { label: 'Own the Network', href: '/owners', key: 'own' },
 ] as const
 
