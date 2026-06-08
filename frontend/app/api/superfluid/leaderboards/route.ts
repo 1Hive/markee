@@ -202,12 +202,16 @@ export async function GET(request: Request) {
         : []
     )
 
-    const [markeeResults, creators, boostedList] = await Promise.all([
+    const sfMetaKeys = addresses.map(a => `sf:meta:${a.toLowerCase()}`)
+    const [markeeResults, creators, boostedList, sfMetas] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
       resolveCreators(client, addresses),
       boostedListPromise,
+      addresses.length > 0
+        ? kv.mget<({ verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...sfMetaKeys)
+        : Promise.resolve([]),
     ])
 
     const boostedAddrs = new Set(boostedList.map(b => b.address.toLowerCase()))
@@ -249,6 +253,27 @@ export async function GET(request: Request) {
       const adjustedTopFunds = topFunds0 > baseline ? topFunds0 - baseline : 0n
       const adjustedTotalFunds = totalFunds > baseline ? totalFunds - baseline : 0n
 
+      const sfMeta = sfMetas[i]
+      const isBoosted = boostedAddrs.has(addrLower)
+      const boostedEntry = boostedList.find(b => b.address === addrLower)
+
+      // HTML-tag verification takes precedence for verifiedUrls; admin boost is
+      // always treated as verified (projectUrl is used when no HTML URL exists).
+      const htmlVerifiedUrls: string[] = Array.isArray(sfMeta?.verifiedUrls)
+        ? (sfMeta!.verifiedUrls as string[])
+        : sfMeta?.verifiedUrl
+          ? [sfMeta.verifiedUrl]
+          : []
+      const htmlVerified = sfMeta?.status === 'verified' && htmlVerifiedUrls.length > 0
+
+      const verifiedUrls = htmlVerifiedUrls.length > 0
+        ? htmlVerifiedUrls
+        : isBoosted && boostedEntry?.projectUrl
+          ? [boostedEntry.projectUrl]
+          : []
+      const verifiedUrl = verifiedUrls[0] ?? null
+      const status: 'verified' | 'pending' = htmlVerified || isBoosted ? 'verified' : 'pending'
+
       return {
         address: addr,
         name,
@@ -264,7 +289,10 @@ export async function GET(request: Request) {
         topMessage,
         topMessageOwner,
         topMarkeeAddress: topMarkeeAddresses[i] ?? null,
-        boosted: boostedAddrs.has(addrLower),
+        boosted: isBoosted,
+        verifiedUrl,
+        verifiedUrls,
+        status,
       }
     })
 

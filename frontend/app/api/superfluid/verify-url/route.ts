@@ -1,3 +1,11 @@
+// POST /api/superfluid/verify-url
+//
+// Self-serve HTML tag verification for Superfluid leaderboards.
+// Checks that data-markee-address is present in the page's server-rendered HTML,
+// then writes verifiedUrls + status to sf:meta:{address} in KV.
+//
+// Body: { address, url }
+
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { checkHtmlTag } from '@/lib/verify/checkHtmlTag'
@@ -18,11 +26,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ verified: false, error: result.error })
     }
 
-    // Append URL to verifiedUrls array (no duplicates)
-    const key = `oi:meta:${normalizedAddress}`
+    const key = `sf:meta:${normalizedAddress}`
     const existing = (await kv.get<Record<string, unknown>>(key)) ?? {}
 
-    // Migrate legacy single verifiedUrl to array
     const existingUrls: string[] = Array.isArray(existing.verifiedUrls)
       ? (existing.verifiedUrls as string[])
       : existing.verifiedUrl
@@ -39,7 +45,7 @@ export async function POST(req: NextRequest) {
     })
 
     await Promise.all([
-      kv.del('cache:openinternet:leaderboards'),
+      kv.del('cache:superfluid:leaderboards'),
       kv.del('cache:ecosystem:leaderboards'),
     ])
 

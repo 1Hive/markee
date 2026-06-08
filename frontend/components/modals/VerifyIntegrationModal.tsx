@@ -13,6 +13,7 @@ interface VerifyIntegrationModalProps {
   }
   onVerified?: (verifiedUrls: string[]) => void
   onOpenIntegration?: () => void
+  verifyEndpoint?: string
 }
 
 export function VerifyIntegrationModal({
@@ -21,6 +22,7 @@ export function VerifyIntegrationModal({
   leaderboard,
   onVerified,
   onOpenIntegration,
+  verifyEndpoint = '/api/openinternet/verify-url',
 }: VerifyIntegrationModalProps) {
   const [verifyUrl, setVerifyUrl] = useState('')
   const [verifying, setVerifying] = useState(false)
@@ -34,7 +36,7 @@ export function VerifyIntegrationModal({
     setVerifyError(null)
     setVerifying(true)
     try {
-      const res = await fetch('/api/openinternet/verify-url', {
+      const res = await fetch(verifyEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: leaderboard.address, url: verifyUrl.trim() }),
