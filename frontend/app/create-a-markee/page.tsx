@@ -1,418 +1,247 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { CheckCircle2, AlertCircle, ArrowRightLeft } from 'lucide-react'
 import Link from 'next/link'
-import { Globe2, Github, Zap, ExternalLink, Trophy, CheckCircle, Eye } from 'lucide-react'
-import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
-import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
-import { CreateOpenInternetModal } from '@/components/modals/CreateOpenInternetModal'
-import { NETWORK_PAUSED } from '@/lib/paused'
-import { ModerationProvider } from '@/components/moderation'
-import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatUsd } from '@/lib/utils'
+import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 
-const INITIAL_SHOW = 9
+// ── Color tokens + fonts ──────────────────────────────────────────────────────
+const C = {
+  bg: '#060A2A',
+  bg2: '#0A0F3D',
+  text: '#EDEEFF',
+  text2: '#B8B6D9',
+  muted: '#8A8FBF',
+  pink: '#F897FE',
+  blue: '#7C9CFF',
+  green: '#1DB227',
+  border: 'rgba(138,143,191,0.2)',
+  borderHover: 'rgba(248,151,254,0.35)',
+}
+const MONO = "'JetBrains Mono', monospace"
+const SANS = 'Manrope, system-ui, sans-serif'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Factory ABI (same signature for all three platforms) ─────────────────────
+const FACTORY_ABI = [
+  {
+    inputs: [
+      { name: '_beneficiaryAddress', type: 'address' },
+      { name: '_leaderboardName', type: 'string' },
+    ],
+    name: 'createLeaderboard',
+    outputs: [
+      { name: 'leaderboardAddress', type: 'address' },
+      { name: 'seedMarkeeAddress', type: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+] as const
 
-interface EcosystemLeaderboard {
-  address: string
+// ── Platform definitions ──────────────────────────────────────────────────────
+type PlatformKey = 'openinternet' | 'github' | 'superfluid'
+
+interface FieldDef {
+  id: string
+  label: string
+  placeholder: string
+  type: 'text' | 'url' | 'wallet'
+}
+
+interface Platform {
+  key: PlatformKey
   name: string
-  platform: 'website' | 'github' | 'superfluid'
-  totalFunds: string
-  totalFundsRaw: string
-  markeeCount: number
-  topMessage: string | null
-  topMessageOwner: string | null
-  creator: string | null
-  admin: string | null
-  minimumPrice: string
-  minimumPriceRaw: string
-  topFundsAddedRaw: string
-  logoUrl?: string | null
-  siteUrl?: string | null
-  verifiedUrl?: string | null
-  verifiedUrls?: string[]
-  topMarkeeAddress?: string | null
-  status?: 'pending' | 'verified'
-  isLegacy?: boolean
-  isCooperative?: boolean
-  percentToBeneficiary?: number
-  slug?: string
-  repoAvatarUrl?: string | null
-  repoFullName?: string | null
-  repoHtmlUrl?: string | null
-  repoVerified?: boolean
+  tagline: string
+  iconColor: string
+  summary: string
+  steps: string[]
+  fields: FieldDef[]
+  requiresGitHub: boolean
+  factoryAddress: `0x${string}`
+  activationPath: (addr: string) => string
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const PLATFORMS: Platform[] = [
+  {
+    key: 'openinternet',
+    name: 'Website',
+    tagline: 'Any site you own',
+    iconColor: C.pink,
+    summary: 'Add a Markee sign to any website you manage with a highly flexible LLM-guided integration.',
+    steps: ['Set up your Markee', 'Deploy Markee', 'Embed & Activate'],
+    fields: [
+      { id: 'siteUrl', label: 'Site URL', placeholder: 'https://myproject.xyz', type: 'url' },
+      { id: 'siteName', label: 'Site name', placeholder: 'My Project', type: 'text' },
+      { id: 'beneficiary', label: 'Beneficiary address', placeholder: '0x… (receives ETH on Base)', type: 'wallet' },
+    ],
+    requiresGitHub: false,
+    factoryAddress: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c',
+    activationPath: (addr) => `/ecosystem/website/${addr}`,
+  },
+  {
+    key: 'github',
+    name: 'GitHub Repo',
+    tagline: 'README, docs, any markdown',
+    iconColor: C.text,
+    summary: 'Drop a Markee sign into any markdown file in your repo. Perfect for READMEs and docs.',
+    steps: ['Connect GitHub', 'Set up your Markee', 'Deploy Markee', 'Embed & Activate'],
+    fields: [
+      { id: 'beneficiary', label: 'Beneficiary address', placeholder: '0x… (receives ETH on Base)', type: 'wallet' },
+    ],
+    requiresGitHub: true,
+    factoryAddress: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2',
+    activationPath: (addr) => `/ecosystem/platforms/github/${addr}`,
+  },
+  {
+    key: 'superfluid',
+    name: 'Superfluid Project',
+    tagline: 'Earn SUP incentives',
+    iconColor: C.green,
+    summary: 'Create a Markee sign for your Superfluid project and earn SUP rewards for every message bought.',
+    steps: ['Set up your Markee', 'Deploy Markee', 'Activate'],
+    fields: [
+      { id: 'projectName', label: 'Superfluid project name', placeholder: 'My Stream', type: 'text' },
+      { id: 'beneficiary', label: 'Beneficiary address', placeholder: '0x… (receives ETH on Base)', type: 'wallet' },
+    ],
+    requiresGitHub: false,
+    factoryAddress: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad',
+    activationPath: (addr) => `/ecosystem/platforms/superfluid/${addr}`,
+  },
+]
 
-function formatFunds(eth: string) {
-  const n = parseFloat(eth)
-  if (n === 0) return '0 ETH'
-  if (n < 0.001) return '< 0.001 ETH'
-  return `${n.toFixed(3)} ETH`
+function platformByKey(k: string | null): Platform | null {
+  return PLATFORMS.find(p => p.key === k) ?? null
 }
 
-function hasRealPurchase(lb: EcosystemLeaderboard) {
-  return BigInt(lb.topFundsAddedRaw ?? '0') > 0n
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function deriveSiteName(url: string): string {
+  if (!url) return ''
+  const host = url.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split(/[/?#]/)[0]
+  const root = (host || '').split('.')[0]
+  if (!root) return ''
+  return root.split(/[-_]/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
 }
 
-function platformIcon(platform: string, size = 14) {
-  if (platform === 'github') return <Github size={size} className="text-[#8A8FBF]" />
-  if (platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
-  return <Globe2 size={size} className="text-[#F897FE]" />
+// ── PlatGlyph ─────────────────────────────────────────────────────────────────
+function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; color: string }) {
+  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  if (icon === 'globe') return <svg {...common}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+  if (icon === 'github') return <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+  if (icon === 'zap') return <svg {...common}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+  return <svg {...common}><path d="M12 5v14M5 12h14"/></svg>
 }
 
-function platformLabel(platform: string) {
-  if (platform === 'github') return 'GitHub'
-  if (platform === 'superfluid') return 'Superfluid'
-  return 'Website'
-}
-
-function getDisplayPlatform(lb: EcosystemLeaderboard): 'website' | 'github' | 'superfluid' {
-  if (lb.slug === 'superfluid') return 'superfluid'
-  return lb.platform
-}
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function CardSkeleton() {
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20 animate-pulse">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-12 h-12 rounded-lg bg-[#1A1F4D] flex-shrink-0" />
-        <div className="flex-1 space-y-2">
-          <div className="h-4 bg-[#1A1F4D] rounded w-3/4" />
-          <div className="h-3 bg-[#1A1F4D] rounded w-1/2" />
-        </div>
-      </div>
-      <div className="h-24 bg-[#060A2A] rounded-lg mb-4" />
-      <div className="h-8 bg-[#1A1F4D] rounded-lg" />
-    </div>
-  )
-}
-
-// ─── Ecosystem Card ───────────────────────────────────────────────────────────
-
-function EcosystemCard({
-  lb,
-  onBuyLegacy,
-  viewCount,
-}: {
-  lb: EcosystemLeaderboard
-  onBuyLegacy?: (lb: EcosystemLeaderboard) => void
-  viewCount?: number
-}) {
-  const router = useRouter()
-
-  const logoSrc = lb.logoUrl ?? (lb.platform === 'github' ? lb.repoAvatarUrl : null)
-
-  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const topFunds = BigInt(lb.topFundsAddedRaw ?? '0')
-  const minPriceRaw = BigInt(lb.minimumPriceRaw ?? '0')
-  const rawBuyPrice = topFunds + minIncrement
-  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
-  const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
-  const messageCount = lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
-
-  const displayPlatform = getDisplayPlatform(lb)
-
-  const detailHref =
-    lb.platform === 'superfluid' ? `/ecosystem/platforms/superfluid/${lb.address}` :
-    lb.platform === 'github' ? `/ecosystem/platforms/github/${lb.address}` :
-    lb.isLegacy && lb.slug ? `/ecosystem/${lb.slug}` :
-    !lb.isLegacy ? `/ecosystem/website/${lb.address}` :
-    null
-
-  function handleCardClick() {
-    if (detailHref) router.push(detailHref)
+// ── CopyBlock ─────────────────────────────────────────────────────────────────
+function CopyBlock({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    try { navigator.clipboard.writeText(code) } catch {}
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
   }
-
-  function handleBuyClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (lb.isLegacy && onBuyLegacy) onBuyLegacy(lb)
-    else if (detailHref) router.push(detailHref)
-  }
-
-  const isClickable = !!detailHref
-
   return (
-    <div
-      onClick={isClickable ? handleCardClick : undefined}
-      className={`bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 transition-colors
-        ${isClickable ? 'cursor-pointer hover:border-[#F897FE]' : ''}`}
-    >
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0 overflow-hidden">
-          {logoSrc ? (
-            <img src={logoSrc} alt={lb.name} className="w-9 h-9 object-contain" />
-          ) : (
-            <div className="flex items-center justify-center w-full h-full">
-              {platformIcon(lb.platform, 22)}
-            </div>
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{lb.name}</h3>
-            {lb.status === 'verified' && lb.verifiedUrl && (
-              <a
-                href={lb.verifiedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="text-[#1DB227] hover:text-[#1DB227]/80 transition-colors"
-                title="Verified website"
-              >
-                <CheckCircle size={12} />
-              </a>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-[#8A8FBF] mt-0.5">
-            {platformIcon(displayPlatform, 11)}
-            <span>{platformLabel(displayPlatform)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
-        <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
-          {lb.topMessage}
-        </p>
-        {lb.topMessageOwner && (
-          <p className="text-[#8A8FBF] text-xs text-right mt-auto">
-            {lb.topMessageOwner.startsWith('0x')
-              ? `${lb.topMessageOwner.slice(0, 6)}…${lb.topMessageOwner.slice(-4)}`
-              : lb.topMessageOwner}
-          </p>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between text-xs mb-4 text-[#8A8FBF]">
-        <span className="text-[#7C9CFF] font-medium">{formatFunds(lb.totalFunds)}</span>
-        <div className="flex items-center gap-3">
-          {viewCount != null && (
-            <span className="flex items-center gap-1">
-              <Eye size={11} className="opacity-60" />
-              {viewCount.toLocaleString()}
-            </span>
-          )}
-          <span>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
-        </div>
-      </div>
-
-      <button
-        onClick={handleBuyClick}
-        className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
-      >
-        {buyPriceFormatted} ETH to change
+    <div style={{ position: 'relative', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 52px 14px 16px', marginTop: 12 }}>
+      <pre style={{ margin: 0, fontFamily: MONO, fontSize: 12.5, color: C.text2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.65 }}>{code}</pre>
+      <button onClick={copy} style={{ position: 'absolute', top: 10, right: 10, background: copied ? C.green : C.bg2, color: copied ? C.bg : C.text2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '5px 10px', fontFamily: MONO, fontSize: 11, cursor: 'pointer' }}>
+        {copied ? 'Copied' : 'Copy'}
       </button>
     </div>
   )
 }
 
-// ─── Show-more section ────────────────────────────────────────────────────────
-
-function LeaderboardSection({
-  title,
-  showAllLabel,
-  subtitle,
-  badge,
-  items,
-  renderCard,
-  withUrlBar,
-}: {
-  title: string
-  showAllLabel: string
-  subtitle?: React.ReactNode
-  badge: React.ReactNode
-  items: EcosystemLeaderboard[]
-  renderCard: (lb: EcosystemLeaderboard) => React.ReactNode
-  withUrlBar?: (lb: EcosystemLeaderboard) => string | null
-}) {
-  const [showAll, setShowAll] = useState(false)
-  const visible = showAll ? items : items.slice(0, INITIAL_SHOW)
-  const hasMore = items.length > INITIAL_SHOW
-
+// ── ActivateCard ──────────────────────────────────────────────────────────────
+function ActivateCard({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-16">
-      <div className="flex items-center gap-3 mb-2">
-        {badge}
-        <h2 className="text-2xl font-bold text-[#EDEEFF]">{title}</h2>
-        <span className="text-[#8A8FBF] text-sm">{items.length}</span>
+    <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: '22px 24px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+        <div style={{ width: 26, height: 26, borderRadius: 99, flexShrink: 0, background: C.pink, color: C.bg, fontFamily: MONO, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{n}</div>
+        <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{title}</div>
       </div>
-      {subtitle}
-      <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${subtitle ? '' : 'mt-4'}`}>
-        {visible.map(lb => {
-          const url = withUrlBar?.(lb)
-          if (url) {
-            return (
-              <div key={lb.address} className="relative">
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-                >
-                  <ExternalLink size={12} />
-                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                </a>
-                <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
-                  {renderCard(lb)}
-                </div>
-              </div>
-            )
-          }
-          return <div key={lb.address}>{renderCard(lb)}</div>
-        })}
-      </div>
-      {hasMore && !showAll && (
-        <div className="text-center mt-6">
-          <button
-            onClick={() => setShowAll(true)}
-            className="text-[#8A8FBF] hover:text-[#EDEEFF] text-sm font-medium border border-[#8A8FBF]/30 hover:border-[#8A8FBF]/60 px-6 py-2 rounded-lg transition-colors"
-          >
-            Show all {items.length} {showAllLabel}
-          </button>
-        </div>
-      )}
+      <div style={{ paddingLeft: 38 }}>{children}</div>
     </div>
   )
 }
 
-// ─── Platform Picker ──────────────────────────────────────────────────────────
-
-type PlatformKey = 'website' | 'github' | 'superfluid'
-
-interface PlatformDef {
-  key: PlatformKey
-  name: string
-  tagline: string
-  summary: string
-  icon: React.ReactNode
-  iconColor: string
-  staticCount: string
-  staticRaised: string
+function githubDelimiter(slug: string) {
+  return `<!-- MARKEE:start ${slug} -->\n<!-- MARKEE:end -->`
 }
 
-function PlatformPicker({
-  leaderboards,
-  isLoading,
-  onCreateWebsite,
-}: {
-  leaderboards: EcosystemLeaderboard[]
-  isLoading: boolean
-  onCreateWebsite: () => void
-}) {
-  const [selected, setSelected] = useState<PlatformKey | null>(null)
-
-  const websiteCount = !isLoading && leaderboards.length > 0
-    ? leaderboards.filter(lb => lb.platform === 'website').length
-    : null
-  const githubCount = !isLoading && leaderboards.length > 0
-    ? leaderboards.filter(lb => lb.platform === 'github').length
-    : null
-  const superfluidCount = !isLoading && leaderboards.length > 0
-    ? leaderboards.filter(lb => lb.platform === 'superfluid').length
-    : null
-
-  const platforms: PlatformDef[] = [
-    {
-      key: 'website',
-      name: 'Website',
-      tagline: 'Any site you own',
-      summary: 'Add a paid message slot to any website you control.',
-      icon: <Globe2 size={26} className="text-[#F897FE]" />,
-      iconColor: '#F897FE',
-      staticCount: websiteCount !== null ? `${websiteCount} Markees` : '142 Markees',
-      staticRaised: 'active signs',
-    },
-    {
-      key: 'github',
-      name: 'GitHub Repo',
-      tagline: 'README, docs, any markdown',
-      summary: 'Turn your repo README or docs into a monetizable ad slot.',
-      icon: <Github size={26} className="text-[#EDEEFF]" />,
-      iconColor: '#EDEEFF',
-      staticCount: githubCount !== null ? `${githubCount} Markees` : '68 Markees',
-      staticRaised: 'active signs',
-    },
-    {
-      key: 'superfluid',
-      name: 'Superfluid Project',
-      tagline: 'Earn SUP incentives',
-      summary: 'Attach a paid message to your Superfluid project and earn SUP.',
-      icon: <Zap size={26} className="text-[#1DB227]" />,
-      iconColor: '#1DB227',
-      staticCount: superfluidCount !== null ? `${superfluidCount} Markees` : '37 Markees',
-      staticRaised: 'active signs',
-    },
-  ]
-
-  function handleCreate(key: PlatformKey) {
-    if (key === 'website') {
-      onCreateWebsite()
-    } else if (key === 'github') {
-      window.location.href = '/ecosystem/platforms/github'
-    } else {
-      window.location.href = '/ecosystem/platforms/superfluid'
-    }
+function embedInstructions(platform: Platform, slug: string, file?: string | null) {
+  if (platform.key === 'github') {
+    return `Please add a Markee sign to ${file || 'the markdown file'} in my repository.\n\nInsert these delimiter comments where the sign should render, then commit the change:\n\n<!-- MARKEE:start ${slug} -->\n<!-- MARKEE:end -->`
   }
+  return `Please add a Markee sign to my website.\n\nInsert this snippet where the sign should appear, then commit and deploy:\n\n<div data-markee="${slug}"></div>\n<script src="https://markee.xyz/embed.js" async></script>`
+}
 
+// ── ActivationGuide ───────────────────────────────────────────────────────────
+function ActivationGuide({ platform, slug, file, activationPath }: { platform: Platform; slug: string; file?: string | null; activationPath: string }) {
+  const [verified, setVerified] = useState(false)
+  const isGithub = platform.key === 'github'
+  const showEmbed = platform.key !== 'superfluid'
+  const copy = { color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' } as const
+  const center = { display: 'flex', justifyContent: 'center' }
+  const confirmedTag = (label: string) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: C.green, fontWeight: 600, fontSize: 14 }}>
+      <span style={{ width: 7, height: 7, borderRadius: 99, background: C.green, boxShadow: `0 0 8px ${C.green}` }} /> {label}
+    </span>
+  )
+  let n = 1
   return (
-    <div
-      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(252px, 1fr))' }}
-      className="grid gap-4"
-    >
-      {platforms.map(p => {
-        const isSelected = selected === p.key
-        return (
-          <div
-            key={p.key}
-            onClick={() => setSelected(isSelected ? null : p.key)}
-            className="flex flex-col gap-4 rounded-lg border p-5 cursor-pointer transition-all duration-200"
-            style={{
-              background: isSelected ? 'rgba(248,151,254,0.06)' : '#0A0F3D',
-              borderColor: isSelected ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)',
-            }}
-          >
-            {/* Icon + name + tagline */}
-            <div className="flex items-start gap-3">
-              <div
-                className="flex-shrink-0 flex items-center justify-center rounded-lg border border-[#8A8FBF]/20"
-                style={{ width: 50, height: 50, background: '#060A2A' }}
-              >
-                {p.icon}
-              </div>
-              <div className="flex-1 min-w-0 pt-0.5">
-                <p className="text-[#EDEEFF] font-semibold text-sm leading-tight">{p.name}</p>
-                <p className="text-[#8A8FBF] text-xs mt-0.5">{p.tagline}</p>
-              </div>
-            </div>
-
-            {/* Summary */}
-            <p className="text-[#B8B6D9] text-sm leading-relaxed">{p.summary}</p>
-
-            {/* Stats row */}
-            <div className="flex items-center justify-between text-xs text-[#8A8FBF] mt-auto pt-2 border-t border-[#8A8FBF]/10">
-              <span className="font-medium" style={{ color: p.iconColor }}>{p.staticCount}</span>
-              <span>{p.staticRaised}</span>
-            </div>
-
-            {/* Create button — only when selected */}
-            {isSelected && !NETWORK_PAUSED && (
-              <button
-                onClick={e => { e.stopPropagation(); handleCreate(p.key) }}
-                className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-bold text-sm shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-all duration-[120ms]"
-              >
-                Create a Markee →
+    <div>
+      {showEmbed && (
+        <ActivateCard n={n++} title={isGithub ? 'Embed in your markdown file' : 'Embed on your site'}>
+          <p style={{ ...copy, margin: 0 }}>
+            {isGithub
+              ? 'Copy and paste the snippet into your markdown file and commit changes.'
+              : 'Copy and paste these instructions to an LLM with access to your repository.'}
+          </p>
+          <CopyBlock code={isGithub ? githubDelimiter(slug) : embedInstructions(platform, slug, file)} />
+        </ActivateCard>
+      )}
+      {showEmbed && (
+        <ActivateCard n={n++} title={isGithub ? 'Verify integration' : 'Verify Integration'}>
+          <p style={copy}>{isGithub ? 'Click to confirm once your update is committed.' : 'Click to confirm once your integration is complete.'}</p>
+          <div style={center}>
+            {verified ? confirmedTag('Integration confirmed') : (
+              <button onClick={() => setVerified(true)} style={{ background: C.pink, color: C.bg, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: SANS, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {isGithub ? 'Check Integration' : 'Confirm Integration'}
               </button>
             )}
+          </div>
+        </ActivateCard>
+      )}
+      <ActivateCard n={n++} title="Activate your Markee">
+        <p style={copy}>Buy the first message to activate your Markee.</p>
+        <div style={center}>
+          <Link href={activationPath} style={{ background: C.pink, color: C.bg, borderRadius: 8, padding: '12px 22px', fontFamily: SANS, fontWeight: 700, fontSize: 14, textDecoration: 'none', display: 'inline-block' }}>
+            Buy a message →
+          </Link>
+        </div>
+      </ActivateCard>
+    </div>
+  )
+}
+
+// ── Stepper ───────────────────────────────────────────────────────────────────
+function Stepper({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', marginBottom: 40 }}>
+      {steps.map((label, i) => {
+        const done = i < current, active = i === current
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 26, height: 26, borderRadius: 99, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 12, fontWeight: 700, background: done ? C.pink : 'transparent', border: active ? `1px solid ${C.pink}` : done ? 'none' : `1px solid ${C.border}`, color: done ? C.bg : active ? C.pink : C.muted }}>
+                {done ? '✓' : i + 1}
+              </div>
+              <span style={{ fontSize: 13, color: active ? C.text : done ? C.text2 : C.muted, fontWeight: active ? 600 : 500, whiteSpace: 'nowrap' }}>{label}</span>
+            </div>
+            {i < steps.length - 1 && <div style={{ flex: 1, minWidth: 18, height: 1, background: C.border, margin: '0 14px' }} />}
           </div>
         )
       })}
@@ -420,522 +249,439 @@ function PlatformPicker({
   )
 }
 
-// ─── Integration Request Form ─────────────────────────────────────────────────
-
-function IntegrationForm() {
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
-  const [form, setForm] = useState({ website: '', name: '', email: '' })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setStatus('submitting')
-    try {
-      const res = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          access_key: process.env.NEXT_PUBLIC_WEB3FORMS_KEY ?? '',
-          website: form.website,
-          name: form.name,
-          email: form.email,
-        }),
-      })
-      if (res.ok) {
-        setStatus('success')
-      } else {
-        setStatus('error')
-      }
-    } catch {
-      setStatus('error')
-    }
-  }
-
-  if (status === 'success') {
-    return (
-      <div className="bg-[#0A0F3D] rounded-xl border border-[#8A8FBF]/20 p-8 flex flex-col items-center text-center gap-4">
-        <div className="w-12 h-12 rounded-full bg-[#1DB227]/15 border border-[#1DB227]/40 flex items-center justify-center">
-          <CheckCircle size={24} className="text-[#1DB227]" />
-        </div>
-        <p className="text-[#EDEEFF] font-semibold">Thanks — we'll be in touch.</p>
-      </div>
-    )
-  }
-
+// ── Button primitives ─────────────────────────────────────────────────────────
+function PrimaryBtn({ onClick, disabled, children, style }: { onClick?: () => void; disabled?: boolean; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="bg-[#0A0F3D] rounded-xl border border-[#8A8FBF]/20 p-8 flex flex-col gap-4"
-    >
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[#B8B6D9] text-xs font-medium uppercase tracking-wide">
-          Website name <span className="text-[#F897FE]">*</span>
-        </label>
-        <input
-          required
-          type="text"
-          placeholder="e.g. mycoolapp.xyz"
-          value={form.website}
-          onChange={e => setForm(f => ({ ...f, website: e.target.value }))}
-          className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm placeholder:text-[#8A8FBF] focus:outline-none focus:border-[#F897FE]/50 transition-colors"
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[#B8B6D9] text-xs font-medium uppercase tracking-wide">
-          Your name
-        </label>
-        <input
-          type="text"
-          placeholder="Jane Doe"
-          value={form.name}
-          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-          className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm placeholder:text-[#8A8FBF] focus:outline-none focus:border-[#F897FE]/50 transition-colors"
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[#B8B6D9] text-xs font-medium uppercase tracking-wide">
-          Email <span className="text-[#F897FE]">*</span>
-        </label>
-        <input
-          required
-          type="email"
-          placeholder="you@example.com"
-          value={form.email}
-          onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-          className="bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm placeholder:text-[#8A8FBF] focus:outline-none focus:border-[#F897FE]/50 transition-colors"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={status === 'submitting'}
-        className="mt-2 w-full bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-bold text-sm shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-      >
-        {status === 'submitting' ? 'Sending…' : 'Send request'}
-      </button>
-      {status === 'error' && (
-        <p className="text-xs text-center text-red-400">Something went wrong — please try again.</p>
-      )}
-      <p className="text-[#8A8FBF] text-xs text-center mt-1">
-        Or email us at{' '}
-        <a href="mailto:hello@markee.xyz" className="text-[#7C9CFF] hover:underline">
-          hello@markee.xyz
-        </a>
-      </p>
-    </form>
+    <button onClick={onClick} disabled={disabled} style={{ background: disabled ? 'rgba(248,151,254,0.3)' : C.pink, color: C.bg, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: SANS, fontWeight: 700, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', ...style }}>
+      {children}
+    </button>
+  )
+}
+function GhostBtn({ onClick, children }: { onClick?: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{ background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 22px', fontFamily: SANS, fontWeight: 600, fontSize: 14, color: C.text2, cursor: 'pointer' }}>
+      {children}
+    </button>
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-export default function EcosystemPage() {
-  const ethPrice = useEthPrice()
-  const [leaderboards, setLeaderboards] = useState<EcosystemLeaderboard[]>([])
-  const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
-  const [isLoading, setIsLoading] = useState(true)
-  const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [topDawgModalData, setTopDawgModalData] = useState<EcosystemLeaderboard | null>(null)
-  const [viewCounts, setViewCounts] = useState<Map<string, number>>(new Map())
-
-  const fetchLeaderboards = async (bust = false) => {
-    try {
-      setIsLoading(true)
-      const params = new URLSearchParams({ t: Date.now().toString() })
-      if (bust) params.set('bust', '1')
-      const res = await fetch(`/api/ecosystem/leaderboards?${params}`, { cache: 'no-store' })
-      if (res.ok) {
-        const data = await res.json()
-        const lbs: EcosystemLeaderboard[] = data.leaderboards ?? []
-        setLeaderboards(lbs)
-        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
-
-        // Fetch view counts using the top markee address for each active leaderboard
-        const active = lbs.filter(l => BigInt(l.topFundsAddedRaw ?? '0') > 0n)
-        const markeeAddrs = active
-          .map(l => l.topMarkeeAddress?.toLowerCase())
-          .filter((a): a is string => !!a)
-        if (markeeAddrs.length > 0) {
-          fetch(`/api/views?addresses=${markeeAddrs.join(',')}`)
-            .then(r => r.ok ? r.json() : {})
-            .then((data: Record<string, { totalViews: number }>) => {
-              const map = new Map<string, number>()
-              for (const lb of active) {
-                const key = lb.topMarkeeAddress?.toLowerCase()
-                if (key && data[key] != null) map.set(lb.address.toLowerCase(), data[key].totalViews)
-              }
-              setViewCounts(map)
-            })
-            .catch(() => {})
-        }
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => { fetchLeaderboards() }, [])
-
-  // Only show boards where a real purchase has been made
-  const active = leaderboards.filter(hasRealPurchase)
-  const verified = active.filter(l =>
-    (l.platform === 'website' && l.status === 'verified') ||
-    (l.platform === 'github' && l.repoVerified)
-  )
-  const verifiedAddresses = new Set(verified.map(l => l.address))
-  const unverified = active.filter(l => !verifiedAddresses.has(l.address))
-
-  // Hero stats
-  const totalMessages = active.reduce((sum, lb) => {
-    return sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1))
-  }, 0)
-
+// ── StepShell ─────────────────────────────────────────────────────────────────
+function StepShell({ title, sub, children, onBack, onNext, nextLabel, nextDisabled, backLabel }: {
+  title?: string; sub?: string; children: React.ReactNode; onBack?: () => void; onNext?: () => void; nextLabel?: string; nextDisabled?: boolean; backLabel?: string
+}) {
   return (
-    <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="raise" />
+    <div>
+      {title && <h2 style={{ margin: '0 0 6px', fontSize: 28, fontWeight: 800, letterSpacing: -0.6, color: C.text }}>{title}</h2>}
+      {sub && <p style={{ margin: '0 0 28px', color: C.text2, fontSize: 15, lineHeight: 1.55, maxWidth: '56ch' }}>{sub}</p>}
+      {children}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 32, paddingTop: 24, borderTop: `1px solid ${C.border}` }}>
+        <GhostBtn onClick={onBack}>{backLabel ?? '← Back'}</GhostBtn>
+        {onNext && <PrimaryBtn onClick={onNext} disabled={nextDisabled}>{nextLabel ?? 'Continue'}</PrimaryBtn>}
+      </div>
+    </div>
+  )
+}
 
-      {/* ── 1. Hero ─────────────────────────────────────────────────────────── */}
-      <section className="relative py-24 overflow-hidden">
-        <HeroBackground />
-        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          {/* Eyebrow */}
-          <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-5">
-            <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
-            Raise Funding
-          </div>
-
-          <h1 className="text-4xl md:text-5xl font-bold text-[#EDEEFF] mb-5 leading-tight">
-            Add Markee to your site and start{' '}
-            <span style={{ color: '#F897FE' }}>earning</span>
-          </h1>
-
-          <p className="text-lg text-[#B8B6D9] mb-10 max-w-xl mx-auto">
-            Connect your audience to our global network of buyers.
-          </p>
-
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <a
-              href="#platform-picker"
-              className="inline-flex items-center gap-[10px] bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
-            >
-              Create a Markee →
-            </a>
-            <a
-              href="#how"
-              className="inline-flex items-center gap-2 bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-lg px-[22px] py-[13px] font-sans text-[15px] no-underline transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]"
-            >
-              How it works
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 2. Platform Picker ──────────────────────────────────────────────── */}
-      <section id="platform-picker" className="py-20 bg-[#060A2A]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-4">
-              <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
-              Choose your platform
-            </div>
-            <h2 className="text-3xl font-bold text-[#EDEEFF]">Where do you want to add a Markee?</h2>
-          </div>
-
-          <PlatformPicker
-            leaderboards={leaderboards}
-            isLoading={isLoading}
-            onCreateWebsite={() => setCreateModalOpen(true)}
-          />
-        </div>
-      </section>
-
-      {/* ── 3. How It Works ─────────────────────────────────────────────────── */}
-      <section id="how" className="py-20 bg-[#0A0F3D] border-t border-[#8A8FBF]/10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          {/* Eyebrow */}
-          <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-5">
-            <span className="w-2 h-2 rounded-full bg-[#F897FE] shadow-[0_0_12px_#F897FE] flex-shrink-0" />
-            How it works
-          </div>
-
-          <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4">
-            Embed a paid message to any digital space
-          </h2>
-          <p className="text-[#B8B6D9] text-base max-w-2xl mx-auto mb-14">
-            Markee is a cross-platform marketplace for digital real estate and a sustainable revenue source for any website.
-          </p>
-
-          {/* Step cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-12">
-            {[
-              {
-                num: '01',
-                title: 'Choose your platform',
-                body: 'Pick where your Markee will be embedded.',
-              },
-              {
-                num: '02',
-                title: 'Set up your sign',
-                body: 'Add your info and a wallet to receive funds.',
-              },
-              {
-                num: '03',
-                title: 'Activate your Markee',
-                body: 'Embed to your site in just a few clicks.',
-              },
-            ].map(step => (
-              <div
-                key={step.num}
-                className="bg-[#060A2A] rounded-xl border border-[#8A8FBF]/15 p-6 text-left"
-              >
-                <p className="font-mono text-[#F897FE] text-xs font-bold tracking-widest mb-3">
-                  {step.num}
-                </p>
-                <h3 className="text-[#EDEEFF] font-semibold text-base mb-2">{step.title}</h3>
-                <p className="text-[#8A8FBF] text-sm leading-relaxed">{step.body}</p>
+// ── ChoosePlatform ────────────────────────────────────────────────────────────
+function ChoosePlatform({ selected, onSelect }: { selected: PlatformKey | null; onSelect: (k: PlatformKey) => void }) {
+  const icons: Record<string, string> = { openinternet: 'globe', github: 'github', superfluid: 'zap' }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 28 }}>
+      {PLATFORMS.map(p => {
+        const on = selected === p.key
+        return (
+          <button key={p.key} onClick={() => onSelect(p.key)} style={{ textAlign: 'left', cursor: 'pointer', background: on ? 'rgba(248,151,254,0.06)' : 'rgba(10,15,61,0.5)', border: `1px solid ${on ? C.borderHover : C.border}`, borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12, transition: 'border-color 160ms, background 160ms' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ width: 46, height: 46, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <PlatGlyph icon={icons[p.key]} color={p.iconColor} size={24} />
               </div>
-            ))}
-          </div>
-
-          <a
-            href="#platform-picker"
-            className="inline-flex items-center gap-[10px] bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
-          >
-            Create a Markee →
-          </a>
-        </div>
-      </section>
-
-      {/* ── 4. Integration Request Form ─────────────────────────────────────── */}
-      <section className="py-20 bg-[#060A2A] border-t border-[#8A8FBF]/10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
-            {/* Left column */}
+              <div style={{ width: 20, height: 20, borderRadius: 99, border: `1px solid ${on ? C.pink : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {on && <div style={{ width: 10, height: 10, borderRadius: 99, background: C.pink }} />}
+              </div>
+            </div>
             <div>
-              <div className="inline-flex items-center gap-[10px] font-mono text-[12px] font-medium tracking-[2px] uppercase text-[#8A8FBF] mb-5">
-                <span className="w-2 h-2 rounded-full bg-[#7C9CFF] shadow-[0_0_12px_#7C9CFF] flex-shrink-0" />
-                For platforms
-              </div>
-              <h2 className="text-3xl font-bold text-[#EDEEFF] mb-4">
-                Looking for a deeper integration?
-              </h2>
-              <p className="text-[#B8B6D9] text-base mb-8 leading-relaxed">
-                We'll work with you 1-on-1 to build embeddable messages your platform's users will love.
-              </p>
-              <ul className="flex flex-col gap-4">
-                {[
-                  'Give your users an easy way to raise funds',
-                  'Earn fees on all your platform\'s Markees',
-                  'Drive engagement and make it fun for people to come back!',
-                ].map(item => (
-                  <li key={item} className="flex items-start gap-3 text-[#B8B6D9] text-sm">
-                    <span className="w-2 h-2 rounded-full bg-[#7C9CFF] shadow-[0_0_8px_#7C9CFF] flex-shrink-0 mt-1.5" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
+              <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{p.name}</div>
+              <div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{p.tagline}</div>
             </div>
+            <div style={{ color: C.text2, fontSize: 13, lineHeight: 1.5 }}>{p.summary}</div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
-            {/* Right column — form */}
-            <IntegrationForm />
+// ── ConnectGitHub ─────────────────────────────────────────────────────────────
+interface GhUser { login: string; avatarUrl: string }
+
+function ConnectGitHub({ user, onRefresh }: { user: GhUser | null; onRefresh: () => void }) {
+  return (
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 32, textAlign: 'center', marginBottom: 28 }}>
+      <div style={{ width: 56, height: 56, margin: '0 auto 16px', borderRadius: 14, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <PlatGlyph icon="github" color={C.text} size={28} />
+      </div>
+      {user ? (
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: C.green, fontWeight: 600, fontSize: 15 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
+            Connected as <span style={{ fontFamily: MONO }}>@{user.login}</span>
+          </div>
+          <p style={{ color: C.muted, fontSize: 13, marginTop: 8 }}>You can now pick a repository and file.</p>
+        </div>
+      ) : (
+        <div>
+          <p style={{ color: C.text2, fontSize: 15, margin: '0 0 20px', lineHeight: 1.55, maxWidth: '40ch', marginLeft: 'auto', marginRight: 'auto' }}>Connect your GitHub account so we can add the Markee delimiter to a markdown file and confirm it via the GitHub API.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href="/api/github/connect?returnTo=wizard" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: C.text, color: C.bg, borderRadius: 8, padding: '12px 22px', fontFamily: SANS, fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>
+              <PlatGlyph icon="github" color={C.bg} size={18} /> Connect GitHub
+            </a>
+            <button onClick={onRefresh} style={{ background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', color: C.text2, fontSize: 13, cursor: 'pointer', fontFamily: SANS }}>
+              Refresh
+            </button>
           </div>
         </div>
-      </section>
-
-      {/* ── 5. Existing creation wizard ─────────────────────────────────────── */}
-      <section id="create" className="py-16 bg-[#060A2A] border-t border-[#8A8FBF]/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-          {/* Platform cards (existing) */}
-          <div className="mb-16">
-            <h2 className="text-lg font-semibold text-[#8A8FBF] mb-5">Raise Funding for Your:</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-              {/* Website */}
-              <div className="flex flex-col gap-4 bg-[#0A0F3D] rounded-lg border border-[#F897FE]/30 p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
-                    <Globe2 size={26} className="text-[#F897FE]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[#EDEEFF] font-semibold text-sm">Website</h3>
-                    <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
-                      Add a Markee message to any website you own, we'll help with the integration.
-                    </p>
-                  </div>
-                </div>
-                {!NETWORK_PAUSED && (
-                  <button
-                    onClick={() => setCreateModalOpen(true)}
-                    className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors"
-                  >
-                    Create a Markee for your Website
-                  </button>
-                )}
-              </div>
-
-              {/* GitHub */}
-              <div className="flex flex-col gap-4 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
-                    <Github size={26} className="text-[#EDEEFF]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[#EDEEFF] font-semibold text-sm">GitHub Repo</h3>
-                    <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
-                      Add a Markee to your README, SKILL file, or any markdown in your project.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  href="/ecosystem/platforms/github"
-                  className="w-full flex items-center justify-center bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#F897FE]/10 transition-colors"
-                >
-                  See Github Markees and Create
-                </Link>
-              </div>
-
-              {/* Superfluid */}
-              <div className="flex flex-col gap-4 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20 overflow-hidden">
-                    <Image src="/partners/superfluid.png" alt="Superfluid" width={36} height={36} className="object-contain" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[#EDEEFF] font-semibold text-sm">Superfluid Project</h3>
-                    <p className="text-[#8A8FBF] text-xs leading-relaxed mt-0.5">
-                      Builders in the Superfluid ecosystem can create a Markee and earn SUP rewards.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  href="/ecosystem/platforms/superfluid"
-                  className="w-full flex items-center justify-center bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#F897FE]/10 transition-colors"
-                >
-                  See Superfluid Markees and Create
-                </Link>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Hero stats */}
-          {!isLoading && active.length > 0 && (
-            <div className="flex items-center justify-center gap-8 mb-12 flex-wrap">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{active.length}</span>
-                <span className="text-[#8A8FBF]">active Markees</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#EDEEFF] font-semibold">{totalMessages.toLocaleString()}</span>
-                <span className="text-[#8A8FBF]">messages bought</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Trophy size={14} className="text-[#7C9CFF]" />
-                {ethPrice ? (
-                  <span className="text-[#7C9CFF] font-semibold">
-                    {formatUsd(parseFloat(totalPlatformFunds) * ethPrice)}
-                    <span className="text-[#8A8FBF] font-normal ml-1 text-xs">({formatFunds(totalPlatformFunds)})</span>
-                  </span>
-                ) : (
-                  <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-                )}
-                <span className="text-[#8A8FBF]">total raised</span>
-              </div>
-            </div>
-          )}
-
-          {/* Leaderboard sections */}
-          <ModerationProvider>
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[1, 2, 3, 4, 5, 6].map(i => <CardSkeleton key={i} />)}
-              </div>
-            ) : (
-              <>
-                {verified.length > 0 && (
-                  <LeaderboardSection
-                    title="Top Verified Markees"
-                    showAllLabel="Verified Markees"
-                    badge={
-                      <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-3 py-1 rounded-full">
-                        <CheckCircle size={11} />
-                        Verified
-                      </span>
-                    }
-                    items={verified}
-                    withUrlBar={lb => {
-                      if (lb.platform === 'github') return lb.repoHtmlUrl ?? null
-                      return lb.verifiedUrls?.[0] ?? lb.verifiedUrl ?? null
-                    }}
-                    renderCard={lb => (
-                      <EcosystemCard
-                        lb={lb}
-                        onBuyLegacy={NETWORK_PAUSED ? undefined : l => setTopDawgModalData(l)}
-                        viewCount={viewCounts.get(lb.address.toLowerCase())}
-                      />
-                    )}
-                  />
-                )}
-
-                {unverified.length > 0 && (
-                  <LeaderboardSection
-                    title="Unverified Markees"
-                    showAllLabel="Unverified Markees"
-                    subtitle={
-                      <p className="text-[#8A8FBF] text-sm mb-6 ml-1">
-                        These messages haven&apos;t been linked to a website yet.{' '}
-                        <Link href="/account" className="text-[#F897FE] hover:underline">
-                          Go to Your Account
-                        </Link>{' '}
-                        to verify your Markees.
-                      </p>
-                    }
-                    badge={
-                      <Trophy size={20} className="text-[#F897FE]" />
-                    }
-                    items={unverified}
-                    renderCard={lb => (
-                      <EcosystemCard
-                        lb={lb}
-                        onBuyLegacy={NETWORK_PAUSED ? undefined : l => setTopDawgModalData(l)}
-                        viewCount={viewCounts.get(lb.address.toLowerCase())}
-                      />
-                    )}
-                  />
-                )}
-              </>
-            )}
-          </ModerationProvider>
-        </div>
-      </section>
-
-      <Footer />
-
-      <CreateOpenInternetModal
-        isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onSuccess={() => { setCreateModalOpen(false); fetchLeaderboards(true) }}
-      />
-
-      {topDawgModalData && (
-        <TopDawgModal
-          isOpen={!!topDawgModalData}
-          onClose={() => setTopDawgModalData(null)}
-          onSuccess={() => { setTopDawgModalData(null); fetchLeaderboards(true) }}
-          strategyAddress={topDawgModalData.address as `0x${string}`}
-          partnerName={topDawgModalData.isCooperative ? undefined : topDawgModalData.name}
-          partnerSplitPercentage={
-            topDawgModalData.isCooperative ? undefined :
-            (topDawgModalData.percentToBeneficiary ?? 6200) / 100
-          }
-          topFundsAdded={
-            topDawgModalData.topFundsAddedRaw
-              ? BigInt(topDawgModalData.topFundsAddedRaw)
-              : undefined
-          }
-        />
       )}
     </div>
   )
+}
+
+// ── PickRepo ──────────────────────────────────────────────────────────────────
+interface Repo { full_name: string; name: string }
+
+function PickRepo({ repos, files, selectedRepo, selectedFile, onSelectRepo, onSelectFile }: {
+  repos: Repo[]; files: string[]; selectedRepo: string | null; selectedFile: string | null; onSelectRepo: (r: string) => void; onSelectFile: (f: string) => void
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22, marginBottom: 24 }}>
+      <div>
+        <span style={{ display: 'block', fontFamily: MONO, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 10 }}>Repository</span>
+        {repos.length === 0 ? (
+          <p style={{ color: C.muted, fontSize: 13 }}>No repos found. Make sure the GitHub App has access.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {repos.slice(0, 20).map(r => (
+              <button key={r.full_name} onClick={() => onSelectRepo(r.full_name)} style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, background: selectedRepo === r.full_name ? 'rgba(248,151,254,0.06)' : C.bg, border: `1px solid ${selectedRepo === r.full_name ? C.borderHover : C.border}`, borderRadius: 8, padding: '12px 14px', color: C.text, fontFamily: MONO, fontSize: 14 }}>
+                <PlatGlyph icon="github" color={C.muted} size={16} /> {r.full_name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {files.length > 0 && (
+        <div>
+          <span style={{ display: 'block', fontFamily: MONO, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 10 }}>Markdown file</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {files.map(f => (
+              <button key={f} onClick={() => onSelectFile(f)} style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, background: selectedFile === f ? 'rgba(248,151,254,0.06)' : C.bg, border: `1px solid ${selectedFile === f ? C.borderHover : C.border}`, borderRadius: 8, padding: '12px 14px', color: C.text, fontFamily: MONO, fontSize: 14 }}>
+                <span style={{ color: C.muted }}>📄</span> {f}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── SetupFields ───────────────────────────────────────────────────────────────
+function SetupFields({ platform, values, setValue, hints }: { platform: Platform; values: Record<string, string>; setValue: (k: string, v: string) => void; hints?: Record<string, string | null> }) {
+  const baseStyle = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box' as const }
+  return (
+    <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26, marginBottom: 4 }}>
+      {platform.fields.map(f => (
+        <label key={f.id} style={{ display: 'block', marginBottom: 20 }}>
+          <span style={{ display: 'block', fontFamily: MONO, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 8 }}>{f.label}</span>
+          <input value={values[f.id] ?? ''} onChange={e => setValue(f.id, e.target.value)} placeholder={f.placeholder} style={{ ...baseStyle, fontFamily: f.type === 'wallet' ? MONO : 'inherit' }} />
+          {hints?.[f.id] && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontFamily: MONO, fontSize: 11, color: C.blue, letterSpacing: 0.3 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+              {hints[f.id]}
+            </span>
+          )}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+// ── ReviewSign ────────────────────────────────────────────────────────────────
+function ReviewSign({ platform, values, repo, file, deploying }: { platform: Platform; values: Record<string, string>; repo: string | null; file: string | null; deploying: boolean }) {
+  const rows: [string, string][] = [
+    ['Integration platform', platform.name],
+    ...(repo ? [['Repository', repo] as [string, string]] : []),
+    ...(file ? [['File', file] as [string, string]] : []),
+    ...platform.fields.map(f => [f.label, values[f.id] || '–'] as [string, string]),
+  ]
+  return (
+    <div>
+      <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 18 }}>
+        {rows.map(([k, v], i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '10px 0', borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+            <span style={{ color: C.muted, fontSize: 13 }}>{k}</span>
+            <span style={{ color: C.text, fontSize: 14, fontFamily: MONO, textAlign: 'right', wordBreak: 'break-all' }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 16px' }}>
+        <span style={{ color: C.text2, fontSize: 14 }}>Network fee (est.)</span>
+        <span style={{ color: C.text, fontFamily: MONO, fontSize: 14 }}>~$2.40</span>
+      </div>
+      {deploying && (
+        <div style={{ marginTop: 16, textAlign: 'center', color: C.pink, fontFamily: MONO, fontSize: 13 }}>Confirm in your wallet…</div>
+      )}
+    </div>
+  )
+}
+
+// ── ActivateStep ──────────────────────────────────────────────────────────────
+function ActivateStep({ platform, values, file, newAddress, txHash }: { platform: Platform; values: Record<string, string>; file: string | null; newAddress: string; txHash: string }) {
+  const slug = ((values.siteName || values.projectName || newAddress).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')) || newAddress.slice(2, 10)
+  const activationPath = platform.activationPath(newAddress)
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', background: 'rgba(29,178,39,0.08)', border: `1px solid ${C.green}`, borderRadius: 14, padding: '20px 22px', marginBottom: 26 }}>
+        <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 99, background: 'rgba(29,178,39,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <CheckCircle2 size={22} color={C.green} />
+        </div>
+        <div>
+          <div style={{ color: C.text, fontWeight: 700, fontSize: 17 }}>Transaction confirmed</div>
+          <p style={{ color: C.text2, fontSize: 14, margin: '4px 0 0', lineHeight: 1.55 }}>
+            Your {platform.name} Markee was deployed onchain.{' '}
+            <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: MONO, color: C.blue, textDecoration: 'none', borderBottom: `1px dotted ${C.blue}` }}>
+              {txHash.slice(0, 6)}…{txHash.slice(-4)} ↗
+            </a>
+          </p>
+        </div>
+      </div>
+
+      <ActivationGuide platform={platform} slug={slug} file={file} activationPath={activationPath} />
+
+      <div style={{ marginTop: 14, paddingTop: 24, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end' }}>
+        <Link href="/account" style={{ background: C.pink, color: C.bg, borderRadius: 8, padding: '12px 22px', fontFamily: SANS, fontWeight: 700, fontSize: 14, textDecoration: 'none', display: 'inline-block' }}>
+          Go to my dashboard →
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+// ── CreateWizard ──────────────────────────────────────────────────────────────
+function CreateWizard() {
+  const searchParams = useSearchParams()
+  const { address, isConnected, chain } = useAccount()
+  const { switchChain } = useSwitchChain()
+  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+
+  const [platformKey, setPlatformKey] = useState<PlatformKey | null>(null)
+  const [step, setStep] = useState(0)
+  const [ghUser, setGhUser] = useState<GhUser | null>(null)
+  const [repos, setRepos] = useState<Repo[]>([])
+  const [repoFiles, setRepoFiles] = useState<string[]>([])
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [nameTouched, setNameTouched] = useState(false)
+  const [newAddress, setNewAddress] = useState<string | null>(null)
+  const [newTxHash, setNewTxHash] = useState<string | null>(null)
+  const [deployError, setDeployError] = useState<string | null>(null)
+
+  const platform = platformKey ? platformByKey(platformKey) : null
+
+  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+  const deploying = isPending || isConfirming
+
+  // Deep-link ?platform=
+  useEffect(() => {
+    const p = searchParams.get('platform')
+    if (p && platformByKey(p)) { setPlatformKey(p as PlatformKey); setStep(1) }
+  }, [searchParams])
+
+  // Auto-fill site name from URL (website platform only)
+  useEffect(() => {
+    if (platformKey !== 'openinternet' || nameTouched) return
+    const derived = deriveSiteName(values.siteUrl ?? '')
+    if (derived && derived !== values.siteName) setValues(prev => ({ ...prev, siteName: derived }))
+  }, [values.siteUrl, platformKey, nameTouched])
+
+  // Fetch GitHub user status
+  const checkGhUser = () => {
+    fetch('/api/github/me').then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.connected) setGhUser({ login: data.login, avatarUrl: data.avatarUrl })
+      else setGhUser(null)
+    }).catch(() => {})
+  }
+
+  useEffect(() => {
+    if (platformKey === 'github') checkGhUser()
+  }, [platformKey])
+
+  // Fetch repos when GitHub is connected
+  useEffect(() => {
+    if (platformKey !== 'github' || !ghUser) return
+    fetch('/api/github/my-repos').then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.repos) setRepos(data.repos)
+    }).catch(() => {})
+  }, [ghUser, platformKey])
+
+  // Fetch files when repo is selected
+  useEffect(() => {
+    if (!selectedRepo) { setRepoFiles([]); return }
+    fetch(`/api/github/repo-files?repo=${encodeURIComponent(selectedRepo)}`).then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.files) setRepoFiles(data.files)
+    }).catch(() => {})
+  }, [selectedRepo])
+
+  // Parse new address from receipt logs
+  useEffect(() => {
+    if (!isSuccess || !receipt || !platform) return
+    let found: string | null = null
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() === platform.factoryAddress.toLowerCase() && log.topics[1]) {
+        found = `0x${log.topics[1].slice(26)}`
+        break
+      }
+    }
+    setNewAddress(found)
+    setNewTxHash(receipt.transactionHash)
+    setStep(prev => prev + 1)
+  }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setValue = (k: string, v: string) => {
+    if (k === 'siteName') setNameTouched(true)
+    setValues(prev => ({ ...prev, [k]: v }))
+  }
+
+  const stepKeys = useMemo(() => {
+    if (!platform) return ['choose']
+    return platform.requiresGitHub
+      ? ['choose', 'connect', 'setup', 'review', 'activate']
+      : ['choose', 'setup', 'review', 'activate']
+  }, [platform])
+
+  const stepKey = stepKeys[step] ?? 'choose'
+  const stepperLabels = platform?.steps ?? []
+  const stepperCurrent = Math.min(step - 1, stepperLabels.length - 1)
+
+  const fieldsComplete = platform
+    ? platform.fields.every(f => (values[f.id] ?? '').trim()) &&
+      (platform.key !== 'github' || (selectedRepo && selectedFile))
+    : false
+
+  const go = (d: number) => setStep(s => Math.max(0, s + d))
+
+  const handleDeploy = () => {
+    if (!platform || !isConnected || !isCorrectChain) return
+    const beneficiary = values.beneficiary?.trim()
+    if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
+      setDeployError('Enter a valid beneficiary address.')
+      return
+    }
+    const name = (values.siteName || values.projectName || selectedRepo?.split('/')[1] || '').trim()
+    if (!name) { setDeployError('Enter a name for your Markee.'); return }
+    setDeployError(null)
+    resetWrite()
+    writeContract({
+      address: platform.factoryAddress,
+      abi: FACTORY_ABI,
+      functionName: 'createLeaderboard',
+      args: [beneficiary as `0x${string}`, name],
+      chainId: CANONICAL_CHAIN.id,
+    })
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: SANS }}>
+      <Header activePage="raise" />
+      <div style={{ flex: 1, maxWidth: 760, width: '100%', margin: '0 auto', padding: '48px 24px 80px' }}>
+        <Link href="/raise-funding" style={{ color: C.muted, textDecoration: 'none', fontSize: 13, fontFamily: MONO }}>← Raise Funding</Link>
+        <h1 style={{ margin: '14px 0 4px', fontSize: 'clamp(28px,4vw,40px)', fontWeight: 800, letterSpacing: -1, color: C.text }}>
+          {step === 0 ? 'Choose a Platform' : 'Create a Markee'}
+        </h1>
+
+        {step > 0 && platform && (
+          <div style={{ marginTop: 32 }}>
+            <Stepper steps={stepperLabels} current={stepperCurrent} />
+          </div>
+        )}
+
+        {/* Step: Choose */}
+        {stepKey === 'choose' && (
+          <StepShell onBack={() => history.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!platformKey}>
+            <ChoosePlatform selected={platformKey} onSelect={k => { setPlatformKey(k); setStep(0) }} />
+          </StepShell>
+        )}
+
+        {/* Step: Connect GitHub */}
+        {stepKey === 'connect' && (
+          <StepShell title="Connect GitHub" sub="We use your connection to add the Markee delimiter and confirm it via the GitHub API." onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!ghUser}>
+            <ConnectGitHub user={ghUser} onRefresh={checkGhUser} />
+          </StepShell>
+        )}
+
+        {/* Step: Setup */}
+        {stepKey === 'setup' && platform && (
+          <StepShell title="Set up your Markee" sub="Set the domain where your Markee will live and an address to receive funds." onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!fieldsComplete}>
+            {platform.key === 'github' && (
+              <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26, marginBottom: 16 }}>
+                <PickRepo repos={repos} files={repoFiles} selectedRepo={selectedRepo} selectedFile={selectedFile} onSelectRepo={r => { setSelectedRepo(r); setSelectedFile(null) }} onSelectFile={setSelectedFile} />
+              </div>
+            )}
+            <SetupFields platform={platform} values={values} setValue={setValue} hints={{ siteName: (!nameTouched && platformKey === 'openinternet' && values.siteName) ? 'Pulled from site metadata' : null }} />
+          </StepShell>
+        )}
+
+        {/* Step: Review + Deploy */}
+        {stepKey === 'review' && platform && (
+          <div>
+            <h2 style={{ margin: '0 0 6px', fontSize: 28, fontWeight: 800, letterSpacing: -0.6, color: C.text }}>Deploy Markee</h2>
+            <p style={{ margin: '0 0 28px', color: C.text2, fontSize: 15, lineHeight: 1.55 }}>Review your info and connect a wallet to deploy your Markee.</p>
+            <ReviewSign platform={platform} values={values} repo={selectedRepo} file={selectedFile} deploying={deploying} />
+
+            {!isConnected && (
+              <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
+                <p style={{ color: C.text2, fontSize: 14 }}>Connect your wallet to deploy.</p>
+                <ConnectButton />
+              </div>
+            )}
+            {isConnected && !isCorrectChain && (
+              <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <AlertCircle size={16} color="#f87171" />
+                <span style={{ color: '#f87171', fontSize: 14 }}>Switch to {CANONICAL_CHAIN.name}</span>
+                <button onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFA94D', color: C.bg, border: 'none', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontFamily: SANS, fontWeight: 600, fontSize: 13 }}>
+                  <ArrowRightLeft size={14} /> Switch
+                </button>
+              </div>
+            )}
+
+            {(deployError || writeError) && (
+              <div style={{ marginTop: 16, display: 'flex', alignItems: 'flex-start', gap: 8, color: '#f87171', fontSize: 14 }}>
+                <AlertCircle size={16} style={{ marginTop: 2, flexShrink: 0 }} />
+                <span>{deployError ?? writeError?.message}</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 32, paddingTop: 24, borderTop: `1px solid ${C.border}` }}>
+              <GhostBtn onClick={() => go(-1)}>← Back</GhostBtn>
+              {isConnected && isCorrectChain && (
+                <PrimaryBtn onClick={handleDeploy} disabled={deploying}>
+                  {deploying ? (isPending ? 'Awaiting signature…' : 'Confirming…') : 'Deploy Markee'}
+                </PrimaryBtn>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step: Activate */}
+        {stepKey === 'activate' && platform && newAddress && newTxHash && (
+          <ActivateStep platform={platform} values={values} file={selectedFile} newAddress={newAddress} txHash={newTxHash} />
+        )}
+      </div>
+      <Footer />
+    </div>
+  )
+}
+
+export default function CreateAMarkeePage() {
+  return <CreateWizard />
 }
