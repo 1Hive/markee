@@ -1,8 +1,6 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
-
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { CheckCircle2, AlertCircle, ArrowRightLeft } from 'lucide-react'
@@ -685,5 +683,9 @@ function CreateWizard() {
 }
 
 export default function CreateAMarkeePage() {
-  return <CreateWizard />
+  return (
+    <Suspense>
+      <CreateWizard />
+    </Suspense>
+  )
 }
