@@ -134,6 +134,18 @@ function platformLink(lb: AnyLeaderboard) {
   return '/create-a-markee'
 }
 
+function detailUrl(lb: AnyLeaderboard) {
+  if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
+  if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
+  return `/ecosystem/website/${lb.address}`
+}
+
+function logoSrc(lb: AnyLeaderboard): string | null {
+  if (lb.platform === 'website') return (lb as WebsiteLeaderboard).logoUrl
+  if (lb.platform === 'github') return (lb as GithubLeaderboard).repoAvatarUrl
+  return null
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function AccountPage() {
@@ -279,12 +291,6 @@ export default function AccountPage() {
   const archivedBoards = allBoards.filter(lb => archivedAddrs.includes(lb.address))
 
   const totalRaisedWei = allBoards.reduce((sum, lb) => sum + BigInt(lb.totalFundsRaw), 0n)
-
-  function detailUrl(lb: AnyLeaderboard) {
-    if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
-    if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
-    return `/ecosystem/website/${lb.address}`
-  }
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -471,10 +477,7 @@ export default function AccountPage() {
                       {activeBoards.length === 0 ? (
                         <p className="text-[#8A8FBF] text-[14px]">No active signs yet — finish a draft above to go live.</p>
                       ) : (
-                        <ActiveTable
-                          boards={activeBoards}
-                          onManage={lb => setIntegrationBoard(lb as WebsiteLeaderboard)}
-                        />
+                        <ActiveTable boards={activeBoards} />
                       )}
                     </div>
 
@@ -813,12 +816,12 @@ function AccountLeaderboardCard({
 
 // ─── Active Table ─────────────────────────────────────────────────────────────
 
-function ActiveTable({ boards, onManage }: { boards: AnyLeaderboard[], onManage: (lb: AnyLeaderboard) => void }) {
+function ActiveTable({ boards }: { boards: AnyLeaderboard[] }) {
   const cols = '200px 110px 1fr 80px 116px'
 
   function servedOnLabel(lb: AnyLeaderboard): string {
     if (lb.platform === 'website') {
-      const site = (lb as WebsiteLeaderboard).siteUrl
+      const site = (lb as WebsiteLeaderboard).verifiedUrl ?? (lb as WebsiteLeaderboard).siteUrl
       return site ? site.replace(/^https?:\/\//, '').replace(/\/$/, '') : lb.name
     }
     if (lb.platform === 'github') return (lb as GithubLeaderboard).repoFullName ?? lb.name
@@ -843,54 +846,60 @@ function ActiveTable({ boards, onManage }: { boards: AnyLeaderboard[], onManage:
           ))}
         </div>
         {/* Rows */}
-        {boards.map(lb => (
-          <div key={lb.address} style={{
-            display: 'grid', gridTemplateColumns: cols, gap: 16,
-            padding: '13px 16px', borderBottom: '1px solid rgba(138,143,191,0.2)', alignItems: 'center',
-          }}>
-            {/* Served on */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-              <span style={{
-                width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
-              }}>
-                {platformIcon(lb, 13)}
-              </span>
-              <span style={{
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 12.5, color: '#EDEEFF',
-              }}>{servedOnLabel(lb)}</span>
-            </span>
-            {/* Total raised */}
-            <span style={{ fontSize: 12.5, color: '#7C9CFF', fontFamily: 'var(--font-jetbrains-mono, monospace)', fontWeight: 600 }}>
-              {formatFunds(lb.totalFunds)}
-            </span>
-            {/* Current message */}
-            <span style={{
-              fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 13, color: '#EDEEFF',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        {boards.map(lb => {
+          const logo = logoSrc(lb)
+          return (
+            <div key={lb.address} style={{
+              display: 'grid', gridTemplateColumns: cols, gap: 16,
+              padding: '13px 16px', borderBottom: '1px solid rgba(138,143,191,0.2)', alignItems: 'center',
             }}>
-              {lb.topMessage || '-'}
-            </span>
-            {/* Views */}
-            <span style={{ fontSize: 12, color: '#8A8FBF', fontFamily: 'var(--font-jetbrains-mono, monospace)' }}>-</span>
-            {/* Manage */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <ManageButton onClick={() => onManage(lb)}>Manage</ManageButton>
+              {/* Served on */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                <span style={{
+                  width: 24, height: 24, borderRadius: 6, flexShrink: 0, overflow: 'hidden',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
+                }}>
+                  {logo
+                    ? <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : platformIcon(lb, 13)
+                  }
+                </span>
+                <span style={{
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 12.5, color: '#EDEEFF',
+                }}>{servedOnLabel(lb)}</span>
+              </span>
+              {/* Total raised */}
+              <span style={{ fontSize: 12.5, color: '#7C9CFF', fontFamily: 'var(--font-jetbrains-mono, monospace)', fontWeight: 600 }}>
+                {formatFunds(lb.totalFunds)}
+              </span>
+              {/* Current message */}
+              <span style={{
+                fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 13, color: '#EDEEFF',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {lb.topMessage || '-'}
+              </span>
+              {/* Views */}
+              <span style={{ fontSize: 12, color: '#8A8FBF', fontFamily: 'var(--font-jetbrains-mono, monospace)' }}>-</span>
+              {/* Manage */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <ManageLink href={detailUrl(lb)}>Manage</ManageLink>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function ManageButton({ onClick, children }: { onClick: () => void, children: React.ReactNode }) {
+function ManageLink({ href, children }: { href: string, children: React.ReactNode }) {
   const [hovered, setHovered] = useState(false)
   return (
-    <button
-      onClick={onClick}
+    <a
+      href={href}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -899,11 +908,12 @@ function ManageButton({ onClick, children }: { onClick: () => void, children: Re
         border: hovered ? '1px solid rgba(248,151,254,0.35)' : '1px solid rgba(138,143,191,0.2)',
         borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600,
         cursor: 'pointer', whiteSpace: 'nowrap' as const,
+        textDecoration: 'none', display: 'inline-block',
         transition: 'border-color 140ms, color 140ms',
       }}
     >
       {children}
-    </button>
+    </a>
   )
 }
 
