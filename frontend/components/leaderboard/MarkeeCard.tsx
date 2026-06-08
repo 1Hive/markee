@@ -321,7 +321,7 @@ export function MarkeeCard({
   // List view (compact, single line)
   if (size === 'list') {
     return (
-      <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
+      <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 transition-colors duration-[120ms]" style={{ cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(248,151,254,0.04)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
@@ -353,13 +353,13 @@ export function MarkeeCard({
     const [isCardHovering, setIsCardHovering] = useState(false)
 
     return (
-      <div 
+      <div
         className="relative bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 rounded-xl shadow-lg p-8 mb-6"
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
-          <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4 flex flex-col">
+          <div className="border border-[#F897FE]/50 rounded-lg p-6 mb-4 flex flex-col">
             <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
               {markee.message}
             </div>
@@ -422,42 +422,41 @@ export function MarkeeCard({
 
     return (
       <div
-        className="relative rounded-lg shadow-md p-6 h-full flex flex-col border"
+        className="relative shadow-md p-6 h-full flex flex-col border"
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
         style={{
-          background: isCardHovering ? 'rgba(15,27,107,0.5)' : '#0A0F3D',
+          borderRadius: 10,
+          background: isCardHovering ? 'rgba(15,27,107,0.35)' : 'rgba(10,15,61,0.4)',
           borderColor: isCardHovering ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)',
           transform: isCardHovering ? 'translateY(-1px)' : 'none',
-          transition: 'border-color 180ms ease, transform 180ms ease, background 180ms ease',
+          transition: 'border-color 150ms ease, transform 150ms ease, background 150ms ease',
           overflow: 'visible',
         }}
       >
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
-          <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full flex flex-col">
-            <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
-              {markee.message}
-            </div>
-            <div className="flex justify-end mt-auto pt-2">
-              <p className="text-sm text-[#8A8FBF] italic">
-                - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
-                </span>
-              </p>
-            </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow flex flex-col mb-3">
+          <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none flex-1">
+            {markee.message}
+          </div>
+          <div className="flex justify-end pt-2">
+            <p className="text-sm text-[#8A8FBF] italic">
+              - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
           </div>
         </ModeratedContent>
 
         {/* Hover price pill */}
         <span
-          className="absolute left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[12px] px-[14px] py-[6px] rounded-lg whitespace-nowrap shadow-[0_6px_20px_rgba(248,151,254,0.38)] pointer-events-none z-[3] transition-[opacity,transform] duration-[180ms]"
+          className="absolute left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[12px] px-[14px] py-[6px] rounded-lg whitespace-nowrap shadow-[0_6px_20px_rgba(248,151,254,0.38)] pointer-events-none z-[3] transition-[opacity,transform] duration-[150ms]"
           style={{
             bottom: -11,
             transform: `translateX(-50%) translateY(${isCardHovering ? '0' : '4px'})`,
             opacity: isCardHovering ? 1 : 0,
           }}
         >
-          {formatEth(nextPrice)} ETH to change
+          {formatEth(nextPrice)} ETH to change ↑
         </span>
 
         <div className="pt-3 border-t border-[#8A8FBF]/20">
@@ -519,42 +518,41 @@ export function MarkeeCard({
 
     return (
       <div
-        className="relative rounded-lg shadow-sm p-4 h-full flex flex-col border"
+        className="relative shadow-sm p-4 h-full flex flex-col border"
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
         style={{
-          background: isCardHovering ? 'rgba(15,27,107,0.5)' : '#0A0F3D',
+          borderRadius: 10,
+          background: isCardHovering ? 'rgba(15,27,107,0.35)' : 'rgba(10,15,61,0.4)',
           borderColor: isCardHovering ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)',
           transform: isCardHovering ? 'translateY(-1px)' : 'none',
-          transition: 'border-color 180ms ease, transform 180ms ease, background 180ms ease',
+          transition: 'border-color 150ms ease, transform 150ms ease, background 150ms ease',
           overflow: 'visible',
         }}
       >
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
-          <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full flex flex-col">
-            <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
-              {markee.message}
-            </div>
-            <div className="flex justify-end mt-auto pt-1">
-              <p className="text-xs text-[#8A8FBF] italic">
-                - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
-                  {hasCustomName ? markee.name : formatAddress(markee.owner)}
-                </span>
-              </p>
-            </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow flex flex-col mb-2">
+          <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none flex-1">
+            {markee.message}
+          </div>
+          <div className="flex justify-end pt-1">
+            <p className="text-xs text-[#8A8FBF] italic">
+              - <span className={hasCustomName ? 'text-[#B8B6D9]' : 'text-[#8A8FBF]'}>
+                {hasCustomName ? markee.name : formatAddress(markee.owner)}
+              </span>
+            </p>
           </div>
         </ModeratedContent>
 
         {/* Hover price pill */}
         <span
-          className="absolute left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[11px] px-[12px] py-[5px] rounded-lg whitespace-nowrap shadow-[0_6px_20px_rgba(248,151,254,0.38)] pointer-events-none z-[3] transition-[opacity,transform] duration-[180ms]"
+          className="absolute left-1/2 inline-flex items-center gap-1.5 bg-[#F897FE] text-[#060A2A] font-mono font-bold text-[11px] px-[12px] py-[5px] rounded-lg whitespace-nowrap shadow-[0_6px_20px_rgba(248,151,254,0.38)] pointer-events-none z-[3] transition-[opacity,transform] duration-[150ms]"
           style={{
-            bottom: -10,
+            bottom: -11,
             transform: `translateX(-50%) translateY(${isCardHovering ? '0' : '4px'})`,
             opacity: isCardHovering ? 1 : 0,
           }}
         >
-          {formatEth(nextPrice)} ETH to change
+          {formatEth(nextPrice)} ETH to change ↑
         </span>
 
         <div className="pt-2 border-t border-[#8A8FBF]/20">
