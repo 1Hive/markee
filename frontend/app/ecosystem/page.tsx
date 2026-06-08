@@ -83,6 +83,28 @@ function rowHref(lb: EcosystemLeaderboard): string {
   return `/ecosystem/website/${lb.address}`
 }
 
+function isVerified(lb: EcosystemLeaderboard): boolean {
+  if (lb.platform === 'github') return lb.repoVerified === true
+  return lb.status === 'verified'
+}
+
+function servedOnDisplay(lb: EcosystemLeaderboard): string {
+  if (lb.platform === 'website') {
+    const url = lb.verifiedUrl ?? lb.siteUrl
+    return url ? url.replace(/^https?:\/\//, '').replace(/\/$/, '') : lb.name
+  }
+  if (lb.platform === 'github') return lb.repoFullName ?? lb.name
+  // superfluid: prefer verifiedUrl domain, fall back to name
+  const url = lb.verifiedUrl
+  return url ? url.replace(/^https?:\/\//, '').replace(/\/$/, '') : lb.name
+}
+
+function logoSrc(lb: EcosystemLeaderboard): string | null {
+  if (lb.logoUrl) return lb.logoUrl
+  if (lb.repoAvatarUrl) return lb.repoAvatarUrl
+  return null
+}
+
 function PlatformIcon({ platform, size = 14 }: { platform: string; size?: number }) {
   if (platform === 'github') return <Github size={size} className="text-[#8A8FBF]" />
   if (platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
@@ -329,18 +351,18 @@ export default function EcosystemPage() {
     [viewCounts],
   )
 
-  // Top leaderboard for featured hero
+  // Top leaderboard for featured hero — verified only
   const featured = useMemo(
     () =>
-      [...leaderboards].sort(
-        (a, b) => Number(BigInt(b.topFundsAddedRaw ?? '0') - BigInt(a.topFundsAddedRaw ?? '0')),
-      )[0] ?? null,
+      leaderboards
+        .filter(isVerified)
+        .sort((a, b) => Number(BigInt(b.topFundsAddedRaw ?? '0') - BigInt(a.topFundsAddedRaw ?? '0')))[0] ?? null,
     [leaderboards],
   )
 
   // Filtered + sorted leaderboards
   const filtered = useMemo(() => {
-    let list = leaderboards
+    let list = leaderboards.filter(isVerified)
     if (activeTab !== 'all') list = list.filter(lb => lb.platform === activeTab)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -524,8 +546,11 @@ export default function EcosystemPage() {
                     {/* Mobile */}
                     <div className="flex flex-col gap-1 px-4 py-3 md:hidden">
                       <div className="flex items-center gap-2">
-                        <PlatformIcon platform={platform} size={13} />
-                        <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{lb.name}</span>
+                        {logoSrc(lb)
+                          ? <img src={logoSrc(lb)!} alt="" style={{ width: 16, height: 16, borderRadius: 3, objectFit: 'cover', flexShrink: 0 }} />
+                          : <PlatformIcon platform={platform} size={13} />
+                        }
+                        <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{servedOnDisplay(lb)}</span>
                       </div>
                       <span className="font-mono text-[12px] text-[#8A8FBF] line-clamp-1">
                         {lb.topMessage || '—'}
@@ -543,8 +568,17 @@ export default function EcosystemPage() {
                     >
                       {/* Served on */}
                       <div className="flex items-center gap-2 min-w-0">
-                        <PlatformIcon platform={platform} size={13} />
-                        <span className="font-mono text-[12.5px] text-[#B8B6D9] truncate">{lb.name}</span>
+                        <span style={{
+                          width: 22, height: 22, borderRadius: 5, flexShrink: 0, overflow: 'hidden',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
+                        }}>
+                          {logoSrc(lb)
+                            ? <img src={logoSrc(lb)!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <PlatformIcon platform={platform} size={12} />
+                          }
+                        </span>
+                        <span className="font-mono text-[12.5px] text-[#B8B6D9] truncate">{servedOnDisplay(lb)}</span>
                       </div>
                       {/* Total raised */}
                       <span className="font-mono text-[12.5px] text-[#7C9CFF] font-semibold">
