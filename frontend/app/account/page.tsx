@@ -129,15 +129,15 @@ function platformIcon(lb: AnyLeaderboard, size = 22) {
 }
 
 function platformLink(lb: AnyLeaderboard) {
-  if (lb.platform === 'superfluid') return '/ecosystem/platforms/superfluid'
-  if (lb.platform === 'github') return '/ecosystem/platforms/github'
+  if (lb.platform === 'superfluid') return '/marketplace/platforms/superfluid'
+  if (lb.platform === 'github') return '/marketplace/platforms/github'
   return '/create-a-markee'
 }
 
 function detailUrl(lb: AnyLeaderboard) {
-  if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
-  if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
-  return `/ecosystem/website/${lb.address}`
+  if (lb.platform === 'superfluid') return `/marketplace/platforms/superfluid/${lb.address}`
+  if (lb.platform === 'github') return `/marketplace/platforms/github/${lb.address}`
+  return `/marketplace/website/${lb.address}`
 }
 
 function logoSrc(lb: AnyLeaderboard): string | null {
@@ -423,14 +423,14 @@ export default function AccountPage() {
                         Website
                       </Link>
                       <Link
-                        href="/ecosystem/platforms/superfluid"
+                        href="/marketplace/platforms/superfluid"
                         className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
                       >
                         <Zap size={14} className="text-[#1DB227]" />
                         Superfluid
                       </Link>
                       <Link
-                        href="/ecosystem/platforms/github"
+                        href="/marketplace/platforms/github"
                         className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
                       >
                         <Github size={14} />
@@ -543,7 +543,7 @@ export default function AccountPage() {
                   <div className="text-[30px] mb-3">🤝</div>
                   <p className="m-0 mb-1.5 text-[#EDEEFF] font-bold text-[17px]">No contributions yet</p>
                   <p className="m-0 mb-5 text-[#8A8FBF] text-[14px] max-w-[42ch] mx-auto leading-[1.55]">Back a message you believe in by adding funds — help it climb and stay on top.</p>
-                  <Link href="/ecosystem" className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline">Browse the Marketplace →</Link>
+                  <Link href="/marketplace" className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] rounded-lg px-[26px] py-[14px] font-bold text-[15px] no-underline">Browse the Marketplace →</Link>
                 </div>
               )}
             </>

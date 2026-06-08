@@ -290,7 +290,7 @@ function CollectSection() {
             title="Cooperative Ownership"
             subtitle="See how the network's ownership structure works"
             buttonText="Learn More"
-            buttonLink="https://www.markee.xyz/owners"
+            buttonLink="https://www.markee.xyz/own-the-network"
             color="amethyst"
           />
 
@@ -308,7 +308,7 @@ function CollectSection() {
             title="Join Markee"
             subtitle="Buy a message to support the Markee Cooperative and earn your place on the leaderboard"
             buttonText="Buy a Message"
-            buttonLink="https://www.markee.xyz/ecosystem/markee-cooperative"
+            buttonLink="https://www.markee.xyz/marketplace/markee-cooperative"
             color="soft-pink"
           />
         </div>
@@ -363,7 +363,7 @@ function CondensedFAQ() {
         <div>
           <p className="mb-3">MARKEE tokens are the governance and ownership token of the Markee Network. Holding any amount of MARKEE makes you an Owner, giving you access to governance through the Gardens community.</p>
           <p className="mb-3">Token issuance will resume when the network migrates to RevNet v6. In the meantime, tokens can be allocated from the Community Reserve to organizations and participants who advance the Cooperative's mission.</p>
-          <Link href="/owners" className="text-soft-pink hover:underline font-semibold">
+          <Link href="/own-the-network" className="text-soft-pink hover:underline font-semibold">
             Learn about ownership →
           </Link>
         </div>

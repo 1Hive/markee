@@ -591,7 +591,7 @@ function BoostedCard({
         </div>
         <div className="flex-1 min-w-0">
           <Link
-            href={`/ecosystem/platforms/superfluid/${entry.address}`}
+            href={`/marketplace/platforms/superfluid/${entry.address}`}
             className="font-bold text-[#EDEEFF] text-base truncate hover:text-[#F897FE] transition-colors block"
           >
             {entry.name}
@@ -680,7 +680,7 @@ function MyMarkeeCard({ leaderboard }: { leaderboard: SuperfluidLeaderboard }) {
 
   return (
     <div
-      onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
+      onClick={() => router.push(`/marketplace/platforms/superfluid/${leaderboard.address}`)}
       className="bg-[#060A2A] rounded-lg border border-[#F897FE]/20 hover:border-[#F897FE]/60 transition-colors cursor-pointer p-4 flex items-center gap-4"
     >
       <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
@@ -740,7 +740,7 @@ function LeaderboardCard({
 
   return (
     <div
-      onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
+      onClick={() => router.push(`/marketplace/platforms/superfluid/${leaderboard.address}`)}
       className="bg-[#0A0F3D] p-4 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
     >
       <div className="flex items-center gap-3 mb-3">
@@ -787,7 +787,7 @@ function LeaderboardCard({
       <button
         onClick={e => {
           e.stopPropagation()
-          router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)
+          router.push(`/marketplace/platforms/superfluid/${leaderboard.address}`)
         }}
         className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
       >
@@ -1022,7 +1022,7 @@ function CreateMarkeeModal({
               <button
                 onClick={() =>
                   newLeaderboardAddress &&
-                  router.push(`/ecosystem/platforms/superfluid/${newLeaderboardAddress}`)
+                  router.push(`/marketplace/platforms/superfluid/${newLeaderboardAddress}`)
                 }
                 className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
               >
@@ -1059,7 +1059,7 @@ function CreateMarkeeModal({
                     >
                       <p className="text-[#EDEEFF] text-sm truncate">{lb.name}</p>
                       <a
-                        href={`/ecosystem/platforms/superfluid/${lb.address}`}
+                        href={`/marketplace/platforms/superfluid/${lb.address}`}
                         className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
                       >
                         View →

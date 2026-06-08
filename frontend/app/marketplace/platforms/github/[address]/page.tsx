@@ -233,7 +233,7 @@ export default function GithubLeaderboardPage() {
           <div className="flex items-center gap-2 text-sm flex-wrap">
             <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <Link href="/ecosystem/platforms/github" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">GitHub</Link>
+            <Link href="/marketplace/platforms/github" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">GitHub</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             <span className="text-[#EDEEFF] truncate max-w-xs">{displayName ?? 'Loading…'}</span>
           </div>
@@ -544,7 +544,7 @@ function IntegrationsSection({
           </div>
         )}
         <a
-          href={`/api/github/connect?returnTo=/ecosystem/platforms/github/${leaderboardAddress}`}
+          href={`/api/github/connect?returnTo=/marketplace/platforms/github/${leaderboardAddress}`}
           className="inline-flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors"
         >
           <Github size={14} />
@@ -856,7 +856,7 @@ function RepoFileManager({
             <span>
               {trafficError}
               {trafficError.includes('reconnect') && (
-                <> - <a href="/ecosystem/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</a></>
+                <> - <a href="/marketplace/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</a></>
               )}
             </span>
           </div>

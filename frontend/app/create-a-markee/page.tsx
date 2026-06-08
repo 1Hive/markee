@@ -81,7 +81,7 @@ const PLATFORMS: Platform[] = [
     ],
     requiresGitHub: false,
     factoryAddress: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c',
-    activationPath: (addr) => `/ecosystem/website/${addr}`,
+    activationPath: (addr) => `/marketplace/website/${addr}`,
   },
   {
     key: 'github',
@@ -95,7 +95,7 @@ const PLATFORMS: Platform[] = [
     ],
     requiresGitHub: true,
     factoryAddress: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2',
-    activationPath: (addr) => `/ecosystem/platforms/github/${addr}`,
+    activationPath: (addr) => `/marketplace/platforms/github/${addr}`,
   },
   {
     key: 'superfluid',
@@ -110,7 +110,7 @@ const PLATFORMS: Platform[] = [
     ],
     requiresGitHub: false,
     factoryAddress: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad',
-    activationPath: (addr) => `/ecosystem/platforms/superfluid/${addr}`,
+    activationPath: (addr) => `/marketplace/platforms/superfluid/${addr}`,
   },
 ]
 

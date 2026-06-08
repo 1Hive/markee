@@ -267,7 +267,7 @@ export default function SuperfluidLeaderboardPage() {
   // Redirect v1.0 factory leaderboard addresses to their v1.1 counterparts
   useEffect(() => {
     const newAddr = OLD_TO_NEW_SF_LEADERBOARDS[leaderboardAddress.toLowerCase()]
-    if (newAddr) router.replace(`/ecosystem/platforms/superfluid/${newAddr}`)
+    if (newAddr) router.replace(`/marketplace/platforms/superfluid/${newAddr}`)
   }, [leaderboardAddress, router])
 
   const [buyModalOpen, setBuyModalOpen] = useState(false)
@@ -370,7 +370,7 @@ export default function SuperfluidLeaderboardPage() {
           <div className="flex items-center gap-2 text-sm flex-wrap">
             <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <Link href="/ecosystem/platforms/superfluid" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Superfluid</Link>
+            <Link href="/marketplace/platforms/superfluid" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Superfluid</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             {isMetaLoading
               ? <SkeletonBar className="w-32 h-3.5" />

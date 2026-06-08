@@ -356,7 +356,7 @@ function LeaderboardCard({
         JSON.stringify(leaderboard.linkedFiles)
       )
     } catch {}
-    router.push(`/ecosystem/platforms/github/${leaderboard.address}`)
+    router.push(`/marketplace/platforms/github/${leaderboard.address}`)
   }
 
   return (
@@ -538,7 +538,7 @@ function CreateMarkeeModal({
             </p>
             <div className="flex flex-col gap-3 w-full mt-2">
               <button
-                onClick={() => newLeaderboardAddress && router.push(`/ecosystem/platforms/github/${newLeaderboardAddress}`)}
+                onClick={() => newLeaderboardAddress && router.push(`/marketplace/platforms/github/${newLeaderboardAddress}`)}
                 className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
               >
                 Set up integration →
@@ -620,7 +620,7 @@ function CreateMarkeeModal({
                           </div>
                         </div>
                         <a
-                          href={`/ecosystem/platforms/github/${lb.address}`}
+                          href={`/marketplace/platforms/github/${lb.address}`}
                           className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
                         >
                           Manage →

@@ -166,7 +166,13 @@ export default function Home() {
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
 
   // Ecosystem stats (same source as /ecosystem page)
-  const [ecoLeaderboards, setEcoLeaderboards] = useState<{ topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean; platform?: string; totalFundsRaw?: string }[]>([])
+  const [ecoLeaderboards, setEcoLeaderboards] = useState<{
+    address: string; name: string; platform?: string; totalFunds?: string; totalFundsRaw?: string;
+    topFundsAddedRaw: string; topMessage?: string | null; markeeCount: number;
+    isLegacy?: boolean; logoUrl?: string | null; siteUrl?: string | null;
+    verifiedUrl?: string | null; repoAvatarUrl?: string | null; repoFullName?: string | null;
+    status?: string;
+  }[]>([])
   const [ecoTotalFunds, setEcoTotalFunds] = useState('0')
   const [isLoadingEco, setIsLoadingEco] = useState(true)
 
@@ -395,49 +401,74 @@ export default function Home() {
             </div>
           </div>
           {/* Column headers */}
-          {!isLoading && markees.length > 0 && (
+          {!isLoadingEco && (
             <div className="grid gap-4 px-[14px] pb-[10px] font-mono text-[10px] tracking-[1px] text-[#8A8FBF] uppercase hidden md:grid" style={{ gridTemplateColumns: '190px 110px 1fr 74px 120px' }}>
-              <span>Served on</span><span>Total raised</span><span>Current Message</span><span>Views</span><span className="text-right">Price to change</span>
+              <span>Served on</span><span>Total raised</span><span>Current Message</span><span>Views</span><span className="text-right">Total raised</span>
             </div>
           )}
           {/* Dense rows */}
           <div className="bg-[#0A0F3D] rounded-[10px] border border-[#8A8FBF]/20 overflow-hidden">
-            {isLoading ? (
+            {isLoadingEco ? (
               [1,2,3,4,5].map(i => (
                 <div key={i} className="h-16 border-b border-[#8A8FBF]/20 last:border-0 animate-pulse bg-[#8A8FBF]/5" />
               ))
             ) : (
-              markees.slice(0, 5).map((markee, i) => {
-                const v = views.get(markee.address.toLowerCase())
-                return (
-                  <Link key={markee.address} href={`/markee/${markee.address}`}
-                    className="grid gap-4 px-[14px] py-[13px] border-b border-[#8A8FBF]/20 last:border-0 items-center hover:bg-[#8A8FBF]/5 transition-colors"
-                    style={{ gridTemplateColumns: '1fr' }}
-                  >
-                    {/* Mobile: stacked */}
-                    <div className="flex flex-col gap-1 md:hidden">
-                      <span className="font-mono text-[13px] text-[#EDEEFF] line-clamp-2">{markee.message || '—'}</span>
-                      <div className="flex items-center gap-3 text-[11px] text-[#8A8FBF]">
-                        <span>{formatEth(markee.totalFundsAdded)} ETH</span>
-                        {v?.totalViews ? <span>{fmtViews(v.totalViews)} views</span> : null}
+              ecoLeaderboards
+                .filter(lb => lb.status === 'verified' || lb.platform === 'github')
+                .sort((a, b) => {
+                  const diff = BigInt(b.totalFundsRaw ?? '0') - BigInt(a.totalFundsRaw ?? '0')
+                  return diff > 0n ? 1 : diff < 0n ? -1 : 0
+                })
+                .slice(0, 5)
+                .map(lb => {
+                  const logo = lb.logoUrl ?? lb.repoAvatarUrl ?? null
+                  const servedOn = lb.platform === 'github'
+                    ? (lb.repoFullName ?? lb.name)
+                    : ((lb.verifiedUrl ?? lb.siteUrl ?? '').replace(/^https?:\/\//, '').replace(/\/$/, '') || lb.name)
+                  const href = lb.platform === 'superfluid'
+                    ? `/marketplace/platforms/superfluid/${lb.address}`
+                    : lb.platform === 'github'
+                      ? `/marketplace/platforms/github/${lb.address}`
+                      : `/marketplace/website/${lb.address}`
+                  const v = views.get(lb.address.toLowerCase())
+                  return (
+                    <Link key={lb.address} href={href}
+                      className="grid gap-4 px-[14px] py-[13px] border-b border-[#8A8FBF]/20 last:border-0 items-center hover:bg-[#8A8FBF]/5 transition-colors"
+                      style={{ gridTemplateColumns: '1fr' }}
+                    >
+                      {/* Mobile */}
+                      <div className="flex flex-col gap-1 md:hidden">
+                        <div className="flex items-center gap-2">
+                          {logo
+                            ? <img src={logo} alt="" style={{ width: 16, height: 16, borderRadius: 3, objectFit: 'cover', flexShrink: 0 }} />
+                            : null}
+                          <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{servedOn}</span>
+                        </div>
+                        <span className="font-mono text-[12px] text-[#8A8FBF] line-clamp-1">{lb.topMessage || '—'}</span>
                       </div>
-                    </div>
-                    {/* Desktop: columnar */}
-                    <div className="hidden md:grid gap-4 items-center" style={{ gridTemplateColumns: '190px 110px 1fr 74px 120px' }}>
-                      <span className="font-mono text-[12.5px] text-[#B8B6D9] truncate">{(markee as any).name || (markee.address.slice(0,6) + '...' + markee.address.slice(-4))}</span>
-                      <span className="font-mono text-[12.5px] text-[#7C9CFF] font-semibold">{formatEth(markee.totalFundsAdded)} ETH</span>
-                      <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{markee.message || '—'}</span>
-                      <span className="font-mono text-[12px] text-[#8A8FBF]">{v?.totalViews ? fmtViews(v.totalViews) : '—'}</span>
-                      <span className="font-mono text-[12px] text-[#B8B6D9] text-right truncate">{formatEth(markee.totalFundsAdded)} ETH</span>
-                    </div>
-                  </Link>
-                )
-              })
+                      {/* Desktop */}
+                      <div className="hidden md:grid gap-4 items-center" style={{ gridTemplateColumns: '190px 110px 1fr 74px 120px' }}>
+                        <div className="flex items-center gap-[9px] min-w-0">
+                          <span style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)' }}>
+                            {logo
+                              ? <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <span className="font-mono text-[9px] text-[#8A8FBF]">{lb.platform?.[0]?.toUpperCase()}</span>}
+                          </span>
+                          <span className="font-mono text-[12.5px] text-[#B8B6D9] truncate">{servedOn}</span>
+                        </div>
+                        <span className="font-mono text-[12.5px] text-[#7C9CFF] font-semibold">{parseFloat(lb.totalFunds ?? '0').toFixed(3)} ETH</span>
+                        <span className="font-mono text-[13px] text-[#EDEEFF] truncate">{lb.topMessage || '—'}</span>
+                        <span className="font-mono text-[12px] text-[#8A8FBF]">{v?.totalViews ? fmtViews(v.totalViews) : '—'}</span>
+                        <span className="font-mono text-[12px] text-[#B8B6D9] text-right">{parseFloat(lb.totalFunds ?? '0').toFixed(3)} ETH</span>
+                      </div>
+                    </Link>
+                  )
+                })
             )}
           </div>
           {/* CTA */}
           <div className="text-center mt-7">
-            <Link href="/ecosystem"
+            <Link href="/marketplace"
               className="inline-flex items-center gap-2 bg-transparent text-[#F897FE] border border-[#F897FE] rounded-lg px-6 py-[13px] font-bold text-[15px] transition-[background,color] duration-[140ms] hover:bg-[#F897FE] hover:text-[#060A2A]">
               View the Marketplace →
             </Link>
@@ -518,7 +549,7 @@ export default function Home() {
             <RevnetWidget onBuy={(amt, msg) => { setRevnetInitialAmount(amt); setRevnetInitialMessage(msg); setRevnetModalOpen(true) }} />
           </div>
           <div className="flex justify-center">
-            <Link href="/owners"
+            <Link href="/own-the-network"
               className="bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-lg px-[22px] py-[13px] font-sans text-[15px] no-underline inline-flex items-center gap-2 transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]">
               How ownership works →
             </Link>

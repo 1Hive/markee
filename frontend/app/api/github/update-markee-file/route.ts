@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Chain read failed: ${String(err)}` }, { status: 500 })
   }
 
-  const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github/${normalizedAddress}`
+  const leaderboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/marketplace/platforms/github/${normalizedAddress}`
   const markeeBlock = topMessage
     ? buildMarkeeBlock(normalizedAddress, topMessage, topOwnerName, nextBuyPriceEth, leaderboardUrl)
     : buildEmptyBlock(normalizedAddress, nextBuyPriceEth, leaderboardUrl)

@@ -139,7 +139,7 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
         <p className="text-sm text-[#8A8FBF]">
           Learn about the community reserve on the{' '}
           <a 
-            href="https://www.markee.xyz/owners" 
+            href="https://www.markee.xyz/own-the-network" 
             className="text-[#7C9CFF] hover:text-[#F897FE] transition-colors underline"
           >
             Owners

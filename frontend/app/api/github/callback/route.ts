@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const state = searchParams.get('state')
-  const base = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github`
+  const base = `${process.env.NEXT_PUBLIC_SITE_URL}/marketplace/platforms/github`
 
   if (!code || !state) {
     return NextResponse.redirect(`${base}?error=missing_params`)

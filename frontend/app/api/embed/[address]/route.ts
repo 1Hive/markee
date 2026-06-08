@@ -41,7 +41,7 @@ function escapeHtml(str: string) {
 
 export async function GET(_req: NextRequest, { params }: { params: { address: string } }) {
   const { address } = params
-  const buyUrl = `https://markee.xyz/ecosystem/website/${address}`
+  const buyUrl = `https://markee.xyz/marketplace/website/${address}`
 
   let topMessage = ''
   let topOwner = ''

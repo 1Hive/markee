@@ -45,7 +45,7 @@ export function Footer() {
 
       <p className="text-center leading-relaxed text-[#8A8FBF] max-w-[520px] px-4">
         The Markee Network is community-owned by the{' '}
-        <Link href="/owners" className="text-[#F897FE] no-underline border-b border-dotted border-[#F897FE]">
+        <Link href="/own-the-network" className="text-[#F897FE] no-underline border-b border-dotted border-[#F897FE]">
           Markee Cooperative
         </Link>.
       </p>

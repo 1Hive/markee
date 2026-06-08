@@ -12,9 +12,9 @@ interface HeaderProps {
 }
 
 const NAV = [
-  { label: 'Marketplace', href: '/ecosystem', key: 'marketplace' },
+  { label: 'Marketplace', href: '/marketplace', key: 'marketplace' },
   { label: 'Raise Funding', href: '/raise-funding', key: 'raise' },
-  { label: 'Own the Network', href: '/owners', key: 'own' },
+  { label: 'Own the Network', href: '/own-the-network', key: 'own' },
 ] as const
 
 const NavLink = ({ href, active, children, onClick, useRegularLinks }: {

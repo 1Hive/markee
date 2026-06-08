@@ -78,9 +78,9 @@ function useCountUp(target: number, started: boolean, duration = 1600) {
 }
 
 function rowHref(lb: EcosystemLeaderboard): string {
-  if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
-  if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
-  return `/ecosystem/website/${lb.address}`
+  if (lb.platform === 'superfluid') return `/marketplace/platforms/superfluid/${lb.address}`
+  if (lb.platform === 'github') return `/marketplace/platforms/github/${lb.address}`
+  return `/marketplace/website/${lb.address}`
 }
 
 function isVerified(lb: EcosystemLeaderboard): boolean {

@@ -70,7 +70,7 @@ export function IntegrationModal({ isOpen, onClose, leaderboard, onOpenVerify }:
 
   const { address, name } = leaderboard
   const lowerAddress = address.toLowerCase()
-  const buyUrl = `https://markee.xyz/ecosystem/website/${address}`
+  const buyUrl = `https://markee.xyz/marketplace/website/${address}`
   const embedUrl = `https://markee.xyz/api/embed/${address}`
   const apiUrl = `https://markee.xyz/api/openinternet/leaderboards`
   const dataAttr = `data-markee-address="${lowerAddress}"`
