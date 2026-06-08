@@ -29,17 +29,8 @@ const NavLink = ({ href, active, children, onClick, useRegularLinks }: {
   return <Link href={href} className={className} onClick={onClick}>{children}</Link>
 }
 
-const AccountIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-    <circle cx="12" cy="7" r="4"/>
-  </svg>
-)
-
 export function Header({ activePage = 'home', useRegularLinks = false }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
-  const accountLinkClass = "w-[38px] h-[38px] rounded-full flex-shrink-0 border border-[#8A8FBF]/20 flex items-center justify-center text-[#B8B6D9] transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]"
 
   return (
     <header
@@ -73,17 +64,6 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
           {/* Right side */}
           <div className="flex items-center gap-3">
             <EthBalance />
-
-            {useRegularLinks ? (
-              <a href="/account" aria-label="Account" className={accountLinkClass}>
-                <AccountIcon />
-              </a>
-            ) : (
-              <Link href="/account" aria-label="Account" className={accountLinkClass}>
-                <AccountIcon />
-              </Link>
-            )}
-
             <ConnectButton />
 
             <button
