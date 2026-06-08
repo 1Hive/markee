@@ -5,8 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
-  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
-  MessageSquare, TrendingDown,
+  Globe2, Github, Zap, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
+  MessageSquare,
 } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
@@ -67,6 +67,8 @@ interface MyMessage {
   strategyName: string
   isTop: boolean
   topFunds: bigint
+  topMessage: string | null
+  topMessageOwner: string | null
 }
 
 const MY_MESSAGES_QUERY = `
@@ -89,6 +91,8 @@ const MY_MESSAGES_QUERY = `
         markees(orderBy: totalFundsAdded, orderDirection: desc, first: 1) {
           address
           totalFundsAdded
+          message
+          name
         }
       }
       partnerStrategy {
@@ -97,6 +101,8 @@ const MY_MESSAGES_QUERY = `
         markees(orderBy: totalFundsAdded, orderDirection: desc, first: 1) {
           address
           totalFundsAdded
+          message
+          name
         }
       }
     }
@@ -144,6 +150,7 @@ export default function AccountPage() {
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
   const [verifyBoard, setVerifyBoard] = useState<WebsiteLeaderboard | null>(null)
   const [activeTab, setActiveTab] = useState('markees')
+  const [archivedAddrs, setArchivedAddrs] = useState<string[]>([])
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -212,7 +219,7 @@ export default function AccountPage() {
       const raw = data?.markees ?? []
       const messages: MyMessage[] = raw.map((m: any) => {
         const strat = m.partnerStrategy ?? m.strategy
-        const topMarkees: { address: string; totalFundsAdded: string }[] = strat?.markees ?? []
+        const topMarkees: { address: string; totalFundsAdded: string; message?: string; name?: string }[] = strat?.markees ?? []
         const topFunds = topMarkees[0] ? BigInt(topMarkees[0].totalFundsAdded) : BigInt(0)
         const isTop = topMarkees.length === 0 || topMarkees[0]?.address?.toLowerCase() === m.address?.toLowerCase()
         return {
@@ -225,6 +232,8 @@ export default function AccountPage() {
           strategyName: strat?.instanceName ?? 'Unknown Leaderboard',
           isTop,
           topFunds,
+          topMessage: topMarkees[0]?.message ?? null,
+          topMessageOwner: topMarkees[0]?.name ?? null,
         }
       })
       setMyMessages(messages)
@@ -262,6 +271,12 @@ export default function AccountPage() {
     BigInt(lb.topFundsAddedRaw ?? '0') > 0n && !awaitingVerificationAddrs.has(lb.address)
   )
   const inactiveBoards = allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') === 0n)
+
+  // Merged "Awaiting Integration" = awaitingVerification + inactive, minus archived
+  const awaitingIntegration = [...awaitingVerification, ...inactiveBoards].filter(
+    lb => !archivedAddrs.includes(lb.address)
+  )
+  const archivedBoards = allBoards.filter(lb => archivedAddrs.includes(lb.address))
 
   const totalRaisedWei = allBoards.reduce((sum, lb) => sum + BigInt(lb.totalFundsRaw), 0n)
 
@@ -419,40 +434,15 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div className="space-y-12 mt-7">
-                    {awaitingVerification.length > 0 && (
-                      <div className="bg-[#0A0F3D] rounded-2xl border border-[#F897FE]/30 p-6">
+                    {awaitingIntegration.length > 0 && (
+                      <div>
                         <div className="flex items-center gap-3 mb-1">
-                          <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse flex-shrink-0" />
-                          <h2 className="text-xl font-bold text-[#F897FE]">Awaiting Verification</h2>
+                          <h2 className="text-[18px] font-bold" style={{ color: '#7C9CFF' }}>Awaiting Integration</h2>
+                          <span className="font-mono text-[12px]" style={{ color: '#8A8FBF' }}>{awaitingIntegration.length}</span>
                         </div>
-                        <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Verify your integration to appear in Top Verified Markees</p>
+                        <p className="text-[#8A8FBF] text-[13px] mb-4">These signs are private until your integration is verified.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {awaitingVerification.map(lb => (
-                            <AccountLeaderboardCard
-                              key={lb.address}
-                              leaderboard={lb}
-                              detailUrl={detailUrl(lb)}
-                              icon={platformIcon(lb)}
-                              platformHref={platformLink(lb)}
-                              variant="active"
-                              onEdit={() => setEditingBoard(lb)}
-                              onIntegrate={() => setIntegrationBoard(lb)}
-                              onVerify={() => setVerifyBoard(lb)}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {inactiveBoards.length > 0 && (
-                      <div className="bg-[#0A0F3D] rounded-2xl border border-[#7C9CFF]/30 p-6">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="w-2 h-2 rounded-full bg-[#7C9CFF] animate-pulse flex-shrink-0" />
-                          <h2 className="text-xl font-bold text-[#7C9CFF]">Awaiting Activation</h2>
-                        </div>
-                        <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Buy a message to activate these Markees</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {inactiveBoards.map(lb => (
+                          {awaitingIntegration.map(lb => (
                             <AccountLeaderboardCard
                               key={lb.address}
                               leaderboard={lb}
@@ -461,22 +451,41 @@ export default function AccountPage() {
                               subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
                               platformHref={platformLink(lb)}
                               variant="inactive"
+                              statusLabel="integration-needed"
                               onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                              onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
+                              onIntegrate={() => setIntegrationBoard(lb as WebsiteLeaderboard)}
+                              onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
+                              onArchive={() => setArchivedAddrs(prev => [...prev, lb.address])}
                             />
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {activeBoards.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="w-2 h-2 rounded-full bg-[#1DB227]" />
+                        <h2 className="text-[18px] font-bold text-[#EDEEFF]">Active Markees</h2>
+                        <span className="font-mono text-[12px]" style={{ color: '#8A8FBF' }}>{activeBoards.length}</span>
+                      </div>
+                      {activeBoards.length === 0 ? (
+                        <p className="text-[#8A8FBF] text-[14px]">No active signs yet — finish a draft above to go live.</p>
+                      ) : (
+                        <ActiveTable
+                          boards={activeBoards}
+                          onManage={lb => setIntegrationBoard(lb as WebsiteLeaderboard)}
+                        />
+                      )}
+                    </div>
+
+                    {archivedBoards.length > 0 && (
                       <div>
-                        <div className="flex items-center gap-3 mb-6">
-                          <span className="w-2 h-2 rounded-full bg-[#1DB227]" />
-                          <h2 className="text-xl font-bold text-[#EDEEFF]">Active Markees</h2>
+                        <div className="flex items-center gap-3 mb-4">
+                          <h2 className="text-[18px] font-bold" style={{ color: '#8A8FBF' }}>Archived</h2>
+                          <span className="font-mono text-[12px]" style={{ color: '#8A8FBF' }}>{archivedBoards.length}</span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {activeBoards.map(lb => (
+                          {archivedBoards.map(lb => (
                             <AccountLeaderboardCard
                               key={lb.address}
                               leaderboard={lb}
@@ -484,10 +493,9 @@ export default function AccountPage() {
                               icon={platformIcon(lb)}
                               subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
                               platformHref={platformLink(lb)}
-                              variant="active"
-                              onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                              onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
-                              onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
+                              variant="inactive"
+                              isArchived
+                              onUnarchive={() => setArchivedAddrs(prev => prev.filter(a => a !== lb.address))}
                             />
                           ))}
                         </div>
@@ -521,11 +529,7 @@ export default function AccountPage() {
                       </Link>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {myMessages.map(msg => (
-                        <MessageCard key={msg.address} message={msg} />
-                      ))}
-                    </div>
+                    <MessageSections items={myMessages} kind="bought" />
                   )}
                 </div>
               )}
@@ -597,9 +601,13 @@ function AccountLeaderboardCard({
   subtitle,
   platformHref,
   variant,
+  statusLabel,
+  isArchived,
   onEdit,
   onIntegrate,
   onVerify,
+  onArchive,
+  onUnarchive,
 }: {
   leaderboard: AnyLeaderboard
   detailUrl: string
@@ -607,9 +615,13 @@ function AccountLeaderboardCard({
   subtitle?: string
   platformHref: string
   variant: 'active' | 'inactive'
+  statusLabel?: 'active' | 'integration-needed'
+  isArchived?: boolean
   onEdit?: () => void
   onIntegrate?: () => void
   onVerify?: () => void
+  onArchive?: () => void
+  onUnarchive?: () => void
 }) {
   const router = useRouter()
   const messageCount = Math.max(0, leaderboard.markeeCount - 1)
@@ -625,43 +637,72 @@ function AccountLeaderboardCard({
   const cardBorder = isInactive
     ? 'border-[#7C9CFF]/25 hover:border-[#7C9CFF]/60'
     : 'border-[#8A8FBF]/20 hover:border-[#F897FE]'
-  const btnClass = isInactive
-    ? 'w-full bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#F897FE] transition-colors text-sm'
-    : 'w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm'
+
+  const statusPill = statusLabel === 'integration-needed' ? (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99,
+      fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+      background: 'rgba(124,156,255,0.12)', border: '1px solid rgba(124,156,255,0.35)', color: '#7C9CFF',
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#7C9CFF', flexShrink: 0 }} />
+      Integration Needed
+    </span>
+  ) : statusLabel === 'active' ? (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99,
+      fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+      background: 'rgba(29,178,39,0.12)', border: '1px solid rgba(29,178,39,0.4)', color: '#1DB227',
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#1DB227', flexShrink: 0 }} />
+      Active
+    </span>
+  ) : null
 
   return (
     <div
       onClick={() => router.push(detailUrl)}
       className={`bg-[#060A2A] p-6 rounded-lg border transition-colors cursor-pointer ${cardBorder}`}
+      style={{ opacity: isArchived ? 0.6 : 1 }}
     >
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{leaderboard.name}</h3>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#8A8FBF] text-xs font-mono">
-              {subtitle ?? `${leaderboard.address.slice(0, 8)}…${leaderboard.address.slice(-6)}`}
-            </span>
-            <Link
-              href={platformHref}
-              onClick={e => e.stopPropagation()}
-              className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-            >
-              <ExternalLink size={11} />
-            </Link>
-            {onEdit && (
-              <button
-                onClick={e => { e.stopPropagation(); onEdit() }}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
+            {icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{leaderboard.name}</h3>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[#8A8FBF] text-xs font-mono">
+                {subtitle ?? `${leaderboard.address.slice(0, 8)}…${leaderboard.address.slice(-6)}`}
+              </span>
+              <Link
+                href={platformHref}
+                onClick={e => e.stopPropagation()}
                 className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-                title="Edit website info"
               >
-                <Pencil size={11} />
-              </button>
-            )}
+                <ExternalLink size={11} />
+              </Link>
+              {onEdit && (
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit() }}
+                  className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
+                  title="Edit website info"
+                >
+                  <Pencil size={11} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
+        {isArchived ? (
+          <span style={{
+            fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 11, fontWeight: 600,
+            letterSpacing: 0.5, color: '#8A8FBF', border: '1px solid rgba(138,143,191,0.2)',
+            borderRadius: 99, padding: '4px 10px', flexShrink: 0,
+          }}>Archived</span>
+        ) : statusPill ? (
+          <div className="flex-shrink-0">{statusPill}</div>
+        ) : null}
       </div>
 
       {leaderboard.topMessage ? (
@@ -687,14 +728,49 @@ function AccountLeaderboardCard({
         <span className="text-[#8A8FBF]">{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
       </div>
 
-      <button
-        onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
-        className={btnClass}
-      >
-        {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
-      </button>
+      {isArchived ? (
+        <button
+          onClick={e => { e.stopPropagation(); onUnarchive?.() }}
+          style={{
+            width: '100%', background: 'transparent', color: '#B8B6D9',
+            border: '1px solid rgba(138,143,191,0.2)', borderRadius: 8, padding: '11px',
+            fontWeight: 600, fontSize: 14, cursor: 'pointer',
+          }}
+        >
+          Unarchive
+        </button>
+      ) : isInactive ? (
+        <div className="flex gap-2">
+          <button
+            onClick={e => { e.stopPropagation(); onIntegrate?.() }}
+            style={{
+              flex: 1, background: '#7C9CFF', color: '#060A2A', border: 'none',
+              borderRadius: 8, padding: '11px', fontWeight: 700, fontSize: 14, cursor: 'pointer',
+            }}
+          >
+            Finish Setup
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onArchive?.() }}
+            style={{
+              flexShrink: 0, background: 'transparent', color: '#8A8FBF',
+              border: '1px solid rgba(138,143,191,0.2)', borderRadius: 8, padding: '11px 14px',
+              fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            }}
+          >
+            Archive
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
+          className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
+        >
+          {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
+        </button>
+      )}
 
-      {(onIntegrate || onVerify) && (
+      {!isArchived && !isInactive && onVerify && (
         <div className="flex gap-2 mt-2">
           {onIntegrate && (
             <button
@@ -705,15 +781,13 @@ function AccountLeaderboardCard({
               Integration guide
             </button>
           )}
-          {onVerify && (
-            <button
-              onClick={e => { e.stopPropagation(); onVerify() }}
-              className="flex-1 flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors"
-            >
-              <CheckCircle2 size={11} />
-              Verify
-            </button>
-          )}
+          <button
+            onClick={e => { e.stopPropagation(); onVerify() }}
+            className="flex-1 flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors"
+          >
+            <CheckCircle2 size={11} />
+            Verify
+          </button>
         </div>
       )}
 
@@ -737,10 +811,107 @@ function AccountLeaderboardCard({
   )
 }
 
-// ─── Message Card ──────────────────────────────────────────────────────────────
+// ─── Active Table ─────────────────────────────────────────────────────────────
 
-function MessageCard({ message }: { message: MyMessage }) {
+function ActiveTable({ boards, onManage }: { boards: AnyLeaderboard[], onManage: (lb: AnyLeaderboard) => void }) {
+  const cols = '200px 110px 1fr 80px 116px'
+
+  function servedOnLabel(lb: AnyLeaderboard): string {
+    if (lb.platform === 'website') {
+      const site = (lb as WebsiteLeaderboard).siteUrl
+      return site ? site.replace(/^https?:\/\//, '').replace(/\/$/, '') : lb.name
+    }
+    if (lb.platform === 'github') return (lb as GithubLeaderboard).repoFullName ?? lb.name
+    return lb.name
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid rgba(138,143,191,0.2)' }}>
+      <div style={{ minWidth: 680, background: '#0A0F3D' }}>
+        {/* Header */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: cols, gap: 16,
+          padding: '11px 16px', borderBottom: '1px solid rgba(138,143,191,0.2)',
+          background: '#060A2A', alignItems: 'center',
+        }}>
+          {['Served on', 'Total raised', 'Current Message', 'Views', 'Manage'].map((h, i) => (
+            <span key={h} style={{
+              fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 10, fontWeight: 600,
+              letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8A8FBF',
+              textAlign: (i === 4 ? 'right' : 'left') as 'right' | 'left',
+            }}>{h}</span>
+          ))}
+        </div>
+        {/* Rows */}
+        {boards.map(lb => (
+          <div key={lb.address} style={{
+            display: 'grid', gridTemplateColumns: cols, gap: 16,
+            padding: '13px 16px', borderBottom: '1px solid rgba(138,143,191,0.2)', alignItems: 'center',
+          }}>
+            {/* Served on */}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+              <span style={{
+                width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
+              }}>
+                {platformIcon(lb, 13)}
+              </span>
+              <span style={{
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 12.5, color: '#EDEEFF',
+              }}>{servedOnLabel(lb)}</span>
+            </span>
+            {/* Total raised */}
+            <span style={{ fontSize: 12.5, color: '#7C9CFF', fontFamily: 'var(--font-jetbrains-mono, monospace)', fontWeight: 600 }}>
+              {formatFunds(lb.totalFunds)}
+            </span>
+            {/* Current message */}
+            <span style={{
+              fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 13, color: '#EDEEFF',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {lb.topMessage || '-'}
+            </span>
+            {/* Views */}
+            <span style={{ fontSize: 12, color: '#8A8FBF', fontFamily: 'var(--font-jetbrains-mono, monospace)' }}>-</span>
+            {/* Manage */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <ManageButton onClick={() => onManage(lb)}>Manage</ManageButton>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ManageButton({ onClick, children }: { onClick: () => void, children: React.ReactNode }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: 'transparent',
+        color: hovered ? '#EDEEFF' : '#B8B6D9',
+        border: hovered ? '1px solid rgba(248,151,254,0.35)' : '1px solid rgba(138,143,191,0.2)',
+        borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600,
+        cursor: 'pointer', whiteSpace: 'nowrap' as const,
+        transition: 'border-color 140ms, color 140ms',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// ─── Message Card + Sections ───────────────────────────────────────────────────
+
+function MessageCard({ message, kind }: { message: MyMessage, kind: 'bought' | 'funded' }) {
   const router = useRouter()
+  const [hovered, setHovered] = useState(false)
   const fundsEth = (Number(message.totalFundsAdded) / 1e18).toFixed(3)
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
   const toTopEth = message.isTop
@@ -748,66 +919,158 @@ function MessageCard({ message }: { message: MyMessage }) {
     : (Number(message.topFunds - message.totalFundsAdded + minIncrement) / 1e18).toFixed(3)
 
   const detailUrl = `/markee/${message.address}`
+  const isBought = kind === 'bought'
+
+  const labelStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 10,
+    letterSpacing: 1, textTransform: 'uppercase', color: '#8A8FBF', marginBottom: 6,
+  }
 
   return (
     <div
       onClick={() => router.push(detailUrl)}
-      className="bg-[#060A2A] p-5 rounded-lg border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/60 transition-colors cursor-pointer flex flex-col gap-3"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: '#060A2A', borderRadius: 14, padding: 20,
+        border: hovered ? '1px solid rgba(248,151,254,0.35)' : '1px solid rgba(138,143,191,0.2)',
+        cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 12,
+        transform: hovered ? 'translateY(-2px)' : 'none',
+        transition: 'border-color 140ms, transform 140ms',
+      }}
     >
-      {/* Status + leaderboard */}
-      <div className="flex items-center justify-between gap-2">
-        <Link
-          href={`/ecosystem/website/${message.strategyId}`}
-          onClick={e => e.stopPropagation()}
-          className="flex items-center gap-1.5 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors truncate"
-        >
-          <Globe2 size={11} />
-          <span className="truncate">{message.strategyName}</span>
-          <ExternalLink size={10} className="flex-shrink-0" />
-        </Link>
+      {/* Header: leaderboard name + rank badge */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          color: '#8A8FBF', fontSize: 12,
+          fontFamily: 'var(--font-jetbrains-mono, monospace)', minWidth: 0,
+        }}>
+          <Globe2 size={13} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#B8B6D9' }}>
+            {message.strategyName}
+          </span>
+        </span>
         {message.isTop ? (
-          <span className="flex items-center gap-1 text-xs font-semibold text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-full flex-shrink-0">
-            <Trophy size={11} />
-            Top
-          </span>
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700,
+            color: '#FFD45E', background: 'rgba(255,212,94,0.12)', padding: '3px 9px',
+            borderRadius: 99, flexShrink: 0,
+          }}>★ #1</span>
         ) : (
-          <span className="flex items-center gap-1 text-xs text-[#F3841E] bg-[#F3841E]/10 px-2 py-0.5 rounded-full flex-shrink-0">
-            <TrendingDown size={11} />
-            Overtaken
-          </span>
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700,
+            color: '#B8B6D9', background: 'rgba(138,143,191,0.16)', padding: '3px 9px',
+            borderRadius: 99, flexShrink: 0,
+          }}>Overtaken</span>
         )}
       </div>
 
-      {/* Message */}
-      <div className="bg-[#0A0F3D] rounded-lg p-3 border border-[#8A8FBF]/15 flex-1">
-        <p className="text-[#EDEEFF] font-mono text-sm break-words leading-snug line-clamp-3">
-          {message.message || <span className="text-[#8A8FBF] italic">(no message)</span>}
+      {/* "Now #1" box — only when overtaken and topMessage exists */}
+      {!message.isTop && message.topMessage && (
+        <div style={{
+          background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)',
+          borderRadius: 10, padding: '12px 14px',
+        }}>
+          <div style={labelStyle}>Now #1</div>
+          <p style={{ margin: 0, color: '#B8B6D9', fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 13, lineHeight: 1.5 }}>
+            {message.topMessage}
+          </p>
+          {message.topMessageOwner && (
+            <p style={{ margin: '6px 0 0', color: '#8A8FBF', fontSize: 12, textAlign: 'right' }}>
+              - {message.topMessageOwner}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Your message box */}
+      <div style={{
+        background: '#0A0F3D',
+        border: message.isTop ? '1px solid rgba(138,143,191,0.2)' : '1px solid rgba(248,151,254,0.25)',
+        borderRadius: 10, padding: '12px 14px', flex: 1,
+      }}>
+        <div style={labelStyle}>{isBought ? 'Your message' : 'You back'}</div>
+        <p style={{ margin: 0, color: '#EDEEFF', fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 13, lineHeight: 1.5 }}>
+          {message.message || <span style={{ color: '#8A8FBF', fontStyle: 'italic' }}>(no message)</span>}
         </p>
-        {message.name && (
-          <p className="text-[#8A8FBF] text-xs mt-2 text-right">
-            {message.name.startsWith('0x') && message.name.length === 42
-              ? `${message.name.slice(0, 6)}…${message.name.slice(-4)}`
-              : message.name}
+        {!isBought && message.name && (
+          <p style={{ margin: '8px 0 0', color: '#8A8FBF', fontSize: 12, textAlign: 'right' }}>
+            - {message.name}
           </p>
         )}
       </div>
 
-      {/* Funds + action row */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs">
-          <Trophy size={11} className="text-[#7C9CFF]" />
-          <span className="text-[#7C9CFF] font-semibold">{fundsEth} ETH</span>
-          <span className="text-[#8A8FBF]">funded by you</span>
-        </div>
-        <Link
-          href={detailUrl}
-          onClick={e => e.stopPropagation()}
-          className="flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-        >
-          {toTopEth ? `+${toTopEth} ETH to top` : 'Add funds'}
-          <ChevronRight size={12} />
-        </Link>
+      {/* Funds line */}
+      <div style={{ fontSize: 12, color: '#7C9CFF', fontWeight: 600, fontFamily: 'var(--font-jetbrains-mono, monospace)' }}>
+        {fundsEth} ETH{' '}
+        <span style={{ color: '#8A8FBF', fontWeight: 400 }}>
+          {isBought ? 'spent by you' : 'backed by you'}
+        </span>
       </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        {isBought && (
+          <button
+            onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
+            style={{
+              flexShrink: 0, background: 'transparent', color: '#B8B6D9',
+              border: '1px solid rgba(138,143,191,0.2)', borderRadius: 8,
+              padding: '11px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              whiteSpace: 'nowrap', lineHeight: 1.2,
+            }}
+          >
+            Edit Message
+          </button>
+        )}
+        <button
+          onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
+          style={{
+            flex: 1, background: '#F897FE', color: '#060A2A', border: 'none',
+            borderRadius: 8, padding: '11px 16px', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.2,
+            boxShadow: '0 4px 18px rgba(248,151,254,0.28)',
+          }}
+        >
+          {message.isTop ? 'Add funds' : `Overtake for ${toTopEth} ETH`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function MessageSections({ items, kind }: { items: MyMessage[], kind: 'bought' | 'funded' }) {
+  const featured = items.filter(m => m.isTop)
+  const needs = items.filter(m => !m.isTop)
+
+  const SectionHead = ({ label, count, color }: { label: string, count: number, color: string }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color }}>{label}</h2>
+      <span style={{ fontFamily: 'var(--font-jetbrains-mono, monospace)', fontSize: 12, color: '#8A8FBF' }}>{count}</span>
+    </div>
+  )
+
+  const Grid = ({ arr }: { arr: MyMessage[] }) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+      {arr.map(m => <MessageCard key={m.address} message={m} kind={kind} />)}
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+      {featured.length > 0 && (
+        <div>
+          <SectionHead label="Featured Spots Owned" count={featured.length} color="#EDEEFF" />
+          <Grid arr={featured} />
+        </div>
+      )}
+      {needs.length > 0 && (
+        <div>
+          <SectionHead label="More Funds Needed" count={needs.length} color="#7C9CFF" />
+          <Grid arr={needs} />
+        </div>
+      )}
     </div>
   )
 }
