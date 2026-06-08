@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import TokenomicsSimulator from '@/components/ui/TokenomicsSimulator'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
 import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 
@@ -13,52 +12,31 @@ import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 // Phase / stage data
 // ---------------------------------------------------------------------------
 
-const STAGE_1_START = new Date('2025-12-21T00:00:00Z')
-const CUT_INTERVAL_MS = 91.31 * 24 * 60 * 60 * 1000
+const SEASON_MS = 91.31 * 24 * 60 * 60 * 1000
+const SCHEDULE_START = new Date('2025-12-21T00:00:00Z')
 
-const PHASES = [
-  {
-    phase: 0,
-    rate: 100000,
-    endDate: new Date(STAGE_1_START.getTime() + 1 * CUT_INTERVAL_MS),
-    label: 'Phase 0',
-    color: 'bg-[#935AF0]',
-  },
-  {
-    phase: 1,
-    rate: 50000,
-    endDate: new Date(STAGE_1_START.getTime() + 2 * CUT_INTERVAL_MS),
-    label: 'Phase 1',
-    color: 'bg-[#7B6AF4]',
-  },
-  {
-    phase: 2,
-    rate: 25000,
-    endDate: new Date(STAGE_1_START.getTime() + 3 * CUT_INTERVAL_MS),
-    label: 'Phase 2',
-    color: 'bg-[#6A4AE3]',
-  },
-  {
-    phase: 3,
-    rate: 12500,
-    endDate: new Date(STAGE_1_START.getTime() + 4 * CUT_INTERVAL_MS),
-    label: 'Phase 3',
-    color: 'bg-[#4B3ACC]',
-  },
-  {
-    phase: 4,
-    rate: 6250,
-    endDate: new Date('2026-12-21T00:00:00Z'),
-    label: 'Stage 2',
-    color: 'bg-[#4B3ACC]',
-  },
-]
+interface Phase { idx: number; stage: number; rate: number; start: Date; end: Date }
 
-function getCurrentPhase() {
-  const now = new Date()
-  for (let i = 0; i < PHASES.length; i++) {
-    if (now < PHASES[i].endDate) return i
-  }
+function buildPhases(): Phase[] {
+  const rules = [{ stage: 1, cut: 0.5, seasons: 4 }, { stage: 2, cut: 0.2, seasons: 8 }, { stage: 3, cut: 0.1, seasons: 6 }]
+  const out: Phase[] = []
+  let rate = 100000
+  let idx = 0
+  rules.forEach((r) => {
+    for (let i = 0; i < r.seasons; i++) {
+      out.push({ idx, stage: r.stage, rate: Math.round(rate), start: new Date(SCHEDULE_START.getTime() + idx * SEASON_MS), end: new Date(SCHEDULE_START.getTime() + (idx + 1) * SEASON_MS) })
+      rate = rate * (1 - r.cut)
+      idx++
+    }
+  })
+  return out
+}
+
+const PHASES = buildPhases()
+
+function currentPhaseIdx() {
+  const now = Date.now()
+  for (let i = 0; i < PHASES.length; i++) if (now < PHASES[i].end.getTime()) return i
   return PHASES.length - 1
 }
 
@@ -112,21 +90,14 @@ const FAQS = [
   },
 ]
 
-const TABS = ['About MARKEE', 'Token Issuance Schedule', 'Covenant', 'Founding Team', 'FAQs'] as const
-type Tab = (typeof TABS)[number]
+const TABS = [
+  { key: 'how', label: 'About MARKEE' },
+  { key: 'schedule', label: 'Token Issuance Schedule' },
+  { key: 'team', label: 'Founding Team' },
+  { key: 'faqs', label: 'FAQs' },
+] as const
+type TabKey = (typeof TABS)[number]['key']
 
-const COVENANT_GATEWAY = 'https://ipfs.io/ipfs/bafkreid4markeecovenantxq7g0placeholderhash5s2cooperative'
-const GARDENS_COVENANT_URL = 'https://app.gardens.fund/gardens/8453/0xee3027f1e021b09d629922d40436c5dea3c6cb38/0xce6b968c8bd130ca08f1fcc97b509a824380d867'
-const COVENANT_IPFS = 'ipfs://bafkreid4markeecovenantxq7g0placeholderhash5s2cooperative'
-
-const COVENANT_CLAUSES = [
-  { h: '1 · Purpose', b: 'The Markee Cooperative exists to operate and grow Markee — the open marketplace for digital real estate — as common property of the people who use and build it, not as a private company.' },
-  { h: '2 · Ownership', b: 'All network assets — protocol revenue, smart contracts, frontends, brand, and treasury backing — belong to MARKEE token holders in proportion to their holdings. There are no special shares and no outside owners.' },
-  { h: '3 · Governance', b: 'Decisions are made onchain by MARKEE holders through Gardens conviction voting. Proposals that reach the conviction threshold execute automatically; no individual can override the membership.' },
-  { h: '4 · Revenue', b: 'All platform revenue flows to the Markee Revnet and issues MARKEE at the scheduled price. A 38% community reserve is distributed to network participants each cycle.' },
-  { h: '5 · Immutability', b: 'The issuance schedule and reserve split are fixed at deployment and can never be changed. Owners can be confident the rules they bought into are the rules forever.' },
-  { h: '6 · Amendments', b: 'This covenant may only be amended by a supermajority vote of MARKEE holders through Gardens. The canonical version is pinned to IPFS and referenced by the cooperative\'s onchain registry.' },
-]
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -192,47 +163,29 @@ function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => v
 }
 
 function BigCountdown() {
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-  const currentPhaseIndex = getCurrentPhase()
-  const currentPhase = PHASES[currentPhaseIndex]
+  const phase = PHASES[currentPhaseIdx()]
+  const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0 })
 
   useEffect(() => {
-    function update() {
-      const diff = currentPhase.endDate.getTime() - Date.now()
-      if (diff > 0) {
-        setTimeLeft({
-          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-          minutes: Math.floor((diff / 1000 / 60) % 60),
-          seconds: Math.floor((diff / 1000) % 60),
-        })
-      }
+    const tick = () => {
+      const diff = phase.end.getTime() - Date.now()
+      if (diff > 0) setT({ d: Math.floor(diff / 864e5), h: Math.floor((diff / 36e5) % 24), m: Math.floor((diff / 6e4) % 60), s: Math.floor((diff / 1e3) % 60) })
     }
-    update()
-    const id = setInterval(update, 1000)
+    tick()
+    const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [currentPhase.endDate])
+  }, [phase.end])
 
-  const units = [
-    { label: 'Days', value: timeLeft.days },
-    { label: 'Hours', value: timeLeft.hours },
-    { label: 'Minutes', value: timeLeft.minutes },
-    { label: 'Seconds', value: timeLeft.seconds },
-  ]
+  const cells: [string, number][] = [['Days', t.d], ['Hours', t.h], ['Minutes', t.m], ['Seconds', t.s]]
 
   return (
-    <div className="text-center mb-10">
-      <p className="text-[#8A8FBF] text-sm mb-5">Next phase change in:</p>
-      <div className="flex justify-center gap-4">
-        {units.map(({ label, value }) => (
-          <div
-            key={label}
-            className="bg-[#0A0F3D] border border-[#8A8FBF]/20 rounded-xl p-4 min-w-[80px]"
-          >
-            <div className="text-[#F897FE] font-mono text-3xl font-bold">
-              {String(value).padStart(2, '0')}
-            </div>
-            <div className="text-[#8A8FBF] text-xs mt-1">{label}</div>
+    <div style={{ textAlign: 'center', marginBottom: 36 }}>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', color: '#8A8FBF', marginBottom: 16 }}>Next price increase in</div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+        {cells.map(([label, v]) => (
+          <div key={label} style={{ background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 12, padding: '16px 18px', minWidth: 84 }}>
+            <div style={{ fontSize: 30, fontWeight: 800, color: '#F897FE', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{v}</div>
+            <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 6 }}>{label}</div>
           </div>
         ))}
       </div>
@@ -241,49 +194,26 @@ function BigCountdown() {
 }
 
 function PhasesViz() {
-  const currentPhaseIndex = getCurrentPhase()
-  const now = new Date()
+  const cur = currentPhaseIdx()
+  const shown = PHASES.slice(0, 5)
+  const fmtDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
 
   return (
-    <div className="mb-10">
-      <h3 className="text-[#EDEEFF] font-bold text-lg mb-5 text-center">MARKEE Token Issuance Phases</h3>
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {PHASES.map((phase, index) => {
-          const isPast = now > phase.endDate
-          const isCurrent = index === currentPhaseIndex
-
+    <div style={{ background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 16, padding: 26, marginBottom: 20 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#EDEEFF' }}>Phases</h3>
+        <p style={{ margin: '4px 0 0', color: '#8A8FBF', fontSize: 13 }}>MARKEE is issued at pre-scheduled prices that increase every season.</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+        {shown.map((p) => {
+          const isCur = p.idx === cur, past = p.idx < cur
           return (
-            <div
-              key={phase.phase}
-              className={`relative rounded-xl p-4 border-2 transition-all ${
-                isCurrent
-                  ? 'border-[#F897FE] bg-[#F897FE]/10 shadow-lg shadow-[#F897FE]/20 scale-105'
-                  : isPast
-                  ? 'border-[#8A8FBF]/30 bg-[#0A0F3D] opacity-60'
-                  : 'border-[#8A8FBF]/30 bg-[#0A0F3D] opacity-50'
-              }`}
-            >
-              {isCurrent && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="bg-[#F897FE] text-[#060A2A] text-[10px] font-bold px-3 py-1 rounded-full">
-                    ACTIVE
-                  </span>
-                </div>
-              )}
-              <div className={`w-3 h-3 rounded-full mx-auto mb-2 ${phase.color}`} />
-              <div className="text-center">
-                <div className={`text-sm font-semibold mb-1 ${isCurrent ? 'text-[#F897FE]' : 'text-[#8A8FBF]'}`}>
-                  {phase.label}
-                </div>
-                <div className={`text-2xl font-bold font-mono mb-1 ${isCurrent ? 'text-[#EDEEFF]' : 'text-[#8A8FBF]'}`}>
-                  {phase.rate.toLocaleString()}
-                </div>
-                <div className="text-xs text-[#8A8FBF]">MARKEE / ETH</div>
-                <div className="text-xs text-[#8A8FBF] mt-2">
-                  {isPast ? 'Ended' : isCurrent ? 'Ends' : 'Upcoming'}{' '}
-                  {phase.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
-              </div>
+            <div key={p.idx} style={{ position: 'relative', borderRadius: 12, padding: '18px 14px', textAlign: 'center', border: `1px solid ${isCur ? '#F897FE' : 'rgba(138,143,191,0.2)'}`, background: isCur ? 'rgba(248,151,254,0.08)' : '#060A2A', opacity: past ? 0.5 : 1 }}>
+              {isCur && <span style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', background: '#F897FE', color: '#060A2A', fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 99 }}>ACTIVE</span>}
+              <div style={{ fontSize: 12, fontWeight: 600, color: isCur ? '#F897FE' : '#8A8FBF', marginBottom: 6 }}>Phase {p.idx} · S{p.stage}</div>
+              <div style={{ fontSize: 21, fontWeight: 800, color: isCur ? '#EDEEFF' : '#B8B6D9', fontFamily: "'JetBrains Mono', monospace" }}>{p.rate.toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: '#8A8FBF', marginTop: 2 }}>MARKEE / ETH</div>
+              <div style={{ fontSize: 11, color: '#8A8FBF', marginTop: 8 }}>{past ? 'Ended' : isCur ? 'Ends' : 'From'} {fmtDate(p.end)}</div>
             </div>
           )
         })}
@@ -293,24 +223,34 @@ function PhasesViz() {
 }
 
 function StagesViz() {
+  const stages = [
+    { n: 1, cut: '−50%', dur: '1 year', color: '#F897FE' },
+    { n: 2, cut: '−20%', dur: '2 years', color: '#7B6AF4' },
+    { n: 3, cut: '−10%', dur: 'forever', color: '#7C9CFF' },
+  ]
   return (
-    <div className="mb-10">
-      <h3 className="text-[#EDEEFF] font-bold text-lg mb-5 text-center">Issuance Stages</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {STAGES.map((s) => (
-          <div
-            key={s.n}
-            className="bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-xl p-6"
-          >
-            <div
-              className="w-1 h-10 rounded-full mb-4"
-              style={{ backgroundColor: s.color }}
-            />
-            <div className="text-[#8A8FBF] text-xs font-mono uppercase tracking-widest mb-1">
-              Stage {s.n}
+    <div style={{ background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 16, padding: 26 }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#EDEEFF' }}>Stages</h3>
+      <p style={{ margin: '0 0 22px', color: '#8A8FBF', fontSize: 13 }}>Seasonal price increases slow down in Stages.</p>
+      {/* timeline bar */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <div style={{ flex: 1, height: 10, borderRadius: 6, background: '#F897FE' }} />
+        <div style={{ flex: 2, height: 10, borderRadius: 6, background: '#7B6AF4' }} />
+        <div style={{ flex: 2, height: 10, borderRadius: 6, background: 'linear-gradient(90deg, #7C9CFF, rgba(124,156,255,0.08))' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: '#8A8FBF' }}>
+        <span style={{ flex: 1 }}>1 yr</span><span style={{ flex: 2 }}>2 yrs</span><span style={{ flex: 2 }}>forever →</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+        {stages.map((s) => (
+          <div key={s.n} style={{ background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 14, padding: '20px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: s.color, fontWeight: 700 }}>Stage {s.n}</span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#8A8FBF' }}>{s.dur}</span>
             </div>
-            <div className="text-[#EDEEFF] text-2xl font-bold font-mono mb-1">{s.cut}</div>
-            <div className="text-[#B8B6D9] text-sm">per phase cut · {s.dur}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, color: '#EDEEFF', fontFamily: "'JetBrains Mono', monospace", letterSpacing: -1 }}>
+              {s.cut}<span style={{ fontSize: 14, color: '#8A8FBF', fontWeight: 600, letterSpacing: 0 }}> / season</span>
+            </div>
           </div>
         ))}
       </div>
@@ -319,63 +259,29 @@ function StagesViz() {
 }
 
 function IssuanceCurve() {
-  // Simple SVG area chart showing the decreasing issuance rate across phases
-  const points = PHASES.map((p, i) => ({ x: i, y: p.rate }))
-  const maxRate = points[0].y
-  const w = 560
-  const h = 160
-  const pad = { top: 16, right: 20, bottom: 32, left: 52 }
-  const chartW = w - pad.left - pad.right
-  const chartH = h - pad.top - pad.bottom
-
-  const xs = points.map((p) => pad.left + (p.x / (points.length - 1)) * chartW)
-  const ys = points.map((p) => pad.top + chartH - (p.y / maxRate) * chartH)
-
-  const linePath = points
-    .map((_, i) => `${i === 0 ? 'M' : 'L'}${xs[i]},${ys[i]}`)
-    .join(' ')
-
-  const areaPath =
-    linePath +
-    ` L${xs[xs.length - 1]},${pad.top + chartH} L${xs[0]},${pad.top + chartH} Z`
+  const series = PHASES.slice(0, 14)
+  const max = series[0].rate
+  const pts = series.map((p, i) => ({ x: (i / (series.length - 1)) * 96, y: 96 - (p.rate / max) * 88 + 2 }))
+  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
+  const area = `${path} L 96 98 L 0 98 Z`
+  const last = pts[pts.length - 1]
 
   return (
-    <div className="mb-4">
-      <h3 className="text-[#EDEEFF] font-bold text-lg mb-5 text-center">Issuance Curve</h3>
-      <div className="bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-xl p-6 overflow-x-auto">
-        <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxHeight: 200 }}>
-          {/* Grid lines */}
-          {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-            const y = pad.top + chartH * (1 - t)
-            return (
-              <g key={t}>
-                <line x1={pad.left} y1={y} x2={pad.left + chartW} y2={y} stroke="#8A8FBF" strokeOpacity={0.15} strokeDasharray="4 4" />
-                <text x={pad.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#8A8FBF">
-                  {Math.round(maxRate * t).toLocaleString()}
-                </text>
-              </g>
-            )
-          })}
-          {/* X labels */}
-          {points.map((_, i) => (
-            <text key={i} x={xs[i]} y={h - 6} textAnchor="middle" fontSize={10} fill="#8A8FBF">
-              {PHASES[i].label}
-            </text>
-          ))}
-          {/* Area fill */}
-          <defs>
-            <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#F897FE" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#F897FE" stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
-          <path d={areaPath} fill="url(#curveGrad)" />
-          <path d={linePath} fill="none" stroke="#F897FE" strokeWidth={2} strokeLinejoin="round" />
-          {/* Dots */}
-          {points.map((_, i) => (
-            <circle key={i} cx={xs[i]} cy={ys[i]} r={4} fill="#F897FE" stroke="#060A2A" strokeWidth={2} />
-          ))}
-        </svg>
+    <div style={{ marginTop: 26, borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 22 }}>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: 180 }}>
+        <defs>
+          <linearGradient id="iss" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(248,151,254,0.4)" />
+            <stop offset="100%" stopColor="rgba(248,151,254,0)" />
+          </linearGradient>
+        </defs>
+        {[24, 48, 72].map((y) => <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="rgba(138,143,191,0.15)" strokeWidth="0.4" />)}
+        <path d={area} fill="url(#iss)" />
+        <path d={path} fill="none" stroke="#F897FE" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+        <path d={`M ${last.x} ${last.y} L 100 ${(last.y + 98) / 2}`} fill="none" stroke="#F897FE" strokeWidth="1.2" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" opacity="0.6" />
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#8A8FBF' }}>
+        <span>Phase 0</span><span>→ forever</span>
       </div>
     </div>
   )
@@ -385,23 +291,24 @@ function FaqAccordion() {
   const [open, setOpen] = useState<number | null>(null)
 
   return (
-    <div className="space-y-3">
-      {FAQS.map((item, i) => (
-        <div key={i} className="bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-xl overflow-hidden">
-          <button
-            onClick={() => setOpen(open === i ? null : i)}
-            className="w-full flex items-center justify-between px-6 py-5 text-left gap-4"
-          >
-            <span className="text-[#EDEEFF] font-semibold text-base">{item.q}</span>
-            <span className="text-[#F897FE] text-xl font-mono shrink-0">{open === i ? '−' : '+'}</span>
-          </button>
-          {open === i && (
-            <div className="px-6 pb-5 text-[#B8B6D9] text-sm leading-relaxed border-t border-[#8A8FBF]/20 pt-4">
-              {item.a}
-            </div>
-          )}
-        </div>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 760 }}>
+      {FAQS.map((item, i) => {
+        const isOpen = open === i
+        return (
+          <div key={i} style={{ border: '1px solid rgba(138,143,191,0.2)', borderRadius: 12, background: isOpen ? 'rgba(10,15,61,0.5)' : 'transparent', overflow: 'hidden' }}>
+            <button
+              onClick={() => setOpen(isOpen ? null : i)}
+              style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: '#EDEEFF', fontSize: 16, fontWeight: 600 }}
+            >
+              {item.q}
+              <span style={{ color: '#F897FE', fontSize: 20, lineHeight: 1, flexShrink: 0, transform: isOpen ? 'rotate(45deg)' : 'none', transition: 'transform 160ms', display: 'inline-block' }}>+</span>
+            </button>
+            {isOpen && (
+              <p style={{ margin: 0, padding: '0 20px 20px', color: '#B8B6D9', fontSize: 15, lineHeight: 1.65 }}>{item.a}</p>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -411,7 +318,7 @@ function FaqAccordion() {
 // ---------------------------------------------------------------------------
 
 export default function Owners() {
-  const [activeTab, setActiveTab] = useState<Tab>('About MARKEE')
+  const [activeTab, setActiveTab] = useState<TabKey>('how')
   const [revnetModalOpen, setRevnetModalOpen] = useState(false)
   const [revnetInitialAmount, setRevnetInitialAmount] = useState('0.1')
   const [revnetInitialMessage, setRevnetInitialMessage] = useState('')
@@ -479,20 +386,25 @@ export default function Owners() {
         className="sticky top-0 z-20 backdrop-blur-md border-b border-[#8A8FBF]/20"
         style={{ backgroundColor: 'rgba(6,10,42,0.92)' }}
       >
-        <div className="max-w-[1180px] mx-auto px-6 flex items-center gap-2 py-3 overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-                activeTab === tab
-                  ? 'bg-[#F897FE] text-[#060A2A]'
-                  : 'bg-[rgba(138,143,191,0.12)] text-[#8A8FBF] hover:text-[#B8B6D9]'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="max-w-[1180px] mx-auto px-6 flex items-center gap-2 py-[14px] overflow-x-auto">
+          {TABS.map((tab) => {
+            const on = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                style={{
+                  cursor: 'pointer', padding: '9px 18px', whiteSpace: 'nowrap', borderRadius: 999, flexShrink: 0,
+                  fontSize: 13.5, fontWeight: on ? 700 : 600,
+                  background: on ? '#F897FE' : 'rgba(10,15,61,0.6)', color: on ? '#060A2A' : '#B8B6D9',
+                  border: `1px solid ${on ? '#F897FE' : 'rgba(138,143,191,0.2)'}`,
+                  transition: 'background 140ms, color 140ms, border-color 140ms',
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -502,21 +414,16 @@ export default function Owners() {
       <div className="max-w-[1180px] mx-auto px-10 pt-12 pb-24">
 
         {/* About MARKEE --------------------------------------------------- */}
-        {activeTab === 'About MARKEE' && (
+        {activeTab === 'how' && (
           <div>
-            <h2 className="text-[#EDEEFF] text-2xl font-bold mb-8">
-              5 things to know about Ownership of the Markee Network
-            </h2>
-            <div className="space-y-4">
+            <div style={{ maxWidth: 720, marginBottom: 32 }}>
+              <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,32px)', fontWeight: 800, letterSpacing: -0.8, color: '#EDEEFF' }}>5 things to know about Ownership of the Markee Network</h2>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 760 }}>
               {ABOUT_POINTS.map((text, i) => (
-                <div
-                  key={i}
-                  className="flex gap-5 bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-xl p-6"
-                >
-                  <div className="shrink-0 w-8 h-8 rounded-full bg-[#F897FE] flex items-center justify-center text-[#060A2A] font-bold text-sm">
-                    {i + 1}
-                  </div>
-                  <p className="text-[#B8B6D9] text-base leading-relaxed">{text}</p>
+                <div key={i} style={{ display: 'flex', gap: 16, alignItems: 'flex-start', background: 'rgba(10,15,61,0.45)', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 14, padding: '18px 20px' }}>
+                  <div style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 99, background: 'rgba(248,151,254,0.12)', border: '1px solid #F897FE', color: '#F897FE', fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
+                  <p style={{ margin: 0, color: '#B8B6D9', fontSize: 15.5, lineHeight: 1.6 }}>{text}</p>
                 </div>
               ))}
             </div>
@@ -524,73 +431,31 @@ export default function Owners() {
         )}
 
         {/* Token Issuance Schedule ---------------------------------------- */}
-        {activeTab === 'Token Issuance Schedule' && (
+        {activeTab === 'schedule' && (
           <div>
-            <h2 className="text-[#EDEEFF] text-2xl font-bold mb-8 text-center">
-              Token Issuance Schedule
-            </h2>
             <BigCountdown />
-            <PhasesViz />
-            <StagesViz />
-            <IssuanceCurve />
-            <div className="mt-10">
-              <h3 className="text-[#EDEEFF] font-bold text-lg mb-6 text-center">Tokenomics Simulator</h3>
-              <TokenomicsSimulator />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <PhasesViz />
+              <StagesViz />
             </div>
           </div>
         )}
 
         {/* Founding Team -------------------------------------------------- */}
-        {activeTab === 'Founding Team' && (
+        {activeTab === 'team' && (
           <div>
-            <h2 className="text-[#EDEEFF] text-2xl font-bold mb-2">The people who launched Markee</h2>
-            <p className="text-[#8A8FBF] text-sm mb-8">Founding contributors who built and launched the network.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+            <div style={{ maxWidth: 720, marginBottom: 32 }}>
+              <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,32px)', fontWeight: 800, letterSpacing: -0.8, color: '#EDEEFF' }}>The people who launched Markee</h2>
+              <p style={{ margin: '10px 0 0', color: '#B8B6D9', fontSize: 15, lineHeight: 1.6 }}>The founding team received a one-time 10M MARKEE allocation at launch — owners alongside everyone else.</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, maxWidth: 820 }}>
               {TEAM.map((member) => (
-                <div
-                  key={member.name}
-                  className="bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-xl p-6 flex flex-col items-center text-center gap-4"
-                >
-                  <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-[#060A2A] text-xl font-bold"
-                    style={{ backgroundColor: member.color }}
-                  >
-                    {member.name[0]}
-                  </div>
+                <div key={member.name} style={{ background: 'rgba(10,15,61,0.45)', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 14, padding: '22px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 99, flexShrink: 0, background: `${member.color}22`, color: member.color, border: `1px solid ${member.color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 18 }}>{member.name[0]}</div>
                   <div>
-                    <div className="text-[#EDEEFF] font-semibold">{member.name}</div>
-                    <div className="text-[#8A8FBF] text-sm">{member.role}</div>
+                    <div style={{ color: '#EDEEFF', fontWeight: 700, fontSize: 16 }}>{member.name}</div>
+                    <div style={{ color: '#8A8FBF', fontSize: 13, marginTop: 2 }}>{member.role}</div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Covenant ------------------------------------------------------- */}
-        {activeTab === 'Covenant' && (
-          <div>
-            <h2 className="text-[#EDEEFF] text-2xl font-bold mb-2">The Markee Covenant</h2>
-            <p className="text-[#8A8FBF] text-sm mb-6">The social and technical agreement every owner is bound by. The authoritative copy is pinned to IPFS and ratified on Gardens.</p>
-            <div className="flex gap-3 flex-wrap mb-6">
-              <a href={COVENANT_GATEWAY} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-transparent border border-[#8A8FBF]/30 text-[#B8B6D9] px-4 py-2 rounded-lg text-sm font-medium hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF] transition-colors no-underline">
-                View on IPFS ↗
-              </a>
-              <a href={GARDENS_COVENANT_URL} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-transparent border border-[#8A8FBF]/30 text-[#B8B6D9] px-4 py-2 rounded-lg text-sm font-medium hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF] transition-colors no-underline">
-                Ratified on Gardens ↗
-              </a>
-            </div>
-            <div className="flex items-center gap-3 bg-[rgba(124,156,255,0.08)] border border-[#8A8FBF]/20 rounded-[10px] px-4 py-3 mb-6 font-mono text-[12px] text-[#B8B6D9] break-all">
-              <span className="text-[#7C9CFF] flex-shrink-0">IPFS</span>
-              {COVENANT_IPFS}
-            </div>
-            <div className="flex flex-col gap-[14px] max-w-[760px]">
-              {COVENANT_CLAUSES.map(c => (
-                <div key={c.h} className="bg-[rgba(10,15,61,0.45)] border border-[#8A8FBF]/20 rounded-[14px] px-[22px] py-5">
-                  <p className="font-mono text-[13px] font-bold text-[#F897FE] mb-2">{c.h}</p>
-                  <p className="text-[#B8B6D9] text-[15px] leading-relaxed m-0">{c.b}</p>
                 </div>
               ))}
             </div>
@@ -598,9 +463,11 @@ export default function Owners() {
         )}
 
         {/* FAQs ----------------------------------------------------------- */}
-        {activeTab === 'FAQs' && (
+        {activeTab === 'faqs' && (
           <div>
-            <h2 className="text-[#EDEEFF] text-2xl font-bold mb-8">Frequently Asked Questions</h2>
+            <div style={{ maxWidth: 720, marginBottom: 32 }}>
+              <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,32px)', fontWeight: 800, letterSpacing: -0.8, color: '#EDEEFF' }}>Questions, answered</h2>
+            </div>
             <FaqAccordion />
           </div>
         )}
