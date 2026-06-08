@@ -416,113 +416,86 @@ export function TopDawgModal({
   // ---------------------------------------------------------------------------
   // Amount selector JSX
   // ---------------------------------------------------------------------------
+  const bidNum = parseFloat(amount || '0')
+  const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
+  const selMin = amount === minimumAmountFormatted
+
   const amountSelectorJSX = (
-    <div className="space-y-3">
-      {/* #1 spot banner — shown above everything when user already holds the top */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* #1 spot banner */}
       {userIsTopDawg && (
-        <div className="rounded-xl p-4 border-2 border-[#FFD700]/50 bg-[#FFD700]/10 flex items-start gap-3">
-          <Trophy size={20} className="text-[#FFD700] flex-shrink-0 mt-0.5" />
+        <div style={{ borderRadius: 10, padding: '13px 15px', border: '2px solid rgba(255,215,0,0.5)', background: 'rgba(255,215,0,0.08)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <Trophy size={18} style={{ color: '#FFD700', flexShrink: 0, marginTop: 1 }} />
           <div>
-            <p className="text-sm font-semibold text-[#FFD700]">
-              👑 This message holds the top spot!
-            </p>
-            <p className="text-xs text-[#FFD700]/80 mt-0.5">
-              Add more funds to make it harder for anyone to overtake you.
-            </p>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#FFD700' }}>👑 This message holds the top spot!</p>
+            <p style={{ margin: '3px 0 0', fontSize: 11, color: 'rgba(255,215,0,0.8)' }}>Add more funds to make it harder for anyone to overtake you.</p>
           </div>
         </div>
       )}
 
-      <label className="block text-sm font-medium text-[#B8B6D9]">
-        Amount (ETH)
-      </label>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#8A8FBF', letterSpacing: 1, textTransform: 'uppercase' }}>Amount (ETH)</div>
 
-      {/* Preset buttons — only when not holding the top spot */}
+      {/* Preset cards */}
       {!userIsTopDawg && (
-        /* Preset Buttons */
-        <div className={`grid ${hasCompetition ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
-          {/* Featured Message / Take #1 - only show if there's competition */}
+        <div style={{ display: 'grid', gridTemplateColumns: hasCompetition && activeTab !== 'addFunds' ? '1fr 1fr' : '1fr', gap: 10 }}>
           {hasCompetition && (
             <button
               type="button"
               onClick={() => setAmount(takeFirstAmountFormatted!)}
               disabled={isPending || isConfirming}
-              className={`relative rounded-lg p-3 border-2 transition-all text-left ${
-                amount === takeFirstAmountFormatted
-                  ? 'border-[#F897FE] bg-[#F897FE]/10'
-                  : 'border-[#F897FE]/30 hover:border-[#F897FE]/60 bg-[#0A0F3D]/50'
-              } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              style={{ textAlign: 'left', cursor: isPending || isConfirming ? 'not-allowed' : 'pointer', background: selFeatured ? 'rgba(248,151,254,0.08)' : '#060A2A', border: `1.5px solid ${selFeatured ? '#F897FE' : 'rgba(138,143,191,0.2)'}`, borderRadius: 12, padding: '13px 15px', opacity: isPending || isConfirming ? 0.5 : 1, transition: 'border-color 120ms' }}
             >
-              <div className="flex items-center gap-1 mb-1">
-                <p className="text-xs font-medium text-[#F897FE]">Featured Message</p>
-                <span className="text-[10px]">👑</span>
+              <div style={{ color: selFeatured ? '#F897FE' : '#B8B6D9', fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Featured Message 👑</div>
+              <div style={{ color: '#EDEEFF', fontFamily: "'JetBrains Mono', monospace", fontSize: 17, fontWeight: 800 }}>{takeFirstAmountFormatted} ETH</div>
+              <div style={{ color: '#8A8FBF', fontSize: 12, marginTop: 4 }}>
+                {activeTab === 'addFunds' ? 'Additional ETH needed to take the top spot' : 'Price to take the top spot'}
               </div>
-              <div className="flex items-baseline gap-2">
-                <p className="text-sm font-bold text-[#EDEEFF]">
-                  {ethPrice ? formatUsd(parseFloat(takeFirstAmountFormatted!) * ethPrice) : `${takeFirstAmountFormatted} ETH`}
-                </p>
-                {ethPrice && <p className="text-xs text-[#8A8FBF]">{takeFirstAmountFormatted} ETH</p>}
-              </div>
-              <p className="text-[10px] text-[#F897FE] mt-0.5">
-                {activeTab === 'addFunds'
-                  ? 'Additional ETH needed to take the top spot'
-                  : 'Price to take the top spot on this leaderboard'}
-              </p>
             </button>
           )}
-
-          {/* Minimum - only shown on create tab */}
           {activeTab !== 'addFunds' && (
             <button
               type="button"
               onClick={() => setAmount(minimumAmountFormatted)}
               disabled={isPending || isConfirming}
-              className={`relative rounded-lg p-3 border-2 transition-all text-left ${
-                amount === minimumAmountFormatted
-                  ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
-                  : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#0A0F3D]/50'
-              } ${isPending || isConfirming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              style={{ textAlign: 'left', cursor: isPending || isConfirming ? 'not-allowed' : 'pointer', background: selMin ? 'rgba(248,151,254,0.08)' : '#060A2A', border: `1.5px solid ${selMin ? '#F897FE' : 'rgba(138,143,191,0.2)'}`, borderRadius: 12, padding: '13px 15px', opacity: isPending || isConfirming ? 0.5 : 1, transition: 'border-color 120ms' }}
             >
-              <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-sm font-bold text-[#EDEEFF]">
-                  {ethPrice ? formatUsd(parseFloat(minimumAmountFormatted) * ethPrice) : `${minimumAmountFormatted} ETH`}
-                </p>
-                {ethPrice && <p className="text-xs text-[#8A8FBF]">{minimumAmountFormatted} ETH</p>}
-              </div>
-              <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
+              <div style={{ color: selMin ? '#F897FE' : '#B8B6D9', fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Minimum</div>
+              <div style={{ color: '#EDEEFF', fontFamily: "'JetBrains Mono', monospace", fontSize: 17, fontWeight: 800 }}>0.001 ETH</div>
+              <div style={{ color: '#8A8FBF', fontSize: 12, marginTop: 4 }}>Buy a message at the lowest price</div>
             </button>
           )}
         </div>
       )}
 
-      {/* Amount Input - always visible, freely editable */}
-      <div className="relative">
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder={activeTab === 'addFunds' ? '0.001' : minimumAmountFormatted}
-          step="0.001"
-          min="0"
-          className="w-full px-4 py-2 bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 rounded-lg focus:ring-2 focus:ring-[#F897FE] focus:border-transparent text-[#EDEEFF] placeholder-[#8A8FBF] pr-12"
-          disabled={isPending || isConfirming}
-        />
-        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8A8FBF] text-sm">
-          ETH
-        </span>
-      </div>
+      {/* Amount input */}
+      <input
+        type="number"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder={activeTab === 'addFunds' ? '0.001' : minimumAmountFormatted}
+        step="0.0001"
+        min="0"
+        disabled={isPending || isConfirming}
+        style={{ width: '100%', boxSizing: 'border-box', background: '#060A2A', color: '#EDEEFF', border: '1px solid rgba(138,143,191,0.2)', borderRadius: 10, padding: '14px 16px', fontFamily: "'JetBrains Mono', monospace", fontSize: 18, outline: 'none', fontWeight: 600 }}
+      />
 
-      {/* Balance display */}
+      {/* Balance */}
       {balanceData && (
-        <p className="text-xs text-[#8A8FBF]">
+        <div style={{ fontSize: 12, color: '#8A8FBF' }}>
           Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-          {ethPrice && (
-            <span className="text-[#7C9CFF] ml-1">
-              ({formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)})
-            </span>
-          )}
-        </p>
+          {ethPrice && <span style={{ color: '#7C9CFF', marginLeft: 6 }}>({formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)})</span>}
+        </div>
+      )}
+
+      {/* MARKEE token estimate box */}
+      {revNetEnabled && bidNum > 0 && (
+        <div style={{ borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: '1px solid rgba(248,151,254,0.35)' }}>
+          <div style={{ color: '#F897FE', fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
+          <div style={{ color: '#F897FE', fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>
+            {Math.floor(calculateMarkeeTokens(bidNum)).toLocaleString()}
+          </div>
+          <div style={{ color: '#F897FE', fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
+        </div>
       )}
     </div>
   )
@@ -533,7 +506,8 @@ export function TopDawgModal({
       onClick={onClose}
     >
       <div 
-        className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-[560px] w-full max-h-[90vh] overflow-y-auto"
+        style={{ background: '#0A0F3D', borderRadius: 16, border: '1px solid rgba(138,143,191,0.2)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+        className="max-w-[560px] w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -683,34 +657,6 @@ export function TopDawgModal({
 
                   {amountSelectorJSX}
 
-                  {/* MARKEE token display */}
-                  {revNetEnabled && amount && parseFloat(amount) > 0 && (
-                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-4 text-center">
-                      <p className="text-sm text-[#F897FE] font-medium mb-1">You'll receive</p>
-                      <p className="text-3xl font-bold text-[#F897FE] mb-1">
-                        {Math.floor(calculateMarkeeTokens(parseFloat(amount))).toLocaleString()}
-                      </p>
-                      <p className="text-sm font-semibold text-[#F897FE]">MARKEE tokens</p>
-                    </div>
-                  )}
-
-                  {/* Beneficiary split info */}
-                  {amount && parseFloat(amount) > 0 && partnerName && (
-                    <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
-                      <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#EDEEFF]">{partnerName}</span>
-                        <span className="text-[#FFA94D] font-semibold">{revNetEnabled ? '62%' : '100%'}</span>
-                      </div>
-                      {revNetEnabled && (
-                        <div className="flex justify-between items-center mt-1.5">
-                          <span className="text-[#EDEEFF]">Markee Cooperative</span>
-                          <span className="text-[#7C9CFF] font-semibold">38%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
                       <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
@@ -735,47 +681,17 @@ export function TopDawgModal({
               {/* Add Funds */}
               {activeTab === 'addFunds' && userMarkee && (
                 <div className="space-y-4">
-                  {amountSelectorJSX}
-
-                  {/* MARKEE token display */}
-                  {revNetEnabled && amount && parseFloat(amount) > 0 && (
-                    <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-4 text-center">
-                      <p className="text-sm text-[#F897FE] font-medium mb-1">You'll receive</p>
-                      <p className="text-3xl font-bold text-[#F897FE] mb-1">
-                        {Math.floor(calculateMarkeeTokens(parseFloat(amount))).toLocaleString()}
-                      </p>
-                      <p className="text-sm font-semibold text-[#F897FE]">MARKEE tokens</p>
+                  {/* Read-only message being funded */}
+                  <div style={{ borderRadius: 10, border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(15,27,107,0.35)', padding: '14px 16px' }}>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, color: '#EDEEFF', lineHeight: 1.45, wordBreak: 'break-word' }}>
+                      {userMarkee.message || 'Loading…'}
                     </div>
-                  )}
-
-                  <div className="bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/20 space-y-3">
-                    <p className="text-sm text-[#B8B6D9]">
-                      💰 Add more funds to climb the leaderboard!
-                    </p>
-                    <div className="border-t border-[#F897FE]/20 pt-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-[#8A8FBF]">Current funds</p>
-                        <p className="text-xs font-medium text-[#EDEEFF]">
-                          {formatEther(userMarkee.totalFundsAdded)} ETH
-                        </p>
-                      </div>
-                      {amount && parseFloat(amount) > 0 && (
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-[#8A8FBF]">You're adding</p>
-                          <p className="text-xs font-medium text-[#7C9CFF]">+ {amount} ETH</p>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-[#B8B6D9]">New total</p>
-                        <p className="text-sm font-bold text-[#F897FE]">
-                          {amount && parseFloat(amount) > 0
-                            ? (parseFloat(formatEther(userMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(3)
-                            : formatEther(userMarkee.totalFundsAdded)
-                          } ETH
-                        </p>
-                      </div>
-                    </div>
+                    {userMarkee.name && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: '#8A8FBF', fontStyle: 'italic' }}>- {userMarkee.name}</div>
+                    )}
                   </div>
+
+                  {amountSelectorJSX}
 
                   {insufficientBalance && balanceWarning && !error && !isError && (
                     <div className="p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
@@ -871,9 +787,21 @@ export function TopDawgModal({
                 </div>
               )}
 
-              {/* Action Button — hidden while tx is in flight */}
+              {/* Footer: info text + action button — hidden while tx is in flight */}
               {!isPending && !isConfirming && !isSuccess && (
-                <div className="mt-6">
+                <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(138,143,191,0.2)', display: 'flex', alignItems: 'center', justifyContent: activeTab === 'updateMessage' ? 'flex-end' : 'space-between', gap: 12 }}>
+                  {activeTab !== 'updateMessage' && (
+                    <div style={{ fontSize: 11, color: '#8A8FBF', lineHeight: 1.5 }}>
+                      {activeTab === 'addFunds' ? (
+                        <span>Funds are added onchain to this message.</span>
+                      ) : (
+                        <span>
+                          62% of funds go to <span style={{ color: '#B8B6D9' }}>{partnerName || 'this Markee'}</span><br />
+                          at <span style={{ color: '#B8B6D9', fontFamily: "'JetBrains Mono', monospace" }}>{strategyAddress ? `${strategyAddress.slice(0, 6)}…${strategyAddress.slice(-4)}` : ''}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={() => {
                       if (activeTab === 'create') handleCreateMarkee()
@@ -881,7 +809,7 @@ export function TopDawgModal({
                       else handleUpdateMessage()
                     }}
                     disabled={activeTab !== 'updateMessage' && insufficientBalance}
-                    className="w-full bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:text-[#8A8FBF] disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                    style={{ background: (activeTab !== 'updateMessage' && insufficientBalance) ? 'rgba(248,151,254,0.3)' : '#F897FE', color: '#060A2A', border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 700, fontSize: 14, cursor: (activeTab !== 'updateMessage' && insufficientBalance) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
                     {activeTab === 'create' && 'Buy Message'}
                     {activeTab === 'addFunds' && 'Add Funds'}
