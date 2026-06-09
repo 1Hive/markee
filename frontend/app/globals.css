@@ -202,3 +202,7 @@ img.emoji {
 @media (prefers-reduced-motion: reduce) {
   .starfield-bg::before, .starfield-bg::after { animation: none; }
 }
+body.page-hidden .starfield-bg::before,
+body.page-hidden .starfield-bg::after {
+  animation-play-state: paused;
+}

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Manrope, JetBrains_Mono } from 'next/font/google'
 import { Web3Provider } from '@/components/providers/Web3Provider'
+import { VisibilityPause } from '@/components/VisibilityPause'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import './globals.css'
 
@@ -43,6 +44,7 @@ export default function RootLayout({
             </a>
           </div>
         )}
+        <VisibilityPause />
         <Web3Provider>
           {children}
         </Web3Provider>
