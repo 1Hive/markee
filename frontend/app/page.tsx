@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAccount } from 'wagmi'
-import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useMarkees } from '@/lib/contracts/useMarkees'
@@ -109,7 +108,10 @@ function MetricsRow({ domains, activeMarkees, messages, usdRaw, totalViews, ethP
   )
 }
 
+const MAX_MSG = 280
+
 function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => void }) {
+  const { isConnected } = useAccount()
   const [amount, setAmount] = useState('0.1')
   const [expanded, setExpanded] = useState(false)
   const [message, setMessage] = useState('')
@@ -138,14 +140,18 @@ function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => v
       </div>
       {expanded && (
         <div className="mt-3">
-          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={2} placeholder={defaultMessage}
+          <textarea value={message} onChange={e => setMessage(e.target.value.slice(0, MAX_MSG))} rows={2}
+            maxLength={MAX_MSG} placeholder="tell the world what you have to say..."
             className="w-full resize-none bg-[#060A2A] border border-[#8A8FBF]/20 rounded-[11px] px-[14px] py-[11px] text-[#EDEEFF] font-sans text-[14px] outline-none leading-[1.4] box-border" />
+          <div className="text-right mt-1 text-[11px]" style={{ color: message.length >= MAX_MSG - 20 ? '#F897FE' : '#8A8FBF' }}>
+            {message.length}/{MAX_MSG}
+          </div>
         </div>
       )}
       <button
         onClick={() => onBuy(amount, message.trim() || defaultMessage)}
         className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] border-none rounded-[10px] py-[15px] px-5 font-sans font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] flex items-center justify-center gap-2 transition-[transform,box-shadow] duration-[120ms] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px]">
-        Connect wallet to buy
+        {isConnected ? 'Buy MARKEE' : 'Connect wallet to buy'}
       </button>
     </div>
   )
@@ -432,8 +438,8 @@ export default function Home() {
                       : `/marketplace/website/${lb.address}`
                   const v = views.get(lb.address.toLowerCase())
                   return (
-                    <Link key={lb.address} href={href}
-                      className="grid gap-4 px-[14px] py-[13px] border-b border-[#8A8FBF]/20 last:border-0 items-center hover:bg-[#8A8FBF]/5 transition-colors"
+                    <a key={lb.address} href={href}
+                      className="grid gap-4 px-[14px] py-[13px] border-b border-[#8A8FBF]/20 last:border-0 items-center hover:bg-[#8A8FBF]/5 transition-colors no-underline"
                       style={{ gridTemplateColumns: '1fr' }}
                     >
                       {/* Mobile */}
@@ -461,17 +467,17 @@ export default function Home() {
                         <span className="font-mono text-[12px] text-[#8A8FBF]">{v?.totalViews ? fmtViews(v.totalViews) : '—'}</span>
                         <span className="font-mono text-[12px] text-[#B8B6D9] text-right">{parseFloat(lb.totalFunds ?? '0').toFixed(3)} ETH</span>
                       </div>
-                    </Link>
+                    </a>
                   )
                 })
             )}
           </div>
           {/* CTA */}
           <div className="text-center mt-7">
-            <Link href="/marketplace"
-              className="inline-flex items-center gap-2 bg-transparent text-[#F897FE] border border-[#F897FE] rounded-lg px-6 py-[13px] font-bold text-[15px] transition-[background,color] duration-[140ms] hover:bg-[#F897FE] hover:text-[#060A2A]">
+            <a href="/marketplace"
+              className="inline-flex items-center gap-2 bg-transparent text-[#F897FE] border border-[#F897FE] rounded-lg px-6 py-[13px] font-bold text-[15px] transition-[background,color] duration-[140ms] hover:bg-[#F897FE] hover:text-[#060A2A] no-underline">
               View the Marketplace →
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -495,7 +501,7 @@ export default function Home() {
               { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/create-a-markee?platform=github' },
               { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/create-a-markee?platform=superfluid' },
             ].map((p) => (
-              <Link key={p.key} href={p.href}
+              <a key={p.key} href={p.href}
                 className="flex flex-col gap-[18px] no-underline rounded-[14px] p-[22px] border border-[#8A8FBF]/20 bg-[rgba(6,10,42,0.5)] transition-[border-color,transform] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:-translate-y-[2px]">
                 <div className="flex items-start gap-3">
                   <span className="w-12 h-12 rounded-[12px] bg-[#060A2A] border border-[#8A8FBF]/20 flex items-center justify-center flex-shrink-0">
@@ -518,14 +524,14 @@ export default function Home() {
                     <div className="text-[#8A8FBF] text-[11px]">raised</div>
                   </div>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
           <div className="text-center mt-7">
-            <Link href="/create-a-markee"
+            <a href="/create-a-markee"
               className="inline-flex items-center gap-[10px] bg-[#F897FE] text-[#060A2A] border-0 rounded-lg px-[26px] py-[14px] font-sans font-bold text-[15px] cursor-pointer shadow-[0_8px_32px_rgba(248,151,254,0.3)] no-underline transition-[transform,box-shadow] duration-[120ms] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px]">
               Create a Markee →
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -549,10 +555,10 @@ export default function Home() {
             <RevnetWidget onBuy={(amt, msg) => { setRevnetInitialAmount(amt); setRevnetInitialMessage(msg); setRevnetModalOpen(true) }} />
           </div>
           <div className="flex justify-center">
-            <Link href="/own-the-network"
+            <a href="/own-the-network"
               className="bg-transparent text-[#B8B6D9] border border-[#8A8FBF]/20 rounded-lg px-[22px] py-[13px] font-sans text-[15px] no-underline inline-flex items-center gap-2 transition-[border-color,color] duration-[160ms] hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]">
               How ownership works →
-            </Link>
+            </a>
           </div>
         </div>
       </section>

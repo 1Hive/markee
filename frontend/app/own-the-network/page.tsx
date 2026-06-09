@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -106,6 +107,7 @@ type TabKey = (typeof TABS)[number]['key']
 const MAX_MSG = 280
 
 function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => void }) {
+  const { isConnected } = useAccount()
   const [amount, setAmount] = useState('0.1')
   const [expanded, setExpanded] = useState(false)
   const [message, setMessage] = useState('')
@@ -163,7 +165,7 @@ function RevnetWidget({ onBuy }: { onBuy: (amount: string, message: string) => v
           onClick={() => onBuy(amount, message.trim() || defaultMessage)}
           className="w-full mt-[14px] bg-[#F897FE] text-[#060A2A] border-none rounded-[10px] py-[15px] px-5 font-bold text-[15px] cursor-pointer flex items-center justify-center gap-2 shadow-[0_8px_32px_rgba(248,151,254,0.3)] hover:shadow-[0_12px_40px_rgba(248,151,254,0.42)] hover:-translate-y-[1px] transition-[transform,box-shadow] duration-[120ms]"
         >
-          Connect wallet to buy
+          {isConnected ? 'Buy MARKEE' : 'Connect wallet to buy'}
         </button>
       </div>
     </div>
