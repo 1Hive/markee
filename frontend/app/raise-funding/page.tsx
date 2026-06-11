@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -281,10 +283,12 @@ function IntegrateForm() {
 export default function RaiseFunding() {
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
+      <Header activePage="raise" useRegularLinks />
       <Hero />
       <PlatformPicker />
       <HowItWorks />
       <IntegrateForm />
+      <Footer />
     </div>
   )
 }

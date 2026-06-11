@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -329,6 +331,7 @@ export default function Owners() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
+      <Header activePage="own" useRegularLinks />
       {/* Hero */}
       <section style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(123,106,244,0.10), rgba(6,10,42,0))' }}>
         <div className="starfield-bg" />
@@ -384,6 +387,7 @@ export default function Owners() {
         {tab === 'team' && <FoundingTeam />}
         {tab === 'faqs' && <FAQs setTab={setTab} />}
       </section>
+      <Footer />
     </div>
   )
 }

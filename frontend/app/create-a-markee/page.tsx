@@ -6,6 +6,7 @@ import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagm
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
+import { Header } from '@/components/layout/Header'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -760,6 +761,7 @@ function CreateWizardInner() {
 export default function CreateAMarkee() {
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
+      <Header activePage="raise" useRegularLinks />
       <Suspense>
         <CreateWizardInner />
       </Suspense>
