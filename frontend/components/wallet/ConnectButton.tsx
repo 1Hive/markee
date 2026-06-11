@@ -6,25 +6,13 @@ export function ConnectButton() {
   const { ready, authenticated, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
 
-  if (!ready) {
-    return (
-      <div
-        aria-hidden="true"
-        style={{ opacity: 0, pointerEvents: 'none', userSelect: 'none' }}
-      >
-        <button className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium flex items-center gap-2">
-          <Wallet size={20} />
-        </button>
-      </div>
-    )
-  }
-
-  if (!authenticated) {
+  if (!ready || !authenticated) {
     return (
       <button
-        onClick={login}
+        onClick={ready ? login : undefined}
         type="button"
-        className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
+        disabled={!ready}
+        className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Wallet size={20} />
         <span className="hidden sm:inline">Connect</span>

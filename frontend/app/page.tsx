@@ -55,7 +55,7 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
   const hasPrice = fixedMarkee.priceWei !== '0' && fixedMarkee.priceWei !== '0x0'
 
   return (
-    <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left', width: '100%' }}>
+    <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}>
       {views && views.totalViews > 0 && (
         <span className="reader-views">
           <Eye size={10} />
