@@ -552,8 +552,7 @@ export function BuyMessageModal({
                         try {
                           await fundWallet({
                             address,
-                            chain: base,
-                            amount: amount || undefined,
+                            options: { chain: base, amount: amount || undefined },
                           })
                         } finally {
                           setIsFunding(false)

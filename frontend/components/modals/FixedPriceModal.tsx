@@ -262,7 +262,7 @@ export function FixedPriceModal({
                     <p className="text-xs text-yellow-400 mb-3">{balanceWarning}</p>
                     {authenticated && address && (
                       <button
-                        onClick={() => fundWallet({ address, chain: CANONICAL_CHAIN, amount: priceEth })}
+                        onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
                         className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#F897FE]/90 transition-colors"
                       >
                         <CreditCard size={16} />
