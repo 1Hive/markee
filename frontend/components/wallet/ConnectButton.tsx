@@ -14,22 +14,19 @@ function GlowDot() {
 }
 
 export function ConnectButton() {
-  const { ready, authenticated, login, logout, user } = usePrivy()
+  const { authenticated, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
 
-  if (!ready || !authenticated) {
+  if (!authenticated) {
     return (
       <button
-        onClick={ready ? login : undefined}
+        onClick={login}
         type="button"
-        disabled={!ready}
         style={{
           background: '#F897FE', color: '#060A2A', border: 'none',
           borderRadius: 8, padding: '9px 18px',
           fontWeight: 600, fontSize: 13, fontFamily: MONO,
-          cursor: ready ? 'pointer' : 'not-allowed',
-          opacity: ready ? 1 : 0.5, flexShrink: 0,
-          transition: 'opacity 120ms',
+          cursor: 'pointer', flexShrink: 0,
         }}
       >
         Connect

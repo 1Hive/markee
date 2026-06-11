@@ -205,7 +205,7 @@ const PLATFORMS = [
   { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227' },
 ] as const
 
-function PlatformCard({ p }: { p: typeof PLATFORMS[number] }) {
+function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
   const [hover, setHover] = useState(false)
   return (
     <Link
@@ -235,7 +235,20 @@ function PlatformCard({ p }: { p: typeof PLATFORMS[number] }) {
         </div>
       </div>
       <div style={{ borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 16 }}>
-        <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
+        {stats && (stats.markees > 0 || stats.usd > 0) ? (
+          <div style={{ display: 'flex', gap: 28 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 22, color: '#EDEEFF', lineHeight: 1, letterSpacing: -0.5 }}>{stats.markees.toLocaleString()}</div>
+              <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 4 }}>Markees</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 22, color: '#7C9CFF', lineHeight: 1, letterSpacing: -0.5 }}>${stats.usd.toLocaleString()}</div>
+              <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 4 }}>raised</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
+        )}
       </div>
     </Link>
   )
@@ -332,20 +345,40 @@ export default function Home() {
   const { partnerData, isLoading: isLoadingPartners } = usePartnerMarkees()
   const ethPrice = useEthPrice()
 
-  // Ecosystem stats for the metrics row
+  // Ecosystem stats for the metrics row + per-platform stats for platform cards
   const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0, views: 0 })
+  const [platformStats, setPlatformStats] = useState<Record<string, { markees: number; usd: number }>>({})
   useEffect(() => {
     fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
         if (!data) return
-        const leaderboards: { address: string; topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean }[] = data.leaderboards ?? []
+        const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
           0
         )
         const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
+
+        // Per-platform stats for the Raise Funding section cards
+        const pAcc: Record<string, { markees: number; eth: number }> = {
+          website: { markees: 0, eth: 0 },
+          github: { markees: 0, eth: 0 },
+          superfluid: { markees: 0, eth: 0 },
+        }
+        for (const lb of leaderboards) {
+          const p = lb.platform
+          if (pAcc[p]) {
+            pAcc[p].markees += lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
+            pAcc[p].eth += parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
+          }
+        }
+        setPlatformStats({
+          website:    { markees: pAcc.website.markees,    usd: ethPrice ? Math.round(pAcc.website.eth    * ethPrice) : 0 },
+          github:     { markees: pAcc.github.markees,     usd: ethPrice ? Math.round(pAcc.github.eth     * ethPrice) : 0 },
+          superfluid: { markees: pAcc.superfluid.markees, usd: ethPrice ? Math.round(pAcc.superfluid.eth * ethPrice) : 0 },
+        })
 
         // Fetch total views across all leaderboard addresses
         let totalViews = 0
@@ -592,7 +625,7 @@ export default function Home() {
             sub="Add a Markee to your website or open source repo in just a few clicks."
           />
           <div className="plat-grid-home">
-            {PLATFORMS.map(p => <PlatformCard key={p.key} p={p} />)}
+            {PLATFORMS.map(p => <PlatformCard key={p.key} p={p} stats={platformStats[p.key]} />)}
           </div>
           <div style={{ textAlign: 'center', marginTop: 28 }}>
             <PrimaryButton href="/raise-funding">Create a Markee →</PrimaryButton>
