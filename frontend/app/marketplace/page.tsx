@@ -340,6 +340,7 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
         <button
           onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
           style={{
+            width: '100%', textAlign: 'center',
             background: PINK, color: BG, border: 'none', borderRadius: 7,
             padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
             cursor: 'pointer', whiteSpace: 'nowrap',

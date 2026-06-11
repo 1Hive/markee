@@ -571,21 +571,33 @@ export function BuyMessageModal({
                   )}
 
                   {/* ETH input */}
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    placeholder={minimumAmountFormatted}
-                    step="0.0001"
-                    style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 16px' }}
-                    disabled={isPending || isConfirming}
-                    onFocus={e => { e.target.style.borderColor = PINK }}
-                    onBlur={e => { e.target.style.borderColor = BORDER }}
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={e => setAmount(e.target.value)}
+                      placeholder={minimumAmountFormatted}
+                      step="0.0001"
+                      style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 56px 14px 16px' }}
+                      disabled={isPending || isConfirming}
+                      onFocus={e => { e.target.style.borderColor = PINK }}
+                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                    />
+                    <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontFamily: MONO, fontSize: 12, color: MUTED, pointerEvents: 'none', userSelect: 'none' }}>
+                      ETH
+                    </span>
+                  </div>
+
+                  {/* Live USD equivalent */}
+                  {ethPrice && bidNum > 0 && (
+                    <div style={{ fontSize: 12, color: BLUE, marginTop: 6, fontFamily: MONO }}>
+                      ≈ {formatUsd(bidNum * ethPrice)}
+                    </div>
+                  )}
 
                   {/* Balance */}
                   {balanceData && (
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, color: MUTED, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span>Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</span>
                       {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
                     </div>
