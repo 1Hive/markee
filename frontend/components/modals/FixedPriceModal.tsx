@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther } from 'viem'
 import { CreditCard } from 'lucide-react'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
@@ -22,11 +22,6 @@ const BORDER = 'rgba(138,143,191,0.2)'
 const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
 
-// ── ABIs ──────────────────────────────────────────────────────────────────────
-const ADMIN_ABI = [
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-] as const
-
 // ── MARKEE phases ─────────────────────────────────────────────────────────────
 const PHASES = [
   { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
@@ -40,7 +35,8 @@ function getCurrentPhaseRate() {
   for (const p of PHASES) { if (now < p.endDate) return p.rate }
   return PHASES[PHASES.length - 1].rate
 }
-function calculateMarkeeTokens(eth: number) { return eth * 0.38 * getCurrentPhaseRate() * 0.62 }
+// 100% of FixedPrice funds go to the Revnet; buyer receives 62% of issued tokens
+function calculateMarkeeTokens(eth: number) { return eth * getCurrentPhaseRate() * 0.62 }
 
 // ── TxRing ────────────────────────────────────────────────────────────────────
 function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
@@ -80,14 +76,6 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
-
-  const { data: adminAddress } = useReadContract({
-    address: fixedMarkee?.strategyAddress as `0x${string}`,
-    abi: ADMIN_ABI,
-    functionName: 'admin',
-    chainId: CANONICAL_CHAIN.id,
-    query: { enabled: !!fixedMarkee?.strategyAddress },
-  })
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
@@ -335,9 +323,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               flexShrink: 0,
             }}>
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                {adminAddress
-                  ? <>62% to <a href={`https://basescan.org/address/${adminAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{adminAddress.slice(0, 6)}…{adminAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
+                100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
               </div>
               <button
                 onClick={handleChangeMessage}
