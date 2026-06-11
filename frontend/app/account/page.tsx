@@ -1,24 +1,32 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAccount } from 'wagmi'
-import {
-  Globe2, Github, Zap, Trophy, User, ChevronRight, ExternalLink, Pencil, Code2, CheckCircle2,
-  MessageSquare, TrendingDown,
-} from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, ChevronRight, X } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
-import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const SANS   = 'Manrope, system-ui, sans-serif'
+const PINK   = '#F897FE'
+const BLUE   = '#7C9CFF'
+const PURP   = '#7B6AF4'
+const GREEN  = '#1DB227'
+const GOLD   = '#FFD45E'
+const BG     = '#060A2A'
+const BG2    = '#0A0F3D'
+const TEXT   = '#EDEEFF'
+const TEXT2  = '#B8B6D9'
+const MUTED  = '#8A8FBF'
+const BORDER = 'rgba(138,143,191,0.2)'
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface BaseLeaderboard {
   address: string
   name: string
@@ -31,18 +39,13 @@ interface BaseLeaderboard {
   topFundsAddedRaw: string
   minimumPriceRaw?: string
 }
-
-interface SuperfluidLeaderboard extends BaseLeaderboard {
-  platform: 'superfluid'
-}
-
+interface SuperfluidLeaderboard extends BaseLeaderboard { platform: 'superfluid' }
 interface GithubLeaderboard extends BaseLeaderboard {
   platform: 'github'
   repoFullName: string | null
   repoAvatarUrl: string | null
   repoHtmlUrl: string | null
 }
-
 interface WebsiteLeaderboard extends BaseLeaderboard {
   platform: 'website'
   creator: string | null
@@ -54,7 +57,6 @@ interface WebsiteLeaderboard extends BaseLeaderboard {
   isLegacy: boolean
   slug?: string
 }
-
 type AnyLeaderboard = SuperfluidLeaderboard | GithubLeaderboard | WebsiteLeaderboard
 
 interface MyMessage {
@@ -69,6 +71,7 @@ interface MyMessage {
   topFunds: bigint
 }
 
+// ── GraphQL ───────────────────────────────────────────────────────────────────
 const MY_MESSAGES_QUERY = `
   query GetMyMessages($owner: String!) {
     markees(
@@ -103,88 +106,409 @@ const MY_MESSAGES_QUERY = `
   }
 `
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatFunds(eth: string) {
-  const n = parseFloat(eth)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtEth(wei: bigint) {
+  const n = Number(wei) / 1e18
   if (n === 0) return '0 ETH'
   if (n < 0.001) return '< 0.001 ETH'
   return `${n.toFixed(3)} ETH`
 }
 
-function shortAddr(addr: string) {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+function fmtAddr(a: string) {
+  if (!a || a.length < 10) return a
+  return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
-function platformIcon(lb: AnyLeaderboard, size = 22) {
-  if (lb.platform === 'superfluid') return <Zap size={size} className="text-[#1DB227]" />
-  if (lb.platform === 'github') return <Github size={size} className="text-[#EDEEFF]" />
-  return <Globe2 size={size} className="text-[#F897FE]" />
+function platformColor(lb: AnyLeaderboard) {
+  if (lb.platform === 'github')     return TEXT2
+  if (lb.platform === 'superfluid') return GREEN
+  return PINK
 }
 
-function platformLink(lb: AnyLeaderboard) {
-  if (lb.platform === 'superfluid') return '/ecosystem/platforms/superfluid'
-  if (lb.platform === 'github') return '/ecosystem/platforms/github'
-  return '/create-a-markee'
+function platformSubtitle(lb: AnyLeaderboard) {
+  if (lb.platform === 'github')     return (lb as GithubLeaderboard).repoFullName || fmtAddr(lb.address)
+  if (lb.platform === 'superfluid') return fmtAddr(lb.address)
+  const w = lb as WebsiteLeaderboard
+  const u = w.verifiedUrls?.[0] || w.verifiedUrl || w.siteUrl
+  return u ? u.replace(/^https?:\/\//, '').replace(/\/$/, '') : fmtAddr(lb.address)
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+function platformHref(lb: AnyLeaderboard) {
+  if (lb.platform === 'github')
+    return (lb as GithubLeaderboard).repoHtmlUrl || `https://github.com`
+  if (lb.platform === 'superfluid') return 'https://superfluid.finance'
+  const w = lb as WebsiteLeaderboard
+  return w.verifiedUrls?.[0] || w.siteUrl || `https://${lb.address}`
+}
 
+function detailUrl(lb: AnyLeaderboard) {
+  return `/markee/${lb.address}`
+}
+
+// ── Platform icon ─────────────────────────────────────────────────────────────
+function PlatIcon({ lb, size = 20 }: { lb: AnyLeaderboard; size?: number }) {
+  if (lb.platform === 'github')     return <Github size={size} style={{ color: TEXT2 }} />
+  if (lb.platform === 'superfluid') return <Zap size={size} style={{ color: GREEN }} />
+  return <Globe2 size={size} style={{ color: PINK }} />
+}
+
+// ── Overview stats ────────────────────────────────────────────────────────────
+function GlowDot({ size = 8, color }: { size?: number; color: string }) {
+  return <span style={{ width: size, height: size, borderRadius: 99, background: color, boxShadow: `0 0 ${size * 1.5}px ${color}`, flexShrink: 0, display: 'inline-block' }} />
+}
+
+function Overview({ raised, active, bought, contributed }: { raised: bigint; active: number; bought: number; contributed: bigint }) {
+  const cells = [
+    { n: fmtEth(raised),              label: 'total raised',      color: PINK  },
+    { n: String(active),              label: 'active signs',      color: GREEN },
+    { n: String(bought),              label: 'messages bought',   color: TEXT  },
+    { n: fmtEth(contributed),         label: 'contributed',       color: BLUE  },
+  ]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+      {cells.map((c, i) => (
+        <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <GlowDot size={8} color={c.color} />
+            <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: c.color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{c.n}</span>
+          </div>
+          <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{c.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+type TabId = 'markees' | 'bought' | 'funded'
+function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { markees: number; bought: number; funded: number } }) {
+  const items: { key: TabId; label: string; n: number }[] = [
+    { key: 'markees', label: 'My Markees',           n: counts.markees },
+    { key: 'bought',  label: "Messages I've Bought", n: counts.bought  },
+    { key: 'funded',  label: "Messages I've Funded", n: counts.funded  },
+  ]
+  return (
+    <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${BORDER}`, overflowX: 'auto' }}>
+      {items.map(it => {
+        const on = tab === it.key
+        return (
+          <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : MUTED, fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? PINK : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {it.label}
+            <span style={{ fontFamily: MONO, fontSize: 12, color: on ? PINK : MUTED, background: on ? `${PINK}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Status pill ───────────────────────────────────────────────────────────────
+function StatusPill({ status }: { status: 'active' | 'draft' | 'pending' }) {
+  const live = status === 'active'
+  const col = live ? GREEN : BLUE
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99, fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, background: `${col}1E`, border: `1px solid ${col}66`, color: col }}>
+      <GlowDot size={6} color={col} /> {live ? 'Active' : 'Integration Needed'}
+    </span>
+  )
+}
+
+// ── Markee card for draft / inactive boards ───────────────────────────────────
+function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive, onUnarchive }: {
+  lb: AnyLeaderboard
+  archived?: boolean
+  onIntegrate?: () => void
+  onVerify?: () => void
+  onEdit?: () => void
+  onArchive?: () => void
+  onUnarchive?: () => void
+}) {
+  const isDraft = BigInt(lb.topFundsAddedRaw ?? '0') === 0n
+  const hasMessage = !!lb.topMessage
+  const sub = platformSubtitle(lb)
+
+  return (
+    <div style={{ background: BG, border: `1px solid ${isDraft && !archived ? `${BLUE}4D` : BORDER}`, borderRadius: 14, padding: 22, display: 'flex', flexDirection: 'column', gap: 16, opacity: archived ? 0.6 : 1 }}>
+      {/* header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 11, background: BG2, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <PlatIcon lb={lb} size={22} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: TEXT, fontWeight: 700, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name}</div>
+            <div style={{ color: MUTED, fontSize: 12, fontFamily: MONO }}>{sub}</div>
+          </div>
+        </div>
+        {archived
+          ? <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 99, padding: '4px 10px', flexShrink: 0 }}>Archived</span>
+          : <StatusPill status={isDraft ? 'draft' : 'active'} />
+        }
+      </div>
+
+      {/* message box */}
+      {hasMessage ? (
+        <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14, minHeight: 78 }}>
+          <p style={{ margin: 0, color: TEXT, fontFamily: MONO, fontSize: 13, lineHeight: 1.5 }}>{lb.topMessage}</p>
+          {lb.topMessageOwner && <p style={{ margin: '8px 0 0', color: MUTED, fontSize: 12, textAlign: 'right' }}>- {lb.topMessageOwner}</p>}
+        </div>
+      ) : (
+        <div style={{ background: BG2, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: 14, minHeight: 78, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center' }}>
+          <span style={{ fontSize: 22 }}>🪧</span>
+          <span style={{ color: MUTED, fontSize: 12 }}>Be the first to buy a message</span>
+        </div>
+      )}
+
+      {/* actions */}
+      {archived ? (
+        <button onClick={onUnarchive} style={{ width: '100%', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 11, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: SANS }}>Unarchive</button>
+      ) : isDraft ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          {(onIntegrate || onVerify) && (
+            <button onClick={onIntegrate || onVerify} style={{ flex: 1, background: BLUE, color: BG, border: 'none', borderRadius: 8, padding: 11, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: SANS }}>Finish Setup</button>
+          )}
+          {!onIntegrate && !onVerify && (
+            <a href={`/markee/${lb.address}`} style={{ flex: 1, display: 'block', textAlign: 'center', background: BLUE, color: BG, border: 'none', borderRadius: 8, padding: 11, fontWeight: 700, fontSize: 14, textDecoration: 'none', fontFamily: SANS }}>Buy First Message</a>
+          )}
+          {onArchive && (
+            <button onClick={onArchive} title="Archive" style={{ flexShrink: 0, background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '11px 14px', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: SANS }}>Archive</button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a href={`/markee/${lb.address}`} style={{ flex: 1, textAlign: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 10, fontSize: 13, textDecoration: 'none', fontFamily: SANS }}>View</a>
+          {onEdit && <button onClick={onEdit} style={{ flex: 1, background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 10, fontSize: 13, cursor: 'pointer', fontFamily: SANS }}>Edit</button>}
+        </div>
+      )}
+
+      {/* verified URLs health */}
+      {lb.platform === 'website' && (lb as WebsiteLeaderboard).verifiedUrls?.length > 0 && (
+        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {(lb as WebsiteLeaderboard).verifiedUrls.map(url => (
+            <div key={url} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+              <IntegrationHealthStatus url={url} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Active Markees table ──────────────────────────────────────────────────────
+const ACT_COLS = '200px 110px 1fr 116px'
+
+function ActiveServedLabel({ lb }: { lb: AnyLeaderboard }) {
+  const primary = platformSubtitle(lb)
+  const extras = lb.platform === 'website' ? Math.max(0, ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) - 1) : 0
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+      <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, border: `1px solid ${BORDER}` }}>
+        <PlatIcon lb={lb} size={13} />
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12.5, color: TEXT2 }}>
+        {primary}
+        {extras > 0 && <span style={{ color: MUTED }}> +{extras}</span>}
+      </span>
+    </span>
+  )
+}
+
+function ActiveTable({ markees, onManage }: { markees: AnyLeaderboard[]; onManage: (lb: AnyLeaderboard) => void }) {
+  return (
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 600, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Served on', 'Total raised', 'Current message', ''].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
+        </div>
+        {markees.map(lb => (
+          <div key={lb.address} style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+            <ActiveServedLabel lb={lb} />
+            <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontWeight: 600 }}>{lb.totalFunds}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>{lb.topMessage || 'No message yet'}</span>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => onManage(lb)}
+                style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+              >
+                Manage
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Message card (bought / funded) ────────────────────────────────────────────
+function MessageCard({ msg }: { msg: MyMessage }) {
+  const fundsEth = Number(msg.totalFundsAdded) / 1e18
+  const toTopEth = msg.isTop ? null : (Number(msg.topFunds - msg.totalFundsAdded + BigInt('1000000000000000')) / 1e18).toFixed(3)
+  const detailLink = `/markee/${msg.strategyId || msg.address}`
+
+  return (
+    <a href={detailLink} style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer', textDecoration: 'none', transition: 'border-color 140ms, transform 140ms' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}44`; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.transform = 'none' }}>
+      {/* which leaderboard + rank */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.strategyName}</span>
+        {msg.isTop
+          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 9px', borderRadius: 99, flexShrink: 0 }}>★ #1</span>
+          : <span style={{ fontSize: 11, fontWeight: 700, color: TEXT2, background: `${MUTED}28`, padding: '3px 9px', borderRadius: 99, flexShrink: 0 }}>Overtaken</span>}
+      </div>
+
+      {/* the message */}
+      <div style={{ background: BG2, border: `1px solid ${msg.isTop ? BORDER : `${PINK}3D`}`, borderRadius: 10, padding: '12px 14px', flex: 1 }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 6 }}>Your message</div>
+        <p style={{ margin: 0, color: TEXT, fontFamily: MONO, fontSize: 13, lineHeight: 1.5 }}>{msg.message || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message</span>}</p>
+        {msg.name && <p style={{ margin: '8px 0 0', color: MUTED, fontSize: 12, textAlign: 'right' }}>{msg.name}</p>}
+      </div>
+
+      {/* funds + action */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 12, color: BLUE, fontWeight: 600, fontFamily: MONO }}>{fundsEth.toFixed(3)} ETH <span style={{ color: MUTED, fontWeight: 400 }}>spent</span></span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED }}>
+          {toTopEth ? `+${toTopEth} ETH to top` : 'Add funds'} <ChevronRight size={11} />
+        </span>
+      </div>
+    </a>
+  )
+}
+
+function MessageSections({ items }: { items: MyMessage[] }) {
+  const featured = items.filter(m => m.isTop)
+  const needs    = items.filter(m => !m.isTop)
+  const grid = (arr: MyMessage[]) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+      {arr.map(m => <MessageCard key={m.address} msg={m} />)}
+    </div>
+  )
+  const head = (label: string, n: number, color: string) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color }}>{label}</h2>
+      <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{n}</span>
+    </div>
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+      {featured.length > 0 && <div>{head('Featured Spots Owned', featured.length, TEXT)}{grid(featured)}</div>}
+      {needs.length > 0    && <div>{head('More Funds Needed',    needs.length,    BLUE)}{grid(needs)}</div>}
+    </div>
+  )
+}
+
+// ── Manage integrations modal ─────────────────────────────────────────────────
+function ManageModal({ lb, onClose, onIntegrate, onVerify, onEdit }: { lb: AnyLeaderboard; onClose: () => void; onIntegrate?: () => void; onVerify?: () => void; onEdit?: () => void }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(6,10,42,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)', margin: 'auto', background: BG2, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+          <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT, letterSpacing: -0.4 }}>{lb.name}</h3>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}><X size={20} /></button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <a href={detailUrl(lb)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', textDecoration: 'none', color: TEXT, fontSize: 14, fontWeight: 600 }}>
+            <ExternalLink size={15} style={{ color: BLUE }} /> View leaderboard
+          </a>
+          {onEdit && (
+            <button onClick={() => { onClose(); onEdit() }} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, textAlign: 'left' }}>
+              <Pencil size={15} style={{ color: MUTED }} /> Edit website info
+            </button>
+          )}
+          {onIntegrate && (
+            <button onClick={() => { onClose(); onIntegrate() }} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, textAlign: 'left' }}>
+              <Code2 size={15} style={{ color: MUTED }} /> Integration guide
+            </button>
+          )}
+          {onVerify && (
+            <button onClick={() => { onClose(); onVerify() }} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, textAlign: 'left' }}>
+              <CheckCircle2 size={15} style={{ color: GREEN }} /> Verify integration
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: string; body: string; ctaLabel: string; ctaHref: string }) {
+  return (
+    <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px dashed ${BORDER}`, borderRadius: 16, padding: '56px 24px', textAlign: 'center' }}>
+      <div style={{ fontSize: 30, marginBottom: 12 }}>{icon}</div>
+      <p style={{ margin: '0 0 6px', color: TEXT, fontWeight: 700, fontSize: 17 }}>{title}</p>
+      <p style={{ margin: '0 auto 20px', color: MUTED, fontSize: 14, maxWidth: '42ch', lineHeight: 1.55 }}>{body}</p>
+      <a href={ctaHref} style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>{ctaLabel}</a>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
   const { address: walletAddress, isConnected } = useAccount()
   const [mounted, setMounted] = useState(false)
-
-  const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
-  const [githubBoards, setGithubBoards] = useState<GithubLeaderboard[]>([])
-  const [websiteBoards, setWebsiteBoards] = useState<WebsiteLeaderboard[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [myMessages, setMyMessages] = useState<MyMessage[]>([])
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
-  const [editingBoard, setEditingBoard] = useState<WebsiteLeaderboard | null>(null)
-  const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
-  const [verifyBoard, setVerifyBoard] = useState<WebsiteLeaderboard | null>(null)
-
   useEffect(() => { setMounted(true) }, [])
+
+  // Platform leaderboards
+  const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
+  const [githubBoards, setGithubBoards]         = useState<GithubLeaderboard[]>([])
+  const [websiteBoards, setWebsiteBoards]       = useState<WebsiteLeaderboard[]>([])
+  const [isLoading, setIsLoading]               = useState(false)
+
+  // Messages
+  const [myMessages, setMyMessages]           = useState<MyMessage[]>([])
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+
+  // UI state
+  const [tab, setTab]                         = useState<TabId>('markees')
+  const [archived, setArchived]               = useState<string[]>([])
+  const [manageTarget, setManageTarget]       = useState<AnyLeaderboard | null>(null)
+  const [editingBoard, setEditingBoard]       = useState<WebsiteLeaderboard | null>(null)
+  const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
+  const [verifyBoard, setVerifyBoard]         = useState<WebsiteLeaderboard | null>(null)
 
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
     try {
       const [sfRes, ghRes, oiRes] = await Promise.all([
-        fetch('/api/superfluid/leaderboards?bust=1', { cache: 'no-store' }),
-        fetch('/api/github/leaderboards?bust=1', { cache: 'no-store' }),
+        fetch('/api/superfluid/leaderboards?bust=1',   { cache: 'no-store' }),
+        fetch('/api/github/leaderboards?bust=1',       { cache: 'no-store' }),
         fetch('/api/openinternet/leaderboards?bust=1', { cache: 'no-store' }),
       ])
-
       if (sfRes.ok) {
         const data = await sfRes.json()
-        const mine = (data.leaderboards ?? [])
-          .filter((lb: BaseLeaderboard & { creator?: string | null }) =>
-            (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase()
-          )
-          .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
-        setSuperfluidBoards(mine)
+        setSuperfluidBoards(
+          (data.leaderboards ?? [])
+            .filter((lb: BaseLeaderboard & { creator?: string | null }) => (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase())
+            .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
+        )
       }
-
       if (ghRes.ok) {
         const data = await ghRes.json()
-        const mine = (data.leaderboards ?? [])
-          .filter((lb: BaseLeaderboard) => lb.admin.toLowerCase() === addr.toLowerCase())
-          .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'github' as const }))
-        setGithubBoards(mine)
+        setGithubBoards(
+          (data.leaderboards ?? [])
+            .filter((lb: BaseLeaderboard) => lb.admin.toLowerCase() === addr.toLowerCase())
+            .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'github' as const }))
+        )
       }
-
       if (oiRes.ok) {
         const data = await oiRes.json()
-        const mine = (data.leaderboards ?? [])
-          .filter((lb: any) => {
-            // Factory leaderboards: filter by creator
-            // Legacy TopDawg: not shown on account page (no creator tracking)
-            if (lb.isLegacy) return false
-            const c = lb.creator ?? lb.admin
-            return c && c.toLowerCase() === addr.toLowerCase()
-          })
-          .map((lb: any) => ({ ...lb, platform: 'website' as const }))
-        setWebsiteBoards(mine)
+        setWebsiteBoards(
+          (data.leaderboards ?? [])
+            .filter((lb: any) => {
+              if (lb.isLegacy) return false
+              const c = lb.creator ?? lb.admin
+              return c && c.toLowerCase() === addr.toLowerCase()
+            })
+            .map((lb: any) => ({ ...lb, platform: 'website' as const }))
+        )
       }
     } catch (err) {
       console.error('[account] fetch error:', err)
@@ -198,307 +522,208 @@ export default function AccountPage() {
     if (!process.env.NEXT_PUBLIC_GRAPH_TOKEN) return
     setIsLoadingMessages(true)
     try {
-      const res = await fetch(subgraphUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: MY_MESSAGES_QUERY,
-          variables: { owner: addr.toLowerCase() },
-        }),
-      })
+      const res = await fetch(subgraphUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: MY_MESSAGES_QUERY, variables: { owner: addr.toLowerCase() } }) })
       if (!res.ok) return
       const { data } = await res.json()
       const raw = data?.markees ?? []
-      const messages: MyMessage[] = raw.map((m: any) => {
+      setMyMessages(raw.map((m: any) => {
         const strat = m.partnerStrategy ?? m.strategy
         const topMarkees: { address: string; totalFundsAdded: string }[] = strat?.markees ?? []
         const topFunds = topMarkees[0] ? BigInt(topMarkees[0].totalFundsAdded) : BigInt(0)
         const isTop = topMarkees.length === 0 || topMarkees[0]?.address?.toLowerCase() === m.address?.toLowerCase()
-        return {
-          address: m.address,
-          message: m.message ?? '',
-          name: m.name ?? '',
-          totalFundsAdded: BigInt(m.totalFundsAdded ?? '0'),
-          createdAt: Number(m.createdAt ?? 0),
-          strategyId: strat?.id ?? '',
-          strategyName: strat?.instanceName ?? 'Unknown Leaderboard',
-          isTop,
-          topFunds,
-        }
-      })
-      setMyMessages(messages)
-    } catch {
-      // non-critical
-    } finally {
-      setIsLoadingMessages(false)
-    }
+        return { address: m.address, message: m.message ?? '', name: m.name ?? '', totalFundsAdded: BigInt(m.totalFundsAdded ?? '0'), createdAt: Number(m.createdAt ?? 0), strategyId: strat?.id ?? '', strategyName: strat?.instanceName ?? 'Unknown Leaderboard', isTop, topFunds }
+      }))
+    } catch { /* non-critical */ }
+    finally { setIsLoadingMessages(false) }
   }, [])
 
-  useEffect(() => {
-    if (walletAddress) fetchAll(walletAddress)
-  }, [walletAddress, fetchAll])
+  useEffect(() => { if (walletAddress) { fetchAll(walletAddress); fetchMyMessages(walletAddress) } }, [walletAddress, fetchAll, fetchMyMessages])
 
-  useEffect(() => {
-    if (walletAddress) fetchMyMessages(walletAddress)
-  }, [walletAddress, fetchMyMessages])
+  // Derived board lists
+  const allBoards = useMemo(() =>
+    [...superfluidBoards, ...githubBoards, ...websiteBoards].sort((a, b) => {
+      const d = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
+      return d > 0n ? 1 : d < 0n ? -1 : 0
+    }), [superfluidBoards, githubBoards, websiteBoards])
 
-  const allBoards: AnyLeaderboard[] = [
-    ...superfluidBoards,
-    ...githubBoards,
-    ...websiteBoards,
-  ].sort((a, b) => {
-    const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
-    return diff > 0n ? 1 : diff < 0n ? -1 : 0
-  })
+  const awaitingVerification = useMemo(() =>
+    allBoards.filter(lb => lb.platform === 'website' && BigInt(lb.topFundsAddedRaw ?? '0') > 0n && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0) as WebsiteLeaderboard[], [allBoards])
+  const awaitingVerificationAddrs = useMemo(() => new Set(awaitingVerification.map(lb => lb.address)), [awaitingVerification])
 
-  const awaitingVerification = allBoards.filter(lb =>
-    lb.platform === 'website' &&
-    BigInt(lb.topFundsAddedRaw ?? '0') > 0n &&
-    ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
-  ) as WebsiteLeaderboard[]
-  const awaitingVerificationAddrs = new Set(awaitingVerification.map(lb => lb.address))
-  const activeBoards = allBoards.filter(lb =>
-    BigInt(lb.topFundsAddedRaw ?? '0') > 0n && !awaitingVerificationAddrs.has(lb.address)
-  )
-  const inactiveBoards = allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') === 0n)
+  const activeBoards = useMemo(() =>
+    allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n && !awaitingVerificationAddrs.has(lb.address) && !archived.includes(lb.address)), [allBoards, awaitingVerificationAddrs, archived])
 
-  const totalRaisedWei = allBoards.reduce((sum, lb) => sum + BigInt(lb.totalFundsRaw), 0n)
+  const inactiveBoards = useMemo(() =>
+    allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') === 0n && !archived.includes(lb.address)), [allBoards, archived])
 
-  function detailUrl(lb: AnyLeaderboard) {
-    if (lb.platform === 'superfluid') return `/ecosystem/platforms/superfluid/${lb.address}`
-    if (lb.platform === 'github') return `/ecosystem/platforms/github/${lb.address}`
-    return `/ecosystem/website/${lb.address}`
-  }
+  const archivedBoards = useMemo(() =>
+    allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
+
+  const draftBoards = useMemo(() =>
+    [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
+
+  const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
+  const totalContribWei = useMemo(() => myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n), [myMessages])
+
+  // Manage a leaderboard (from active table) — opens the manage modal
+  const handleManage = useCallback((lb: AnyLeaderboard) => {
+    if (lb.platform === 'website') setManageTarget(lb)
+    else window.open(detailUrl(lb), '_self')
+  }, [])
 
   return (
-    <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
-
-      {/* Breadcrumbs */}
-      <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 text-sm">
-            <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">
-              Create a Markee
-            </Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#EDEEFF]">My Markees</span>
-          </div>
-        </div>
-      </section>
+    <div style={{ minHeight: '100vh', background: BG, display: 'flex', flexDirection: 'column' }}>
+      <Header activePage="account" useRegularLinks />
 
       {/* Hero */}
-      <section className="relative py-16 overflow-hidden">
-        <HeroBackground />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="flex items-center gap-5">
-              <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-[#0A0F3D] border border-[#8A8FBF]/30">
-                <User size={28} className="text-[#F897FE]" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-[#EDEEFF] mb-1">My Markees</h1>
-                {walletAddress ? (
-                  <p className="text-[#8A8FBF] text-sm font-mono">{shortAddr(walletAddress)}</p>
-                ) : (
-                  <p className="text-[#8A8FBF] text-sm">Connect your wallet to view your signs</p>
-                )}
-              </div>
+      <section style={{ background: BG2, borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto', padding: '40px 40px 32px' }}>
+          {/* wallet header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
+            <div style={{ width: 54, height: 54, borderRadius: 14, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
-
-            {mounted && !isConnected && <ConnectButton />}
-          </div>
-
-          {isConnected && !isLoading && allBoards.length > 0 && (
-            <div className="flex flex-wrap items-center gap-8 mt-8">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{allBoards.length}</span>
-                <span className="text-[#8A8FBF]">{allBoards.length === 1 ? 'sign' : 'signs'} created</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Trophy size={14} className="text-[#7C9CFF]" />
-                <span className="text-[#7C9CFF] font-semibold">
-                  {formatFunds((Number(totalRaisedWei) / 1e18).toFixed(6))}
-                </span>
-                <span className="text-[#8A8FBF]">total raised</span>
-              </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My dashboard</h1>
+              {mounted && walletAddress
+                ? <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(walletAddress)}</p>
+                : <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14 }}>Connect your wallet to continue</p>
+              }
             </div>
-          )}
-        </div>
-      </section>
-
-      {/* Content */}
-      <section className="py-12 bg-[#060A2A]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-          {!mounted || isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 p-6 animate-pulse h-64" />
-              ))}
-            </div>
-          ) : !isConnected ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
-              <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">Connect your wallet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">See all the Markees you've created across every platform.</p>
-              <ConnectButton />
-            </div>
-          ) : allBoards.length === 0 ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-16 border border-[#8A8FBF]/20 text-center">
-              <User size={40} className="text-[#8A8FBF] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No Markees yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Create your first sign on one of our platforms.</p>
-              <div className="flex items-center justify-center gap-3 flex-wrap">
-                <Link
-                  href="/create-a-markee"
-                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  <Globe2 size={14} className="text-[#F897FE]" />
-                  Website
-                </Link>
-                <Link
-                  href="/ecosystem/platforms/superfluid"
-                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  <Zap size={14} className="text-[#1DB227]" />
-                  Superfluid
-                </Link>
-                <Link
-                  href="/ecosystem/platforms/github"
-                  className="flex items-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/30 hover:border-[#F897FE]/60 text-[#EDEEFF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  <Github size={14} />
-                  GitHub
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-12">
-              {awaitingVerification.length > 0 && (
-                <div className="bg-[#0A0F3D] rounded-2xl border border-[#F897FE]/30 p-6">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse flex-shrink-0" />
-                    <h2 className="text-xl font-bold text-[#F897FE]">Awaiting Verification</h2>
-                  </div>
-                  <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Verify your integration to appear in Top Verified Markees</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {awaitingVerification.map(lb => (
-                      <AccountLeaderboardCard
-                        key={lb.address}
-                        leaderboard={lb}
-                        detailUrl={detailUrl(lb)}
-                        icon={platformIcon(lb)}
-                        platformHref={platformLink(lb)}
-                        variant="active"
-                        onEdit={() => setEditingBoard(lb)}
-                        onIntegrate={() => setIntegrationBoard(lb)}
-                        onVerify={() => setVerifyBoard(lb)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {inactiveBoards.length > 0 && (
-                <div className="bg-[#0A0F3D] rounded-2xl border border-[#7C9CFF]/30 p-6">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-[#7C9CFF] animate-pulse flex-shrink-0" />
-                    <h2 className="text-xl font-bold text-[#7C9CFF]">Awaiting Activation</h2>
-                  </div>
-                  <p className="text-[#8A8FBF] text-sm mb-6 ml-5">Buy a message to activate these Markees</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {inactiveBoards.map(lb => (
-                      <AccountLeaderboardCard
-                        key={lb.address}
-                        leaderboard={lb}
-                        detailUrl={detailUrl(lb)}
-                        icon={platformIcon(lb)}
-                        subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
-                        platformHref={platformLink(lb)}
-                        variant="inactive"
-                        onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                        onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {activeBoards.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <span className="w-2 h-2 rounded-full bg-[#1DB227]" />
-                    <h2 className="text-xl font-bold text-[#EDEEFF]">Active Markees</h2>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activeBoards.map(lb => (
-                      <AccountLeaderboardCard
-                        key={lb.address}
-                        leaderboard={lb}
-                        detailUrl={detailUrl(lb)}
-                        icon={platformIcon(lb)}
-                        subtitle={lb.platform === 'github' ? (lb as GithubLeaderboard).repoFullName ?? undefined : undefined}
-                        platformHref={platformLink(lb)}
-                        variant="active"
-                        onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                        onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
-                        onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Messages I've Bought */}
-      {mounted && isConnected && (
-        <section className="py-12 bg-[#0A0F3D] border-t border-[#8A8FBF]/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3 mb-2">
-              <MessageSquare size={20} className="text-[#7C9CFF]" />
-              <h2 className="text-xl font-bold text-[#EDEEFF]">Messages I&apos;ve Bought</h2>
-            </div>
-            <p className="text-[#8A8FBF] text-sm mb-8 ml-8">
-              Your messages posted on Markee leaderboards
-            </p>
-
-            {isLoadingMessages ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="bg-[#060A2A] rounded-lg border border-[#8A8FBF]/20 p-5 animate-pulse h-44" />
-                ))}
-              </div>
-            ) : myMessages.length === 0 ? (
-              <div className="bg-[#060A2A] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
-                <MessageSquare size={32} className="text-[#8A8FBF] mx-auto mb-3" />
-                <p className="text-[#EDEEFF] font-semibold mb-1">No messages yet</p>
-                <p className="text-[#8A8FBF] text-sm mb-5">
-                  Buy a message on any Markee leaderboard to get your words in front of an audience.
-                </p>
-                <Link
-                  href="/create-a-markee"
-                  className="inline-flex items-center gap-2 bg-[#7C9CFF] text-[#060A2A] px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#F897FE] transition-colors"
-                >
-                  Browse leaderboards
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {myMessages.map(msg => (
-                  <MessageCard key={msg.address} message={msg} />
-                ))}
-              </div>
+            {mounted && !isConnected && (
+              <div style={{ marginLeft: 'auto' }}><ConnectButton /></div>
             )}
           </div>
-        </section>
-      )}
+
+          {mounted && isConnected && (
+            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} />
+          )}
+        </div>
+      </section>
+
+      {/* Tabs + content */}
+      <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '0 40px 80px' }}>
+        {mounted && isConnected ? (
+          <>
+            <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
+              <Tabs tab={tab} setTab={setTab} counts={{ markees: allBoards.length, bought: myMessages.length, funded: 0 }} />
+            </div>
+
+            <div style={{ paddingTop: 28 }}>
+              {/* ── My Markees ── */}
+              {tab === 'markees' && (
+                allBoards.length === 0 && !isLoading ? (
+                  <Empty icon="🪧" title="No Markees yet" body="Create your first sign on a platform and start raising funds wherever your audience is." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
+                ) : isLoading ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+                    {[1, 2, 3].map(i => <div key={i} style={{ height: 260, background: `${MUTED}14`, borderRadius: 14, border: `1px solid ${BORDER}` }} />)}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+                    {/* Awaiting Integration (drafts) */}
+                    {draftBoards.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: BLUE }}>Awaiting Integration</h2>
+                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{draftBoards.length}</span>
+                        </div>
+                        <p style={{ margin: '0 0 16px', color: MUTED, fontSize: 13 }}>These signs are private until your integration is verified.</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+                          {draftBoards.map(lb => (
+                            <MarkeeCardDash
+                              key={lb.address} lb={lb}
+                              onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
+                              onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
+                              onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
+                              onArchive={() => setArchived(prev => [...prev, lb.address])}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Active Markees */}
+                    {activeBoards.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Active Markees</h2>
+                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{activeBoards.length}</span>
+                        </div>
+                        <ActiveTable markees={activeBoards} onManage={handleManage} />
+                      </div>
+                    )}
+
+                    {/* No active markees prompt */}
+                    {activeBoards.length === 0 && draftBoards.length > 0 && (
+                      <p style={{ color: MUTED, fontSize: 14 }}>No active signs yet — finish a draft above to go live.</p>
+                    )}
+
+                    {/* Archived */}
+                    {archivedBoards.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: MUTED }}>Archived</h2>
+                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{archivedBoards.length}</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+                          {archivedBoards.map(lb => (
+                            <MarkeeCardDash key={lb.address} lb={lb} archived onUnarchive={() => setArchived(prev => prev.filter(a => a !== lb.address))} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+
+              {/* ── Messages I've Bought ── */}
+              {tab === 'bought' && (
+                isLoadingMessages ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+                    {[1, 2, 3].map(i => <div key={i} style={{ height: 200, background: `${MUTED}14`, borderRadius: 14, border: `1px solid ${BORDER}` }} />)}
+                  </div>
+                ) : myMessages.length === 0 ? (
+                  <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
+                ) : (
+                  <MessageSections items={myMessages} />
+                )
+              )}
+
+              {/* ── Messages I've Funded ── */}
+              {tab === 'funded' && (
+                <Empty icon="🤝" title="No contributions tracked yet" body="Funded messages will appear here once the network indexes your contributions." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
+              )}
+            </div>
+          </>
+        ) : mounted && !isConnected ? (
+          <div style={{ paddingTop: 80, textAlign: 'center' }}>
+            <div style={{ background: BG2, borderRadius: 20, padding: '60px 24px', border: `1px solid ${BORDER}`, maxWidth: 440, margin: '0 auto' }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block' }}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <p style={{ color: TEXT, fontWeight: 600, fontSize: 17, margin: '0 0 8px' }}>Connect your wallet</p>
+              <p style={{ color: MUTED, fontSize: 14, margin: '0 0 24px' }}>See all the Markees you've created across every platform.</p>
+              <ConnectButton />
+            </div>
+          </div>
+        ) : (
+          // Loading skeleton before hydration
+          <div style={{ paddingTop: 28, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+            {[1, 2, 3].map(i => <div key={i} style={{ height: 260, background: `${MUTED}14`, borderRadius: 14, border: `1px solid ${BORDER}` }} />)}
+          </div>
+        )}
+      </div>
 
       <Footer />
+
+      {/* Manage modal (website boards) */}
+      {manageTarget && (
+        <ManageModal
+          lb={manageTarget}
+          onClose={() => setManageTarget(null)}
+          onEdit={manageTarget.platform === 'website' ? () => setEditingBoard(manageTarget as WebsiteLeaderboard) : undefined}
+          onIntegrate={manageTarget.platform === 'website' ? () => setIntegrationBoard(manageTarget as WebsiteLeaderboard) : undefined}
+          onVerify={manageTarget.platform === 'website' ? () => setVerifyBoard(manageTarget as WebsiteLeaderboard) : undefined}
+        />
+      )}
 
       {editingBoard && (
         <EditWebsiteMetaModal
@@ -515,12 +740,7 @@ export default function AccountPage() {
         <IntegrationModal
           isOpen={!!integrationBoard}
           onClose={() => setIntegrationBoard(null)}
-          leaderboard={{
-            address: integrationBoard.address,
-            name: integrationBoard.name,
-            verifiedUrls: integrationBoard.verifiedUrls,
-            status: integrationBoard.status,
-          }}
+          leaderboard={{ address: integrationBoard.address, name: integrationBoard.name, verifiedUrls: integrationBoard.verifiedUrls, status: integrationBoard.status }}
           onOpenVerify={() => { setIntegrationBoard(null); setVerifyBoard(integrationBoard) }}
         />
       )}
@@ -529,239 +749,11 @@ export default function AccountPage() {
         <VerifyIntegrationModal
           isOpen={!!verifyBoard}
           onClose={() => setVerifyBoard(null)}
-          leaderboard={{
-            address: verifyBoard.address,
-            name: verifyBoard.name,
-            verifiedUrls: verifyBoard.verifiedUrls,
-          }}
+          leaderboard={{ address: verifyBoard.address, name: verifyBoard.name, verifiedUrls: verifyBoard.verifiedUrls }}
           onVerified={() => { if (walletAddress) fetchAll(walletAddress) }}
           onOpenIntegration={() => { setVerifyBoard(null); setIntegrationBoard(verifyBoard) }}
         />
       )}
-    </div>
-  )
-}
-
-// ─── Card ─────────────────────────────────────────────────────────────────────
-
-function AccountLeaderboardCard({
-  leaderboard,
-  detailUrl,
-  icon,
-  subtitle,
-  platformHref,
-  variant,
-  onEdit,
-  onIntegrate,
-  onVerify,
-}: {
-  leaderboard: AnyLeaderboard
-  detailUrl: string
-  icon: React.ReactNode
-  subtitle?: string
-  platformHref: string
-  variant: 'active' | 'inactive'
-  onEdit?: () => void
-  onIntegrate?: () => void
-  onVerify?: () => void
-}) {
-  const router = useRouter()
-  const messageCount = Math.max(0, leaderboard.markeeCount - 1)
-
-  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
-  const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
-  const rawBuyPrice = topFunds + minIncrement
-  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
-  const buyPriceEth = (Number(buyPrice) / 1e18).toFixed(3)
-
-  const isInactive = variant === 'inactive'
-  const cardBorder = isInactive
-    ? 'border-[#7C9CFF]/25 hover:border-[#7C9CFF]/60'
-    : 'border-[#8A8FBF]/20 hover:border-[#F897FE]'
-  const btnClass = isInactive
-    ? 'w-full bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#F897FE] transition-colors text-sm'
-    : 'w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm'
-
-  return (
-    <div
-      onClick={() => router.push(detailUrl)}
-      className={`bg-[#060A2A] p-6 rounded-lg border transition-colors cursor-pointer ${cardBorder}`}
-    >
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{leaderboard.name}</h3>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#8A8FBF] text-xs font-mono">
-              {subtitle ?? `${leaderboard.address.slice(0, 8)}…${leaderboard.address.slice(-6)}`}
-            </span>
-            <Link
-              href={platformHref}
-              onClick={e => e.stopPropagation()}
-              className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-            >
-              <ExternalLink size={11} />
-            </Link>
-            {onEdit && (
-              <button
-                onClick={e => { e.stopPropagation(); onEdit() }}
-                className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-                title="Edit website info"
-              >
-                <Pencil size={11} />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {leaderboard.topMessage ? (
-        <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[100px]">
-          <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
-            {leaderboard.topMessage}
-          </p>
-          {leaderboard.topMessageOwner && (
-            <p className="text-[#8A8FBF] text-xs text-right mt-auto">
-              - {leaderboard.topMessageOwner}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[100px] flex flex-col items-center justify-center">
-          <div className="text-3xl mb-2">🪧</div>
-          <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-xs mb-4">
-        <span className="text-[#7C9CFF] font-medium">{formatFunds(leaderboard.totalFunds)} total raised.</span>
-        <span className="text-[#8A8FBF]">{messageCount} {messageCount === 1 ? 'message' : 'messages'}</span>
-      </div>
-
-      <button
-        onClick={e => { e.stopPropagation(); router.push(detailUrl) }}
-        className={btnClass}
-      >
-        {buyPriceEth} ETH to {messageCount === 0 ? 'buy first message' : 'change message'}
-      </button>
-
-      {(onIntegrate || onVerify) && (
-        <div className="flex gap-2 mt-2">
-          {onIntegrate && (
-            <button
-              onClick={e => { e.stopPropagation(); onIntegrate() }}
-              className="flex-1 flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors"
-            >
-              <Code2 size={11} />
-              Integration guide
-            </button>
-          )}
-          {onVerify && (
-            <button
-              onClick={e => { e.stopPropagation(); onVerify() }}
-              className="flex-1 flex items-center justify-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs transition-colors"
-            >
-              <CheckCircle2 size={11} />
-              Verify
-            </button>
-          )}
-        </div>
-      )}
-
-      {leaderboard.platform === 'website' &&
-        (leaderboard as WebsiteLeaderboard).verifiedUrls?.length > 0 && (
-          <div
-            className="mt-3 pt-3 border-t border-[#8A8FBF]/10 space-y-2"
-            onClick={e => e.stopPropagation()}
-          >
-            {(leaderboard as WebsiteLeaderboard).verifiedUrls.map(url => (
-              <div key={url} className="flex items-center justify-between gap-2">
-                <span className="text-[10px] text-[#8A8FBF] truncate">
-                  {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                </span>
-                <IntegrationHealthStatus url={url} />
-              </div>
-            ))}
-          </div>
-        )}
-    </div>
-  )
-}
-
-// ─── Message Card ──────────────────────────────────────────────────────────────
-
-function MessageCard({ message }: { message: MyMessage }) {
-  const router = useRouter()
-  const fundsEth = (Number(message.totalFundsAdded) / 1e18).toFixed(3)
-  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const toTopEth = message.isTop
-    ? null
-    : (Number(message.topFunds - message.totalFundsAdded + minIncrement) / 1e18).toFixed(3)
-
-  const detailUrl = `/markee/${message.address}`
-
-  return (
-    <div
-      onClick={() => router.push(detailUrl)}
-      className="bg-[#060A2A] p-5 rounded-lg border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/60 transition-colors cursor-pointer flex flex-col gap-3"
-    >
-      {/* Status + leaderboard */}
-      <div className="flex items-center justify-between gap-2">
-        <Link
-          href={`/ecosystem/website/${message.strategyId}`}
-          onClick={e => e.stopPropagation()}
-          className="flex items-center gap-1.5 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors truncate"
-        >
-          <Globe2 size={11} />
-          <span className="truncate">{message.strategyName}</span>
-          <ExternalLink size={10} className="flex-shrink-0" />
-        </Link>
-        {message.isTop ? (
-          <span className="flex items-center gap-1 text-xs font-semibold text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-full flex-shrink-0">
-            <Trophy size={11} />
-            Top
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 text-xs text-[#F3841E] bg-[#F3841E]/10 px-2 py-0.5 rounded-full flex-shrink-0">
-            <TrendingDown size={11} />
-            Overtaken
-          </span>
-        )}
-      </div>
-
-      {/* Message */}
-      <div className="bg-[#0A0F3D] rounded-lg p-3 border border-[#8A8FBF]/15 flex-1">
-        <p className="text-[#EDEEFF] font-mono text-sm break-words leading-snug line-clamp-3">
-          {message.message || <span className="text-[#8A8FBF] italic">(no message)</span>}
-        </p>
-        {message.name && (
-          <p className="text-[#8A8FBF] text-xs mt-2 text-right">
-            {message.name.startsWith('0x') && message.name.length === 42
-              ? `${message.name.slice(0, 6)}…${message.name.slice(-4)}`
-              : message.name}
-          </p>
-        )}
-      </div>
-
-      {/* Funds + action row */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs">
-          <Trophy size={11} className="text-[#7C9CFF]" />
-          <span className="text-[#7C9CFF] font-semibold">{fundsEth} ETH</span>
-          <span className="text-[#8A8FBF]">funded by you</span>
-        </div>
-        <Link
-          href={detailUrl}
-          onClick={e => e.stopPropagation()}
-          className="flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors flex-shrink-0"
-        >
-          {toTopEth ? `+${toTopEth} ETH to top` : 'Add funds'}
-          <ChevronRight size={12} />
-        </Link>
-      </div>
     </div>
   )
 }
