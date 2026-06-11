@@ -8,6 +8,7 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -288,7 +289,7 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
 }
 
 // ── Dense table row ───────────────────────────────────────────────────────────
-function TableRow({ lb, views, ethPrice }: { lb: Leaderboard; views: number; ethPrice: number | null }) {
+function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void }) {
   const [hover, setHover] = useState(false)
   const totalEth  = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const priceEth  = parseFloat(formatEther(priceToOvertake(lb)))
@@ -337,7 +338,7 @@ function TableRow({ lb, views, ethPrice }: { lb: Leaderboard; views: number; eth
       {/* PRICE TO CHANGE */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
-          onClick={e => { e.preventDefault(); window.location.href = `/markee/${lb.address}` }}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
           style={{
             background: PINK, color: BG, border: 'none', borderRadius: 7,
             padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
@@ -363,6 +364,8 @@ export default function MarketplacePage() {
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
+
+  const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
 
   const [search,  setSearch]   = useState('')
   const [factory, setFactory]  = useState('all')
@@ -577,6 +580,7 @@ export default function MarketplacePage() {
                 lb={lb}
                 views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
                 ethPrice={ethPrice}
+                onBuy={() => setBuyModal(lb)}
               />
             ))
           )}
@@ -595,6 +599,19 @@ export default function MarketplacePage() {
       </section>
 
       <Footer />
+
+      {buyModal && (
+        <BuyMessageModal
+          leaderboardAddress={buyModal.address as `0x${string}`}
+          minimumPrice={priceToOvertake(buyModal)}
+          maxMessageLength={280}
+          existingMarkee={null}
+          topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
+          platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
+          onClose={() => setBuyModal(null)}
+          onSuccess={() => setBuyModal(null)}
+        />
+      )}
     </div>
   )
 }
