@@ -380,6 +380,19 @@ export default function Home() {
   // Filter to partners with active leaderboards
   const activePartners = partnerData.filter(p => p.partner.leaderboardAddress)
 
+  // Fetch views for home page marketplace table
+  const [partnerViews, setPartnerViews] = useState<Map<string, number>>(new Map())
+  useEffect(() => {
+    const addresses = activePartners.map(p => p.partner.leaderboardAddress).filter(Boolean) as string[]
+    if (addresses.length === 0) return
+    fetch(`/api/views?addresses=${addresses.join(',')}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((data: Record<string, { totalViews: number }>) => {
+        setPartnerViews(new Map(Object.entries(data).map(([k, v]) => [k.toLowerCase(), v.totalViews ?? 0])))
+      })
+      .catch(() => {})
+  }, [activePartners.map(p => p.partner.leaderboardAddress).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" useRegularLinks />
@@ -527,8 +540,9 @@ export default function Home() {
                       </div>
 
                       {/* Views */}
-                      <span style={{ fontSize: 11, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Eye size={10} />—
+                      <span style={{ fontSize: 11, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
+                        <Eye size={10} />
+                        {(() => { const v = partnerViews.get(partner.leaderboardAddress?.toLowerCase() ?? ''); return v ? formatViews(v) : '—' })()}
                       </span>
 
                       {/* Price to change */}
