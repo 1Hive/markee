@@ -15,6 +15,7 @@ import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
+import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 
@@ -251,45 +252,6 @@ function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { mar
         )}
       </div>
     </Link>
-  )
-}
-
-// ── Revnet widget (migration-paused state) ────────────────────────────────────
-function RevnetWidget() {
-  return (
-    <div style={{ width: 'min(440px, 100%)', margin: '36px auto 30px', textAlign: 'left' }}>
-      <div style={{
-        background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)',
-        borderRadius: 16, padding: 20, boxShadow: '0 18px 50px rgba(6,10,42,0.5)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: 99, background: '#F897FE',
-            boxShadow: '0 0 8px #F897FE', flexShrink: 0,
-          }} />
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: '#8A8FBF' }}>
-            MARKEE Token
-          </span>
-        </div>
-        <p style={{ margin: '0 0 16px', color: '#B8B6D9', fontSize: 14, lineHeight: 1.55 }}>
-          Buy MARKEE tokens to own a share of the network. Token issuance is paused while we migrate to RevNet v6.
-        </p>
-        <div style={{ borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: MONO, fontSize: 11, color: '#8A8FBF', letterSpacing: 0.5 }}>
-            Status: <span style={{ color: '#F897FE' }}>v5 → v6 migration</span>
-          </span>
-          <Link
-            href="/own-the-network"
-            style={{
-              fontFamily: MONO, fontSize: 12, color: '#B8B6D9', textDecoration: 'none',
-              borderBottom: '1px dotted rgba(184,182,217,0.4)', paddingBottom: 1,
-            }}
-          >
-            Learn more
-          </Link>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -650,7 +612,7 @@ export default function Home() {
           <p style={{ margin: '20px auto 0', color: '#B8B6D9', fontSize: 17, maxWidth: '54ch', lineHeight: 1.6 }}>
             We&apos;re digital-native, owned and governed on the Ethereum network. 100% owned by MARKEE holders, enforced onchain via RevNets and Gardens.
           </p>
-          <RevnetWidget />
+          <RevnetBuyWidget compact />
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <GhostButton href="/own-the-network">How ownership works →</GhostButton>
           </div>

@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
+import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -42,77 +42,6 @@ function currentPhaseIdx() {
   const now = Date.now()
   for (let i = 0; i < PHASES.length; i++) if (now < PHASES[i].end.getTime()) return i
   return PHASES.length - 1
-}
-
-// ── Revnet buy widget ──────────────────────────────────────────────────────────
-function RevnetWidget() {
-  const [amount, setAmount] = useState('0.1')
-  const phase = PHASES[currentPhaseIdx()]
-  const eth = parseFloat(amount) || 0
-  const receive = Math.round(eth * phase.rate)
-  const [expanded, setExpanded] = useState(false)
-  const [message, setMessage] = useState('')
-
-  return (
-    <div style={{ width: 'min(440px, 100%)', margin: '36px auto 22px', textAlign: 'left' as const }}>
-      <div style={{ background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, boxShadow: '0 18px 50px rgba(6,10,42,0.5)' }}>
-        <label style={{ display: 'block', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.muted, margin: '2px 0 8px 2px' }}>
-          You pay
-        </label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 11, padding: '0 14px' }}>
-          <input
-            value={amount}
-            onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-            inputMode="decimal"
-            aria-label="ETH amount"
-            style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', color: C.text, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 22, fontWeight: 700, padding: '14px 0', outline: 'none', letterSpacing: -0.5 }}
-          />
-          <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 14, fontWeight: 700, color: C.text2 }}>ETH</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 4px 0' }}>
-          <span style={{ color: C.muted, fontSize: 13 }}>You receive</span>
-          <span style={{ color: C.pink, fontWeight: 800, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 18, letterSpacing: -0.3 }}>{receive.toLocaleString()} MARKEE</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-          <button
-            onClick={() => setExpanded(v => !v)}
-            style={{ background: 'transparent', border: 'none', color: expanded ? C.pink : C.text2, cursor: 'pointer', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0 }}
-          >
-            <span style={{ fontSize: 14, lineHeight: '1' }}>{expanded ? '−' : '+'}</span> Add a message
-          </button>
-        </div>
-        {expanded && (
-          <div style={{ marginTop: 12 }}>
-            <textarea
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              rows={2}
-              placeholder="Set a message with your payment."
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 11, padding: '11px 14px', color: C.text, fontSize: 14, outline: 'none', lineHeight: 1.4 }}
-            />
-            <p style={{ margin: '8px 2px 0', fontSize: 12, lineHeight: 1.45, color: C.muted }}>
-              Your message will be shown on the{' '}
-              <Link href="/markee/0x" style={{ color: C.pink, textDecoration: 'none', borderBottom: `1px dotted ${C.pink}` }}>Markee Cooperative Leaderboard</Link>
-            </p>
-          </div>
-        )}
-        <a
-          href={REVNET_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            width: '100%', marginTop: 14, background: C.pink, color: C.bg, border: 'none', borderRadius: 10,
-            padding: '15px 20px', fontWeight: 700, fontSize: 15, textDecoration: 'none',
-            boxShadow: '0 8px 32px rgba(248,151,254,0.3)',
-            transition: 'box-shadow 120ms',
-          }}
-        >
-          Buy MARKEE
-        </a>
-      </div>
-    </div>
-  )
 }
 
 // ── Countdown ─────────────────────────────────────────────────────────────────
@@ -345,7 +274,7 @@ export default function Owners() {
           <p style={{ margin: '20px auto 0', color: C.text2, fontSize: 18, lineHeight: 1.6, maxWidth: '52ch' }}>
             Markee is cooperatively owned by MARKEE token holders using <strong style={{ color: C.text }}>Revnets</strong> for token issuance and <strong style={{ color: C.text }}>Gardens</strong> for governance.
           </p>
-          <RevnetWidget />
+          <RevnetBuyWidget />
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' as const }}>
             <a href={REVNET_URL} target="_blank" rel="noopener noreferrer" style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.text2, borderRadius: 10, padding: '11px 22px', fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', transition: 'border-color 160ms, color 160ms' }}>
               View Revnet ↗
