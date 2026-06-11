@@ -184,30 +184,40 @@ export function FixedPriceModal({
                 </div>
               </div>
 
-              {/* Price Info */}
-              <div className="mb-6 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-[#B8B6D9] font-medium">Price to Change Message</p>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
-                    {priceSubDisplay && (
-                      <p className="text-xs text-[#8A8FBF] mt-0.5">{priceSubDisplay}</p>
-                    )}
-                  </div>
-                </div>
-                {balanceData && (
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
-                    <p className="text-xs text-[#B8B6D9]">Your Balance</p>
+              {/* Price Info + MARKEE received */}
+              <div className="mb-6 flex gap-3">
+                <div className="flex-1 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-[#B8B6D9] font-medium">Price to Change</p>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-[#EDEEFF]">
-                        {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                      </p>
-                      {ethPrice && (
-                        <p className="text-xs text-[#7C9CFF]">
-                          {formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}
-                        </p>
+                      <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
+                      {priceSubDisplay && (
+                        <p className="text-xs text-[#8A8FBF] mt-0.5">{priceSubDisplay}</p>
                       )}
                     </div>
+                  </div>
+                  {balanceData && (
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
+                      <p className="text-xs text-[#B8B6D9]">Your Balance</p>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-[#EDEEFF]">
+                          {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+                        </p>
+                        {ethPrice && (
+                          <p className="text-xs text-[#7C9CFF]">
+                            {formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {markeeTokens > 0 && (
+                  <div className="flex-1 bg-gradient-to-br from-[#F897FE]/20 to-[#7B6AF4]/20 rounded-lg p-4 border border-[#F897FE]/40 flex flex-col justify-center items-center text-center">
+                    <p className="text-xs text-[#B8B6D9] font-medium mb-2">You'll receive</p>
+                    <p className="text-2xl font-bold text-[#F897FE]">{markeeTokens.toLocaleString()}</p>
+                    <p className="text-sm text-[#B8B6D9] mt-1">MARKEE tokens</p>
                   </div>
                 )}
               </div>
@@ -235,16 +245,6 @@ export function FixedPriceModal({
                 />
               </div>
 
-              {/* MARKEE Token Display */}
-              {markeeTokens > 0 && (
-                <div className="mb-6 bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-6">
-                  <div className="text-center">
-                    <p className="text-sm text-[#F897FE] font-medium mb-2">You'll receive</p>
-                    <p className="text-4xl font-bold text-[#F897FE] mb-2">{markeeTokens.toLocaleString()}</p>
-                    <p className="text-xl font-semibold text-[#F897FE]">MARKEE tokens</p>
-                  </div>
-                </div>
-              )}
 
               <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
                 <p className="text-sm text-[#B8B6D9]">
