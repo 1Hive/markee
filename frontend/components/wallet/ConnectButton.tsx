@@ -1,6 +1,17 @@
 'use client'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
-import { Wallet, User } from 'lucide-react'
+
+const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const BORDER = 'rgba(138,143,191,0.2)'
+
+function GlowDot() {
+  return (
+    <span style={{
+      width: 7, height: 7, borderRadius: 99, flexShrink: 0, display: 'inline-block',
+      background: '#1DB227', boxShadow: '0 0 6px #1DB227',
+    }} />
+  )
+}
 
 export function ConnectButton() {
   const { ready, authenticated, login, logout, user } = usePrivy()
@@ -12,38 +23,50 @@ export function ConnectButton() {
         onClick={ready ? login : undefined}
         type="button"
         disabled={!ready}
-        className="bg-[#7C9CFF] text-[#060A2A] px-6 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          background: '#F897FE', color: '#060A2A', border: 'none',
+          borderRadius: 8, padding: '9px 18px',
+          fontWeight: 600, fontSize: 13, fontFamily: MONO,
+          cursor: ready ? 'pointer' : 'not-allowed',
+          opacity: ready ? 1 : 0.5, flexShrink: 0,
+          transition: 'opacity 120ms',
+        }}
       >
-        <Wallet size={20} />
-        <span className="hidden sm:inline">Connect</span>
+        Connect
       </button>
     )
   }
 
-  // Resolve display name: wallet address > email > name
-  const activeWallet = wallets[0]
-  const displayAddress = activeWallet?.address
+  const displayAddress = wallets[0]?.address
   const displayName = displayAddress
     ? `${displayAddress.slice(0, 6)}…${displayAddress.slice(-4)}`
     : user?.email?.address ?? 'Account'
 
   return (
-    <div className="flex items-center gap-2">
-      <a
-        href="/account"
-        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/30 text-[#8A8FBF] hover:text-[#F897FE] hover:border-[#F897FE]/60 transition-colors"
-        title="My Markees"
-      >
-        <User size={18} />
-      </a>
-      <button
-        onClick={logout}
-        type="button"
-        className="bg-[#7C9CFF] text-[#060A2A] px-4 py-2 rounded-lg font-medium hover:bg-[#F897FE] flex items-center gap-2 transition-colors"
-      >
-        <Wallet size={20} />
-        <span className="hidden sm:inline">{displayName}</span>
-      </button>
-    </div>
+    <button
+      onClick={logout}
+      type="button"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        background: 'transparent', color: '#B8B6D9',
+        border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 14px',
+        fontWeight: 600, fontSize: 13, fontFamily: MONO,
+        cursor: 'pointer', flexShrink: 0,
+        transition: 'border-color 160ms, color 160ms',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = 'rgba(248,151,254,0.35)'
+        el.style.color = '#EDEEFF'
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = BORDER
+        el.style.color = '#B8B6D9'
+      }}
+    >
+      <GlowDot />
+      {displayName}
+    </button>
   )
 }

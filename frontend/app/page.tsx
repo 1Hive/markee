@@ -18,6 +18,10 @@ import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 
+function extractDomain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
+}
+
 function formatViews(n: number) {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
@@ -380,18 +384,18 @@ export default function Home() {
   // Filter to partners with active leaderboards
   const activePartners = partnerData.filter(p => p.partner.leaderboardAddress)
 
-  // Fetch views for home page marketplace table
+  // Fetch views for home page marketplace table (keyed by top markee address, same as marketplace page)
   const [partnerViews, setPartnerViews] = useState<Map<string, number>>(new Map())
   useEffect(() => {
-    const addresses = activePartners.map(p => p.partner.leaderboardAddress).filter(Boolean) as string[]
+    const addresses = activePartners.map(p => p.winningMarkee?.address).filter(Boolean) as string[]
     if (addresses.length === 0) return
-    fetch(`/api/views?addresses=${addresses.join(',')}`)
+    fetch(`/api/views?addresses=${addresses.map(a => a.toLowerCase()).join(',')}`)
       .then(r => r.ok ? r.json() : {})
       .then((data: Record<string, { totalViews: number }>) => {
         setPartnerViews(new Map(Object.entries(data).map(([k, v]) => [k.toLowerCase(), v.totalViews ?? 0])))
       })
       .catch(() => {})
-  }, [activePartners.map(p => p.partner.leaderboardAddress).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activePartners.map(p => p.winningMarkee?.address ?? '').join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -514,10 +518,12 @@ export default function Home() {
                       {/* Served on */}
                       <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: '#B8B6D9', minWidth: 0 }}>
                         {partner.logo && (
-                          <img src={partner.logo} alt="" style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, objectFit: 'cover' }} />
+                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
+                            <img src={partner.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </span>
                         )}
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {partner.name}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
+                          {partner.liveUrl ? extractDomain(partner.liveUrl) : partner.name}
                         </span>
                       </span>
 
@@ -541,8 +547,8 @@ export default function Home() {
 
                       {/* Views */}
                       <span style={{ fontSize: 11, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
-                        <Eye size={10} />
-                        {(() => { const v = partnerViews.get(partner.leaderboardAddress?.toLowerCase() ?? ''); return v ? formatViews(v) : '—' })()}
+                        <Eye size={10} style={{ opacity: 0.7 }} />
+                        {(() => { const v = partnerViews.get(winningMarkee?.address?.toLowerCase() ?? ''); return v ? formatViews(v) : '—' })()}
                       </span>
 
                       {/* Price to change */}
