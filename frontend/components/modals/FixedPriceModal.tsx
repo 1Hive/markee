@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
 import { formatEther } from 'viem'
-import { X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, CreditCard } from 'lucide-react'
+import { CreditCard } from 'lucide-react'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -12,6 +12,59 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const BG     = '#060A2A'
+const BG2    = '#0A0F3D'
+const PINK   = '#F897FE'
+const BLUE   = '#7C9CFF'
+const BORDER = 'rgba(138,143,191,0.2)'
+const MUTED  = '#8A8FBF'
+const TEXT   = '#EDEEFF'
+
+// ── ABIs ──────────────────────────────────────────────────────────────────────
+const ADMIN_ABI = [
+  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+] as const
+
+// ── MARKEE phases ─────────────────────────────────────────────────────────────
+const PHASES = [
+  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
+  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
+  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
+  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
+  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
+]
+function getCurrentPhaseRate() {
+  const now = new Date()
+  for (const p of PHASES) { if (now < p.endDate) return p.rate }
+  return PHASES[PHASES.length - 1].rate
+}
+function calculateMarkeeTokens(eth: number) { return eth * 0.38 * getCurrentPhaseRate() * 0.62 }
+
+// ── TxRing ────────────────────────────────────────────────────────────────────
+function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
+  const done = step === 'success'
+  return (
+    <div style={{
+      width: 72, height: 72, borderRadius: 99, flexShrink: 0,
+      background: done ? PINK : 'transparent',
+      border: done ? 'none' : `2px solid ${PINK}`,
+      borderTopColor: done ? undefined : 'transparent',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      animation: done ? 'none' : 'spin 1s linear infinite',
+      boxShadow: '0 0 32px rgba(248,151,254,0.3)',
+    }}>
+      {done && (
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+          <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
+  )
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 interface FixedPriceModalProps {
   isOpen: boolean
   onClose: () => void
@@ -19,24 +72,21 @@ interface FixedPriceModalProps {
   onSuccess?: () => void
 }
 
-export function FixedPriceModal({
-  isOpen,
-  onClose,
-  fixedMarkee,
-  onSuccess
-}: FixedPriceModalProps) {
+export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
   const { authenticated } = usePrivy()
   const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({
-    address: address,
-    chainId: CANONICAL_CHAIN.id,
-  })
+  const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
+  const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
 
-  const { fundWallet } = useFundWallet({
-    onUserExited: () => { refetchBalance() },
+  const { data: adminAddress } = useReadContract({
+    address: fixedMarkee?.strategyAddress as `0x${string}`,
+    abi: ADMIN_ABI,
+    functionName: 'admin',
+    chainId: CANONICAL_CHAIN.id,
+    query: { enabled: !!fixedMarkee?.strategyAddress },
   })
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
@@ -44,74 +94,41 @@ export function FixedPriceModal({
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const {
-    writeContract,
-    data: hash,
-    isPending,
-    isError,
-    error: writeError,
-    reset,
-  } = useWriteContract()
-
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  // All price data comes from the hook — no RPC calls here
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
-  const priceEth: string = formatEther(priceWei)
+  const priceEth = formatEther(priceWei)
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
-  const priceDisplay = priceWei > 0n ? (priceUsd ? formatUsd(priceUsd) : `${priceEth} ETH`) : '...'
-  const priceSubDisplay = priceUsd ? `${priceEth} ETH` : null
   const revNetEnabled = fixedMarkee?.revNetEnabled ?? false
-  const markeeTokens = revNetEnabled && priceWei > 0n ? parseFloat(priceEth) * 62000 : 0
-  const maxLength = fixedMarkee?.maxMessageLength ?? null
+  const markeeEarned = Math.round(calculateMarkeeTokens(priceEthNum))
+  const maxLen = fixedMarkee?.maxMessageLength ?? 222
 
   useEffect(() => {
-    if (isOpen && fixedMarkee) {
-      setNewMessage('')
-      setError(null)
-      reset()
-    }
+    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); reset() }
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
     if (isSuccess && isOpen) {
-      setTimeout(() => {
-        if (onSuccess) onSuccess()
-        onClose()
-      }, 2000)
+      setTimeout(() => { onSuccess?.(); onClose() }, 2000)
     }
-  }, [isSuccess, onClose, isOpen])
+  }, [isSuccess, onClose, isOpen, onSuccess])
 
-  const canAffordMessage = (): boolean => {
+  const canAfford = () => {
     if (!balanceData || priceWei === 0n) return false
-    const estimatedGas = 1000000000000000n // 0.001 ETH
-    return balanceData.value >= priceWei + estimatedGas
+    return balanceData.value >= priceWei + 1000000000000000n
   }
-
-  const getInsufficientBalanceMessage = (): string | null => {
-    if (!balanceData || priceWei === 0n) return null
-    const estimatedGas = 1000000000000000n
-    if (balanceData.value < priceWei + estimatedGas) {
-      return `You don't have enough ETH to complete this transaction.`
-    }
-    return null
-  }
+  const insufficientBalance = priceWei > 0n && !canAfford()
+  const balanceWarning = insufficientBalance ? "You don't have enough ETH to complete this transaction." : null
 
   const handleChangeMessage = async () => {
     if (!fixedMarkee || !chain) { setError('Please connect your wallet'); return }
     if (chain.id !== CANONICAL_CHAIN.id) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
     if (priceWei === 0n) { setError('Unable to load price'); return }
-    if (maxLength && newMessage.length > maxLength) {
-      setError(`Message exceeds maximum length of ${maxLength} characters`)
-      return
-    }
-    if (!canAffordMessage()) {
-      setError(getInsufficientBalanceMessage() || 'Insufficient balance')
-      return
-    }
-
+    if (newMessage.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    if (!canAfford()) { setError(balanceWarning || 'Insufficient balance'); return }
     setError(null)
     try {
       writeContract({
@@ -119,152 +136,223 @@ export function FixedPriceModal({
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
         args: [newMessage, ''],
-        value: priceWei,  // raw BigInt — exact, no precision loss
+        value: priceWei,
         chainId: CANONICAL_CHAIN.id,
       })
-    } catch (err: any) {
-      setError(err.message || 'Transaction failed')
-    }
+    } catch (err: any) { setError(err.message || 'Transaction failed') }
   }
 
   if (!isOpen || !fixedMarkee) return null
 
-  const insufficientBalance = !canAffordMessage()
-  const balanceWarning = getInsufficientBalanceMessage()
-  const currentLength = newMessage.length
-  const isOverLimit = !!(maxLength && currentLength > maxLength)
+  const isOverLimit = newMessage.length > maxLen
+  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const stepLabel =
+    txStep === 'signing' ? 'AWAITING SIGNATURE' :
+    txStep === 'pending' ? 'CONFIRMING ONCHAIN' :
+    txStep === 'success' ? 'CONFIRMED' :
+    'CHANGE MESSAGE'
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
+    border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
+    fontFamily: MONO, fontSize: 13, outline: 'none',
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] border border-[#8A8FBF]/30 rounded-xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors" disabled={isPending || isConfirming}>
-          <X size={20} />
-        </button>
-
-        {isSuccess ? (
-          <div className="flex flex-col items-center gap-4 py-6">
-            <CheckCircle2 size={44} className="text-green-400" />
-            <p className="text-[#EDEEFF] font-bold text-xl">Message updated!</p>
-            <p className="text-[#8A8FBF] text-sm text-center">Your new message is now live.</p>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        animation: 'fadeIn 180ms ease forwards',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 560,
+          background: BG2, borderRadius: 16,
+          border: `1px solid ${BORDER}`,
+          boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          fontFamily: 'Manrope, system-ui, sans-serif',
+          color: TEXT, overflow: 'hidden',
+          animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+          maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        {/* ── Header ── */}
+        <div style={{
+          padding: '18px 22px', borderBottom: `1px solid ${BORDER}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            {stepLabel}
           </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* ── Tx state ── */}
+        {txStep ? (
+          <div style={{ padding: '60px 22px 52px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
+            <TxRing step={txStep} />
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                {txStep === 'signing' && 'Waiting for wallet...'}
+                {txStep === 'pending' && 'Transaction pending on Base'}
+                {txStep === 'success' && '✓ Message updated'}
+              </div>
+              <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
+                {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
+                {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
+                {txStep === 'success' && `"${newMessage}" is now the featured message.`}
+              </div>
+            </div>
+          </div>
+
+        ) : !isConnected ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
+          </div>
+
+        ) : !isCorrectChain ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
+            <button
+              onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
+              style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+            >
+              Switch to Base
+            </button>
+          </div>
+
         ) : (
           <>
-            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Change Message</h2>
+            {/* ── Body ── */}
+            <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
 
-            {!isConnected ? (
-              <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Connect your wallet to change this message.</p>
-                <div className="flex justify-center"><ConnectButton /></div>
-              </div>
-            ) : !isCorrectChain ? (
-              <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Switch to Base to continue.</p>
-                <button
-                  onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
-                  className="w-full flex items-center justify-center gap-2 bg-[#FFA94D] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  <ArrowRightLeft size={16} />
-                  Switch to Base
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-5">
-                {/* Current message */}
-                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
-                  <div className="text-[#8A8FBF] text-xs mb-1 uppercase tracking-wider">Current message</div>
-                  <p className="text-[#EDEEFF] font-mono text-sm">{fixedMarkee.message || 'No message yet'}</p>
+              {/* Current message (if set) */}
+              {fixedMarkee.message && (
+                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
+                  <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
                 </div>
+              )}
 
-                {/* Price + MARKEE received */}
-                <div className="flex gap-3">
-                  <div className="flex-1 bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
-                    <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Price to change</div>
-                    <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
-                    {priceSubDisplay && <p className="text-xs text-[#8A8FBF] mt-0.5">{priceSubDisplay}</p>}
-                    {balanceData && (
-                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#8A8FBF]/15">
-                        <span className="text-[#8A8FBF] text-xs">Your balance</span>
-                        <div className="text-right">
-                          <p className="text-xs font-medium text-[#EDEEFF]">{parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</p>
-                          {ethPrice && <p className="text-xs text-[#7C9CFF]">{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</p>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {markeeTokens > 0 && (
-                    <div className="flex-1 bg-gradient-to-br from-[#F897FE]/20 to-[#7B6AF4]/20 rounded-lg p-4 border border-[#F897FE]/40 flex flex-col justify-center items-center text-center">
-                      <p className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">You'll receive</p>
-                      <p className="text-2xl font-bold text-[#F897FE]">{markeeTokens.toLocaleString()}</p>
-                      <p className="text-sm text-[#B8B6D9] mt-1">MARKEE tokens</p>
+              {/* SET YOUR MESSAGE */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                  Set Your Message
+                </div>
+                <textarea
+                  value={newMessage}
+                  onChange={e => setNewMessage(e.target.value.slice(0, maxLen))}
+                  placeholder="the name's mark. agent mark 🕵️"
+                  rows={2}
+                  style={{ ...inputStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : BORDER }}
+                  onFocus={e => { if (!isOverLimit) e.target.style.borderColor = PINK }}
+                  onBlur={e => { e.target.style.borderColor = isOverLimit ? '#FF8E8E' : BORDER }}
+                  disabled={isPending || isConfirming}
+                />
+              </div>
+
+              {/* Preview */}
+              <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: 80, marginBottom: 18 }}>
+                <div style={{ fontFamily: MONO, fontSize: 14, color: newMessage ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                  {newMessage || 'Your message will appear here...'}
+                  {newMessage && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'flex-end' }}>
+                  <span style={{ color: newMessage.length > maxLen - 20 ? PINK : MUTED }}>{newMessage.length}/{maxLen}</span>
+                </div>
+              </div>
+
+              {/* Price card */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Price</div>
+                <div style={{ background: BG, border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '13px 15px' }}>
+                  <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{priceEth} ETH</div>
+                  {priceUsd && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(priceUsd)}</div>}
+                  <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Fixed price to set the featured message</div>
+                  {balanceData && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}`, fontSize: 12, color: MUTED, display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span>Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</span>
+                      {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
                     </div>
                   )}
                 </div>
-
-                {/* New message */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-[#8A8FBF] text-xs uppercase tracking-wider">New Message</label>
-                    {maxLength && (
-                      <span className={`text-xs ${isOverLimit ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
-                        {currentLength}/{maxLength}
-                      </span>
-                    )}
-                  </div>
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Write your new message…"
-                    rows={3}
-                    className={`w-full bg-[#060A2A] border focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors resize-none ${isOverLimit ? 'border-red-500/50' : 'border-[#8A8FBF]/20'}`}
-                    disabled={isPending || isConfirming}
-                  />
-                </div>
-
-                {/* Insufficient balance */}
-                {insufficientBalance && balanceWarning && !error && !isError && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-[#8A8FBF] text-center">{balanceWarning}</p>
-                    {authenticated && address && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: priceEth } })
-                          } catch (e: any) {
-                            setError(e?.message || 'Card funding is not available. Please fund your wallet manually.')
-                          }
-                        }}
-                        className="w-full flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF]/10 transition-colors"
-                      >
-                        <CreditCard size={18} />
-                        Fund with card / Apple Pay / PayPal
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Errors */}
-                {(error || isError) && (
-                  <div className="flex items-start gap-2 text-red-400 text-sm">
-                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error || writeError?.message}</span>
-                  </div>
-                )}
-
-                {/* Submit */}
-                <button
-                  onClick={handleChangeMessage}
-                  disabled={isPending || isConfirming || !newMessage.trim() || insufficientBalance || isOverLimit}
-                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending || isConfirming ? (
-                    <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
-                  ) : (
-                    `Change Message · ${priceDisplay}`
-                  )}
-                </button>
               </div>
-            )}
+
+              {/* MARKEE token estimate */}
+              {revNetEnabled && priceEthNum > 0 && (
+                <div style={{ marginBottom: 18, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
+                  <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
+                  <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString()}</div>
+                  <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
+                </div>
+              )}
+
+              {/* Insufficient balance + fund card */}
+              {insufficientBalance && balanceWarning && (
+                <div style={{ borderRadius: 10, border: '1px solid rgba(255,165,0,0.3)', background: 'rgba(255,165,0,0.08)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
+                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
+                  </div>
+                  {authenticated && address && (
+                    <button
+                      onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      <CreditCard size={13} />
+                      Fund with card
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Error */}
+              {(error || isError) && (
+                <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
+                  {error || writeError?.message}
+                </p>
+              )}
+            </div>
+
+            {/* ── Footer ── */}
+            <div style={{
+              padding: '14px 22px', borderTop: `1px solid ${BORDER}`,
+              background: 'rgba(6,10,42,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+              flexShrink: 0,
+            }}>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
+                {adminAddress
+                  ? <>62% to <a href={`https://basescan.org/address/${adminAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{adminAddress.slice(0, 6)}…{adminAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                  : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
+              </div>
+              <button
+                onClick={handleChangeMessage}
+                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit}
+                style={{
+                  background: PINK, color: BG, border: 'none', borderRadius: 8,
+                  padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                  cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                  opacity: (isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit) ? 0.4 : 1,
+                  transition: 'opacity 140ms',
+                }}
+              >
+                Change Message
+              </button>
+            </div>
           </>
         )}
       </div>
