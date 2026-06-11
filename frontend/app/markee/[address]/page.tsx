@@ -332,7 +332,8 @@ export default function MarkeeDetailPage() {
   const ethPrice = useEthPrice()
   const { address: connectedAddress } = useAccount()
 
-  const { meta, markees, isLoading } = useLeaderboardDetail(leaderboardAddress)
+  const { meta, markees: allMarkees, isLoading } = useLeaderboardDetail(leaderboardAddress)
+  const markees = allMarkees.filter(m => m.totalFundsAdded > 0n)
   const ecoEntry = useServedOn(leaderboardAddress)
 
   // Views for all markees
