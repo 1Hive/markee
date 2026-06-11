@@ -554,6 +554,8 @@ export function BuyMessageModal({
                             address,
                             options: { chain: base, amount: amount || undefined },
                           })
+                        } catch (e: any) {
+                          setError(e?.message || 'Card funding is not available. Please fund your wallet manually.')
                         } finally {
                           setIsFunding(false)
                         }
