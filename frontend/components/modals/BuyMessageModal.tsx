@@ -49,6 +49,10 @@ const REV_NET_ENABLED_ABI = [
   { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
 ] as const
 
+const ADMIN_ABI = [
+  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+] as const
+
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
   '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79',
 ])
@@ -158,6 +162,9 @@ export function BuyMessageModal({
     address: strategyAddress, abi: REV_NET_ENABLED_ABI, functionName: 'revNetEnabled', chainId: CANONICAL_CHAIN.id,
   })
   const revNetEnabled = revNetEnabledData ?? false
+  const { data: adminAddress } = useReadContract({
+    address: strategyAddress, abi: ADMIN_ABI, functionName: 'admin', chainId: CANONICAL_CHAIN.id,
+  })
 
   // ── Preset amount calculations ──────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
@@ -403,10 +410,6 @@ export function BuyMessageModal({
           <>
             {/* ── Compose body ── */}
             <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: 20, fontWeight: 800, letterSpacing: -0.4, color: TEXT }}>
-                {activeTab === 'addFunds' ? 'Add funds to this message.' : 'Buy a new message'}
-              </h3>
-
               {/* Tabs - only when user owns this markee */}
               {userMarkee && isOwner && (
                 <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, marginBottom: 18 }}>
@@ -429,37 +432,10 @@ export function BuyMessageModal({
                 </div>
               )}
 
-              {/* Message preview (buy) or funded message read-only (addFunds) */}
-              {activeTab !== 'updateMessage' && (
-                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: activeTab === 'create' ? 80 : undefined, marginBottom: 18 }}>
-                  {activeTab === 'addFunds' ? (
-                    <>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {userMarkee?.message || '—'}
-                      </div>
-                      {userMarkee?.name && (
-                        <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: message ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {message || 'Type your message below...'}
-                        {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontStyle: 'italic' }}>- {name || 'anon'}</span>
-                        <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
               {/* Create: message + name inputs */}
               {activeTab === 'create' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
-                  <ModalField label="Message">
+                  <ModalField label="Set Your Message">
                     <textarea
                       value={message}
                       onChange={e => setMessage(e.target.value.slice(0, maxLen))}
@@ -482,6 +458,33 @@ export function BuyMessageModal({
                       disabled={isPending || isConfirming}
                     />
                   </ModalField>
+                </div>
+              )}
+
+              {/* Message preview (create) or funded message read-only (addFunds) */}
+              {activeTab !== 'updateMessage' && (
+                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: activeTab === 'create' ? 80 : undefined, marginBottom: 18 }}>
+                  {activeTab === 'addFunds' ? (
+                    <>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                        {userMarkee?.message || '—'}
+                      </div>
+                      {userMarkee?.name && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: message ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                        {message || 'Your message will appear here...'}
+                        {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontStyle: 'italic' }}>- {name || (address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '0x...')}</span>
+                        <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -639,8 +642,10 @@ export function BuyMessageModal({
                   : activeTab === 'updateMessage'
                   ? 'Only the message owner can update their message.'
                   : partnerName
-                  ? <>62% of funds go to <span style={{ color: TEXT2 }}>{partnerName}</span>.</>
-                  : 'Funds go directly to the integration owner.'}
+                  ? <>62% to <span style={{ color: TEXT2 }}>{partnerName}</span> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                  : adminAddress
+                  ? <>62% to <a href={`https://basescan.org/address/${adminAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{adminAddress.slice(0, 6)}…{adminAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                  : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
               </div>
               <button
                 onClick={() => {
