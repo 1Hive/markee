@@ -110,7 +110,7 @@ function StatCell({ n, label, color, dot }: { n: string; label: string; color: s
 }
 
 // ── Metrics row ───────────────────────────────────────────────────────────────
-function MetricsRow({ stats }: { stats: { domains: number; markees: number; messages: number; usd: number } }) {
+function MetricsRow({ stats }: { stats: { domains: number; markees: number; messages: number; usd: number; views: number } }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -130,6 +130,7 @@ function MetricsRow({ stats }: { stats: { domains: number; markees: number; mess
   const markees = useCountUp(stats.markees, started)
   const messages = useCountUp(stats.messages, started)
   const usd = useCountUp(stats.usd, started)
+  const views = useCountUp(stats.views, started)
   const narrow = useNarrow()
   const f = (v: number) => narrow
     ? new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v)
@@ -137,10 +138,11 @@ function MetricsRow({ stats }: { stats: { domains: number; markees: number; mess
 
   return (
     <div ref={ref} className="metrics-row">
-      <StatCell n={f(domains)} label="leaderboards" color="#7B6AF4" dot="#7B6AF4" />
+      <StatCell n={f(domains)} label="domains" color="#7B6AF4" dot="#7B6AF4" />
       <StatCell n={f(markees)} label="active Markees" color="#F897FE" dot="#F897FE" />
       <StatCell n={f(messages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
       <StatCell n={`$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
+      <StatCell n={f(views)} label="views" color="#EDEEFF" dot="#EDEEFF" />
     </div>
   )
 }
@@ -320,24 +322,39 @@ export default function Home() {
   const ethPrice = useEthPrice()
 
   // Ecosystem stats for the metrics row
-  const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0 })
+  const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0, views: 0 })
   useEffect(() => {
     fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then(async data => {
         if (!data) return
-        const leaderboards: { topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean }[] = data.leaderboards ?? []
+        const leaderboards: { address: string; topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
           0
         )
         const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
+
+        // Fetch total views across all leaderboard addresses
+        let totalViews = 0
+        const addresses = leaderboards.map(lb => lb.address).filter(Boolean)
+        if (addresses.length > 0) {
+          try {
+            const vRes = await fetch(`/api/views?addresses=${addresses.join(',')}`)
+            if (vRes.ok) {
+              const vData: Record<string, { totalViews: number }> = await vRes.json()
+              totalViews = Object.values(vData).reduce((sum, v) => sum + (v.totalViews ?? 0), 0)
+            }
+          } catch {}
+        }
+
         setEcoStats({
           domains: leaderboards.length,
           markees: active.length,
           messages,
           usd: ethPrice ? Math.round(totalEth * ethPrice) : 0,
+          views: totalViews,
         })
       })
       .catch(() => {})
