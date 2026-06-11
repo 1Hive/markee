@@ -136,130 +136,95 @@ export function FixedPriceModal({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] rounded-xl shadow-2xl border border-[#8A8FBF]/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="absolute inset-0" onClick={onClose} />
+      <div className="relative bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] border border-[#8A8FBF]/30 rounded-xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+        <button onClick={onClose} className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors" disabled={isPending || isConfirming}>
+          <X size={20} />
+        </button>
 
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#8A8FBF]/30">
-          <h2 className="text-2xl font-bold text-[#EDEEFF]">Change Message</h2>
-          <button
-            onClick={onClose}
-            className="text-[#8A8FBF] hover:text-[#EDEEFF] transition"
-            disabled={isPending || isConfirming}
-          >
-            <X size={24} />
-          </button>
-        </div>
+        {isSuccess ? (
+          <div className="flex flex-col items-center gap-4 py-6">
+            <CheckCircle2 size={44} className="text-green-400" />
+            <p className="text-[#EDEEFF] font-bold text-xl">Message updated!</p>
+            <p className="text-[#8A8FBF] text-sm text-center">Your new message is now live.</p>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Change Message</h2>
 
-        {/* Content */}
-        <div className="p-6">
-          {!isConnected ? (
-            <div className="text-center py-8">
-              <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
-              <p className="text-[#B8B6D9] mb-4">Please connect your wallet to continue</p>
-              <div className="flex justify-center"><ConnectButton /></div>
-            </div>
-          ) : !isCorrectChain ? (
-            <div className="text-center py-8">
-              <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-              <p className="text-[#B8B6D9] mb-4">Please switch to {CANONICAL_CHAIN.name} to continue</p>
-              <div className="flex justify-center">
+            {!isConnected ? (
+              <div className="space-y-4">
+                <p className="text-[#8A8FBF] text-sm">Connect your wallet to change this message.</p>
+                <div className="flex justify-center"><ConnectButton /></div>
+              </div>
+            ) : !isCorrectChain ? (
+              <div className="space-y-4">
+                <p className="text-[#8A8FBF] text-sm">Switch to Base to continue.</p>
                 <button
                   onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
-                  className="bg-[#FFA94D] text-[#060A2A] px-6 py-3 rounded-lg font-medium hover:bg-[#FF8E3D] flex items-center gap-2 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 bg-[#FFA94D] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:opacity-90 transition-opacity"
                 >
-                  <ArrowRightLeft size={20} />
-                  Switch Network to Base
+                  <ArrowRightLeft size={16} />
+                  Switch to Base
                 </button>
               </div>
-            </div>
-          ) : (
-            <>
-              {/* Current Message */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-[#B8B6D9] mb-2">Current Message</label>
-                <div className="bg-[#0A0F3D]/50 rounded-lg p-4 border border-[#8A8FBF]/30">
-                  <p className="text-[#EDEEFF] font-jetbrains">
-                    {fixedMarkee.message || 'No message yet'}
-                  </p>
+            ) : (
+              <div className="space-y-5">
+                {/* Current message */}
+                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
+                  <div className="text-[#8A8FBF] text-xs mb-1 uppercase tracking-wider">Current message</div>
+                  <p className="text-[#EDEEFF] font-mono text-sm">{fixedMarkee.message || 'No message yet'}</p>
                 </div>
-              </div>
 
-              {/* Price Info + MARKEE received */}
-              <div className="mb-6 flex gap-3">
-                <div className="flex-1 bg-[#F897FE]/10 rounded-lg p-4 border border-[#F897FE]/30">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-[#B8B6D9] font-medium">Price to Change</p>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
-                      {priceSubDisplay && (
-                        <p className="text-xs text-[#8A8FBF] mt-0.5">{priceSubDisplay}</p>
-                      )}
-                    </div>
-                  </div>
-                  {balanceData && (
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#F897FE]/20">
-                      <p className="text-xs text-[#B8B6D9]">Your Balance</p>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-[#EDEEFF]">
-                          {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                        </p>
-                        {ethPrice && (
-                          <p className="text-xs text-[#7C9CFF]">
-                            {formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}
-                          </p>
-                        )}
+                {/* Price + MARKEE received */}
+                <div className="flex gap-3">
+                  <div className="flex-1 bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
+                    <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Price to change</div>
+                    <p className="text-2xl font-bold text-[#F897FE]">{priceDisplay}</p>
+                    {priceSubDisplay && <p className="text-xs text-[#8A8FBF] mt-0.5">{priceSubDisplay}</p>}
+                    {balanceData && (
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#8A8FBF]/15">
+                        <span className="text-[#8A8FBF] text-xs">Your balance</span>
+                        <div className="text-right">
+                          <p className="text-xs font-medium text-[#EDEEFF]">{parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</p>
+                          {ethPrice && <p className="text-xs text-[#7C9CFF]">{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</p>}
+                        </div>
                       </div>
+                    )}
+                  </div>
+                  {markeeTokens > 0 && (
+                    <div className="flex-1 bg-gradient-to-br from-[#F897FE]/20 to-[#7B6AF4]/20 rounded-lg p-4 border border-[#F897FE]/40 flex flex-col justify-center items-center text-center">
+                      <p className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">You'll receive</p>
+                      <p className="text-2xl font-bold text-[#F897FE]">{markeeTokens.toLocaleString()}</p>
+                      <p className="text-sm text-[#B8B6D9] mt-1">MARKEE tokens</p>
                     </div>
                   )}
                 </div>
 
-                {markeeTokens > 0 && (
-                  <div className="flex-1 bg-gradient-to-br from-[#F897FE]/20 to-[#7B6AF4]/20 rounded-lg p-4 border border-[#F897FE]/40 flex flex-col justify-center items-center text-center">
-                    <p className="text-xs text-[#B8B6D9] font-medium mb-2">You'll receive</p>
-                    <p className="text-2xl font-bold text-[#F897FE]">{markeeTokens.toLocaleString()}</p>
-                    <p className="text-sm text-[#B8B6D9] mt-1">MARKEE tokens</p>
+                {/* New message */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[#8A8FBF] text-xs uppercase tracking-wider">New Message</label>
+                    {maxLength && (
+                      <span className={`text-xs ${isOverLimit ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
+                        {currentLength}/{maxLength}
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
-
-              {/* New Message Input */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-[#B8B6D9]">New Message</label>
-                  {maxLength && (
-                    <span className={`text-xs ${isOverLimit ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
-                      {currentLength}/{maxLength}
-                    </span>
-                  )}
+                  <textarea
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Write your new message…"
+                    rows={3}
+                    className={`w-full bg-[#060A2A] border focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors resize-none ${isOverLimit ? 'border-red-500/50' : 'border-[#8A8FBF]/20'}`}
+                    disabled={isPending || isConfirming}
+                  />
                 </div>
-                <textarea
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Enter your new message..."
-                  className={`w-full px-4 py-3 bg-[#0A0F3D]/50 border rounded-lg 
-                             focus:ring-2 focus:ring-[#F897FE] focus:border-transparent 
-                             text-[#EDEEFF] placeholder-[#8A8FBF]
-                             ${isOverLimit ? 'border-red-500/50' : 'border-[#8A8FBF]/30'}`}
-                  rows={3}
-                  disabled={isPending || isConfirming}
-                />
-              </div>
 
-
-              <div className="bg-[#F897FE]/10 rounded-lg p-4 mb-6 border border-[#F897FE]/20">
-                <p className="text-sm text-[#B8B6D9]">
-                  {revNetEnabled
-                    ? "This is PRIME digital real estate... for big bag holders only. If you decide to purchase, you'll receive MARKEE tokens and become an owner of the Markee Network."
-                    : "This is PRIME digital real estate... for big bag holders only. Your payment funds the Markee Network directly."}
-                </p>
-              </div>
-
-              {insufficientBalance && balanceWarning && !error && !isError && (
-                <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-yellow-300 mb-1">Insufficient Balance</p>
-                    <p className="text-xs text-yellow-400 mb-3">{balanceWarning}</p>
+                {/* Insufficient balance */}
+                {insufficientBalance && balanceWarning && !error && !isError && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[#8A8FBF] text-center">{balanceWarning}</p>
                     {authenticated && address && (
                       <button
                         onClick={async () => {
@@ -269,61 +234,39 @@ export function FixedPriceModal({
                             setError(e?.message || 'Card funding is not available. Please fund your wallet manually.')
                           }
                         }}
-                        className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#F897FE]/90 transition-colors"
+                        className="w-full flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF]/10 transition-colors"
                       >
-                        <CreditCard size={16} />
-                        Fund with card
+                        <CreditCard size={18} />
+                        Fund with card / Apple Pay / PayPal
                       </button>
                     )}
                   </div>
-                </div>
-              )}
-
-              {isOverLimit && !error && !isError && (
-                <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/50 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                  <p className="text-sm font-medium text-yellow-300">Message Too Long</p>
-                </div>
-              )}
-
-              {(error || isError) && (
-                <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" size={20} />
-                  <p className="text-sm text-red-300">{error || writeError?.message}</p>
-                </div>
-              )}
-
-              {isSuccess && (
-                <div className="mb-4 p-4 bg-green-900/20 border border-green-500/50 rounded-lg flex items-start gap-2">
-                  <CheckCircle2 className="text-green-400 flex-shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <p className="text-sm font-medium text-green-300">Message changed successfully!</p>
-                    <p className="text-xs text-green-400 mt-1">Refreshing...</p>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={handleChangeMessage}
-                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit}
-                className="w-full bg-[#F897FE] text-white px-6 py-3 rounded-lg font-semibold
-                           hover:bg-[#F897FE]/90 disabled:bg-[#8A8FBF]/30 disabled:cursor-not-allowed 
-                           transition flex items-center justify-center gap-2"
-              >
-                {isPending || isConfirming ? (
-                  <>
-                    <Loader2 className="animate-spin" size={20} />
-                    {isPending ? 'Confirm in wallet...' : 'Processing...'}
-                  </>
-                ) : isSuccess ? (
-                  <><CheckCircle2 size={20} />Success!</>
-                ) : (
-                  <>Change Message ({priceDisplay})</>
                 )}
-              </button>
-            </>
-          )}
-        </div>
+
+                {/* Errors */}
+                {(error || isError) && (
+                  <div className="flex items-start gap-2 text-red-400 text-sm">
+                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                    <span>{error || writeError?.message}</span>
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  onClick={handleChangeMessage}
+                  disabled={isPending || isConfirming || !newMessage.trim() || insufficientBalance || isOverLimit}
+                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isPending || isConfirming ? (
+                    <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
+                  ) : (
+                    `Change Message · ${priceDisplay}`
+                  )}
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
