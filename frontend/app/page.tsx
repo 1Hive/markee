@@ -622,7 +622,7 @@ export default function Home() {
             We&apos;re digital-native, owned and governed on the Ethereum network. 100% owned by MARKEE holders, enforced onchain via RevNets and Gardens.
           </p>
           <RevnetBuyWidget compact />
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
             <GhostButton href="/own-the-network">How ownership works →</GhostButton>
           </div>
         </div>

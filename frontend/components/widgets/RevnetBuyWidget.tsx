@@ -8,6 +8,8 @@ import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const PINK   = '#F897FE'
+const BLUE   = '#7C9CFF'
 const BORDER = 'rgba(138,143,191,0.2)'
 
 // Juicebox v4 uses this sentinel address for native ETH
@@ -108,11 +110,6 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   }
 
   const busy = isPending || isConfirming
-  const btnLabel = isSuccess   ? '✓ MARKEE sent!'
-    : isConfirming              ? 'Confirming…'
-    : isPending                 ? 'Confirm in wallet…'
-    : authenticated             ? 'Buy MARKEE'
-    :                             'Connect wallet to buy'
 
   return (
     <div style={{
@@ -183,7 +180,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={2}
-              placeholder="Set a message with your payment."
+              placeholder="Set an optional message to be displayed publicly on the Revnet."
               style={{
                 width: '100%', boxSizing: 'border-box', resize: 'none',
                 background: '#060A2A', border: `1px solid ${BORDER}`,
@@ -194,26 +191,44 @@ export function RevnetBuyWidget({ compact = false }: Props) {
           </div>
         )}
 
-        {/* BUY BUTTON */}
-        <button
-          onClick={busy ? undefined : handleBuy}
-          disabled={busy}
-          style={{
+        {/* BUY BUTTON / SUCCESS STATE */}
+        {isSuccess ? (
+          <div style={{
             width: '100%', marginTop: 14,
-            background: isSuccess ? '#1DB227' : '#F897FE',
-            color: '#060A2A', border: 'none', borderRadius: 10,
-            padding: '15px 20px', fontWeight: 700, fontSize: 15,
-            cursor: busy ? 'wait' : 'pointer',
-            boxShadow: isSuccess
-              ? '0 8px 32px rgba(29,178,39,0.3)'
-              : '0 8px 32px rgba(248,151,254,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'background 160ms, box-shadow 160ms',
-            opacity: busy ? 0.8 : 1,
-          }}
-        >
-          {btnLabel}
-        </button>
+            background: 'rgba(248,151,254,0.1)', border: `1px solid rgba(248,151,254,0.35)`,
+            borderRadius: 10, padding: '15px 20px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ color: PINK, fontWeight: 700, fontSize: 15 }}>✓ Success!</span>
+            {txHash && (
+              <a
+                href={`https://basescan.org/tx/${txHash}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ color: BLUE, fontFamily: MONO, fontSize: 11, textDecoration: 'none' }}
+              >
+                View transaction on Basescan →
+              </a>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={busy ? undefined : handleBuy}
+            disabled={busy}
+            style={{
+              width: '100%', marginTop: 14,
+              background: PINK,
+              color: '#060A2A', border: 'none', borderRadius: 10,
+              padding: '15px 20px', fontWeight: 700, fontSize: 15,
+              cursor: busy ? 'wait' : 'pointer',
+              boxShadow: '0 8px 32px rgba(248,151,254,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'opacity 160ms',
+              opacity: busy ? 0.8 : 1,
+            }}
+          >
+            {isConfirming ? 'Confirming…' : isPending ? 'Confirm in wallet…' : authenticated ? 'Buy MARKEE' : 'Connect wallet to buy'}
+          </button>
+        )}
       </div>
     </div>
   )
