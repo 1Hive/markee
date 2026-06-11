@@ -122,7 +122,7 @@ function StatCell({ n, label, color, dot }: { n: string; label: string; color: s
 }
 
 // ── Metrics row ───────────────────────────────────────────────────────────────
-function MetricsRow({ stats }: { stats: { domains: number; markees: number; messages: number; usd: number; views: number } }) {
+function MetricsRow({ stats }: { stats: { markees: number; messages: number; usd: number; views: number } }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -138,7 +138,6 @@ function MetricsRow({ stats }: { stats: { domains: number; markees: number; mess
     return () => { io.disconnect(); clearTimeout(t) }
   }, [])
 
-  const domains = useCountUp(stats.domains, started)
   const markees = useCountUp(stats.markees, started)
   const messages = useCountUp(stats.messages, started)
   const usd = useCountUp(stats.usd, started)
@@ -150,11 +149,10 @@ function MetricsRow({ stats }: { stats: { domains: number; markees: number; mess
 
   return (
     <div ref={ref} className="metrics-row">
-      <StatCell n={f(domains)} label="domains" color="#7B6AF4" dot="#7B6AF4" />
       <StatCell n={f(markees)} label="active Markees" color="#F897FE" dot="#F897FE" />
       <StatCell n={f(messages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
       <StatCell n={`$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
-      <StatCell n={f(views)} label="views" color="#EDEEFF" dot="#EDEEFF" />
+      <StatCell n={f(views)} label="views" color="#7B6AF4" dot="#7B6AF4" />
     </div>
   )
 }

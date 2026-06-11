@@ -113,7 +113,7 @@ function StatCell({ n, label, color, dot }: { n: string; label: string; color: s
   )
 }
 
-function MetricsStrip({ stats }: { stats: { domains: number; markees: number; messages: number; usd: number } }) {
+function MetricsStrip({ stats }: { stats: { markees: number; messages: number; usd: number; views: number } }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -126,20 +126,20 @@ function MetricsStrip({ stats }: { stats: { domains: number; markees: number; me
     return () => { io.disconnect(); clearTimeout(t) }
   }, [])
 
-  const domains  = useCountUp(stats.domains,  started)
   const markees  = useCountUp(stats.markees,  started)
   const messages = useCountUp(stats.messages, started)
   const usd      = useCountUp(stats.usd,      started)
+  const views    = useCountUp(stats.views,    started)
   const narrow   = useNarrow()
   const fmt = (v: number) => narrow ? new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v) : v.toLocaleString()
 
   return (
     <section className="metrics-section" style={{ background: BG2, padding: '40px', borderBottom: `1px solid ${BORDER}` }}>
       <div ref={ref} className="metrics-row" style={{ maxWidth: 1240, margin: '0 auto' }}>
-        <StatCell n={fmt(domains)}  label="leaderboards"    color={PURP}  dot={PURP}  />
-        <StatCell n={fmt(markees)}  label="active Markees"  color={PINK}  dot={PINK}  />
-        <StatCell n={fmt(messages)} label="messages bought" color={TEXT}  dot={TEXT}  />
+        <StatCell n={fmt(markees)}   label="active Markees"     color={PINK}  dot={PINK}  />
+        <StatCell n={fmt(messages)}  label="messages bought"    color={TEXT}  dot={TEXT}  />
         <StatCell n={`$${fmt(usd)}`} label="total funds raised" color={GREEN} dot={GREEN} />
+        <StatCell n={fmt(views)}     label="views"              color={PURP}  dot={PURP}  />
       </div>
     </section>
   )
@@ -362,7 +362,7 @@ export default function MarketplacePage() {
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([])
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
-  const [ecoStats, setEcoStats]         = useState({ domains: 0, markees: 0, messages: 0, usd: 0 })
+  const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
 
   const [search,  setSearch]   = useState('')
   const [factory, setFactory]  = useState('all')
@@ -382,7 +382,7 @@ export default function MarketplacePage() {
         const active   = lbs.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         const messages = active.reduce((sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)), 0)
         const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
-        setEcoStats({ domains: lbs.length, markees: active.length, messages, usd: ethPrice ? Math.round(totalEth * ethPrice) : 0 })
+        setEcoStats({ markees: active.length, messages, usd: ethPrice ? Math.round(totalEth * ethPrice) : 0 })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -468,6 +468,11 @@ export default function MarketplacePage() {
     ? (viewsMap.get(featured.topMarkeeAddress.toLowerCase()) ?? 0)
     : 0
 
+  const totalViews = useMemo(
+    () => Array.from(viewsMap.values()).reduce((sum, v) => sum + v, 0),
+    [viewsMap]
+  )
+
   const FACTORIES = [
     { key: 'all',        label: 'All' },
     { key: 'website',    label: 'Websites' },
@@ -483,7 +488,7 @@ export default function MarketplacePage() {
       {featured && <FeaturedHero lb={featured} views={featuredViews} ethPrice={ethPrice} />}
 
       {/* ── Metrics strip ── */}
-      <MetricsStrip stats={ecoStats} />
+      <MetricsStrip stats={{ ...ecoStats, views: totalViews }} />
 
       {/* ── Leaderboard table ── */}
       <section style={{ padding: '34px 40px 90px', maxWidth: 1240, margin: '0 auto' }}>
