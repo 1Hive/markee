@@ -13,6 +13,7 @@ import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
+import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -37,17 +38,24 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
   )
 }
 
+function formatEthCompact(wei: string): string {
+  const n = parseFloat(formatEther(BigInt(wei)))
+  if (n === 0) return '0'
+  if (n === Math.floor(n)) return `${n}`
+  // up to 4 sig decimal places, strip trailing zeros
+  return parseFloat(n.toFixed(4)).toString()
+}
+
 // ── Hero reader sign ───────────────────────────────────────────────────────────
-function ReaderSign({ fixedMarkee, views }: {
+function ReaderSign({ fixedMarkee, views, onClick }: {
   fixedMarkee: FixedMarkee
   views?: { totalViews: number }
+  onClick: () => void
 }) {
-  const priceEth = fixedMarkee.priceWei !== '0'
-    ? parseFloat(formatEther(BigInt(fixedMarkee.priceWei)))
-    : null
+  const hasPrice = fixedMarkee.priceWei !== '0' && fixedMarkee.priceWei !== '0x0'
 
   return (
-    <Link href={`/markee/${V13_LEADERBOARDS.COOPERATIVE}`} className="reader-card">
+    <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left', width: '100%' }}>
       {views && views.totalViews > 0 && (
         <span className="reader-views">
           <Eye size={10} />
@@ -55,12 +63,12 @@ function ReaderSign({ fixedMarkee, views }: {
         </span>
       )}
       <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
-      {priceEth && (
+      {hasPrice && (
         <div className="reader-pill">
-          {priceEth.toFixed(3)} ETH to change
+          {formatEthCompact(fixedMarkee.priceWei)} ETH to change
         </div>
       )}
-    </Link>
+    </button>
   )
 }
 
@@ -318,6 +326,7 @@ function GhostButton({ href, children }: { href: string; children: React.ReactNo
 export default function Home() {
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
   const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
+  const [modalMarkee, setModalMarkee] = useState<FixedMarkee | null>(null)
   const { partnerData, isLoading: isLoadingPartners } = usePartnerMarkees()
   const ethPrice = useEthPrice()
 
@@ -402,6 +411,7 @@ export default function Home() {
                     key={fm.strategyAddress}
                     fixedMarkee={fm}
                     views={fixedViews.get(fm.strategyAddress.toLowerCase())}
+                    onClick={() => setModalMarkee(fm)}
                   />
                 ))
             }
@@ -597,6 +607,13 @@ export default function Home() {
       </section>
 
       <Footer />
+
+      <FixedPriceModal
+        isOpen={modalMarkee !== null}
+        onClose={() => setModalMarkee(null)}
+        fixedMarkee={modalMarkee}
+        onSuccess={() => setModalMarkee(null)}
+      />
     </div>
   )
 }
