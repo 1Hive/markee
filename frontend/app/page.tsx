@@ -639,10 +639,8 @@ export default function Home() {
 
       {buyModal && (
         <BuyMessageModal
-          leaderboardAddress={buyModal.leaderboardAddress}
-          minimumPrice={0n}
-          maxMessageLength={280}
-          existingMarkee={null}
+          isOpen={true}
+          strategyAddress={buyModal.leaderboardAddress}
           topFundsAdded={buyModal.topFundsAdded}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}

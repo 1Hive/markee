@@ -602,10 +602,8 @@ export default function MarketplacePage() {
 
       {buyModal && (
         <BuyMessageModal
-          leaderboardAddress={buyModal.address as `0x${string}`}
-          minimumPrice={0n}
-          maxMessageLength={280}
-          existingMarkee={null}
+          isOpen={true}
+          strategyAddress={buyModal.address as `0x${string}`}
           topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
           platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
           onClose={() => setBuyModal(null)}

@@ -8,7 +8,7 @@ import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl } from '@/lib/explorer'
@@ -464,7 +464,7 @@ export default function MarkeeDetailPage() {
 
       {/* Buy modal */}
       {topMarkee && (
-        <TopDawgModal
+        <BuyMessageModal
           isOpen={buyOpen}
           onClose={() => setBuyOpen(false)}
           onSuccess={() => setBuyOpen(false)}
@@ -476,7 +476,7 @@ export default function MarkeeDetailPage() {
 
       {/* Add Funds modal */}
       {modalTarget && (
-        <TopDawgModal
+        <BuyMessageModal
           isOpen={addFundsOpen}
           onClose={() => { setAddFundsOpen(false); setModalTarget(null) }}
           onSuccess={() => { setAddFundsOpen(false); setModalTarget(null) }}
@@ -489,7 +489,7 @@ export default function MarkeeDetailPage() {
 
       {/* Edit modal */}
       {modalTarget && (
-        <TopDawgModal
+        <BuyMessageModal
           isOpen={editOpen}
           onClose={() => { setEditOpen(false); setModalTarget(null) }}
           onSuccess={() => { setEditOpen(false); setModalTarget(null) }}

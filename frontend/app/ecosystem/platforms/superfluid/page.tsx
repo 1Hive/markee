@@ -659,10 +659,8 @@ function BoostedBuyModal({
 }) {
   return (
     <BuyMessageModal
-      leaderboardAddress={leaderboard.address as `0x${string}`}
-      minimumPrice={BigInt(leaderboard.minimumPriceRaw ?? '0')}
-      maxMessageLength={222}
-      existingMarkee={null}
+      isOpen={true}
+      strategyAddress={leaderboard.address as `0x${string}`}
       initialMode="create"
       topFundsAdded={BigInt(leaderboard.topFundsAddedRaw ?? '0')}
       platformId="superfluid"

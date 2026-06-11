@@ -1,62 +1,30 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import {
-  Trophy, X, Loader2, CheckCircle2, AlertCircle, ArrowRightLeft, Plus, ExternalLink,
-  CreditCard, Wallet,
-} from 'lucide-react'
-import {
-  useWriteContract, useWaitForTransactionReceipt,
-  useAccount, useSwitchChain, useBalance, useReadContract,
-} from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
+import { CreditCard } from 'lucide-react'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
-import { base } from 'viem/chains'
+import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
+import type { Markee } from '@/types'
 
-// ─── ABI (only the functions this modal calls) ────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const BG   = '#060A2A'
+const BG2  = '#0A0F3D'
+const PINK = '#F897FE'
+const BLUE = '#7C9CFF'
+const BORDER = 'rgba(138,143,191,0.2)'
+const MUTED  = '#8A8FBF'
+const TEXT   = '#EDEEFF'
+const TEXT2  = '#B8B6D9'
 
-const LEADERBOARD_ABI = [
-  {
-    inputs: [{ name: '_message', type: 'string' }, { name: '_name', type: 'string' }],
-    name: 'createMarkee',
-    outputs: [{ name: 'markeeAddress', type: 'address' }],
-    stateMutability: 'payable',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: 'markeeAddress', type: 'address' }],
-    name: 'addFunds',
-    outputs: [],
-    stateMutability: 'payable',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: 'markeeAddress', type: 'address' }, { name: '_message', type: 'string' }],
-    name: 'updateMessage',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'beneficiaryAddress',
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'revNetEnabled',
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-// ─── MARKEE token phases ──────────────────────────────────────────────────────
-
+// ── MARKEE token phases ───────────────────────────────────────────────────────
 const PHASES = [
   { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
   { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
@@ -77,522 +45,625 @@ function calculateMarkeeTokens(ethAmount: number): number {
   return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const REV_NET_ENABLED_ABI = [
+  { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
+] as const
 
-export interface MarkeeSlot {
-  address: string
-  message: string
-  name: string
-  owner: string
-  totalFundsAdded: bigint
-}
+const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
+  '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79',
+])
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+export type MarkeeSlot = { address: string; owner: string; message: string; name?: string; totalFundsAdded: bigint }
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 interface BuyMessageModalProps {
-  leaderboardAddress: `0x${string}`
-  minimumPrice: bigint
-  maxMessageLength: number
-  existingMarkee: MarkeeSlot | null
-  topFundsAdded?: bigint
-  initialMode?: 'create' | 'addFunds' | 'updateMessage'
+  isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
-  /** Controls platform-specific side-effects on purchase success.
-   *  - 'github'     → writes to SKILL.md via /api/github/update-markee-file (default)
-   *  - 'superfluid' → tracks Superfluid points via useSuperfluidPoints; skips GitHub write
-   */
+  userMarkee?: MarkeeSlot | null
+  initialMode?: 'create' | 'addFunds' | 'updateMessage'
+  onSuccess?: () => void
+  strategyAddress?: `0x${string}`
+  partnerName?: string
+  partnerSplitPercentage?: number
+  topFundsAdded?: bigint
   platformId?: 'github' | 'superfluid'
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
+// ── Small helpers ─────────────────────────────────────────────────────────────
+function ModalField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: 'block' }}>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 6 }}>
+        {label}
+      </div>
+      {children}
+    </label>
+  )
+}
+
+function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
+  const done = step === 'success'
+  return (
+    <div style={{
+      width: 72, height: 72, borderRadius: 99, flexShrink: 0,
+      background: done ? PINK : 'transparent',
+      border: done ? 'none' : `2px solid ${PINK}`,
+      borderTopColor: done ? undefined : 'transparent',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      animation: done ? 'none' : 'spin 1s linear infinite',
+      boxShadow: '0 0 32px rgba(248,151,254,0.3)',
+    }}>
+      {done && (
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+          <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
+  )
+}
+
+// ── Main modal ────────────────────────────────────────────────────────────────
 export function BuyMessageModal({
-  leaderboardAddress,
-  minimumPrice,
-  maxMessageLength,
-  existingMarkee,
-  topFundsAdded,
-  initialMode,
+  isOpen,
   onClose,
+  userMarkee,
+  initialMode,
   onSuccess,
+  strategyAddress: customStrategyAddress,
+  partnerName,
+  topFundsAdded,
   platformId,
 }: BuyMessageModalProps) {
+  const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
-  const { data: balanceData } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
-  const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
-  const { login } = usePrivy()
-  const { fundWallet } = useFundWallet()
-  const [isFunding, setIsFunding] = useState(false)
-
-  const { data: beneficiaryAddress } = useReadContract({
-    address: leaderboardAddress,
-    abi: LEADERBOARD_ABI,
-    functionName: 'beneficiaryAddress',
-    chainId: CANONICAL_CHAIN.id,
-  })
-
-  const { data: revNetEnabled } = useReadContract({
-    address: leaderboardAddress,
-    abi: LEADERBOARD_ABI,
-    functionName: 'revNetEnabled',
-    chainId: CANONICAL_CHAIN.id,
-  })
-
-  const isUpdateMessage = initialMode === 'updateMessage'
-  const isAddFunds = !isUpdateMessage && !!existingMarkee
-  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
-
+  const ethPrice = useEthPrice()
+  const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // ── Preset amounts ────────────────────────────────────────────────────────
+  const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
+
+  const { data: balanceData, refetch: refetchBalance } = useBalance({
+    address,
+    chainId: CANONICAL_CHAIN.id,
+  })
+
+  const { fundWallet } = useFundWallet({
+    onUserExited: () => { refetchBalance() },
+  })
+
+  const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
+  const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
+  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+
+  const { data: minimumPrice } = useReadContract({
+    address: strategyAddress, abi: strategyABI, functionName: 'minimumPrice', chainId: CANONICAL_CHAIN.id,
+  })
+  const { data: maxMessageLength } = useReadContract({
+    address: strategyAddress, abi: strategyABI, functionName: 'maxMessageLength', chainId: CANONICAL_CHAIN.id,
+  })
+  const { data: maxNameLength } = useReadContract({
+    address: strategyAddress, abi: strategyABI, functionName: 'maxNameLength', chainId: CANONICAL_CHAIN.id,
+  })
+  const { data: revNetEnabledData } = useReadContract({
+    address: strategyAddress, abi: REV_NET_ENABLED_ABI, functionName: 'revNetEnabled', chainId: CANONICAL_CHAIN.id,
+  })
+  const revNetEnabled = revNetEnabledData ?? false
+
+  // ── Preset amount calculations ──────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
-  const minimumAmount = minimumPrice > 0n ? minimumPrice : parseEther('0.001')
+  const minimumAmount = minimumPrice || parseEther('0.001')
+
+  const rawTakeFirstAmount = topFundsAdded && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT : null
+  const takeFirstAmount = rawTakeFirstAmount
+    ? rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount
+    : null
+
+  const addFundsRawTakeFirst = topFundsAdded && topFundsAdded > 0n && userMarkee
+    ? topFundsAdded + MIN_INCREMENT - userMarkee.totalFundsAdded
+    : null
+  const addFundsTakeFirstAmount = addFundsRawTakeFirst && addFundsRawTakeFirst > 0n ? addFundsRawTakeFirst : null
+
+  const userIsTopDawg = activeTab === 'addFunds' && userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
+  const activeTakeFirstAmount = activeTab === 'addFunds' ? addFundsTakeFirstAmount : takeFirstAmount
+
   const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
-
-  const rawTakeFirst = topFundsAdded && topFundsAdded > 0n
-    ? topFundsAdded + MIN_INCREMENT
-    : null
-  const takeFirstAmount = rawTakeFirst
-    ? (rawTakeFirst >= minimumAmount ? rawTakeFirst : minimumAmount)
-    : null
-  const takeFirstAmountFormatted = takeFirstAmount
-    ? Number(formatEther(takeFirstAmount)).toFixed(3)
+  const takeFirstAmountFormatted = activeTakeFirstAmount
+    ? Number(formatEther(activeTakeFirstAmount)).toFixed(3)
     : null
 
-  const addFundsRawTakeFirst = topFundsAdded && topFundsAdded > 0n && existingMarkee
-    ? topFundsAdded + MIN_INCREMENT - existingMarkee.totalFundsAdded
-    : null
-  const addFundsTakeFirstAmount = addFundsRawTakeFirst && addFundsRawTakeFirst > 0n
-    ? addFundsRawTakeFirst
-    : null
-  const addFundsTakeFirstFormatted = addFundsTakeFirstAmount
-    ? Number(formatEther(addFundsTakeFirstAmount)).toFixed(3)
-    : null
-
-  const activeTakeFirstFormatted = isAddFunds ? addFundsTakeFirstFormatted : takeFirstAmountFormatted
-  const hasCompetition = isAddFunds
+  const hasCompetition = activeTab === 'addFunds'
     ? !!addFundsTakeFirstAmount
     : !!(takeFirstAmount && takeFirstAmount >= minimumAmount)
 
-  const userIsTopDawg = isAddFunds && existingMarkee && topFundsAdded !== undefined
-    && existingMarkee.totalFundsAdded >= topFundsAdded
+  // ── Balance / affordability ─────────────────────────────────────────────────
+  const canAffordTransaction = () => {
+    if (!amount || !balanceData || parseFloat(amount) <= 0) return false
+    try {
+      return balanceData.value >= parseEther(amount) + parseEther('0.001')
+    } catch { return false }
+  }
 
-  // ── Set default amount on open ────────────────────────────────────────────
-  useEffect(() => {
-    if (hasCompetition && activeTakeFirstFormatted) {
-      setAmount(activeTakeFirstFormatted)
-    } else {
-      setAmount(minimumAmountFormatted)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // ── Platform-specific success side-effects ────────────────────────────────
-  useEffect(() => {
-    if (!isSuccess) return
-
-    if (platformId === 'superfluid') {
-      // Track points — skip for updateMessage (no ETH transferred)
-      if (!isUpdateMessage && address && receipt) {
-        const amountWei = (() => { try { return parseEther(amount).toString() } catch { return '0' } })()
-        const txHash = receipt.transactionHash
-        if (isAddFunds) {
-          trackAddFunds(address, amountWei, txHash, leaderboardAddress).catch(console.error)
-        } else {
-          trackBuyMessage(address, amountWei, txHash, leaderboardAddress).catch(console.error)
-        }
+  const getInsufficientBalanceMessage = () => {
+    if (!amount || !balanceData || parseFloat(amount) <= 0) return null
+    try {
+      if (balanceData.value < parseEther(amount) + parseEther('0.001')) {
+        return "You don't have enough ETH to complete this transaction."
       }
-    } else {
-      // Default: GitHub — fire best-effort SKILL.md write
-      fetch('/api/github/update-markee-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress }),
-      }).catch(() => {})
-    }
+    } catch { return 'Invalid amount entered' }
+    return null
+  }
 
-    setTimeout(() => { onSuccess(); onClose() }, 2500)
-  // amount is captured at confirmation time — intentionally excluded from deps
+  const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
+  const balanceWarning = getInsufficientBalanceMessage()
+
+  // ── Effects ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return
+    if (initialMode) setActiveTab(initialMode)
+    else if (userMarkee) setActiveTab('addFunds')
+    else setActiveTab('create')
+    setMessage('')
+    setError(null)
+    reset()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userMarkee, initialMode, isOpen, reset])
+
+  useEffect(() => {
+    if (!isOpen) return
+    if (hasCompetition && takeFirstAmountFormatted) setAmount(takeFirstAmountFormatted)
+    else setAmount(minimumAmountFormatted)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  useEffect(() => {
+    if (isSuccess && isOpen) {
+      setTimeout(() => {
+        setMessage('')
+        setAmount('')
+        setError(null)
+        onSuccess?.()
+        onClose()
+      }, 2000)
+    }
+  }, [isSuccess, onClose, isOpen, onSuccess])
+
+  useEffect(() => {
+    if (!isSuccess || !receipt || !address || !strategyAddress || activeTab === 'updateMessage') return
+    const normalised = strategyAddress.toLowerCase()
+    if (!SUPERFLUID_STRATEGY_ADDRESSES.has(normalised)) return
+    const txHash = receipt.transactionHash
+    const amountWei = parseEther(amount).toString()
+    if (activeTab === 'addFunds') trackAddFunds(address, amountWei, txHash, strategyAddress).catch(console.error)
+    else trackBuyMessage(address, amountWei, txHash, strategyAddress).catch(console.error)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, receipt, address])
+
+  useEffect(() => {
+    if (!isSuccess || !strategyAddress || activeTab === 'updateMessage' || platformId !== 'github') return
+    fetch('/api/github/update-markee-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leaderboardAddress: strategyAddress }),
+    }).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 
-  const amountWei = (() => { try { return parseEther(amount) } catch { return 0n } })()
-  const canAfford = balanceData ? balanceData.value >= amountWei : true
-
-  const handleSubmit = () => {
+  // ── Handlers ─────────────────────────────────────────────────────────────────
+  const handleCreateMarkee = async () => {
+    if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
+    if (!message.trim()) { setError('Please enter a message'); return }
+    if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
+    const amountWei = parseEther(amount)
+    const minPrice = minimumPrice || BigInt(0)
+    if (amountWei < minPrice) { setError(`Minimum payment is ${formatEther(minPrice)} ETH`); return }
+    if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
+    if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
-    if (isUpdateMessage) {
-      if (!message.trim()) { setError('Message cannot be empty.'); return }
-      if (message.length > maxMessageLength) { setError(`Max ${maxMessageLength} characters.`); return }
-      if (!existingMarkee) return
-      writeContract({
-        address: leaderboardAddress,
-        abi: LEADERBOARD_ABI,
-        functionName: 'updateMessage',
-        args: [existingMarkee.address as `0x${string}`, message],
-      })
-      return
-    }
-    if (!isAddFunds && !message.trim()) { setError('Message cannot be empty.'); return }
-    if (message.length > maxMessageLength) { setError(`Max ${maxMessageLength} characters.`); return }
-    if (amountWei <= 0n) { setError('Enter a valid ETH amount.'); return }
-    if (amountWei < minimumAmount) { setError(`Minimum is ${formatEther(minimumAmount)} ETH.`); return }
-    if (!canAfford) { setError('Insufficient ETH balance.'); return }
-
-    if (isAddFunds && existingMarkee) {
-      writeContract({
-        address: leaderboardAddress,
-        abi: LEADERBOARD_ABI,
-        functionName: 'addFunds',
-        args: [existingMarkee.address as `0x${string}`],
-        value: amountWei,
-      })
-    } else {
-      writeContract({
-        address: leaderboardAddress,
-        abi: LEADERBOARD_ABI,
-        functionName: 'createMarkee',
-        args: [message, name],
-        value: amountWei,
-      })
-    }
+    try {
+      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name], value: amountWei, chainId: CANONICAL_CHAIN.id })
+    } catch (err: any) { setError(err.message || 'Transaction failed') }
   }
 
-  // ── Amount selector ───────────────────────────────────────────────────────
-  const amountSelectorJSX = (
-    <div className="space-y-3">
-      {userIsTopDawg && (
-        <div className="rounded-xl p-4 border-2 border-[#FFD700]/50 bg-[#FFD700]/10 flex items-start gap-3">
-          <Trophy size={20} className="text-[#FFD700] flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-[#FFD700]">👑 This message holds the top spot!</p>
-            <p className="text-xs text-[#FFD700]/80 mt-0.5">Add more funds to make it harder to overtake.</p>
-          </div>
-        </div>
-      )}
+  const handleAddFunds = async () => {
+    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please connect wallet and ensure you have a Markee'); return }
+    if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
+    if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
+    setError(null)
+    try {
+      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'addFunds', args: [userMarkee.address as `0x${string}`], value: parseEther(amount), chainId: CANONICAL_CHAIN.id })
+    } catch (err: any) { setError(err.message || 'Transaction failed') }
+  }
 
-      <label className="block text-[#8A8FBF] text-xs uppercase tracking-wider">Amount (ETH)</label>
+  const handleUpdateMessage = async () => {
+    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please connect wallet and ensure you have a Markee'); return }
+    if (!message.trim()) { setError('Please enter a message'); return }
+    if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
+    setError(null)
+    try {
+      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'updateMessage', args: [userMarkee.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
+    } catch (err: any) { setError(err.message || 'Transaction failed') }
+  }
 
-      {!userIsTopDawg && (
-        <div className={`grid ${hasCompetition ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
-          {hasCompetition && activeTakeFirstFormatted && (
-            <button
-              type="button"
-              onClick={() => setAmount(activeTakeFirstFormatted)}
-              className={`rounded-lg p-3 border-2 transition-all text-left ${
-                amount === activeTakeFirstFormatted
-                  ? 'border-[#F897FE] bg-[#F897FE]/10'
-                  : 'border-[#F897FE]/30 hover:border-[#F897FE]/60 bg-[#060A2A]'
-              }`}
-            >
-              <div className="flex items-center gap-1 mb-1">
-                <p className="text-xs font-medium text-[#F897FE]">Featured Message</p>
-                <span className="text-[10px]">👑</span>
-              </div>
-              <p className="text-sm font-bold text-[#EDEEFF]">{activeTakeFirstFormatted} ETH</p>
-              <p className="text-[10px] text-[#F897FE] mt-0.5">
-                {isAddFunds ? 'Additional ETH needed to take the top spot' : 'Price to take the top spot'}
-              </p>
-            </button>
-          )}
-          {!isAddFunds && (
-            <button
-              type="button"
-              onClick={() => setAmount(minimumAmountFormatted)}
-              className={`rounded-lg p-3 border-2 transition-all text-left ${
-                amount === minimumAmountFormatted
-                  ? 'border-[#8A8FBF] bg-[#8A8FBF]/10'
-                  : 'border-[#8A8FBF]/20 hover:border-[#8A8FBF]/50 bg-[#060A2A]'
-              }`}
-            >
-              <p className="text-xs font-medium text-[#8A8FBF] mb-1">Minimum</p>
-              <p className="text-sm font-bold text-[#EDEEFF]">{minimumAmountFormatted} ETH</p>
-              <p className="text-[10px] text-[#8A8FBF] mt-0.5">Buy a message at the lowest price</p>
-            </button>
-          )}
-        </div>
-      )}
+  if (!isOpen) return null
 
-      <input
-        type="number"
-        value={amount}
-        onChange={e => setAmount(e.target.value)}
-        placeholder={minimumAmountFormatted}
-        step="0.001"
-        min="0"
-        className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-      />
-      {balanceData && (
-        <p className="text-xs text-[#8A8FBF]">
-          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-        </p>
-      )}
-    </div>
-  )
+  const canSwitchTabs = !isPending && !isConfirming
+  const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
+  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const maxLen = Number(maxMessageLength || 223)
 
-  // ── Beneficiary display ───────────────────────────────────────────────────
-  const shortBeneficiary = beneficiaryAddress
-    ? `${beneficiaryAddress.slice(0, 6)}…${beneficiaryAddress.slice(-4)}`
-    : null
-  const basescanUrl = beneficiaryAddress
-    ? `https://basescan.org/address/${beneficiaryAddress}`
-    : null
+  const stepLabel =
+    txStep === 'signing' ? 'AWAITING SIGNATURE' :
+    txStep === 'pending' ? 'CONFIRMING ONCHAIN' :
+    txStep === 'success' ? 'CONFIRMED' :
+    activeTab === 'addFunds' ? 'ADD FUNDS' :
+    activeTab === 'updateMessage' ? 'UPDATE MESSAGE' :
+    'BUY A NEW MESSAGE'
 
-  // ── Revenue split info panel ──────────────────────────────────────────────
-  const revenueSplitJSX = (
-    <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
-      <div className="text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Revenue split</div>
-      <div className="flex justify-between items-center">
-        {beneficiaryAddress && shortBeneficiary && basescanUrl ? (
-          <a
-            href={basescanUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[#EDEEFF] hover:text-[#FFA94D] transition-colors font-mono text-xs"
-          >
-            {shortBeneficiary}
-            <ExternalLink size={11} className="opacity-60" />
-          </a>
-        ) : (
-          <span className="text-[#EDEEFF]">Beneficiary</span>
-        )}
-        <span className="text-[#FFA94D] font-semibold">{revNetEnabled ? '62%' : '100%'}</span>
-      </div>
-      {revNetEnabled && (
-        <div className="flex justify-between items-center mt-1.5">
-          <span className="text-[#EDEEFF]">Markee Cooperative</span>
-          <span className="text-[#7C9CFF] font-semibold">38%</span>
-        </div>
-      )}
-    </div>
-  )
+  // Amount section (create + addFunds)
+  const bidNum = parseFloat(amount || '0')
+  const markeeEarned = Math.round(calculateMarkeeTokens(bidNum))
+  const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
+  const selMin = amount === minimumAmountFormatted
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
+    border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
+    fontFamily: MONO, fontSize: 13, outline: 'none',
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative bg-gradient-to-br from-[#0A0F3D] to-[#060A2A] border border-[#8A8FBF]/30 rounded-xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors">
-          <X size={20} />
-        </button>
-
-        {isSuccess ? (
-          <div className="flex flex-col items-center gap-4 py-6">
-            <CheckCircle2 size={44} className="text-green-400" />
-            <p className="text-[#EDEEFF] font-bold text-xl">
-              {isUpdateMessage ? 'Message updated!' : isAddFunds ? 'Funds added!' : 'Message live!'}
-            </p>
-            <p className="text-[#8A8FBF] text-sm text-center">
-              {isUpdateMessage ? 'Your new message is now live.' : isAddFunds ? 'Your boost has been recorded onchain.' : 'Your message is now on the leaderboard.'}
-            </p>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        animation: 'fadeIn 180ms ease forwards',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 560,
+          background: BG2, borderRadius: 16,
+          border: `1px solid ${BORDER}`,
+          boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          fontFamily: 'Manrope, system-ui, sans-serif',
+          color: TEXT, overflow: 'hidden',
+          animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+          maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        {/* ── Header ── */}
+        <div style={{
+          padding: '18px 22px', borderBottom: `1px solid ${BORDER}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            {stepLabel}
           </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* ── Tx state panel ── */}
+        {txStep ? (
+          <div style={{ padding: '60px 22px 52px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
+            <TxRing step={txStep} />
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                {txStep === 'signing' && 'Waiting for wallet...'}
+                {txStep === 'pending' && 'Transaction pending on Base'}
+                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : '🎉 You just took #1')}
+              </div>
+              <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
+                {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
+                {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
+                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : `"${message}" is now the #1 Markee. The board is reordering.`)}
+              </div>
+            </div>
+          </div>
+
+        ) : !isConnected ? (
+          /* ── Connect wallet ── */
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
+          </div>
+
+        ) : !isCorrectChain ? (
+          /* ── Wrong chain ── */
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
+            <button
+              onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
+              style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+            >
+              Switch to Base
+            </button>
+          </div>
+
         ) : (
           <>
-            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">
-              {isUpdateMessage ? 'Edit Message' : isAddFunds ? 'Add Funds' : 'Buy a Message'}
-            </h2>
+            {/* ── Compose body ── */}
+            <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 20, fontWeight: 800, letterSpacing: -0.4, color: TEXT }}>
+                {activeTab === 'addFunds' ? 'Add funds to this message.' : 'Buy a new message'}
+              </h3>
 
-            {!isConnected ? (
-              <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Sign in to buy a message -- use email, social, or a crypto wallet.</p>
-                <button
-                  onClick={login}
-                  type="button"
-                  className="w-full flex items-center justify-center gap-2 bg-[#7C9CFF] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#F897FE] transition-colors"
-                >
-                  <Wallet size={18} />
-                  Sign in to continue
-                </button>
-              </div>
-            ) : !isCorrectChain ? (
-              <div className="space-y-4">
-                <p className="text-[#8A8FBF] text-sm">Switch to Base to continue.</p>
-                <button
-                  onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
-                  className="w-full flex items-center justify-center gap-2 bg-[#FFA94D] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  <ArrowRightLeft size={16} />
-                  Switch to Base
-                </button>
-              </div>
-            ) : isUpdateMessage && existingMarkee ? (
-              /* ── Update message ── */
-              <div className="space-y-5">
-                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
-                  <div className="text-[#8A8FBF] text-xs mb-1 uppercase tracking-wider">Current message</div>
-                  <p className="text-[#EDEEFF] font-mono text-sm">{existingMarkee.message}</p>
+              {/* Tabs - only when user owns this markee */}
+              {userMarkee && isOwner && (
+                <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, marginBottom: 18 }}>
+                  {(['addFunds', 'updateMessage'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => canSwitchTabs && setActiveTab(tab)}
+                      style={{
+                        background: 'transparent', border: 'none', cursor: canSwitchTabs ? 'pointer' : 'default',
+                        padding: '8px 16px 10px', fontFamily: 'inherit', fontSize: 13,
+                        color: activeTab === tab ? PINK : MUTED,
+                        borderBottom: `2px solid ${activeTab === tab ? PINK : 'transparent'}`,
+                        marginBottom: -1, transition: 'color 140ms',
+                        opacity: canSwitchTabs ? 1 : 0.5,
+                      }}
+                    >
+                      {tab === 'addFunds' ? 'Add Funds' : 'Update Message'}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-[#8A8FBF] text-xs uppercase tracking-wider">New Message</label>
-                    <span className={`text-xs ${message.length > maxMessageLength ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
-                      {message.length}/{maxMessageLength}
-                    </span>
-                  </div>
-                  <textarea
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    placeholder="Write your new message…"
-                    rows={3}
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors resize-none"
-                  />
-                </div>
-                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-xs text-[#8A8FBF]">
-                  💡 Only the owner can update a message. Anyone can add funds to move it up the leaderboard.
-                </div>
-                {(error || writeError) && (
-                  <div className="flex items-start gap-2 text-red-400 text-sm">
-                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error ?? writeError?.message}</span>
-                  </div>
-                )}
-                <button
-                  onClick={handleSubmit}
-                  disabled={isPending || isConfirming || !message.trim()}
-                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending || isConfirming ? (
-                    <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
+              )}
+
+              {/* Message preview (buy) or funded message read-only (addFunds) */}
+              {activeTab !== 'updateMessage' && (
+                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: activeTab === 'create' ? 80 : undefined, marginBottom: 18 }}>
+                  {activeTab === 'addFunds' ? (
+                    <>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                        {userMarkee?.message || '—'}
+                      </div>
+                      {userMarkee?.name && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
+                      )}
+                    </>
                   ) : (
-                    'Update Message'
+                    <>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: message ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                        {message || 'Type your message below...'}
+                        {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontStyle: 'italic' }}>- {name || 'anon'}</span>
+                        <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
+                      </div>
+                    </>
                   )}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-5">
-                {/* Message input — create only */}
-                {!isAddFunds && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-[#8A8FBF] text-xs uppercase tracking-wider">Your Message</label>
-                      <span className={`text-xs ${message.length > maxMessageLength ? 'text-red-400' : 'text-[#8A8FBF]'}`}>
-                        {message.length}/{maxMessageLength}
-                      </span>
-                    </div>
+                </div>
+              )}
+
+              {/* Create: message + name inputs */}
+              {activeTab === 'create' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
+                  <ModalField label="Message">
                     <textarea
                       value={message}
-                      onChange={e => setMessage(e.target.value)}
-                      placeholder="Write your message…"
-                      rows={3}
-                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors resize-none"
+                      onChange={e => setMessage(e.target.value.slice(0, maxLen))}
+                      placeholder="the name's mark. agent mark 🕵️"
+                      rows={2}
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                      onFocus={e => { e.target.style.borderColor = PINK }}
+                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      disabled={isPending || isConfirming}
                     />
+                  </ModalField>
+                  <ModalField label="Name (optional)">
                     <input
                       value={name}
-                      onChange={e => setName(e.target.value)}
-                      placeholder="Display name (optional)"
-                      className="mt-2 w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-2.5 text-[#EDEEFF] text-sm outline-none transition-colors"
+                      onChange={e => setName(e.target.value.slice(0, Number(maxNameLength || 32)))}
+                      placeholder="anon"
+                      style={{ ...inputStyle }}
+                      onFocus={e => { e.target.style.borderColor = PINK }}
+                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      disabled={isPending || isConfirming}
                     />
+                  </ModalField>
+                </div>
+              )}
+
+              {/* Update Message: current + new textarea */}
+              {activeTab === 'updateMessage' && userMarkee && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+                  <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
+                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
                   </div>
-                )}
+                  <ModalField label="New Message">
+                    <textarea
+                      value={message}
+                      onChange={e => setMessage(e.target.value.slice(0, maxLen))}
+                      placeholder="Enter your new message..."
+                      rows={3}
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                      onFocus={e => { e.target.style.borderColor = PINK }}
+                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      disabled={isPending || isConfirming}
+                    />
+                  </ModalField>
+                </div>
+              )}
 
-                {/* Boosting preview — addFunds */}
-                {isAddFunds && existingMarkee?.message && (
-                  <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">
-                    <div className="text-[#8A8FBF] text-xs mb-1 uppercase tracking-wider">Boosting</div>
-                    <p className="text-[#EDEEFF] font-mono text-sm line-clamp-2">{existingMarkee.message}</p>
-                  </div>
-                )}
+              {/* Amount section (create + addFunds) */}
+              {activeTab !== 'updateMessage' && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 10 }}>Amount (ETH)</div>
 
-                {amountSelectorJSX}
-
-                {/* MARKEE token display */}
-                {revNetEnabled && amountWei > 0n && (
-                  <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 border-2 border-[#F897FE]/50 rounded-xl p-4 text-center">
-                    <p className="text-sm text-[#F897FE] font-medium mb-1">You'll receive</p>
-                    <p className="text-3xl font-bold text-[#F897FE] mb-1">
-                      {Math.floor(calculateMarkeeTokens(parseFloat(amount || '0'))).toLocaleString()}
-                    </p>
-                    <p className="text-sm font-semibold text-[#F897FE]">MARKEE tokens</p>
-                  </div>
-                )}
-
-                {/* Payment info panel */}
-                {isAddFunds && existingMarkee && (
-                  <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-[#8A8FBF] text-xs">Current funds</span>
-                      <span className="text-xs font-medium text-[#EDEEFF]">{formatEther(existingMarkee.totalFundsAdded)} ETH</span>
-                    </div>
-                    {amount && parseFloat(amount) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-[#8A8FBF] text-xs">Adding</span>
-                        <span className="text-xs font-medium text-[#7C9CFF]">+ {amount} ETH</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between border-t border-[#8A8FBF]/15 pt-2">
-                      <span className="text-[#8A8FBF] text-xs font-semibold">New total</span>
-                      <span className="text-sm font-bold text-[#F897FE]">
-                        {amount && parseFloat(amount) > 0
-                          ? (parseFloat(formatEther(existingMarkee.totalFundsAdded)) + parseFloat(amount)).toFixed(3)
-                          : formatEther(existingMarkee.totalFundsAdded)
-                        } ETH
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {revenueSplitJSX}
-
-                {!isUpdateMessage && !canAfford && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-[#8A8FBF] text-center">
-                      Your wallet balance is too low for this amount.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={isFunding}
-                      onClick={async () => {
-                        if (!address) return
-                        setIsFunding(true)
-                        try {
-                          await fundWallet({
-                            address,
-                            options: { chain: base, amount: amount || undefined },
-                          })
-                        } catch (e: any) {
-                          setError(e?.message || 'Card funding is not available. Please fund your wallet manually.')
-                        } finally {
-                          setIsFunding(false)
-                        }
-                      }}
-                      className="w-full flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#7C9CFF]/50 text-[#7C9CFF] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isFunding ? (
-                        <><Loader2 size={18} className="animate-spin" /> Opening payment…</>
-                      ) : (
-                        <><CreditCard size={18} /> Fund with card / Apple Pay / PayPal</>
+                  {/* Preset cards */}
+                  {!userIsTopDawg && (
+                    <div style={{ display: 'grid', gridTemplateColumns: hasCompetition ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
+                      {hasCompetition && takeFirstAmountFormatted && (
+                        <button
+                          onClick={() => setAmount(takeFirstAmountFormatted)}
+                          disabled={isPending || isConfirming}
+                          style={{
+                            textAlign: 'left', cursor: 'pointer',
+                            background: selFeatured ? 'rgba(248,151,254,0.08)' : BG,
+                            border: `1.5px solid ${selFeatured ? PINK : BORDER}`,
+                            borderRadius: 12, padding: '13px 15px',
+                            transition: 'border-color 140ms',
+                          }}
+                        >
+                          <div style={{ color: selFeatured ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Featured Message 👑</div>
+                          <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{takeFirstAmountFormatted} ETH</div>
+                          {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(parseFloat(takeFirstAmountFormatted) * ethPrice)}</div>}
+                          <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
+                            {activeTab === 'addFunds' ? 'Additional ETH to take the top spot' : 'Price to take the top spot'}
+                          </div>
+                        </button>
                       )}
-                    </button>
-                  </div>
-                )}
-
-                {(error || writeError) && (
-                  <div className="flex items-start gap-2 text-red-400 text-sm">
-                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error ?? writeError?.message}</span>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSubmit}
-                  disabled={isPending || isConfirming || !canAfford}
-                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending || isConfirming ? (
-                    <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
-                  ) : isAddFunds ? (
-                    <>Add {amount} ETH</>
-                  ) : (
-                    <><Plus size={18} /> Buy for {amount} ETH</>
+                      {activeTab !== 'addFunds' && (
+                        <button
+                          onClick={() => setAmount(minimumAmountFormatted)}
+                          disabled={isPending || isConfirming}
+                          style={{
+                            textAlign: 'left', cursor: 'pointer',
+                            background: selMin ? 'rgba(248,151,254,0.08)' : BG,
+                            border: `1.5px solid ${selMin ? PINK : BORDER}`,
+                            borderRadius: 12, padding: '13px 15px',
+                            transition: 'border-color 140ms',
+                          }}
+                        >
+                          <div style={{ color: selMin ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Minimum</div>
+                          <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>0.001 ETH</div>
+                          {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(0.001 * ethPrice)}</div>}
+                          <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Buy a message at the lowest price</div>
+                        </button>
+                      )}
+                    </div>
                   )}
-                </button>
+
+                  {/* #1 spot banner */}
+                  {userIsTopDawg && (
+                    <div style={{ borderRadius: 10, border: '1.5px solid rgba(255,215,0,0.4)', background: 'rgba(255,215,0,0.08)', padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>👑</span>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#FFD700' }}>This message holds the top spot!</p>
+                        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(255,215,0,0.7)' }}>Add more funds to make it harder for anyone to overtake you.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ETH input */}
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder={minimumAmountFormatted}
+                    step="0.0001"
+                    style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 16px' }}
+                    disabled={isPending || isConfirming}
+                    onFocus={e => { e.target.style.borderColor = PINK }}
+                    onBlur={e => { e.target.style.borderColor = BORDER }}
+                  />
+
+                  {/* Balance */}
+                  {balanceData && (
+                    <div style={{ fontSize: 12, color: MUTED, marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span>Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</span>
+                      {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
+                    </div>
+                  )}
+
+                  {/* MARKEE token estimate */}
+                  {revNetEnabled && bidNum > 0 && (
+                    <div style={{ marginTop: 14, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
+                      <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
+                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString()}</div>
+                      <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Insufficient balance + fund card */}
+              {insufficientBalance && balanceWarning && (
+                <div style={{ borderRadius: 10, border: '1px solid rgba(255,165,0,0.3)', background: 'rgba(255,165,0,0.08)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
+                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
+                  </div>
+                  {authenticated && address && (
+                    <button
+                      onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount } })}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      <CreditCard size={13} />
+                      Fund with card
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Error */}
+              {(error || isError) && (
+                <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
+                  {error || writeError?.message}
+                </p>
+              )}
+            </div>
+
+            {/* ── Footer ── */}
+            <div style={{
+              padding: '14px 22px', borderTop: `1px solid ${BORDER}`,
+              background: 'rgba(6,10,42,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+              flexShrink: 0,
+            }}>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
+                {activeTab === 'addFunds'
+                  ? 'Funds are added onchain to this message.'
+                  : activeTab === 'updateMessage'
+                  ? 'Only the message owner can update their message.'
+                  : partnerName
+                  ? <>62% of funds go to <span style={{ color: TEXT2 }}>{partnerName}</span>.</>
+                  : 'Funds go directly to the integration owner.'}
               </div>
-            )}
+              <button
+                onClick={() => {
+                  if (activeTab === 'create') handleCreateMarkee()
+                  else if (activeTab === 'addFunds') handleAddFunds()
+                  else handleUpdateMessage()
+                }}
+                disabled={
+                  isPending || isConfirming || isSuccess ||
+                  (activeTab !== 'updateMessage' && insufficientBalance) ||
+                  ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())
+                }
+                style={{
+                  background: PINK, color: BG, border: 'none', borderRadius: 8,
+                  padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                  cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                  opacity: (isPending || isConfirming || isSuccess || (activeTab !== 'updateMessage' && insufficientBalance) || ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())) ? 0.4 : 1,
+                  transition: 'opacity 140ms',
+                }}
+              >
+                {activeTab === 'create' ? 'Buy Message' : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
+              </button>
+            </div>
           </>
         )}
       </div>

@@ -9,7 +9,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { useReactions } from '@/hooks/useReactions'
 import { useViews } from '@/hooks/useViews'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
@@ -389,7 +389,7 @@ export default function PartnerPage() {
 
       <Footer />
 
-      <TopDawgModal
+      <BuyMessageModal
         isOpen={isModalOpen}
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
