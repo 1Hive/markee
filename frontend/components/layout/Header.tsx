@@ -7,7 +7,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { EthBalance } from '@/components/wallet/EthBalance'
 
 interface HeaderProps {
-  activePage?: 'home' | 'marketplace' | 'raise' | 'own'
+  activePage?: string
   useRegularLinks?: boolean
 }
 

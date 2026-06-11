@@ -74,11 +74,9 @@ const nextConfig = {
 
   async redirects() {
     return [
-      {
-        source: '/ecosystem',
-        destination: '/create-a-markee',
-        permanent: true,
-      },
+      { source: '/ecosystem', destination: '/create-a-markee', permanent: true },
+      { source: '/raise-funding', destination: '/create-a-markee', permanent: false },
+      { source: '/own-the-network', destination: '/owners', permanent: false },
     ]
   },
 

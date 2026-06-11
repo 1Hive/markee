@@ -1,490 +1,585 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
-import { useAccount } from 'wagmi'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { Header } from '@/components/layout/Header'
-import { Footer } from '@/components/layout/Footer'
-import { useMarkees } from '@/lib/contracts/useMarkees'
-import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
-import { useReactions } from '@/hooks/useReactions'
-import { useViews } from '@/hooks/useViews'
-import { useFixedViews } from '@/hooks/useFixedViews'
-import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
-import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
-import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
-import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { Eye } from 'lucide-react'
 import { formatEther } from 'viem'
-
-import { formatDistanceToNow } from 'date-fns'
-import { NETWORK_PAUSED } from '@/lib/paused'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
+import { useFixedViews } from '@/hooks/useFixedViews'
+import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
-import type { Markee } from '@/types'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
+const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+
+function formatViews(n: number) {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
+}
+
+// ── Eyebrow label ─────────────────────────────────────────────────────────────
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      fontFamily: MONO, fontSize: 11, letterSpacing: 2,
+      textTransform: 'uppercase', color: '#F897FE',
+    }}>
+      <span style={{ width: 18, height: 1, background: '#F897FE', display: 'inline-block' }} />
+      {children}
+    </div>
+  )
+}
+
+// ── Hero reader sign ───────────────────────────────────────────────────────────
+function ReaderSign({ fixedMarkee, views }: {
+  fixedMarkee: FixedMarkee
+  views?: { totalViews: number }
+}) {
+  const priceEth = fixedMarkee.priceWei !== '0'
+    ? parseFloat(formatEther(BigInt(fixedMarkee.priceWei)))
+    : null
+
+  return (
+    <Link href={`/markee/${V13_LEADERBOARDS.COOPERATIVE}`} className="reader-card">
+      {views && views.totalViews > 0 && (
+        <span className="reader-views">
+          <Eye size={10} />
+          {formatViews(views.totalViews)}
+        </span>
+      )}
+      <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
+      {priceEth && (
+        <div className="reader-pill">
+          {priceEth.toFixed(3)} ETH to change
+        </div>
+      )}
+    </Link>
+  )
+}
+
+// ── Count-up hook ─────────────────────────────────────────────────────────────
+function useCountUp(target: number, started: boolean, duration = 1600) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    if (!started) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setVal(target); return }
+    const t0 = performance.now()
+    let raf: number
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setVal(Math.round(target * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [started, target, duration])
+  return val
+}
+
+function useNarrow() {
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    setNarrow(mq.matches)
+    const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
+
+// ── Stat cell ─────────────────────────────────────────────────────────────────
+function StatCell({ n, label, color, dot }: { n: string; label: string; color: string; dot: string }) {
+  return (
+    <div className="metric-cell">
+      <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="metric-dot" style={{ width: 9, height: 9, borderRadius: 99, background: dot, boxShadow: `0 0 12px ${dot}`, flexShrink: 0 }} />
+        <span className="metric-num" style={{ fontSize: 34, fontWeight: 800, color, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+      </span>
+      <span className="metric-label" style={{ fontSize: 13, color: '#8A8FBF', marginLeft: 17 }}>{label}</span>
+    </div>
+  )
+}
+
+// ── Metrics row ───────────────────────────────────────────────────────────────
+function MetricsRow({ stats }: { stats: { domains: number; markees: number; messages: number; usd: number } }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [started, setStarted] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let done = false
+    const go = () => { if (!done) { done = true; setStarted(true) } }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { go(); io.disconnect() } })
+    }, { threshold: 0.4 })
+    io.observe(el)
+    const t = setTimeout(go, 600)
+    return () => { io.disconnect(); clearTimeout(t) }
+  }, [])
+
+  const domains = useCountUp(stats.domains, started)
+  const markees = useCountUp(stats.markees, started)
+  const messages = useCountUp(stats.messages, started)
+  const usd = useCountUp(stats.usd, started)
+  const narrow = useNarrow()
+  const f = (v: number) => narrow
+    ? new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v)
+    : v.toLocaleString()
+
+  return (
+    <div ref={ref} className="metrics-row">
+      <StatCell n={f(domains)} label="leaderboards" color="#7B6AF4" dot="#7B6AF4" />
+      <StatCell n={f(markees)} label="active Markees" color="#F897FE" dot="#F897FE" />
+      <StatCell n={f(messages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
+      <StatCell n={`$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
+    </div>
+  )
+}
+
+// ── Section heading ───────────────────────────────────────────────────────────
+function SectionHead({ kicker, title, sub, action }: {
+  kicker: string
+  title: string
+  sub?: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, marginBottom: 28, flexWrap: 'wrap' }}>
+      <div>
+        <div style={{ marginBottom: 14 }}><Eyebrow>{kicker}</Eyebrow></div>
+        <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, letterSpacing: -0.6, color: '#EDEEFF' }}>{title}</h2>
+        {sub && <p style={{ margin: '10px 0 0', color: '#B8B6D9', fontSize: 16, maxWidth: '52ch' }}>{sub}</p>}
+      </div>
+      {action}
+    </div>
+  )
+}
+
+// ── Platform glyphs ───────────────────────────────────────────────────────────
+function PlatformGlyph({ icon, size = 26, color }: { icon: string; size?: number; color: string }) {
+  const common = { width: size, height: size, viewBox: '0 0 24 24' as const, fill: 'none', stroke: color, strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  if (icon === 'globe') return (
+    <svg {...common}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  )
+  if (icon === 'github') return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z" />
+    </svg>
+  )
+  if (icon === 'zap') return (
+    <svg {...common}>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  )
+  return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>
+}
+
+const PLATFORMS = [
+  { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE' },
+  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF' },
+  { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227' },
+] as const
+
+function PlatformCard({ p }: { p: typeof PLATFORMS[number] }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <Link
+      href="/raise-funding"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 18, textDecoration: 'none',
+        background: 'rgba(6,10,42,0.5)',
+        border: `1px solid ${hover ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)'}`,
+        borderRadius: 14, padding: 22, cursor: 'pointer',
+        transform: hover ? 'translateY(-2px)' : 'none',
+        transition: 'border-color 160ms, transform 160ms',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <span style={{
+          width: 48, height: 48, borderRadius: 12,
+          background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <PlatformGlyph icon={p.icon} color={p.color} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: '#EDEEFF', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>{p.name}</div>
+          <div style={{ color: '#8A8FBF', fontSize: 12.5, marginTop: 3 }}>{p.blurb}</div>
+        </div>
+      </div>
+      <div style={{ borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 16 }}>
+        <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
+      </div>
+    </Link>
+  )
+}
+
+// ── Revnet widget (migration-paused state) ────────────────────────────────────
+function RevnetWidget() {
+  return (
+    <div style={{ width: 'min(440px, 100%)', margin: '36px auto 30px', textAlign: 'left' }}>
+      <div style={{
+        background: '#0A0F3D', border: '1px solid rgba(138,143,191,0.2)',
+        borderRadius: 16, padding: 20, boxShadow: '0 18px 50px rgba(6,10,42,0.5)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: 99, background: '#F897FE',
+            boxShadow: '0 0 8px #F897FE', flexShrink: 0,
+          }} />
+          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: '#8A8FBF' }}>
+            MARKEE Token
+          </span>
+        </div>
+        <p style={{ margin: '0 0 16px', color: '#B8B6D9', fontSize: 14, lineHeight: 1.55 }}>
+          Buy MARKEE tokens to own a share of the network. Token issuance is paused while we migrate to RevNet v6.
+        </p>
+        <div style={{ borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: MONO, fontSize: 11, color: '#8A8FBF', letterSpacing: 0.5 }}>
+            Status: <span style={{ color: '#F897FE' }}>v5 → v6 migration</span>
+          </span>
+          <Link
+            href="/own-the-network"
+            style={{
+              fontFamily: MONO, fontSize: 12, color: '#B8B6D9', textDecoration: 'none',
+              borderBottom: '1px dotted rgba(184,182,217,0.4)', paddingBottom: 1,
+            }}
+          >
+            Learn more
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────────
+function PrimaryButton({ href, children }: { href: string; children: React.ReactNode }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <a
+      href={href}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        background: '#F897FE', color: '#060A2A',
+        border: 'none', borderRadius: 10, padding: '14px 28px',
+        fontWeight: 700, fontSize: 15, textDecoration: 'none', cursor: 'pointer',
+        boxShadow: hover ? '0 12px 40px rgba(248,151,254,0.42)' : '0 8px 32px rgba(248,151,254,0.3)',
+        transform: hover ? 'translateY(-1px)' : 'none',
+        transition: 'transform 120ms, box-shadow 120ms',
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
+function GhostButton({ href, children }: { href: string; children: React.ReactNode }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <a
+      href={href}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        background: 'transparent', color: hover ? '#EDEEFF' : '#B8B6D9',
+        border: `1px solid ${hover ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)'}`,
+        borderRadius: 10, padding: '13px 24px',
+        fontWeight: 600, fontSize: 15, textDecoration: 'none', cursor: 'pointer',
+        transition: 'border-color 160ms, color 160ms',
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function Home() {
-  const { address } = useAccount()
+  const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
+  const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
+  const { partnerData, isLoading: isLoadingPartners } = usePartnerMarkees()
   const ethPrice = useEthPrice()
 
-  const { markees, isLoading, isFetchingFresh, error, lastUpdated, refetch } = useMarkees()
-  const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
-
-  // Ecosystem stats (same source as /ecosystem page)
-  const [ecoLeaderboards, setEcoLeaderboards] = useState<{ topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean }[]>([])
-  const [ecoTotalFunds, setEcoTotalFunds] = useState('0')
-  const [isLoadingEco, setIsLoadingEco] = useState(true)
-
+  // Ecosystem stats for the metrics row
+  const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0 })
   useEffect(() => {
     fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) {
-          setEcoLeaderboards(data.leaderboards ?? [])
-          setEcoTotalFunds(data.totalPlatformFunds ?? '0')
-        }
+        if (!data) return
+        const leaderboards: { topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean }[] = data.leaderboards ?? []
+        const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
+        const messages = active.reduce(
+          (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
+          0
+        )
+        const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
+        setEcoStats({
+          domains: leaderboards.length,
+          markees: active.length,
+          messages,
+          usd: ethPrice ? Math.round(totalEth * ethPrice) : 0,
+        })
       })
       .catch(() => {})
-      .finally(() => setIsLoadingEco(false))
-  }, [])
-
-  const ecoActive = ecoLeaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
-  const ecoMessages = ecoActive.reduce(
-    (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
-    0
-  )
-
-  const {
-    reactions,
-    toggleReaction,
-    removeReaction,
-    isLoading: reactionsLoading,
-    error: reactionsError,
-  } = useReactions()
-
-  // ── Leaderboard view tracking ────────────────────────────────────────────────
-  const { views, trackView } = useViews(markees)
-
-  useEffect(() => {
-    if (markees.length === 0) return
-    markees.slice(0, 10).forEach(trackView)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markees.map(m => m.address).join(',')])
+  }, [ethPrice])
 
-  // ── Hero readerboard view tracking ──────────────────────────────────────────
-  const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
-
+  // Track views for hero reader signs
   useEffect(() => {
     if (fixedMarkees.length === 0) return
     fixedMarkees.forEach(trackFixedView)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixedMarkees.map(m => m.strategyAddress).join(',')])
-  // ────────────────────────────────────────────────────────────────────────────
 
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedMarkee, setSelectedMarkee] = useState<Markee | null>(null)
-  const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
-
-  const [isFixedModalOpen, setIsFixedModalOpen] = useState(false)
-  const [selectedFixedMarkee, setSelectedFixedMarkee] = useState<FixedMarkee | null>(null)
-
-  const handleTransactionSuccess = useCallback(() => {
-    setTimeout(() => {
-      refetch()
-    }, 3000)
-  }, [refetch])
-
-  const handleCreateNew = useCallback(() => {
-    if (NETWORK_PAUSED) return
-    setSelectedMarkee(null)
-    setModalMode('create')
-    setIsModalOpen(true)
-  }, [])
-
-  const handleEditMessage = useCallback((markee: Markee) => {
-    if (NETWORK_PAUSED) return
-    setSelectedMarkee(markee)
-    setModalMode('updateMessage')
-    setIsModalOpen(true)
-  }, [])
-
-  const handleAddFunds = useCallback((markee: Markee) => {
-    if (NETWORK_PAUSED) return
-    setSelectedMarkee(markee)
-    setModalMode('addFunds')
-    setIsModalOpen(true)
-  }, [])
-
-  const handleReact = useCallback(
-    async (markee: Markee, emoji: string) => {
-      if (!address) return
-      try {
-        await toggleReaction(markee.address, emoji, markee.chainId)
-      } catch (err) {
-        console.error('Failed to toggle reaction:', err)
-      }
-    },
-    [address, toggleReaction]
-  )
-
-  const handleRemoveReaction = useCallback(
-    async (markee: Markee) => {
-      if (!address) return
-      try {
-        await removeReaction(markee.address)
-      } catch (err) {
-        console.error('Failed to remove reaction:', err)
-      }
-    },
-    [address, removeReaction]
-  )
-
-  const handleModalClose = useCallback(() => {
-    setIsModalOpen(false)
-    setSelectedMarkee(null)
-  }, [])
-
-  const handleFixedMarkeeClick = useCallback((fixedMarkee: FixedMarkee) => {
-    if (NETWORK_PAUSED) return
-    setSelectedFixedMarkee(fixedMarkee)
-    setIsFixedModalOpen(true)
-  }, [])
-
-  const handleFixedModalClose = useCallback(() => {
-    setIsFixedModalOpen(false)
-    setSelectedFixedMarkee(null)
-  }, [])
-
-  // Helper to get view counts for a leaderboard markee
-  const getViews = (markee: Markee) => {
-    const v = views.get(markee.address.toLowerCase())
-    return {
-      totalViews: v?.totalViews,
-      messageViews: v?.messageViews,
-    }
-  }
+  // Filter to partners with active leaderboards
+  const activePartners = partnerData.filter(p => p.partner.leaderboardAddress)
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" useRegularLinks />
 
-      {/* Hero */}
-      <section className="relative py-24 border-b border-[#8A8FBF]/20 overflow-hidden">
+      {/* ── Hero: 3 reader signs ──────────────────────────────────────────── */}
+      <section
+        className="relative overflow-hidden"
+        style={{
+          padding: '72px 40px 64px',
+          borderBottom: '1px solid rgba(138,143,191,0.2)',
+          background: [
+            'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
+            'radial-gradient(ellipse at 80% 80%, rgba(124,156,255,0.2), transparent 55%)',
+            'linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)',
+          ].join(', '),
+        }}
+      >
         <HeroBackground />
-
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {isLoadingFixed ? (
-              [1, 2, 3].map(i => (
-                <div key={i} className="readerboard-card animate-pulse">
-                  <div className="readerboard-inner">
-                    <div className="h-16 bg-[#8A8FBF]/20 rounded mx-8" />
+        <div className="relative z-10" style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div className="signs-grid">
+            {isLoadingFixed
+              ? [1, 2, 3].map(i => (
+                  <div key={i} className="reader-card" style={{ opacity: 0.4 }}>
+                    <span className="reader-text" style={{ background: 'rgba(138,143,191,0.15)', borderRadius: 6, minWidth: 160, height: '1em', display: 'block' }} />
                   </div>
-                </div>
-              ))
-            ) : (
-              fixedMarkees.map((fixedMarkee, index) => {
-                const viewData = fixedViews.get(fixedMarkee.strategyAddress.toLowerCase())
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handleFixedMarkeeClick(fixedMarkee)}
-                    className="group readerboard-card cursor-pointer transition-all hover:shadow-2xl hover:shadow-[#7B6AF4]/20 hover:-translate-y-1"
-                  >
-                    <div className="readerboard-inner">
-                      {/* View count badge — top-right corner */}
-                      {viewData && viewData.totalViews > 0 && (
-                        <div className="absolute top-2 right-2 flex items-center gap-1 bg-[#060A2A]/70 backdrop-blur-sm text-[#8A8FBF] text-xs px-2 py-1 rounded-full pointer-events-none z-10">
-                          <Eye className="w-3 h-3" />
-                          <span>{viewData.totalViews.toLocaleString()}</span>
+                ))
+              : fixedMarkees.map((fm) => (
+                  <ReaderSign
+                    key={fm.strategyAddress}
+                    fixedMarkee={fm}
+                    views={fixedViews.get(fm.strategyAddress.toLowerCase())}
+                  />
+                ))
+            }
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pay to be seen + metrics ──────────────────────────────────────── */}
+      <section
+        className="metrics-section"
+        style={{ background: '#0A0F3D', padding: '60px 40px', borderBottom: '1px solid rgba(138,143,191,0.2)' }}
+      >
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <h1 style={{
+            margin: '0 0 36px', textAlign: 'center',
+            fontSize: 'clamp(36px,5.5vw,60px)', fontWeight: 800,
+            letterSpacing: -2, lineHeight: 1.02, color: '#EDEEFF',
+          }}>
+            Pay to be <span style={{ color: '#F897FE' }}>seen</span>
+          </h1>
+          <MetricsRow stats={ecoStats} />
+        </div>
+      </section>
+
+      {/* ── Marketplace teaser ────────────────────────────────────────────── */}
+      <section style={{ background: '#060A2A', padding: '88px 40px' }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <SectionHead
+            kicker="Marketplace"
+            title="Buy a message anywhere on the network"
+            sub="Find your audience on Markee's global network, buy a message, and see it live instantly."
+          />
+
+          {/* Column headers */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
+            gap: 16, alignItems: 'center', padding: '0 14px 10px',
+            fontFamily: MONO, fontSize: 10, letterSpacing: 1,
+            color: '#8A8FBF', textTransform: 'uppercase',
+          }}>
+            <span>Served on</span>
+            <span>Total raised</span>
+            <span>Current message</span>
+            <span>Views</span>
+            <span style={{ textAlign: 'right' }}>Price to change</span>
+          </div>
+
+          {/* Partner rows */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {isLoadingPartners
+              ? [1, 2, 3, 4].map(i => (
+                  <div key={i} style={{
+                    display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
+                    gap: 16, padding: '11px 14px',
+                    borderBottom: '1px solid rgba(138,143,191,0.2)',
+                  }}>
+                    {[1, 2, 3, 4, 5].map(j => (
+                      <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4, animation: 'pulse 1.5s ease-in-out infinite' }} />
+                    ))}
+                  </div>
+                ))
+              : activePartners.map((pd) => {
+                  const { partner, winningMarkee, totalFunds } = pd
+                  const totalEth = parseFloat(formatEther(totalFunds))
+                  const totalUsd = ethPrice ? Math.round(totalEth * ethPrice) : null
+                  const priceToOvertakeEth = winningMarkee
+                    ? parseFloat(formatEther(winningMarkee.totalFundsAdded + BigInt('1000000000000000')))
+                    : null
+                  const priceUsd = priceToOvertakeEth && ethPrice ? Math.round(priceToOvertakeEth * ethPrice) : null
+
+                  return (
+                    <a
+                      key={partner.slug}
+                      href={`/markee/${partner.leaderboardAddress}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+                        gap: 16, padding: '11px 14px',
+                        borderBottom: '1px solid rgba(138,143,191,0.2)',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'background 120ms ease',
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(248,151,254,0.04)' }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                    >
+                      {/* Served on */}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: '#B8B6D9', minWidth: 0 }}>
+                        {partner.logo && (
+                          <img src={partner.logo} alt="" style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, objectFit: 'cover' }} />
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {partner.name}
+                        </span>
+                      </span>
+
+                      {/* Total raised */}
+                      <span style={{
+                        fontSize: 12.5, color: '#7C9CFF',
+                        fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600,
+                      }}>
+                        {totalUsd != null ? `$${totalUsd.toLocaleString()}` : `${totalEth.toFixed(3)} ETH`}
+                      </span>
+
+                      {/* Current message */}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontFamily: MONO, fontSize: 13, color: '#EDEEFF',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          {winningMarkee?.message || '—'}
                         </div>
-                      )}
-
-                      <div className="readerboard-text">{fixedMarkee.message || fixedMarkee.name}</div>
-                    </div>
-
-                    <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 scale-95 group-hover:scale-100 pointer-events-none">
-                      <div className="bg-[#7B6AF4] text-[#060A2A] text-sm font-semibold px-6 py-2 rounded-full shadow-lg whitespace-nowrap">
-                        {fixedMarkee.priceWei && fixedMarkee.priceWei !== '0'
-                          ? ethPrice
-                            ? `${formatUsd(parseFloat(formatEther(BigInt(fixedMarkee.priceWei))) * ethPrice)} to Change`
-                            : `${formatEther(BigInt(fixedMarkee.priceWei))} ETH to Change`
-                          : 'Change Message'}
                       </div>
-                    </div>
-                  </button>
-                )
-              })
-            )}
+
+                      {/* Views */}
+                      <span style={{ fontSize: 11, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Eye size={10} />—
+                      </span>
+
+                      {/* Price to change */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        {priceUsd != null || priceToOvertakeEth != null ? (
+                          <button
+                            onClick={(e) => e.preventDefault()}
+                            style={{
+                              background: '#F897FE', color: '#060A2A', border: 'none',
+                              borderRadius: 7, padding: '8px 10px',
+                              fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+                              cursor: 'pointer', whiteSpace: 'nowrap',
+                              display: 'inline-flex', alignItems: 'center',
+                              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+                            }}
+                          >
+                            {priceUsd != null
+                              ? `$${priceUsd.toLocaleString()}`
+                              : `${priceToOvertakeEth!.toFixed(3)} ETH`}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#8A8FBF', fontFamily: MONO }}>—</span>
+                        )}
+                      </div>
+                    </a>
+                  )
+                })
+            }
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: 28 }}>
+            <GhostButton href="/marketplace">View the Marketplace →</GhostButton>
           </div>
         </div>
       </section>
 
-      <style jsx>{`
-        .readerboard-card {
-          position: relative;
-          background: #edeeff;
-          border-radius: 4px;
-          padding: 4px;
-          box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.6);
-          aspect-ratio: 2 / 1;
-        }
-
-        .readerboard-inner {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          background: repeating-linear-gradient(0deg, #0a0f3d 0px, #0a0f3d 28px, #060a2a 28px, #060a2a 30px);
-          border-radius: 2px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          overflow: hidden;
-        }
-
-        .readerboard-text {
-          font-family: var(--font-jetbrains-mono), 'Courier New', Consolas, monospace;
-          font-size: clamp(18px, 3vw, 28px);
-          font-weight: 600;
-          line-height: 1.1;
-          letter-spacing: -0.5px;
-          color: #edeeff;
-          text-align: center;
-          word-wrap: break-word;
-          max-width: 100%;
-          transition: all 0.2s ease;
-        }
-
-        .group:hover .readerboard-text {
-          color: #7b6af4;
-          transform: scale(1.02);
-        }
-
-        @media (max-width: 768px) {
-          .readerboard-card {
-            aspect-ratio: 5 / 3;
-          }
-
-          .readerboard-text {
-            font-size: 20px;
-          }
-        }
-      `}</style>
-
-      {/* Raise Funds with Markee */}
-      <section className="bg-[#0A0F3D] py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-[#EDEEFF] mb-4">Raise Funds with Markee</h2>
-          <p className="text-[#8A8FBF] mb-8">Join the growing network of digital communities getting funded with a Markee sign.</p>
-
-          <div className="flex items-center justify-center gap-8 mb-8 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F897FE] animate-pulse" />
-              {isLoadingEco ? (
-                <span className="text-[#F897FE] font-semibold text-3xl animate-pulse">--</span>
-              ) : (
-                <span className="text-[#F897FE] font-semibold text-3xl">{ecoActive.length}</span>
-              )}
-              <span className="text-[#8A8FBF]">active Markees</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#EDEEFF] animate-pulse" />
-              {isLoadingEco ? (
-                <span className="text-[#EDEEFF] font-semibold text-3xl animate-pulse">--</span>
-              ) : (
-                <span className="text-[#EDEEFF] font-semibold text-3xl">{ecoMessages.toLocaleString()}</span>
-              )}
-              <span className="text-[#8A8FBF]">messages bought</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#7C9CFF] animate-pulse" />
-              {isLoadingEco ? (
-                <span className="text-[#7C9CFF] font-semibold text-3xl animate-pulse">--</span>
-              ) : ethPrice ? (
-                <div className="flex flex-col items-start">
-                  <span className="text-[#7C9CFF] font-semibold text-3xl">
-                    {formatUsd(parseFloat(ecoTotalFunds) * ethPrice)}
-                  </span>
-                  <span className="text-[#8A8FBF] text-xs">
-                    {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
-                  </span>
-                </div>
-              ) : (
-                <span className="text-[#7C9CFF] font-semibold text-3xl">
-                  {parseFloat(ecoTotalFunds) < 0.001 ? '< 0.001 ETH' : `${parseFloat(ecoTotalFunds).toFixed(3)} ETH`}
-                </span>
-              )}
-              <span className="text-[#8A8FBF]">total raised</span>
-            </div>
+      {/* ── Raise Funding teaser ─────────────────────────────────────────── */}
+      <section style={{ background: '#0A0F3D', padding: '88px 40px', borderTop: '1px solid rgba(138,143,191,0.2)' }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <SectionHead
+            kicker="Raise Funding"
+            title="Create a Markee and start earning"
+            sub="Add a Markee to your website or open source repo in just a few clicks."
+          />
+          <div className="plat-grid-home">
+            {PLATFORMS.map(p => <PlatformCard key={p.key} p={p} />)}
           </div>
-
-          <a
-            href="/create-a-markee"
-            className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-8 py-4 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-          >
-            Create a Markee
-          </a>
+          <div style={{ textAlign: 'center', marginTop: 28 }}>
+            <PrimaryButton href="/raise-funding">Create a Markee →</PrimaryButton>
+          </div>
         </div>
       </section>
 
-      {/* Leaderboard */}
-      <section className="bg-[#060A2A] py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-[#EDEEFF] mb-6">A Marketplace for Digital Real Estate</h3>
-
-              <p className="text-lg text-[#8A8FBF] mb-6">
-                Buy a message on your favorite site from these verified Markees.
-              </p>
-
-            <div className="flex gap-4 justify-center mb-8">
-              <button
-                onClick={handleCreateNew}
-                className="bg-[#F897FE] text-[#060A2A] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#7C9CFF] transition-colors"
-              >
-                Buy a Message
-              </button>
-              <a
-                href="/how-it-works"
-                className="bg-[#0A0F3D] text-[#F897FE] border-2 border-[#F897FE] px-8 py-3 rounded-lg font-semibold text-lg hover:bg-[#F897FE]/10 transition-colors"
-              >
-                How it Works
-              </a>
-            </div>
+      {/* ── Own the Network ──────────────────────────────────────────────── */}
+      <section
+        className="relative overflow-hidden"
+        style={{ background: '#060A2A', padding: '96px 40px', borderTop: '1px solid rgba(138,143,191,0.2)' }}
+      >
+        <HeroBackground />
+        <div className="relative z-10" style={{ maxWidth: 760, margin: '0 auto', textAlign: 'center' }}>
+          <div style={{ marginBottom: 18 }}><Eyebrow>Own the Network</Eyebrow></div>
+          <h2 style={{
+            margin: 0, fontSize: 'clamp(28px,4vw,46px)', fontWeight: 800,
+            letterSpacing: -1, color: '#EDEEFF', lineHeight: 1.05,
+          }}>
+            Markee is cooperatively owned
+          </h2>
+          <p style={{ margin: '20px auto 0', color: '#B8B6D9', fontSize: 17, maxWidth: '54ch', lineHeight: 1.6 }}>
+            We&apos;re digital-native, owned and governed on the Ethereum network. 100% owned by MARKEE holders, enforced onchain via RevNets and Gardens.
+          </p>
+          <RevnetWidget />
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <GhostButton href="/own-the-network">How ownership works →</GhostButton>
           </div>
-
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3 ml-auto">
-              {(isFetchingFresh || reactionsLoading) && (
-                <div className="flex items-center gap-2 text-sm text-[#8A8FBF]">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F897FE]" />
-                  <span>Updating...</span>
-                </div>
-              )}
-              {lastUpdated && !isLoading && (
-                <div className="text-sm text-[#8A8FBF]">
-                  Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {reactionsError && (
-            <div className="mb-4 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg max-w-2xl mx-auto">
-              <p className="text-sm text-[#8BC8FF]">{reactionsError}</p>
-            </div>
-          )}
-
-          {isLoading && <LeaderboardSkeleton />}
-
-          {!isLoading && markees.length > 0 && (
-            <>
-              {/* #1 Hero */}
-              <Link href={`/markee/${markees[0].address}`} className="block">
-                <MarkeeCard
-                  markee={markees[0]}
-                  rank={1}
-                  size="hero"
-                  userAddress={address}
-                  onEditMessage={handleEditMessage}
-                  onAddFunds={handleAddFunds}
-                  onReact={handleReact}
-                  onRemoveReaction={handleRemoveReaction}
-                  reactions={reactions.get(markees[0].address.toLowerCase())}
-                  {...getViews(markees[0])}
-                />
-              </Link>
-
-              {/* #2-3 Large */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {markees.slice(1, 3).map((markee, i) => (
-                  <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
-                    <MarkeeCard
-                      markee={markee}
-                      rank={i + 2}
-                      size="large"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markee.address.toLowerCase())}
-                      {...getViews(markee)}
-                    />
-                  </Link>
-                ))}
-              </div>
-
-              {/* #4-26 Medium */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {markees.slice(3, 26).map((markee, i) => (
-                  <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
-                    <MarkeeCard
-                      markee={markee}
-                      rank={i + 4}
-                      size="medium"
-                      userAddress={address}
-                      onEditMessage={handleEditMessage}
-                      onAddFunds={handleAddFunds}
-                      onReact={handleReact}
-                      onRemoveReaction={handleRemoveReaction}
-                      reactions={reactions.get(markee.address.toLowerCase())}
-                      {...getViews(markee)}
-                    />
-                  </Link>
-                ))}
-              </div>
-
-              {/* #27+ List */}
-              {markees.length > 26 && (
-                <div className="bg-[#0A0F3D] rounded-lg p-6 border border-[#8A8FBF]/20">
-                  {markees.slice(26).map((markee, i) => (
-                    <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
-                      <MarkeeCard
-                        markee={markee}
-                        rank={i + 27}
-                        size="list"
-                        userAddress={address}
-                        onEditMessage={handleEditMessage}
-                        onAddFunds={handleAddFunds}
-                        onReact={handleReact}
-                        onRemoveReaction={handleRemoveReaction}
-                        reactions={reactions.get(markee.address.toLowerCase())}
-                        {...getViews(markee)}
-                      />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
         </div>
       </section>
 
       <Footer />
-
-      <TopDawgModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        userMarkee={selectedMarkee}
-        initialMode={modalMode}
-        onSuccess={handleTransactionSuccess}
-        strategyAddress={selectedMarkee
-          ? selectedMarkee.pricingStrategy as `0x${string}`
-          : V13_LEADERBOARDS.COOPERATIVE}
-        topFundsAdded={markees[0]?.totalFundsAdded}
-      />
-
-      <FixedPriceModal
-        isOpen={isFixedModalOpen}
-        onClose={handleFixedModalClose}
-        fixedMarkee={selectedFixedMarkee}
-        onSuccess={handleTransactionSuccess}
-      />
     </div>
   )
 }
