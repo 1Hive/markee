@@ -16,6 +16,7 @@ import { formatUsd } from '@/lib/utils'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 
@@ -304,6 +305,7 @@ export default function Home() {
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
   const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
   const [modalMarkee, setModalMarkee] = useState<FixedMarkee | null>(null)
+  const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}`; topFundsAdded: bigint } | null>(null)
   const { partnerData, isLoading: isLoadingPartners } = usePartnerMarkees()
   const ethPrice = useEthPrice()
 
@@ -548,13 +550,20 @@ export default function Home() {
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         {priceUsd != null || priceToOvertakeEth != null ? (
                           <button
-                            onClick={(e) => e.preventDefault()}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setBuyModal({
+                                leaderboardAddress: partner.leaderboardAddress as `0x${string}`,
+                                topFundsAdded: winningMarkee?.totalFundsAdded ?? 0n,
+                              })
+                            }}
                             style={{
                               background: '#F897FE', color: '#060A2A', border: 'none',
                               borderRadius: 7, padding: '8px 10px',
                               fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
                               cursor: 'pointer', whiteSpace: 'nowrap',
-                              display: 'inline-flex', alignItems: 'center',
+                              width: '100%', textAlign: 'center',
                               boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
                             }}
                           >
@@ -627,6 +636,18 @@ export default function Home() {
         fixedMarkee={modalMarkee}
         onSuccess={() => setModalMarkee(null)}
       />
+
+      {buyModal && (
+        <BuyMessageModal
+          leaderboardAddress={buyModal.leaderboardAddress}
+          minimumPrice={buyModal.topFundsAdded + BigInt('1000000000000000')}
+          maxMessageLength={280}
+          existingMarkee={null}
+          topFundsAdded={buyModal.topFundsAdded}
+          onClose={() => setBuyModal(null)}
+          onSuccess={() => setBuyModal(null)}
+        />
+      )}
     </div>
   )
 }
