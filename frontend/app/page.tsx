@@ -640,7 +640,7 @@ export default function Home() {
       {buyModal && (
         <BuyMessageModal
           leaderboardAddress={buyModal.leaderboardAddress}
-          minimumPrice={buyModal.topFundsAdded + BigInt('1000000000000000')}
+          minimumPrice={0n}
           maxMessageLength={280}
           existingMarkee={null}
           topFundsAdded={buyModal.topFundsAdded}

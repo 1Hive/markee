@@ -603,7 +603,7 @@ export default function MarketplacePage() {
       {buyModal && (
         <BuyMessageModal
           leaderboardAddress={buyModal.address as `0x${string}`}
-          minimumPrice={priceToOvertake(buyModal)}
+          minimumPrice={0n}
           maxMessageLength={280}
           existingMarkee={null}
           topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
