@@ -1,525 +1,500 @@
 'use client'
 
-/**
- * Markee Detail Page
- * 
- * Route: /markee/[address]
- */
-
-import { useParams, useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Clock, Coins, MessageSquare, User, Copy, Check, Eye, Plus } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { formatEther } from 'viem'
 import { useAccount } from 'wagmi'
+import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
-import { useMarkeeDetail } from '@/lib/contracts/useMarkeeDetail'
-import { formatEth, formatAddress } from '@/lib/utils'
-import { getTxUrl, getAddressUrl } from '@/lib/explorer'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { Emoji } from '@/components/ui/Emoji'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { TopDawgModal } from '@/components/modals/TopDawgModal'
-import { NETWORK_PAUSED } from '@/lib/paused'
-// ── Helpers ──────────────────────────────────────────────────────────
+import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { getAddressUrl } from '@/lib/explorer'
+import { formatUsd } from '@/lib/utils'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { useLeaderboardDetail } from '@/lib/contracts/useLeaderboardDetail'
+import type { LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 
-function formatTimestamp(ts: bigint | number): string {
-  const date = new Date(Number(ts) * 1000)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const PINK  = '#F897FE'
+const BLUE  = '#7C9CFF'
+const GREEN = '#1DB227'
+const BG    = '#060A2A'
+const BG2   = '#0A0F3D'
+const TEXT  = '#EDEEFF'
+const TEXT2 = '#B8B6D9'
+const MUTED = '#8A8FBF'
+const BORDER = 'rgba(138,143,191,0.2)'
+
+const HERO_GRAD = [
+  'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
+  'radial-gradient(ellipse at 80% 80%, rgba(124,156,255,0.2), transparent 55%)',
+  'linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)',
+].join(', ')
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatViews(n: number) {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
 }
 
-function timeAgo(ts: bigint | number): string {
-  const seconds = Math.floor(Date.now() / 1000 - Number(ts))
-  if (seconds < 60) return 'just now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`
-  return `${Math.floor(seconds / 2592000)}mo ago`
+function fmtAddr(a: string) {
+  if (!a || a.length < 10) return a
+  return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
-function formatViewCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toString()
+function priceToOvertake(topFunds: bigint) {
+  return topFunds + BigInt('1000000000000000')
 }
 
-// ── Copy Button ──────────────────────────────────────────────────────
+// ── Platform / served-on info from ecosystem API ──────────────────────────────
+interface EcoEntry { address: string; platform: string; verifiedUrl?: string; verifiedUrls?: string[]; logoUrl?: string; leaderboardName?: string }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
+function useServedOn(leaderboardAddress: string) {
+  const [entry, setEntry] = useState<EcoEntry | null>(null)
+  useEffect(() => {
+    if (!leaderboardAddress) return
+    fetch('/api/ecosystem/leaderboards', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.leaderboards) return
+        const found = (data.leaderboards as EcoEntry[]).find(
+          lb => lb.address.toLowerCase() === leaderboardAddress.toLowerCase()
+        )
+        if (found) setEntry(found)
+      })
+      .catch(() => {})
+  }, [leaderboardAddress])
+  return entry
+}
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+// ── Served On cell ────────────────────────────────────────────────────────────
+function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
 
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  if (!entry) return <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED }}>—</span>
+  if (entry.platform === 'github') return <span style={{ fontFamily: MONO, fontSize: 15, color: TEXT }}>GitHub Repo</span>
+  if (entry.platform === 'superfluid') return <span style={{ fontFamily: MONO, fontSize: 15, color: TEXT }}>Superfluid</span>
+
+  const urls = entry.verifiedUrls?.length ? entry.verifiedUrls : entry.verifiedUrl ? [entry.verifiedUrl] : []
+  if (urls.length === 0) return <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED }}>—</span>
+
+  const first = urls[0].replace(/^https?:\/\//, '').replace(/\/$/, '')
   return (
-    <button
-      onClick={handleCopy}
-      className="text-[#8A8FBF] hover:text-[#B8B6D9] transition-colors"
-      title="Copy address"
-    >
-      {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-    </button>
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 15 }}>
+      <a href={`https://${first}`} target="_blank" rel="noopener noreferrer" style={{ color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}>{first}</a>
+      {urls.length > 1 && (
+        <>
+          <button onClick={() => setOpen(v => !v)} style={{ background: `${PINK}22`, border: `1px solid ${BORDER}`, color: PINK, borderRadius: 99, padding: '2px 8px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            +{urls.length - 1}
+          </button>
+          {open && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 200, zIndex: 30, boxShadow: '0 16px 44px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {urls.map(u => {
+                const clean = u.replace(/^https?:\/\//, '').replace(/\/$/, '')
+                return (
+                  <a key={u} href={`https://${clean}`} target="_blank" rel="noopener noreferrer"
+                    style={{ color: TEXT2, textDecoration: 'none', fontSize: 13, padding: '8px 10px', borderRadius: 7, display: 'block', transition: 'background 100ms, color 100ms' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+                  >{clean}</a>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </span>
   )
 }
 
-// ── Tx Link ──────────────────────────────────────────────────────────
-
-function TxLink({ hash, label }: { hash: string; label?: string }) {
-  return (
-    <a
-      href={getTxUrl(CANONICAL_CHAIN_ID, hash)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[#7C9CFF] hover:text-[#F897FE] transition-colors text-xs"
-    >
-      {label || `${hash.slice(0, 8)}...${hash.slice(-6)}`}
-      <ExternalLink size={10} />
-    </a>
-  )
-}
-
-// ── Address Link ─────────────────────────────────────────────────────
-
-function AddressLink({ address, label }: { address: string; label?: string }) {
-  return (
-    <a
-      href={getAddressUrl(CANONICAL_CHAIN_ID, address)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
-    >
-      {label || formatAddress(address)}
-      <ExternalLink size={10} />
-    </a>
-  )
-}
-
-// ── Stat Card ────────────────────────────────────────────────────────
-
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20">
-      <div className="flex items-center gap-2 text-[#8A8FBF] text-xs mb-1">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="text-[#EDEEFF] font-bold text-lg">{value}</div>
-    </div>
-  )
-}
-
-// ── Loading Skeleton ─────────────────────────────────────────────────
-
-function DetailSkeleton() {
-  return (
-    <div className="animate-pulse space-y-6">
-      <div className="h-8 w-48 bg-[#8A8FBF]/20 rounded" />
-      <div className="bg-[#0A0F3D] rounded-xl p-8 border border-[#8A8FBF]/20">
-        <div className="h-10 w-3/4 bg-[#8A8FBF]/20 rounded mb-4" />
-        <div className="h-5 w-1/4 bg-[#8A8FBF]/20 rounded ml-auto" />
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20">
-            <div className="h-3 w-16 bg-[#8A8FBF]/20 rounded mb-2" />
-            <div className="h-6 w-24 bg-[#8A8FBF]/20 rounded" />
-          </div>
-        ))}
-      </div>
-      <div className="space-y-3">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-20 bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20" />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Tab Component ────────────────────────────────────────────────────
-
-type TabId = 'funds' | 'history'
-
-function TabButton({ 
-  active, 
-  onClick, 
-  children, 
-  count 
-}: { 
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-  count: number
+// ── Metrics bar ───────────────────────────────────────────────────────────────
+function MetricsBar({ meta, topViews, markeeCount, entry, ethPrice }: {
+  meta: { totalLeaderboardFunds: bigint; address: string }
+  topViews: number
+  markeeCount: number
+  entry: EcoEntry | null
+  ethPrice: number | null
 }) {
+  const totalEth = parseFloat(formatEther(meta.totalLeaderboardFunds))
+  const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
+
+  const cell = (label: string, node: React.ReactNode) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{label}</span>
+      {node}
+    </div>
+  )
+  const val = (text: string, color = TEXT) => (
+    <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>{text}</span>
+  )
+
   return (
-    <button
-      onClick={onClick}
-      className={`
-        px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2
-        ${active
-          ? 'bg-[#F897FE]/20 text-[#F897FE] border border-[#F897FE]/40'
-          : 'text-[#8A8FBF] hover:text-[#B8B6D9] hover:bg-[#8A8FBF]/10 border border-transparent'
-        }
-      `}
-    >
-      {children}
-      <span className={`text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-[#F897FE]/30' : 'bg-[#8A8FBF]/20'}`}>
-        {count}
-      </span>
-    </button>
+    <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
+      {cell('Served on', <ServedOnCell entry={entry} />)}
+      {cell('Total funds added', val(totalLabel, GREEN))}
+      {cell('Total views', val(formatViews(topViews), BLUE))}
+      {cell('Messages bought', val(markeeCount.toLocaleString()))}
+      {cell('Contract address',
+        <a href={getAddressUrl(CANONICAL_CHAIN_ID, meta.address)} target="_blank" rel="noopener noreferrer"
+          style={{ alignSelf: 'flex-start', fontFamily: MONO, fontSize: 15, color: PINK, textDecoration: 'none', borderBottom: `1px dotted ${PINK}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {fmtAddr(meta.address)} <ExternalLink size={11} />
+        </a>
+      )}
+    </div>
   )
 }
 
-// ── Main Page ────────────────────────────────────────────────────────
+// ── Featured card ─────────────────────────────────────────────────────────────
+function FeaturedCard({ markee, topViews, ethPrice, onBuy }: {
+  markee: LeaderboardMarkee
+  topViews: number
+  ethPrice: number | null
+  onBuy: () => void
+}) {
+  const [hover, setHover] = useState(false)
+  const priceEth = parseFloat(formatEther(priceToOvertake(markee.totalFundsAdded)))
+  const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+  const displayName = markee.name || fmtAddr(markee.owner)
 
+  return (
+    <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase' as const }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, boxShadow: `0 0 12px ${PINK}` }} />
+        <span>Top Message</span>
+        <span style={{ flex: 1, height: 1, background: BORDER, marginLeft: 8 }} />
+      </div>
+
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
+        <button
+          onClick={onBuy}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          style={{
+            position: 'relative', width: '100%', textAlign: 'left', cursor: 'pointer',
+            background: 'rgba(255,255,255,0.04)',
+            border: `1px solid ${hover ? 'rgba(248,151,254,0.5)' : 'rgba(255,255,255,0.18)'}`,
+            borderRadius: 16, padding: '18px 26px 22px', backdropFilter: 'blur(4px)',
+            transition: 'border-color 180ms, transform 180ms, box-shadow 180ms',
+            transform: hover ? 'translateY(-2px)' : 'none',
+            boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
+            fontFamily: 'Manrope, system-ui, sans-serif',
+          }}
+        >
+          {/* top-right: views + flag */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
+            <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
+              <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(topViews)}
+            </span>
+          </div>
+
+          {/* message */}
+          <div style={{ fontFamily: MONO, fontWeight: 700, fontSize: 'clamp(20px, 3vw, 34px)', lineHeight: 1.12, letterSpacing: '-0.02em', textWrap: 'balance' as any, background: `linear-gradient(120deg, ${TEXT} 0%, ${PINK} 100%)`, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            {markee.message || 'No message yet'}
+          </div>
+
+          {/* bottom-right: author */}
+          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
+            <span style={{ color: MUTED }}>-</span>
+            {markee.name && <span style={{ color: TEXT }}>{markee.name}</span>}
+            <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>{fmtAddr(markee.owner)}</span>
+          </div>
+
+          {/* hover price pill */}
+          <span style={{ position: 'absolute', bottom: -15, left: '50%', transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`, display: 'inline-flex', alignItems: 'center', gap: 6, background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13, padding: '8px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const, boxShadow: '0 8px 28px rgba(248,151,254,0.42)', opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms', pointerEvents: 'none', zIndex: 3 }}>
+            {priceLabel} to change
+          </span>
+        </button>
+      </ModeratedContent>
+    </div>
+  )
+}
+
+// ── History panel ─────────────────────────────────────────────────────────────
+function HistoryPanel({ markee }: { markee: LeaderboardMarkee }) {
+  return (
+    <div style={{ gridColumn: '1 / -1', background: BG, borderTop: `1px solid ${BORDER}`, padding: '12px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <ExternalLink size={13} style={{ color: MUTED, flexShrink: 0 }} />
+      <span style={{ fontSize: 13, color: TEXT2 }}>View full transaction history on</span>
+      <a href={getAddressUrl(CANONICAL_CHAIN_ID, markee.address)} target="_blank" rel="noopener noreferrer"
+        style={{ fontFamily: MONO, fontSize: 13, color: PINK, textDecoration: 'none', borderBottom: `1px dotted ${PINK}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        Basescan {fmtAddr(markee.address)} <ExternalLink size={10} />
+      </a>
+    </div>
+  )
+}
+
+// ── Leaderboard row ───────────────────────────────────────────────────────────
+const LB_COLS = '150px 120px 1fr 70px 200px'
+
+function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onEdit }: {
+  markee: LeaderboardMarkee
+  views: number
+  ethPrice: number | null
+  featured: boolean
+  isOwner: boolean
+  onAddFunds: (m: LeaderboardMarkee) => void
+  onEdit: (m: LeaderboardMarkee) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const fundsEth = parseFloat(formatEther(markee.totalFundsAdded))
+  const fundsLabel = ethPrice ? formatUsd(fundsEth * ethPrice) : `${fundsEth.toFixed(3)} ETH`
+  const displayWho = markee.name || fmtAddr(markee.owner)
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', background: featured ? `${PINK}0A` : 'transparent', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent', transition: 'background 120ms' }}>
+        <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{displayWho}</span>
+        <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{fundsLabel}</span>
+        <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{markee.message || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message</span>}</span>
+        <span style={{ fontSize: 12, color: MUTED, fontFamily: MONO, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Eye size={10} style={{ opacity: 0.6 }} /> {views > 0 ? formatViews(views) : '—'}
+        </span>
+        <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setOpen(v => !v)}
+            style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' as const }}
+          >
+            History <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
+          </button>
+          {isOwner && (
+            <button
+              onClick={() => onEdit(markee)}
+              style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}44`, borderRadius: 7, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}
+            >
+              Edit
+            </button>
+          )}
+          <button
+            onClick={() => onAddFunds(markee)}
+            style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}
+          >
+            Add Funds
+          </button>
+        </div>
+      </div>
+      {open && <HistoryPanel markee={markee} />}
+    </>
+  )
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+function Skeleton() {
+  return (
+    <div>
+      {/* Hero skeleton */}
+      <section style={{ background: HERO_GRAD, padding: '44px 40px 30px', borderBottom: `1px solid ${BORDER}`, position: 'relative', overflow: 'hidden' }}>
+        <HeroBackground />
+        <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ height: 18, width: 180, background: 'rgba(138,143,191,0.12)', borderRadius: 4, marginBottom: 16 }} />
+          <div style={{ height: 200, background: 'rgba(138,143,191,0.07)', borderRadius: 16 }} />
+        </div>
+        <div style={{ maxWidth: 1100, margin: '28px auto 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 24, paddingTop: 26, borderTop: `1px solid ${BORDER}` }}>
+          {[...Array(5)].map((_, i) => (
+            <div key={i} style={{ height: 52, background: 'rgba(138,143,191,0.07)', borderRadius: 6 }} />
+          ))}
+        </div>
+      </section>
+      {/* Table skeleton */}
+      <section style={{ padding: '8px 40px 20px' }}>
+        <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
+          <div style={{ height: 30, width: 200, background: 'rgba(138,143,191,0.1)', borderRadius: 4, marginBottom: 20 }} />
+          <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+            {[...Array(6)].map((_, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                {[...Array(5)].map((_, j) => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function MarkeeDetailPage() {
   const params = useParams()
-  const router = useRouter()
-  const markeeAddress = params.address as string
-  const { markee, isLoading, error } = useMarkeeDetail(markeeAddress)
-  const [activeTab, setActiveTab] = useState<TabId>('funds')
-  const [totalViews, setTotalViews] = useState<number | null>(null)
-  const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
+  const leaderboardAddress = params.address as string
+  const ethPrice = useEthPrice()
+  const { address: connectedAddress } = useAccount()
 
-  const { address } = useAccount()
-  const isOwner = !!(markee && address && markee.owner.toLowerCase() === address.toLowerCase())
+  const { meta, markees, isLoading } = useLeaderboardDetail(leaderboardAddress)
+  const ecoEntry = useServedOn(leaderboardAddress)
 
-  // Track this detail page view and fetch current count
+  // Views for all markees
+  const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
   useEffect(() => {
-    if (!markee) return
-
-    const track = async () => {
-      // Always fetch the current count first so it shows immediately
-      try {
-        const getRes = await fetch(`/api/views?addresses=${markee.address.toLowerCase()}`)
-        if (getRes.ok) {
-          const getData = await getRes.json()
-          const count = getData[markee.address.toLowerCase()]?.totalViews
-          if (count !== undefined) setTotalViews(count)
+    if (!markees.length) return
+    const addrs = markees.map(m => m.address.toLowerCase()).join(',')
+    fetch(`/api/views?addresses=${addrs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        const map = new Map<string, number>()
+        for (const [k, v] of Object.entries(data as Record<string, { totalViews: number }>)) {
+          map.set(k.toLowerCase(), v.totalViews)
         }
-      } catch {}
+        setViewsMap(map)
+      })
+      .catch(() => {})
+  }, [markees.map(m => m.address).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
-      // Then POST to increment (no-ops if message is empty or rate-limited)
-      if (!markee.message) return
-      try {
-        const res = await fetch('/api/views', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address: markee.address,
-            message: markee.message,
-          }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setTotalViews(data.totalViews)
-        }
-      } catch (err) {
-        console.error('[views] track failed:', err)
-      }
-    }
+  // Track + increment view for top markee
+  useEffect(() => {
+    const top = markees[0]
+    if (!top?.message) return
+    fetch('/api/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: top.address, message: top.message }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.totalViews !== undefined) setViewsMap(m => new Map(m).set(top.address.toLowerCase(), data.totalViews)) })
+      .catch(() => {})
+  }, [markees[0]?.address])  // eslint-disable-line react-hooks/exhaustive-deps
 
-    track()
-  }, [markee?.address])
+  // Modal state
+  const [buyOpen,      setBuyOpen]      = useState(false)
+  const [addFundsOpen, setAddFundsOpen] = useState(false)
+  const [editOpen,     setEditOpen]     = useState(false)
+  const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
+
+  const openBuy = useCallback(() => setBuyOpen(true), [])
+  const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
+  const openEdit = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setEditOpen(true) }, [])
+
+  const topMarkee  = markees[0] ?? null
+  const topViews   = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
+  const totalFunds = meta?.totalLeaderboardFunds ?? 0n
 
   return (
-    <div className="min-h-screen bg-[#060A2A] text-[#EDEEFF]">
-      <Header />
+    <div style={{ minHeight: '100vh', background: BG }}>
+      <Header activePage="marketplace" useRegularLinks />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        {/* Back link */}
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-2 text-[#8A8FBF] hover:text-[#F897FE] transition-colors mb-6 text-sm"
-        >
-          <ArrowLeft size={16} />
-          Back to leaderboard
-        </button>
+      {isLoading ? (
+        <Skeleton />
+      ) : !topMarkee ? (
+        // Not found
+        <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
+          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Leaderboard not found</h1>
+          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>We couldn't find a Markee leaderboard at that address.</p>
+          <a href="/marketplace" style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>← Back to Marketplace</a>
+        </section>
+      ) : (
+        <>
+          {/* ── Hero ── */}
+          <section style={{ position: 'relative', zIndex: 2, borderBottom: `1px solid ${BORDER}`, background: HERO_GRAD, padding: '44px 40px 30px', overflow: 'hidden' }}>
+            <HeroBackground />
+            {/* scanlines */}
+            <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px)', mixBlendMode: 'overlay' }} />
 
-        {isLoading && <DetailSkeleton />}
+            <FeaturedCard markee={topMarkee} topViews={topViews} ethPrice={ethPrice} onBuy={openBuy} />
+            <div style={{ height: 28 }} />
+            <MetricsBar meta={{ totalLeaderboardFunds: totalFunds, address: leaderboardAddress }} topViews={topViews} markeeCount={markees.length} entry={ecoEntry} ethPrice={ethPrice} />
+          </section>
 
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
-            <p className="text-red-400 mb-2">Failed to load markee details</p>
-            <p className="text-[#8A8FBF] text-sm">{error.message}</p>
-          </div>
-        )}
-
-        {markee && (
-          <div className="space-y-6">
-            {/* ── Current Message ────────────────────────────────── */}
-            <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
-              <div className="bg-gradient-to-r from-[#F897FE]/10 to-[#7C9CFF]/10 rounded-xl p-6 sm:p-8 border border-[#F897FE]/30">
-                <div className="font-jetbrains text-2xl sm:text-3xl font-bold text-[#EDEEFF] mb-4 break-words">
-                  {markee.message}
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <p className="text-[#8A8FBF] italic">
-                    <span className={markee.name ? 'text-[#B8B6D9] font-medium' : 'text-[#8A8FBF]'}>
-                      {markee.name || formatAddress(markee.owner)}
-                    </span>
-                  </p>
-                  <div className="flex items-center gap-3 text-xs text-[#8A8FBF]">
-                    <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} />
-                    <span>Owner: <AddressLink address={markee.owner} /></span>
-                    <CopyButton text={markee.owner} />
+          {/* ── Leaderboard table ── */}
+          <section style={{ padding: '8px 40px 20px' }}>
+            <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
+              <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 15 }}>The message with the most funds added takes the top spot.</p>
+              <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+                <div style={{ minWidth: 720, background: BG2 }}>
+                  {/* column headers */}
+                  <div style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
+                    {['Bought by', 'Funds added', 'Current message', 'Views', ''].map((h, i) => (
+                      <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
+                    ))}
                   </div>
-                </div>
-              </div>
-            </ModeratedContent>
-
-            {/* ── Action Buttons ─────────────────────────────────── */}
-            {!NETWORK_PAUSED && (
-              <div className="flex justify-end gap-2">
-                {isOwner && (
-                  <button
-                    onClick={() => setIsEditOpen(true)}
-                    className="flex items-center gap-2 border border-[#F897FE]/40 text-[#F897FE] hover:bg-[#F897FE]/10 font-semibold px-5 py-2.5 rounded-lg transition-colors"
-                  >
-                    <MessageSquare size={16} />
-                    Edit Message
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsAddFundsOpen(true)}
-                  className="flex items-center gap-2 bg-[#F897FE] hover:bg-[#F897FE]/90 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
-                >
-                  <Plus size={16} />
-                  Add Funds
-                </button>
-              </div>
-            )}
-
-            {/* ── Stats Grid ─────────────────────────────────────── */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <StatCard
-                icon={<Coins size={14} />}
-                label="Total Funded"
-                value={`${formatEth(markee.totalFundsAdded)} ETH`}
-              />
-              <StatCard
-                icon={<Clock size={14} />}
-                label="Created"
-                value={new Date(markee.createdAt * 1000).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              />
-              <StatCard
-                icon={<MessageSquare size={14} />}
-                label="Message Edits"
-                value={markee.messageUpdateCount.toString()}
-              />
-              <StatCard
-                icon={<User size={14} />}
-                label="Contributions"
-                value={markee.fundsAddedCount.toString()}
-              />
-              <StatCard
-                icon={<Eye size={14} />}
-                label="All-Time Views"
-                value={totalViews !== null ? formatViewCount(totalViews) : ''}
-              />
-            </div>
-
-            {/* ── Strategy / Contract Info ────────────────────────── */}
-            <div className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
-                <div className="flex items-center gap-3">
-                  {markee.strategyName && (
-                    <span className="text-[#B8B6D9]">
-                      <Emoji className="text-base mr-1">🪧</Emoji>
-                      {markee.strategyName}
-                    </span>
-                  )}
-                  {markee.isPartnerStrategy && markee.partnerPercentage && (
-                    <span className="text-xs bg-[#7C9CFF]/20 text-[#7C9CFF] px-2 py-0.5 rounded-full">
-                      {markee.partnerPercentage}% to partner
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-[#8A8FBF]">
-                  <span>Contract:</span>
-                  <AddressLink address={markee.address} />
-                  <CopyButton text={markee.address} />
+                  {markees.map((m, i) => (
+                    <LeaderRow
+                      key={m.address}
+                      markee={m}
+                      views={viewsMap.get(m.address.toLowerCase()) ?? 0}
+                      ethPrice={ethPrice}
+                      featured={i === 0}
+                      isOwner={!!connectedAddress && m.owner.toLowerCase() === connectedAddress.toLowerCase()}
+                      onAddFunds={openAddFunds}
+                      onEdit={openEdit}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
+          </section>
 
-            {/* ── History Tabs ────────────────────────────────────── */}
-            <ModeratedContent
-              chainId={CANONICAL_CHAIN_ID}
-              markeeId={markee.address}
-              overlayText="🚩 this message history has been flagged"
+          {/* ── Bottom CTAs ── */}
+          <section style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 40px 96px', display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button
+              onClick={openBuy}
+              style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '13px 24px', fontWeight: 700, fontSize: 15, fontFamily: MONO, cursor: 'pointer', letterSpacing: 0.3, transition: 'transform 120ms, box-shadow 120ms', boxShadow: '0 4px 18px rgba(248,151,254,0.3)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 28px rgba(248,151,254,0.45)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(248,151,254,0.3)' }}
             >
-            <div>
-              <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-                <TabButton
-                  active={activeTab === 'funds'}
-                  onClick={() => setActiveTab('funds')}
-                  count={markee.fundsAddedCount}
-                >
-                  <Coins size={14} /> Funds Added
-                </TabButton>
-                <TabButton
-                  active={activeTab === 'history'}
-                  onClick={() => setActiveTab('history')}
-                  count={markee.messageUpdateCount + markee.nameUpdates.length}
-                >
-                  <MessageSquare size={14} /> Message History
-                </TabButton>
-              </div>
-
-              {/* ── Funding History ──────────────────────────────── */}
-              {activeTab === 'funds' && (
-                <div className="space-y-2">
-                  {markee.fundsAddedEvents.length === 0 ? (
-                    <p className="text-[#8A8FBF] text-sm text-center py-8">No funding events yet.</p>
-                  ) : (
-                    markee.fundsAddedEvents.map((event) => (
-                      <div
-                        key={event.id}
-                        className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-[#7C9CFF]/20 flex items-center justify-center flex-shrink-0">
-                              <Coins size={14} className="text-[#7C9CFF]" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-[#7C9CFF]">
-                                  +{formatEth(event.amount)} ETH
-                                </span>
-                                <span className="text-[#8A8FBF] text-xs">
-                                  → {formatEth(event.newTotal)} total
-                                </span>
-                              </div>
-                              <div className="text-xs text-[#8A8FBF] mt-0.5">
-                                by <AddressLink address={event.addedBy} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-[#8A8FBF] sm:text-right">
-                            <span title={formatTimestamp(event.timestamp)}>
-                              {timeAgo(event.timestamp)}
-                            </span>
-                            <TxLink hash={event.transactionHash} />
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* ── Message History ──────────────────────────────── */}
-              {activeTab === 'history' && (() => {
-                const combined = [
-                  ...markee.messageUpdates.map(e => ({ ...e, kind: 'message' as const })),
-                  ...markee.nameUpdates.map(e => ({ ...e, kind: 'name' as const })),
-                ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
-
-                return (
-                  <div className="space-y-2">
-                    {combined.length === 0 ? (
-                      <p className="text-[#8A8FBF] text-sm text-center py-8">No history yet.</p>
-                    ) : (
-                      combined.map((event) => (
-                        <div
-                          key={event.id}
-                          className="bg-[#0A0F3D] rounded-lg p-4 border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-colors"
-                        >
-                          {event.kind === 'message' ? (
-                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                              <div className="flex items-start gap-3 flex-1 min-w-0">
-                                <div className="w-8 h-8 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                  <MessageSquare size={14} className="text-[#F897FE]" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-jetbrains text-sm text-[#EDEEFF] break-words">
-                                    {event.newMessage}
-                                  </div>
-                                  <div className="text-xs text-[#8A8FBF] mt-1">
-                                    by <AddressLink address={event.updatedBy} />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-[#8A8FBF] flex-shrink-0 sm:text-right">
-                                <span title={formatTimestamp(event.timestamp)}>{timeAgo(event.timestamp)}</span>
-                                <TxLink hash={event.transactionHash} />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0">
-                                  <User size={14} className="text-[#FFA94D]" />
-                                </div>
-                                <div>
-                                  <div className="text-sm text-[#EDEEFF] font-medium">
-                                    {event.newName || <span className="italic text-[#8A8FBF]">Name cleared</span>}
-                                  </div>
-                                  <div className="text-xs text-[#8A8FBF] mt-0.5">
-                                    name set by <AddressLink address={event.updatedBy} />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-[#8A8FBF] sm:text-right">
-                                <span title={formatTimestamp(event.timestamp)}>{timeAgo(event.timestamp)}</span>
-                                <TxLink hash={event.transactionHash} />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )
-              })()}
-            </div>
-            </ModeratedContent>
-          </div>
-        )}
-      </main>
+              Buy a New Message
+            </button>
+            <a
+              href="/create-a-markee"
+              style={{ display: 'inline-flex', alignItems: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '13px 24px', fontWeight: 600, fontSize: 15, fontFamily: MONO, textDecoration: 'none', letterSpacing: 0.3, transition: 'border-color 120ms, color 120ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+            >
+              Create Your Own Markee
+            </a>
+          </section>
+        </>
+      )}
 
       <Footer />
 
-      {/* Add Funds Modal */}
-      {markee && (
+      {/* Buy modal */}
+      {topMarkee && (
         <TopDawgModal
-          isOpen={isAddFundsOpen}
-          onClose={() => setIsAddFundsOpen(false)}
-          userMarkee={markee as any}
-          initialMode="addFunds"
-          onSuccess={() => setIsAddFundsOpen(false)}
-          strategyAddress={markee.pricingStrategy as `0x${string}`}
-          partnerName={markee.isPartnerStrategy ? markee.strategyName : undefined}
-          partnerSplitPercentage={markee.isPartnerStrategy ? markee.partnerPercentage : undefined}
-          topFundsAdded={markee.totalFundsAdded}
+          isOpen={buyOpen}
+          onClose={() => setBuyOpen(false)}
+          onSuccess={() => setBuyOpen(false)}
+          initialMode="create"
+          strategyAddress={leaderboardAddress as `0x${string}`}
+          topFundsAdded={topMarkee.totalFundsAdded}
         />
       )}
 
-      {/* Edit Message Modal — only reachable by owner via isOwner gate on the button */}
-      {markee && (
+      {/* Add Funds modal */}
+      {modalTarget && (
         <TopDawgModal
-          isOpen={isEditOpen}
-          onClose={() => setIsEditOpen(false)}
-          userMarkee={markee as any}
+          isOpen={addFundsOpen}
+          onClose={() => { setAddFundsOpen(false); setModalTarget(null) }}
+          onSuccess={() => { setAddFundsOpen(false); setModalTarget(null) }}
+          userMarkee={modalTarget as any}
+          initialMode="addFunds"
+          strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
+          topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
+        />
+      )}
+
+      {/* Edit modal */}
+      {modalTarget && (
+        <TopDawgModal
+          isOpen={editOpen}
+          onClose={() => { setEditOpen(false); setModalTarget(null) }}
+          onSuccess={() => { setEditOpen(false); setModalTarget(null) }}
+          userMarkee={modalTarget as any}
           initialMode="updateMessage"
-          onSuccess={() => setIsEditOpen(false)}
-          strategyAddress={markee.pricingStrategy as `0x${string}`}
+          strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
         />
       )}
     </div>
