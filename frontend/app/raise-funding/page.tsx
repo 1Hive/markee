@@ -149,7 +149,7 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
                 onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = C.borderHover; el.style.color = C.text }}
                 onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = C.border; el.style.color = C.text2 }}
               >
-                See Markees
+                Learn More
               </Link>
               <Link href={`/create-a-markee?platform=${p.key}`} style={{
                 background: C.pink, color: C.bg, border: 'none',
