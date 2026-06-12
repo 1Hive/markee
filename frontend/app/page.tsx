@@ -319,8 +319,8 @@ export default function Home() {
         if (!data) return
         const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
-        // Top 5 by totalFundsRaw across all platforms (API already sorts descending)
-        setTop5Eco(leaderboards.filter(lb => BigInt(lb.totalFundsRaw ?? '0') > 0n).slice(0, 5))
+        // Top 5 by totalFundsRaw across all platforms (API already sorts descending); exclude gamed leaderboards
+        setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.totalFundsRaw ?? '0') > 0n).slice(0, 5))
         setTop5EcoLoading(false)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
@@ -494,9 +494,11 @@ export default function Home() {
                     : null
                   const priceUsd = priceToOvertakeEth && ethPrice ? Math.round(priceToOvertakeEth * ethPrice) : null
 
-                  const logo = lb.logoUrl || lb.repoAvatarUrl || null
+                  const logo = lb.platform === 'website' ? (lb.logoUrl || lb.repoAvatarUrl || null) : null
                   const servedOnLabel = lb.platform === 'github'
-                    ? (lb.repoFullName || lb.name || 'GitHub')
+                    ? 'GitHub'
+                    : lb.platform === 'superfluid'
+                    ? 'Superfluid'
                     : (lb.verifiedUrls?.[0] || lb.verifiedUrl)
                       ? extractDomain(lb.verifiedUrls?.[0] || lb.verifiedUrl)
                       : (lb.name || lb.address.slice(0, 8))
@@ -519,11 +521,19 @@ export default function Home() {
                     >
                       {/* Served on */}
                       <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: '#B8B6D9', minWidth: 0 }}>
-                        {logo && (
+                        {lb.platform === 'github' ? (
+                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(237,238,255,0.08)' }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="#B8B6D9"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+                          </span>
+                        ) : lb.platform === 'superfluid' ? (
+                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(29,178,39,0.14)' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1DB227" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                          </span>
+                        ) : logo ? (
                           <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
                             <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           </span>
-                        )}
+                        ) : null}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
                           {servedOnLabel}
                         </span>

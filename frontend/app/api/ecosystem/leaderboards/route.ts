@@ -103,6 +103,7 @@ export async function GET(request: Request) {
     })
 
     const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards]
+      .map((l: any) => ({ ...l, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }))
 
     // Sort descending by total funds
     leaderboards.sort((a: any, b: any) => {
