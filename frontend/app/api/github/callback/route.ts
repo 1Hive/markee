@@ -6,24 +6,31 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const state = searchParams.get('state')
-  const base = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github`
+  // Used only for early-exit errors before we can read siteOrigin from state.
+  const fallbackBase = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github`
 
   if (!code || !state) {
-    return NextResponse.redirect(`${base}?error=missing_params`)
+    return NextResponse.redirect(`${fallbackBase}?error=missing_params`)
   }
 
   const raw = await kv.getdel(`github:oauth:state:${state}`)
   if (!raw) {
-    return NextResponse.redirect(`${base}?error=invalid_state`)
+    return NextResponse.redirect(`${fallbackBase}?error=invalid_state`)
   }
 
   let returnTo = ''
+  // Use the origin that initiated the flow so staging/preview deploys redirect back
+  // to themselves rather than to production.
+  let siteOrigin = process.env.NEXT_PUBLIC_SITE_URL ?? ''
   try {
     const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
     returnTo = payload.returnTo ?? ''
+    if (payload.origin) siteOrigin = payload.origin
   } catch {
     // state was stored as plain '1' by old connect route — treat as no returnTo
   }
+
+  const base = `${siteOrigin}/ecosystem/platforms/github`
 
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -63,7 +70,7 @@ export async function GET(request: NextRequest) {
     returnTo === 'modal'
       ? `${base}?modal=create`
       : returnTo
-        ? `${process.env.NEXT_PUBLIC_SITE_URL}${returnTo}`
+        ? `${siteOrigin}${returnTo}`
         : base
   )
 
