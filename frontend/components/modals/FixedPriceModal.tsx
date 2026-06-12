@@ -38,6 +38,33 @@ function getCurrentPhaseRate() {
 // 100% of FixedPrice funds go to the Revnet; buyer receives 62% of issued tokens
 function calculateMarkeeTokens(eth: number) { return eth * getCurrentPhaseRate() * 0.62 }
 
+// ── Disabled-button tooltip ───────────────────────────────────────────────────
+function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div
+      style={{ position: 'relative', flexShrink: 0 }}
+      onMouseEnter={() => reason && setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && reason && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+          background: BG2, border: `1px solid ${BORDER}`,
+          borderRadius: 8, padding: '7px 12px',
+          fontFamily: MONO, fontSize: 11, color: MUTED,
+          whiteSpace: 'nowrap', pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          zIndex: 10,
+        }}>
+          {reason}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── TxRing ────────────────────────────────────────────────────────────────────
 function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
   const done = step === 'success'
@@ -89,7 +116,6 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceEth = formatEther(priceWei)
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
-  const revNetEnabled = fixedMarkee?.revNetEnabled ?? false
   const markeeEarned = Math.round(calculateMarkeeTokens(priceEthNum))
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
 
@@ -134,6 +160,14 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   const isOverLimit = newMessage.length > maxLen
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+
+  const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
+  const btnDisabledReason = !btnDisabled || isSuccess ? null
+    : (isPending || isConfirming) ? 'Transaction in progress'
+    : insufficientBalance ? 'Insufficient ETH balance'
+    : isOverLimit ? 'Message exceeds character limit'
+    : !newMessage.trim() ? 'Enter a message to continue'
+    : null
   const stepLabel =
     txStep === 'signing' ? 'AWAITING SIGNATURE' :
     txStep === 'pending' ? 'CONFIRMING ONCHAIN' :
@@ -280,7 +314,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               </div>
 
               {/* MARKEE token estimate */}
-              {revNetEnabled && priceEthNum > 0 && (
+              {priceEthNum > 0 && (
                 <div style={{ marginBottom: 18, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
                   <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
                   <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString()}</div>
@@ -325,19 +359,21 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
               </div>
-              <button
-                onClick={handleChangeMessage}
-                disabled={isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit}
-                style={{
-                  background: PINK, color: BG, border: 'none', borderRadius: 8,
-                  padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
-                  cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                  opacity: (isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit) ? 0.4 : 1,
-                  transition: 'opacity 140ms',
-                }}
-              >
-                Change Message
-              </button>
+              <BtnTooltip reason={btnDisabledReason}>
+                <button
+                  onClick={handleChangeMessage}
+                  disabled={btnDisabled}
+                  style={{
+                    background: PINK, color: BG, border: 'none', borderRadius: 8,
+                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                    cursor: btnDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                    opacity: btnDisabled ? 0.4 : 1,
+                    transition: 'opacity 140ms',
+                  }}
+                >
+                  Change Message
+                </button>
+              </BtnTooltip>
             </div>
           </>
         )}

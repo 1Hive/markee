@@ -109,6 +109,33 @@ function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
   )
 }
 
+// ── Disabled-button tooltip ───────────────────────────────────────────────────
+function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div
+      style={{ position: 'relative', flexShrink: 0 }}
+      onMouseEnter={() => reason && setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && reason && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+          background: BG2, border: `1px solid ${BORDER}`,
+          borderRadius: 8, padding: '7px 12px',
+          fontFamily: MONO, fontSize: 11, color: MUTED,
+          whiteSpace: 'nowrap', pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          zIndex: 10,
+        }}>
+          {reason}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main modal ────────────────────────────────────────────────────────────────
 export function BuyMessageModal({
   isOpen,
@@ -306,6 +333,16 @@ export function BuyMessageModal({
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+
+  const btnDisabled =
+    isPending || isConfirming || isSuccess ||
+    (activeTab !== 'updateMessage' && insufficientBalance) ||
+    ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())
+  const btnDisabledReason = !btnDisabled || isSuccess ? null
+    : (isPending || isConfirming) ? 'Transaction in progress'
+    : (activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
+    : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
+    : null
   const maxLen = Number(maxMessageLength || 223)
 
   const stepLabel =
@@ -659,27 +696,25 @@ export function BuyMessageModal({
                   ? <>62% to <a href={`https://basescan.org/address/${adminAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{adminAddress.slice(0, 6)}…{adminAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
                   : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
               </div>
-              <button
-                onClick={() => {
-                  if (activeTab === 'create') handleCreateMarkee()
-                  else if (activeTab === 'addFunds') handleAddFunds()
-                  else handleUpdateMessage()
-                }}
-                disabled={
-                  isPending || isConfirming || isSuccess ||
-                  (activeTab !== 'updateMessage' && insufficientBalance) ||
-                  ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())
-                }
-                style={{
-                  background: PINK, color: BG, border: 'none', borderRadius: 8,
-                  padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
-                  cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                  opacity: (isPending || isConfirming || isSuccess || (activeTab !== 'updateMessage' && insufficientBalance) || ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())) ? 0.4 : 1,
-                  transition: 'opacity 140ms',
-                }}
-              >
-                {activeTab === 'create' ? 'Buy Message' : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
-              </button>
+              <BtnTooltip reason={btnDisabledReason}>
+                <button
+                  onClick={() => {
+                    if (activeTab === 'create') handleCreateMarkee()
+                    else if (activeTab === 'addFunds') handleAddFunds()
+                    else handleUpdateMessage()
+                  }}
+                  disabled={btnDisabled}
+                  style={{
+                    background: PINK, color: BG, border: 'none', borderRadius: 8,
+                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                    cursor: btnDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                    opacity: btnDisabled ? 0.4 : 1,
+                    transition: 'opacity 140ms',
+                  }}
+                >
+                  {activeTab === 'create' ? 'Buy Message' : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
+                </button>
+              </BtnTooltip>
             </div>
           </>
         )}

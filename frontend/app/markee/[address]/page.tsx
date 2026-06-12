@@ -388,12 +388,30 @@ export default function MarkeeDetailPage() {
 
       {isLoading ? (
         <Skeleton />
-      ) : !topMarkee ? (
-        // Not found
+      ) : !meta ? (
+        // Truly not found
         <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
           <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Leaderboard not found</h1>
           <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>We couldn't find a Markee leaderboard at that address.</p>
           <a href="/marketplace" style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>← Back to Marketplace</a>
+        </section>
+      ) : !topMarkee ? (
+        // Leaderboard exists but no messages yet
+        <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
+          {meta.leaderboardName && (
+            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.leaderboardName}</div>
+          )}
+          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>No messages yet</h1>
+          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Be the first to buy a message and take the top spot.</p>
+          <button
+            onClick={openBuy}
+            style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '13px 26px', fontWeight: 700, fontSize: 15, fontFamily: MONO, cursor: 'pointer', boxShadow: '0 4px 18px rgba(248,151,254,0.3)' }}
+          >
+            Buy First Message
+          </button>
+          <div style={{ marginTop: 20 }}>
+            <a href="/marketplace" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Marketplace</a>
+          </div>
         </section>
       ) : (
         <>
@@ -462,15 +480,15 @@ export default function MarkeeDetailPage() {
 
       <Footer />
 
-      {/* Buy modal */}
-      {topMarkee && (
+      {/* Buy modal — works even when leaderboard is empty */}
+      {meta && (
         <BuyMessageModal
           isOpen={buyOpen}
           onClose={() => setBuyOpen(false)}
           onSuccess={() => setBuyOpen(false)}
           initialMode="create"
           strategyAddress={leaderboardAddress as `0x${string}`}
-          topFundsAdded={topMarkee.totalFundsAdded}
+          topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
         />
       )}
 
