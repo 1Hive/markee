@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAccount } from 'wagmi'
-import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, ChevronRight, X } from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
@@ -71,6 +71,18 @@ interface MyMessage {
   topFunds: bigint
 }
 
+interface FundedMessage {
+  address: string
+  message: string
+  name: string
+  totalFundsAdded: string
+  totalContributed: string
+  strategyId: string
+  strategyName: string
+  isTop: boolean
+  topFundsRaw: string
+}
+
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 const MY_MESSAGES_QUERY = `
   query GetMyMessages($owner: String!) {
@@ -126,8 +138,8 @@ function platformColor(lb: AnyLeaderboard) {
 }
 
 function platformSubtitle(lb: AnyLeaderboard) {
-  if (lb.platform === 'github')     return (lb as GithubLeaderboard).repoFullName || fmtAddr(lb.address)
-  if (lb.platform === 'superfluid') return fmtAddr(lb.address)
+  if (lb.platform === 'github')     return 'GitHub'
+  if (lb.platform === 'superfluid') return 'Superfluid'
   const w = lb as WebsiteLeaderboard
   const u = w.verifiedUrls?.[0] || w.verifiedUrl || w.siteUrl
   return u ? u.replace(/^https?:\/\//, '').replace(/\/$/, '') : fmtAddr(lb.address)
@@ -330,29 +342,33 @@ function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
           const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
           const missingVerify = lb.platform === 'website' && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
 
-          let primary: React.ReactNode
-          if (hasFunds && missingVerify) {
-            primary = (
-              <button onClick={() => onVerify?.(lb as WebsiteLeaderboard)} style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>
-                Verify Integration
-              </button>
-            )
-          } else if (lb.platform === 'website') {
-            primary = (
-              <button onClick={() => onIntegrate?.(lb as WebsiteLeaderboard)} style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>
-                Finish Setup
-              </button>
-            )
-          } else {
-            primary = (
-              <a href={`/markee/${lb.address}`} style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, textDecoration: 'none', fontFamily: SANS, whiteSpace: 'nowrap' }}>
-                Buy First Message
-              </a>
-            )
-          }
+          // Awaiting Integration: has funds but no verified URL → Verify Integration
+          // Awaiting Activation: no funds → Buy First Message (all platforms, same blue style)
+          const primary: React.ReactNode = (hasFunds && missingVerify) ? (
+            <button
+              onClick={e => { e.stopPropagation(); onVerify?.(lb as WebsiteLeaderboard) }}
+              style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
+            >
+              Verify Integration
+            </button>
+          ) : (
+            <a
+              href={`/markee/${lb.address}`}
+              onClick={e => e.stopPropagation()}
+              style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, textDecoration: 'none', fontFamily: SANS, whiteSpace: 'nowrap' }}
+            >
+              Buy First Message
+            </a>
+          )
 
           return (
-            <div key={lb.address} style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+            <div
+              key={lb.address}
+              onClick={() => window.location.href = `/markee/${lb.address}`}
+              style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
               <ActiveServedLabel lb={lb} />
               <SetupStatusPill lb={lb} />
               <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
@@ -361,7 +377,7 @@ function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
                 {primary}
                 <button
-                  onClick={() => onArchive(lb.address)}
+                  onClick={e => { e.stopPropagation(); onArchive(lb.address) }}
                   title="Archive"
                   style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'color 120ms, border-color 120ms' }}
                   onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = TEXT2; el.style.borderColor = `${MUTED}66` }}
@@ -407,13 +423,19 @@ function ActiveTable({ markees, onManage }: { markees: AnyLeaderboard[]; onManag
           ))}
         </div>
         {markees.map(lb => (
-          <div key={lb.address} style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+          <div
+            key={lb.address}
+            onClick={() => window.location.href = `/markee/${lb.address}`}
+            style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
             <ActiveServedLabel lb={lb} />
             <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontWeight: 600 }}>{lb.totalFunds}</span>
             <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>{lb.topMessage || 'No message yet'}</span>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => onManage(lb)}
+                onClick={e => { e.stopPropagation(); onManage(lb) }}
                 style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
@@ -428,60 +450,72 @@ function ActiveTable({ markees, onManage }: { markees: AnyLeaderboard[]; onManag
   )
 }
 
-// ── Message card (bought / funded) ────────────────────────────────────────────
-function MessageCard({ msg }: { msg: MyMessage }) {
-  const fundsEth = Number(msg.totalFundsAdded) / 1e18
-  const toTopEth = msg.isTop ? null : (Number(msg.topFunds - msg.totalFundsAdded + BigInt('1000000000000000')) / 1e18).toFixed(3)
-  const detailLink = `/markee/${msg.strategyId || msg.address}`
+// ── Messages I've Bought table ────────────────────────────────────────────────
+const MSG_COLS = '180px 1fr 110px 80px'
 
+function BoughtTable({ items }: { items: MyMessage[] }) {
   return (
-    <a href={detailLink} style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer', textDecoration: 'none', transition: 'border-color 140ms, transform 140ms' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}44`; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.transform = 'none' }}>
-      {/* which leaderboard + rank */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.strategyName}</span>
-        {msg.isTop
-          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 9px', borderRadius: 99, flexShrink: 0 }}>★ #1</span>
-          : <span style={{ fontSize: 11, fontWeight: 700, color: TEXT2, background: `${MUTED}28`, padding: '3px 9px', borderRadius: 99, flexShrink: 0 }}>Overtaken</span>}
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 560, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Leaderboard', 'Your message', 'Spent', 'Status'].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i > 1 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
+        </div>
+        {items.map(m => (
+          <div
+            key={m.address}
+            onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
+            style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
+            <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600, textAlign: 'right' }}>{fmtEth(m.totalFundsAdded)}</span>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              {m.isTop
+                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>★ Top</span>
+                : <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: `${MUTED}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>Overtaken</span>}
+            </div>
+          </div>
+        ))}
       </div>
-
-      {/* the message */}
-      <div style={{ background: BG2, border: `1px solid ${msg.isTop ? BORDER : `${PINK}3D`}`, borderRadius: 10, padding: '12px 14px', flex: 1 }}>
-        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 6 }}>Your message</div>
-        <p style={{ margin: 0, color: TEXT, fontFamily: MONO, fontSize: 13, lineHeight: 1.5 }}>{msg.message || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message</span>}</p>
-        {msg.name && <p style={{ margin: '8px 0 0', color: MUTED, fontSize: 12, textAlign: 'right' }}>{msg.name}</p>}
-      </div>
-
-      {/* funds + action */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 12, color: BLUE, fontWeight: 600, fontFamily: MONO }}>{fundsEth.toFixed(3)} ETH <span style={{ color: MUTED, fontWeight: 400 }}>spent</span></span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED }}>
-          {toTopEth ? `+${toTopEth} ETH to top` : 'Add funds'} <ChevronRight size={11} />
-        </span>
-      </div>
-    </a>
+    </div>
   )
 }
 
-function MessageSections({ items }: { items: MyMessage[] }) {
-  const featured = items.filter(m => m.isTop)
-  const needs    = items.filter(m => !m.isTop)
-  const grid = (arr: MyMessage[]) => (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
-      {arr.map(m => <MessageCard key={m.address} msg={m} />)}
-    </div>
-  )
-  const head = (label: string, n: number, color: string) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color }}>{label}</h2>
-      <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{n}</span>
-    </div>
-  )
+// ── Messages I've Funded table ────────────────────────────────────────────────
+const FUNDED_COLS = '180px 1fr 120px 80px'
+
+function FundedTable({ items }: { items: FundedMessage[] }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-      {featured.length > 0 && <div>{head('Featured Spots Owned', featured.length, TEXT)}{grid(featured)}</div>}
-      {needs.length > 0    && <div>{head('More Funds Needed',    needs.length,    BLUE)}{grid(needs)}</div>}
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 560, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Leaderboard', 'Current message', 'Contributed', 'Status'].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i > 1 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
+        </div>
+        {items.map(m => (
+          <div
+            key={m.address}
+            onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
+            style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
+            <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600, textAlign: 'right' }}>{fmtEth(BigInt(m.totalContributed))}</span>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              {m.isTop
+                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>★ Top</span>
+                : <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: `${MUTED}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>Not Top</span>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -545,8 +579,10 @@ export default function AccountPage() {
   const [isLoading, setIsLoading]               = useState(false)
 
   // Messages
-  const [myMessages, setMyMessages]           = useState<MyMessage[]>([])
+  const [myMessages, setMyMessages]             = useState<MyMessage[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [fundedMessages, setFundedMessages]     = useState<FundedMessage[]>([])
+  const [isLoadingFunded, setIsLoadingFunded]   = useState(false)
 
   // UI state
   const [tab, setTab]                         = useState<TabId>('markees')
@@ -649,7 +685,24 @@ export default function AccountPage() {
     finally { setIsLoadingMessages(false) }
   }, [])
 
-  useEffect(() => { if (walletAddress) { fetchAll(walletAddress); fetchMyMessages(walletAddress) } }, [walletAddress, fetchAll, fetchMyMessages])
+  const fetchFundedMessages = useCallback(async (addr: string) => {
+    setIsLoadingFunded(true)
+    try {
+      const res = await fetch(`/api/account/funded?owner=${addr.toLowerCase()}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setFundedMessages(data.funded ?? [])
+    } catch { /* non-critical */ }
+    finally { setIsLoadingFunded(false) }
+  }, [])
+
+  useEffect(() => {
+    if (walletAddress) {
+      fetchAll(walletAddress)
+      fetchMyMessages(walletAddress)
+      fetchFundedMessages(walletAddress)
+    }
+  }, [walletAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
 
   // Derived board lists
   const allBoards = useMemo(() =>
@@ -718,7 +771,7 @@ export default function AccountPage() {
         {mounted && isConnected ? (
           <>
             <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
-              <Tabs tab={tab} setTab={setTab} counts={{ markees: allBoards.length, bought: myMessages.length, funded: 0 }} />
+              <Tabs tab={tab} setTab={setTab} counts={{ markees: allBoards.length, bought: myMessages.length, funded: fundedMessages.length }} />
             </div>
 
             <div style={{ paddingTop: 28 }}>
@@ -799,19 +852,23 @@ export default function AccountPage() {
               {/* ── Messages I've Bought ── */}
               {tab === 'bought' && (
                 isLoadingMessages ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
-                    {[1, 2, 3].map(i => <div key={i} style={{ height: 200, background: `${MUTED}14`, borderRadius: 14, border: `1px solid ${BORDER}` }} />)}
-                  </div>
+                  <div style={{ height: 200, background: `${MUTED}14`, borderRadius: 10, border: `1px solid ${BORDER}` }} />
                 ) : myMessages.length === 0 ? (
                   <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
-                  <MessageSections items={myMessages} />
+                  <BoughtTable items={myMessages} />
                 )
               )}
 
               {/* ── Messages I've Funded ── */}
               {tab === 'funded' && (
-                <Empty icon="🤝" title="No contributions tracked yet" body="Funded messages will appear here once the network indexes your contributions." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
+                isLoadingFunded ? (
+                  <div style={{ height: 200, background: `${MUTED}14`, borderRadius: 10, border: `1px solid ${BORDER}` }} />
+                ) : fundedMessages.length === 0 ? (
+                  <Empty icon="🤝" title="No funded messages yet" body="When you add funds to someone else's Markee, those contributions appear here." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
+                ) : (
+                  <FundedTable items={fundedMessages} />
+                )
               )}
             </div>
           </>
