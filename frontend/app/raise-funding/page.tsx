@@ -24,6 +24,7 @@ const PLATFORMS = [
     summary: 'Add a Markee sign to any website you manage with a highly flexible LLM-guided integration.',
     messages: 1284,
     raised: 38200,
+    seeUrl: '/marketplace',
   },
   {
     key: 'github' as PlatformKey,
@@ -34,6 +35,7 @@ const PLATFORMS = [
     summary: 'Drop a Markee sign into any markdown file in your repo. Perfect for READMEs, docs and skill.md files.',
     messages: 642,
     raised: 11400,
+    seeUrl: '/ecosystem/platforms/github',
   },
   {
     key: 'superfluid' as PlatformKey,
@@ -44,6 +46,7 @@ const PLATFORMS = [
     summary: 'Create a Markee sign for your Superfluid project and earn SUP rewards for every message bought.',
     messages: 318,
     raised: 9600,
+    seeUrl: '/ecosystem/platforms/superfluid',
   },
 ]
 
@@ -84,50 +87,72 @@ function Hero() {
 }
 
 // ── Platform picker ──────────────────────────────────────────────────────────
+const MONO = "var(--font-jetbrains-mono)"
+
 function PlatformPicker() {
-  const [sel, setSel] = useState<PlatformKey | null>(null)
   return (
     <section style={{ maxWidth: 1100, margin: '0 auto', padding: '56px 40px 16px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(252px, 1fr))', gap: 16 }}>
-        {PLATFORMS.map(p => {
-          const on = sel === p.key
-          return (
-            <div key={p.key} onClick={() => setSel(on ? null : p.key)} style={{
-              background: on ? 'rgba(248,151,254,0.06)' : 'rgba(10,15,61,0.5)',
-              border: `1px solid ${on ? C.borderHover : C.border}`,
-              borderRadius: 14, padding: 22, display: 'flex', flexDirection: 'column' as const, gap: 14, cursor: 'pointer',
-              transition: 'border-color 160ms, background 160ms',
-            }}>
-              <div style={{ width: 50, height: 50, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <PlatGlyph icon={p.icon} color={p.color} size={24} />
+      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+        {PLATFORMS.map(p => (
+          <div key={p.key} style={{
+            display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' as const,
+            background: 'rgba(10,15,61,0.5)', border: `1px solid ${C.border}`,
+            borderRadius: 14, padding: '18px 22px',
+            transition: 'border-color 160ms',
+          }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = C.borderHover}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = C.border}
+          >
+            {/* Icon */}
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <PlatGlyph icon={p.icon} color={p.color} size={22} />
+            </div>
+
+            {/* Name + tagline */}
+            <div style={{ flexShrink: 0, width: 148 }}>
+              <div style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>{p.name}</div>
+              <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>{p.tagline}</div>
+            </div>
+
+            {/* Summary */}
+            <div style={{ flex: 1, minWidth: 200, color: C.text2, fontSize: 13, lineHeight: 1.55 }}>
+              {p.summary}
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 24, flexShrink: 0, paddingLeft: 8, borderLeft: `1px solid ${C.border}` }}>
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>{p.messages.toLocaleString()}</div>
+                <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>active signs</div>
               </div>
-              <div>
-                <div style={{ color: C.text, fontWeight: 700, fontSize: 17 }}>{p.name}</div>
-                <div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{p.tagline}</div>
-              </div>
-              <div style={{ color: C.text2, fontSize: 13, lineHeight: 1.55 }}>{p.summary}</div>
-              {on && (
-                <Link href={`/create-a-markee?platform=${p.key}`} onClick={e => e.stopPropagation()} style={{
-                  background: C.pink, color: C.bg, borderRadius: 8, padding: '11px 0', fontSize: 14, fontWeight: 700,
-                  textDecoration: 'none', textAlign: 'center' as const, display: 'block',
-                  boxShadow: '0 8px 24px rgba(248,151,254,0.3)',
-                }}>
-                  Create
-                </Link>
-              )}
-              <div style={{ marginTop: 'auto', display: 'flex', gap: 30, justifyContent: 'center', paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ textAlign: 'center' as const }}>
-                  <div style={{ color: C.text, fontWeight: 700, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 16 }}>{p.messages.toLocaleString()}</div>
-                  <div style={{ color: C.muted, fontSize: 11 }}>active signs</div>
-                </div>
-                <div style={{ textAlign: 'center' as const }}>
-                  <div style={{ color: C.blue, fontWeight: 700, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 16 }}>${(p.raised / 1000).toFixed(1)}k</div>
-                  <div style={{ color: C.muted, fontSize: 11 }}>raised</div>
-                </div>
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>${(p.raised / 1000).toFixed(1)}k</div>
+                <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>raised</div>
               </div>
             </div>
-          )
-        })}
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <Link href={p.seeUrl} style={{
+                background: 'transparent', color: C.text2, border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                display: 'inline-flex', alignItems: 'center',
+              }}>
+                See Markees
+              </Link>
+              <Link href={`/create-a-markee?platform=${p.key}`} style={{
+                background: C.pink, color: C.bg, border: 'none',
+                borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700,
+                textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                display: 'inline-flex', alignItems: 'center',
+                boxShadow: '0 4px 16px rgba(248,151,254,0.3)',
+              }}>
+                Create →
+              </Link>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   )
@@ -148,7 +173,7 @@ function HowItWorks() {
         </div>
         <h2 style={{ margin: '0 0 12px', fontSize: 'clamp(26px,3.6vw,38px)', fontWeight: 800, letterSpacing: -0.8, color: C.text }}>Embed a paid message to any digital space</h2>
         <p style={{ margin: 0, color: C.text2, fontSize: 16, lineHeight: 1.6, maxWidth: '60ch' }}>
-          Markee is a cross-platform marketplace for digital real estate and a sustainable revenue source for any website.
+          Cross-platform, non-intrusive, and kinda fun for people to see.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, margin: '34px 0 36px' }}>
           {steps.map(s => (
