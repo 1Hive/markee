@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
+import { useEthPrice } from '@/hooks/useEthPrice'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -22,19 +24,15 @@ const PLATFORMS = [
     icon: 'globe',
     color: C.pink,
     summary: 'Add a Markee sign to any website you manage with a highly flexible LLM-guided integration.',
-    messages: 1284,
-    raised: 38200,
     seeUrl: '/marketplace',
   },
   {
     key: 'github' as PlatformKey,
     name: 'GitHub Repo',
-    tagline: 'README, docs, any markdown',
+    tagline: 'Any markdown file.',
     icon: 'github',
     color: C.text,
     summary: 'Drop a Markee sign into any markdown file in your repo. Perfect for READMEs, docs and skill.md files.',
-    messages: 642,
-    raised: 11400,
     seeUrl: '/ecosystem/platforms/github',
   },
   {
@@ -44,8 +42,6 @@ const PLATFORMS = [
     icon: 'zap',
     color: C.green,
     summary: 'Create a Markee sign for your Superfluid project and earn SUP rewards for every message bought.',
-    messages: 318,
-    raised: 9600,
     seeUrl: '/ecosystem/platforms/superfluid',
   },
 ]
@@ -89,7 +85,15 @@ function Hero() {
 // ── Platform picker ──────────────────────────────────────────────────────────
 const MONO = "var(--font-jetbrains-mono)"
 
-function PlatformPicker() {
+type PlatStats = { markees: number; usd: number }
+
+function fmtUsd(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`
+  return `$${n}`
+}
+
+function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
   return (
     <section style={{ maxWidth: 1100, margin: '0 auto', padding: '56px 40px 16px' }}>
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
@@ -122,11 +126,15 @@ function PlatformPicker() {
             {/* Stats */}
             <div style={{ display: 'flex', gap: 24, flexShrink: 0, paddingLeft: 8, borderLeft: `1px solid ${C.border}` }}>
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>{p.messages.toLocaleString()}</div>
+                <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
+                  {stats[p.key] != null ? stats[p.key].markees.toLocaleString() : '—'}
+                </div>
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>active signs</div>
               </div>
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>${(p.raised / 1000).toFixed(1)}k</div>
+                <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
+                  {stats[p.key] != null ? fmtUsd(stats[p.key].usd) : '—'}
+                </div>
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>raised</div>
               </div>
             </div>
@@ -306,11 +314,41 @@ function IntegrateForm() {
 }
 
 export default function RaiseFunding() {
+  const ethPrice = useEthPrice()
+  const [platStats, setPlatStats] = useState<Record<string, PlatStats>>({})
+
+  useEffect(() => {
+    fetch('/api/ecosystem/leaderboards', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data || !ethPrice) return
+        const acc: Record<string, { markees: number; eth: number }> = {
+          openinternet: { markees: 0, eth: 0 },
+          github:       { markees: 0, eth: 0 },
+          superfluid:   { markees: 0, eth: 0 },
+        }
+        for (const lb of data.leaderboards ?? []) {
+          if (lb.gamed) continue
+          const key = lb.platform === 'website' ? 'openinternet' : lb.platform
+          if (!acc[key] || lb.markeeCount < 1) continue
+          acc[key].markees++
+          acc[key].eth += parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
+        }
+        setPlatStats({
+          openinternet: { markees: acc.openinternet.markees, usd: Math.round(acc.openinternet.eth * ethPrice) },
+          github:       { markees: acc.github.markees,       usd: Math.round(acc.github.eth * ethPrice) },
+          superfluid:   { markees: acc.superfluid.markees,   usd: Math.round(acc.superfluid.eth * ethPrice) },
+        })
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ethPrice])
+
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
       <Header activePage="raise" useRegularLinks />
       <Hero />
-      <PlatformPicker />
+      <PlatformPicker stats={platStats} />
       <HowItWorks />
       <IntegrateForm />
       <Footer />
