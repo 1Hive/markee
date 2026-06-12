@@ -518,21 +518,51 @@ export default function AccountPage() {
   }, [])
 
   const fetchMyMessages = useCallback(async (addr: string) => {
-    const subgraphUrl = `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`
-    if (!process.env.NEXT_PUBLIC_GRAPH_TOKEN) return
     setIsLoadingMessages(true)
     try {
-      const res = await fetch(subgraphUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: MY_MESSAGES_QUERY, variables: { owner: addr.toLowerCase() } }) })
-      if (!res.ok) return
-      const { data } = await res.json()
-      const raw = data?.markees ?? []
-      setMyMessages(raw.map((m: any) => {
-        const strat = m.partnerStrategy ?? m.strategy
-        const topMarkees: { address: string; totalFundsAdded: string }[] = strat?.markees ?? []
-        const topFunds = topMarkees[0] ? BigInt(topMarkees[0].totalFundsAdded) : BigInt(0)
-        const isTop = topMarkees.length === 0 || topMarkees[0]?.address?.toLowerCase() === m.address?.toLowerCase()
-        return { address: m.address, message: m.message ?? '', name: m.name ?? '', totalFundsAdded: BigInt(m.totalFundsAdded ?? '0'), createdAt: Number(m.createdAt ?? 0), strategyId: strat?.id ?? '', strategyName: strat?.instanceName ?? 'Unknown Leaderboard', isTop, topFunds }
-      }))
+      const addrLow = addr.toLowerCase()
+
+      // RPC-based: v1.1+ leaderboards (Superfluid, GitHub, OI v1.2+)
+      const rpcPromise = fetch(`/api/account/messages?owner=${addrLow}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((data): MyMessage[] => (data?.messages ?? []).map((m: any) => ({
+          address: m.address,
+          message: m.message ?? '',
+          name: m.name ?? '',
+          totalFundsAdded: BigInt(m.totalFundsAdded ?? '0'),
+          createdAt: 0,
+          strategyId: m.strategyId ?? '',
+          strategyName: m.strategyName ?? 'Unknown Leaderboard',
+          isTop: m.isTop ?? false,
+          topFunds: BigInt(m.topFundsRaw ?? '0'),
+        })))
+        .catch(() => [])
+
+      // Subgraph-based: legacy TopDawg contracts
+      const subgraphUrl = `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_TOKEN}/subgraphs/id/8kMCKUHSY7o6sQbsvufeLVo8PifxrsnagjVTMGcs6KdF`
+      const subgraphPromise = process.env.NEXT_PUBLIC_GRAPH_TOKEN
+        ? fetch(subgraphUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: MY_MESSAGES_QUERY, variables: { owner: addrLow } }) })
+            .then(r => r.ok ? r.json() : null)
+            .then((json): MyMessage[] => {
+              const raw = json?.data?.markees ?? []
+              return raw.map((m: any) => {
+                const strat = m.partnerStrategy ?? m.strategy
+                const topMarkees: { address: string; totalFundsAdded: string }[] = strat?.markees ?? []
+                const topFunds = topMarkees[0] ? BigInt(topMarkees[0].totalFundsAdded) : 0n
+                const isTop = topMarkees.length === 0 || topMarkees[0]?.address?.toLowerCase() === m.address?.toLowerCase()
+                return { address: m.address, message: m.message ?? '', name: m.name ?? '', totalFundsAdded: BigInt(m.totalFundsAdded ?? '0'), createdAt: Number(m.createdAt ?? 0), strategyId: strat?.id ?? '', strategyName: strat?.instanceName ?? 'Unknown Leaderboard', isTop, topFunds }
+              })
+            })
+            .catch(() => [])
+        : Promise.resolve([] as MyMessage[])
+
+      const [rpcMessages, subgraphMessages] = await Promise.all([rpcPromise, subgraphPromise])
+
+      // Merge, deduplicating by markee address (RPC wins for duplicates)
+      const seen = new Set(rpcMessages.map(m => m.address.toLowerCase()))
+      const merged = [...rpcMessages, ...subgraphMessages.filter(m => !seen.has(m.address.toLowerCase()))]
+      merged.sort((a, b) => (b.totalFundsAdded > a.totalFundsAdded ? 1 : -1))
+      setMyMessages(merged)
     } catch { /* non-critical */ }
     finally { setIsLoadingMessages(false) }
   }, [])
