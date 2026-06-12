@@ -201,16 +201,16 @@ function PlatformGlyph({ icon, size = 26, color }: { icon: string; size?: number
 }
 
 const PLATFORMS = [
-  { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE' },
-  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF' },
-  { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227' },
+  { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE', href: '/marketplace' },
+  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/ecosystem/platforms/github' },
+  { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/ecosystem/platforms/superfluid' },
 ] as const
 
 function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
   const [hover, setHover] = useState(false)
   return (
     <Link
-      href="/raise-funding"
+      href={p.href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{

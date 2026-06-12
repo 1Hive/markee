@@ -10,6 +10,7 @@ import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationMod
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -741,8 +742,19 @@ export default function AccountPage() {
       <Header activePage="account" useRegularLinks />
 
       {/* Hero */}
-      <section style={{ background: BG2, borderBottom: `1px solid ${BORDER}` }}>
-        <div style={{ maxWidth: 1240, margin: '0 auto', padding: '40px 40px 32px' }}>
+      <section
+        className="relative overflow-hidden"
+        style={{
+          borderBottom: `1px solid ${BORDER}`,
+          background: [
+            'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
+            'radial-gradient(ellipse at 80% 80%, rgba(124,156,255,0.2), transparent 55%)',
+            'linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)',
+          ].join(', '),
+        }}
+      >
+        <HeroBackground />
+        <div className="relative z-10" style={{ maxWidth: 1240, margin: '0 auto', padding: '40px 40px 32px' }}>
           {/* wallet header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
             <div style={{ width: 54, height: 54, borderRadius: 14, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
