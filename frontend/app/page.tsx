@@ -9,7 +9,6 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { useFixedViews } from '@/hooks/useFixedViews'
-import { usePartnerMarkees } from '@/lib/contracts/usePartnerMarkees'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
@@ -306,19 +305,23 @@ export default function Home() {
   const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
   const [modalMarkee, setModalMarkee] = useState<FixedMarkee | null>(null)
   const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}`; topFundsAdded: bigint } | null>(null)
-  const { partnerData, isLoading: isLoadingPartners } = usePartnerMarkees()
   const ethPrice = useEthPrice()
 
   // Ecosystem stats for the metrics row + per-platform stats for platform cards
   const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0, views: 0 })
   const [platformStats, setPlatformStats] = useState<Record<string, { markees: number; usd: number }>>({})
+  const [top5Eco, setTop5Eco] = useState<any[]>([])
+  const [top5EcoLoading, setTop5EcoLoading] = useState(true)
   useEffect(() => {
     fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
         if (!data) return
-        const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean }[] = data.leaderboards ?? []
+        const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
+        // Top 5 by totalFundsRaw across all platforms (API already sorts descending)
+        setTop5Eco(leaderboards.filter(lb => BigInt(lb.totalFundsRaw ?? '0') > 0n).slice(0, 5))
+        setTop5EcoLoading(false)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
           0
@@ -376,13 +379,10 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixedMarkees.map(m => m.strategyAddress).join(',')])
 
-  // Filter to partners with active leaderboards
-  const activePartners = partnerData.filter(p => p.partner.leaderboardAddress)
-
-  // Fetch views for home page marketplace table (keyed by top markee address, same as marketplace page)
+  // Fetch views for home page marketplace table (keyed by top markee address)
   const [partnerViews, setPartnerViews] = useState<Map<string, number>>(new Map())
   useEffect(() => {
-    const addresses = activePartners.map(p => p.winningMarkee?.address).filter(Boolean) as string[]
+    const addresses = top5Eco.map(lb => lb.topMarkeeAddress).filter(Boolean) as string[]
     if (addresses.length === 0) return
     fetch(`/api/views?addresses=${addresses.map(a => a.toLowerCase()).join(',')}`)
       .then(r => r.ok ? r.json() : {})
@@ -390,7 +390,7 @@ export default function Home() {
         setPartnerViews(new Map(Object.entries(data).map(([k, v]) => [k.toLowerCase(), v.totalViews ?? 0])))
       })
       .catch(() => {})
-  }, [activePartners.map(p => p.winningMarkee?.address ?? '').join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [top5Eco.map(lb => lb.topMarkeeAddress ?? '').join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -473,8 +473,8 @@ export default function Home() {
 
           {/* Partner rows */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {isLoadingPartners
-              ? [1, 2, 3, 4].map(i => (
+            {top5EcoLoading
+              ? [1, 2, 3, 4, 5].map(i => (
                   <div key={i} style={{
                     display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
                     gap: 16, padding: '11px 14px',
@@ -485,19 +485,26 @@ export default function Home() {
                     ))}
                   </div>
                 ))
-              : activePartners.map((pd) => {
-                  const { partner, winningMarkee, totalFunds } = pd
-                  const totalEth = parseFloat(formatEther(totalFunds))
+              : top5Eco.map((lb) => {
+                  const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw ?? '0')))
                   const totalUsd = ethPrice ? Math.round(totalEth * ethPrice) : null
-                  const priceToOvertakeEth = winningMarkee
-                    ? parseFloat(formatEther(winningMarkee.totalFundsAdded + BigInt('1000000000000000')))
+                  const topFundsAdded = BigInt(lb.topFundsAddedRaw ?? '0')
+                  const priceToOvertakeEth = topFundsAdded > 0n
+                    ? parseFloat(formatEther(topFundsAdded + BigInt('1000000000000000')))
                     : null
                   const priceUsd = priceToOvertakeEth && ethPrice ? Math.round(priceToOvertakeEth * ethPrice) : null
 
+                  const logo = lb.logoUrl || lb.repoAvatarUrl || null
+                  const servedOnLabel = lb.platform === 'github'
+                    ? (lb.repoFullName || lb.name || 'GitHub')
+                    : (lb.verifiedUrls?.[0] || lb.verifiedUrl)
+                      ? extractDomain(lb.verifiedUrls?.[0] || lb.verifiedUrl)
+                      : (lb.name || lb.address.slice(0, 8))
+
                   return (
                     <a
-                      key={partner.slug}
-                      href={`/markee/${partner.leaderboardAddress}`}
+                      key={lb.address}
+                      href={`/markee/${lb.address}`}
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '190px 110px 1fr 74px 120px',
@@ -512,13 +519,13 @@ export default function Home() {
                     >
                       {/* Served on */}
                       <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: '#B8B6D9', minWidth: 0 }}>
-                        {partner.logo && (
+                        {logo && (
                           <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
-                            <img src={partner.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           </span>
                         )}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
-                          {partner.liveUrl ? extractDomain(partner.liveUrl) : partner.name}
+                          {servedOnLabel}
                         </span>
                       </span>
 
@@ -536,26 +543,26 @@ export default function Home() {
                           fontFamily: MONO, fontSize: 13, color: '#EDEEFF',
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
-                          {winningMarkee?.message || '—'}
+                          {lb.topMessage || '—'}
                         </div>
                       </div>
 
                       {/* Views */}
                       <span style={{ fontSize: 11, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
                         <Eye size={10} style={{ opacity: 0.7 }} />
-                        {(() => { const v = partnerViews.get(winningMarkee?.address?.toLowerCase() ?? ''); return v ? formatViews(v) : '—' })()}
+                        {(() => { const v = partnerViews.get((lb.topMarkeeAddress ?? '').toLowerCase()); return v ? formatViews(v) : '—' })()}
                       </span>
 
                       {/* Price to change */}
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        {priceUsd != null || priceToOvertakeEth != null ? (
+                        {priceToOvertakeEth != null ? (
                           <button
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
                               setBuyModal({
-                                leaderboardAddress: partner.leaderboardAddress as `0x${string}`,
-                                topFundsAdded: winningMarkee?.totalFundsAdded ?? 0n,
+                                leaderboardAddress: lb.address as `0x${string}`,
+                                topFundsAdded,
                               })
                             }}
                             style={{
@@ -569,7 +576,7 @@ export default function Home() {
                           >
                             {priceUsd != null
                               ? `$${priceUsd.toLocaleString()}`
-                              : `${priceToOvertakeEth!.toFixed(3)} ETH`}
+                              : `${priceToOvertakeEth.toFixed(3)} ETH`}
                           </button>
                         ) : (
                           <span style={{ fontSize: 11, color: '#8A8FBF', fontFamily: MONO }}>—</span>
