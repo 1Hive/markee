@@ -38,7 +38,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
       fontFamily: MONO, fontSize: 11, letterSpacing: 2,
       textTransform: 'uppercase', color: '#F897FE',
     }}>
-      <span style={{ width: 18, height: 1, background: '#F897FE', display: 'inline-block' }} />
+      <span style={{ width: 8, height: 8, borderRadius: 99, background: '#F897FE', display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
       {children}
     </div>
   )

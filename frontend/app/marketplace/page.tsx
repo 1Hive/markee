@@ -499,7 +499,7 @@ export default function MarketplacePage() {
         {/* heading */}
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
-            <span style={{ width: 18, height: 1, background: PINK, display: 'inline-block' }} />
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
             Marketplace
           </div>
           <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>
