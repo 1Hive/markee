@@ -296,6 +296,88 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
+// ── Setup-required table (Awaiting Integration / Awaiting Activation) ────────
+const SETUP_COLS = '180px 165px 1fr 220px'
+
+function SetupStatusPill({ lb }: { lb: AnyLeaderboard }) {
+  const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
+  const missingVerify = lb.platform === 'website' && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
+  const needsIntegration = hasFunds && missingVerify
+  const col = needsIntegration ? BLUE : MUTED
+  const label = needsIntegration ? 'Integration Needed' : 'No Messages Yet'
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 99, fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 0.4, background: `${col}1E`, border: `1px solid ${col}44`, color: col, whiteSpace: 'nowrap' }}>
+      <GlowDot size={5} color={col} />{label}
+    </span>
+  )
+}
+
+function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
+  markees: AnyLeaderboard[]
+  onIntegrate?: (lb: WebsiteLeaderboard) => void
+  onVerify?: (lb: WebsiteLeaderboard) => void
+  onArchive: (address: string) => void
+}) {
+  return (
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 640, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Served on', 'Status', 'Current message', ''].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
+        </div>
+        {markees.map(lb => {
+          const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
+          const missingVerify = lb.platform === 'website' && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
+
+          let primary: React.ReactNode
+          if (hasFunds && missingVerify) {
+            primary = (
+              <button onClick={() => onVerify?.(lb as WebsiteLeaderboard)} style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>
+                Verify Integration
+              </button>
+            )
+          } else if (lb.platform === 'website') {
+            primary = (
+              <button onClick={() => onIntegrate?.(lb as WebsiteLeaderboard)} style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>
+                Finish Setup
+              </button>
+            )
+          } else {
+            primary = (
+              <a href={`/markee/${lb.address}`} style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, textDecoration: 'none', fontFamily: SANS, whiteSpace: 'nowrap' }}>
+                Buy First Message
+              </a>
+            )
+          }
+
+          return (
+            <div key={lb.address} style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+              <ActiveServedLabel lb={lb} />
+              <SetupStatusPill lb={lb} />
+              <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
+                {lb.topMessage || 'No message yet'}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                {primary}
+                <button
+                  onClick={() => onArchive(lb.address)}
+                  title="Archive"
+                  style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'color 120ms, border-color 120ms' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = TEXT2; el.style.borderColor = `${MUTED}66` }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+                >
+                  Archive
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Active Markees table ──────────────────────────────────────────────────────
 const ACT_COLS = '200px 110px 1fr 116px'
 
@@ -650,25 +732,33 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-                    {/* Awaiting Integration (drafts) */}
-                    {draftBoards.length > 0 && (
+                    {/* Awaiting Integration — website boards with funds but no verified URL */}
+                    {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: BLUE }}>Awaiting Integration</h2>
-                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{draftBoards.length}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{awaitingVerification.filter(lb => !archived.includes(lb.address)).length}</span>
                         </div>
-                        <p style={{ margin: '0 0 16px', color: MUTED, fontSize: 13 }}>These signs are private until your integration is verified.</p>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
-                          {draftBoards.map(lb => (
-                            <MarkeeCardDash
-                              key={lb.address} lb={lb}
-                              onIntegrate={lb.platform === 'website' ? () => setIntegrationBoard(lb as WebsiteLeaderboard) : undefined}
-                              onVerify={lb.platform === 'website' ? () => setVerifyBoard(lb as WebsiteLeaderboard) : undefined}
-                              onEdit={lb.platform === 'website' ? () => setEditingBoard(lb as WebsiteLeaderboard) : undefined}
-                              onArchive={() => setArchived(prev => [...prev, lb.address])}
-                            />
-                          ))}
+                        <SetupTable
+                          markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
+                          onVerify={lb => setVerifyBoard(lb)}
+                          onArchive={addr => setArchived(prev => [...prev, addr])}
+                        />
+                      </div>
+                    )}
+
+                    {/* Awaiting Activation — boards with no messages yet */}
+                    {inactiveBoards.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: BLUE }}>Awaiting Activation</h2>
+                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{inactiveBoards.length}</span>
                         </div>
+                        <SetupTable
+                          markees={inactiveBoards}
+                          onIntegrate={lb => setIntegrationBoard(lb)}
+                          onArchive={addr => setArchived(prev => [...prev, addr])}
+                        />
                       </div>
                     )}
 
@@ -684,8 +774,8 @@ export default function AccountPage() {
                     )}
 
                     {/* No active markees prompt */}
-                    {activeBoards.length === 0 && draftBoards.length > 0 && (
-                      <p style={{ color: MUTED, fontSize: 14 }}>No active signs yet — finish a draft above to go live.</p>
+                    {activeBoards.length === 0 && (awaitingVerification.length > 0 || inactiveBoards.length > 0) && (
+                      <p style={{ color: MUTED, fontSize: 14 }}>No active signs yet — complete setup above to go live.</p>
                     )}
 
                     {/* Archived */}
