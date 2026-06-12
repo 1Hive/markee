@@ -570,6 +570,11 @@ function CreateWizardInner() {
       .catch(() => {})
   }, [])
 
+  // Auto-advance past the connect step once GitHub is confirmed connected (post-OAuth return)
+  useEffect(() => {
+    if (ghUser.connected && stepKey === 'connect') setStep(s => s + 1)
+  }, [ghUser.connected]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-fill site name from URL
   useEffect(() => {
     if (platformKey !== 'openinternet' || nameTouched) return
