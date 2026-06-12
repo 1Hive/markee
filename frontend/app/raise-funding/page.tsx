@@ -102,10 +102,7 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
             display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' as const,
             background: 'rgba(10,15,61,0.5)', border: `1px solid ${C.border}`,
             borderRadius: 14, padding: '18px 22px',
-            transition: 'border-color 160ms',
           }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = C.borderHover}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = C.border}
           >
             {/* Icon */}
             <div style={{ width: 44, height: 44, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -141,12 +138,17 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
 
             {/* Buttons */}
             <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-              <Link href={p.seeUrl} style={{
-                background: 'transparent', color: C.text2, border: `1px solid ${C.border}`,
-                borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600,
-                textDecoration: 'none', whiteSpace: 'nowrap' as const,
-                display: 'inline-flex', alignItems: 'center',
-              }}>
+              <Link href={p.seeUrl}
+                style={{
+                  background: 'transparent', color: C.text2, border: `1px solid ${C.border}`,
+                  borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                  textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                  display: 'inline-flex', alignItems: 'center',
+                  transition: 'border-color 140ms, color 140ms',
+                }}
+                onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = C.borderHover; el.style.color = C.text }}
+                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = C.border; el.style.color = C.text2 }}
+              >
                 See Markees
               </Link>
               <Link href={`/create-a-markee?platform=${p.key}`} style={{
