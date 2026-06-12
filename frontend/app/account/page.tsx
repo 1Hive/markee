@@ -170,7 +170,7 @@ function GlowDot({ size = 8, color }: { size?: number; color: string }) {
   return <span style={{ width: size, height: size, borderRadius: 99, background: color, boxShadow: `0 0 ${size * 1.5}px ${color}`, flexShrink: 0, display: 'inline-block' }} />
 }
 
-function Overview({ raised, active, bought, contributed }: { raised: bigint; active: number; bought: number; contributed: bigint }) {
+function Overview({ raised, active, bought, contributed, loaded }: { raised: bigint; active: number; bought: number; contributed: bigint; loaded: boolean }) {
   const cells = [
     { n: fmtEth(raised),              label: 'total raised',      color: PINK  },
     { n: String(active),              label: 'active signs',      color: GREEN },
@@ -179,13 +179,21 @@ function Overview({ raised, active, bought, contributed }: { raised: bigint; act
   ]
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-      {cells.map((c, i) => (
+      {loaded ? cells.map((c, i) => (
         <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <GlowDot size={8} color={c.color} />
             <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: c.color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{c.n}</span>
           </div>
           <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{c.label}</div>
+        </div>
+      )) : [1, 2, 3, 4].map(i => (
+        <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
+            <div style={{ width: 80, height: 22, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+          </div>
+          <div style={{ width: 100, height: 13, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
         </div>
       ))}
     </div>
@@ -773,7 +781,7 @@ export default function AccountPage() {
           </div>
 
           {mounted && isConnected && (
-            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} />
+            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} loaded={!isLoading} />
           )}
         </div>
       </section>
@@ -792,8 +800,14 @@ export default function AccountPage() {
                 allBoards.length === 0 && !isLoading ? (
                   <Empty icon="🪧" title="No Markees yet" body="Create your first sign on a platform and start raising funds wherever your audience is." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
                 ) : isLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
-                    {[1, 2, 3].map(i => <div key={i} style={{ height: 260, background: `${MUTED}14`, borderRadius: 14, border: `1px solid ${BORDER}` }} />)}
+                  <div style={{ overflow: 'auto' }}>
+                    <div style={{ minWidth: 640, background: BG2 }}>
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
@@ -864,7 +878,15 @@ export default function AccountPage() {
               {/* ── Messages I've Bought ── */}
               {tab === 'bought' && (
                 isLoadingMessages ? (
-                  <div style={{ height: 200, background: `${MUTED}14`, borderRadius: 10, border: `1px solid ${BORDER}` }} />
+                  <div style={{ overflow: 'auto' }}>
+                    <div style={{ minWidth: 500, background: BG2 }}>
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : myMessages.length === 0 ? (
                   <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
@@ -875,7 +897,15 @@ export default function AccountPage() {
               {/* ── Messages I've Funded ── */}
               {tab === 'funded' && (
                 isLoadingFunded ? (
-                  <div style={{ height: 200, background: `${MUTED}14`, borderRadius: 10, border: `1px solid ${BORDER}` }} />
+                  <div style={{ overflow: 'auto' }}>
+                    <div style={{ minWidth: 500, background: BG2 }}>
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : fundedMessages.length === 0 ? (
                   <Empty icon="🤝" title="No funded messages yet" body="When you add funds to someone else's Markee, those contributions appear here." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
@@ -895,8 +925,14 @@ export default function AccountPage() {
           </div>
         ) : (
           // Loading skeleton before hydration
-          <div style={{ paddingTop: 28, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
-            {[1, 2, 3].map(i => <div key={i} style={{ height: 260, background: `${MUTED}14`, borderRadius: 14, border: `1px solid ${BORDER}` }} />)}
+          <div style={{ paddingTop: 28, overflow: 'auto' }}>
+            <div style={{ minWidth: 640, background: BG2 }}>
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                  {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

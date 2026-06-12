@@ -123,7 +123,19 @@ function StatCell({ n, label, color, dot }: { n: string; label: string; color: s
 }
 
 // ── Metrics row ───────────────────────────────────────────────────────────────
-function MetricsRow({ stats }: { stats: { markees: number; messages: number; usd: number; views: number } }) {
+function SkeletonStatCell() {
+  return (
+    <div className="metric-cell">
+      <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
+        <div style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+      </span>
+      <div style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+    </div>
+  )
+}
+
+function MetricsRow({ stats, loaded }: { stats: { markees: number; messages: number; usd: number; views: number }; loaded: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -150,10 +162,16 @@ function MetricsRow({ stats }: { stats: { markees: number; messages: number; usd
 
   return (
     <div ref={ref} className="metrics-row">
-      <StatCell n={f(markees)} label="active Markees" color="#F897FE" dot="#F897FE" />
-      <StatCell n={f(messages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
-      <StatCell n={`$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
-      <StatCell n={f(views)} label="views" color="#7B6AF4" dot="#7B6AF4" />
+      {loaded ? (
+        <>
+          <StatCell n={f(markees)} label="active Markees" color="#F897FE" dot="#F897FE" />
+          <StatCell n={f(messages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
+          <StatCell n={`$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
+          <StatCell n={f(views)} label="views" color="#7B6AF4" dot="#7B6AF4" />
+        </>
+      ) : (
+        [1, 2, 3, 4].map(i => <SkeletonStatCell key={i} />)
+      )}
     </div>
   )
 }
@@ -309,6 +327,7 @@ export default function Home() {
 
   // Ecosystem stats for the metrics row + per-platform stats for platform cards
   const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0, views: 0 })
+  const [ecoStatsLoaded, setEcoStatsLoaded] = useState(false)
   const [platformStats, setPlatformStats] = useState<Record<string, { markees: number; usd: number }>>({})
   const [top5Eco, setTop5Eco] = useState<any[]>([])
   const [top5EcoLoading, setTop5EcoLoading] = useState(true)
@@ -367,6 +386,7 @@ export default function Home() {
           usd: ethPrice ? Math.round(totalEth * ethPrice) : 0,
           views: totalViews,
         })
+        setEcoStatsLoaded(true)
       })
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -444,7 +464,7 @@ export default function Home() {
           }}>
             Pay to be <span style={{ color: '#F897FE' }}>seen</span>
           </h1>
-          <MetricsRow stats={ecoStats} />
+          <MetricsRow stats={ecoStats} loaded={ecoStatsLoaded} />
         </div>
       </section>
 

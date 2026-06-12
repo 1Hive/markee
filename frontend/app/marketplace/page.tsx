@@ -114,7 +114,19 @@ function StatCell({ n, label, color, dot }: { n: string; label: string; color: s
   )
 }
 
-function MetricsStrip({ stats }: { stats: { markees: number; messages: number; usd: number; views: number } }) {
+function SkeletonStatCell() {
+  return (
+    <div className="metric-cell">
+      <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
+        <div style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+      </span>
+      <div style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+    </div>
+  )
+}
+
+function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: number; usd: number; views: number }; loaded: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -137,10 +149,16 @@ function MetricsStrip({ stats }: { stats: { markees: number; messages: number; u
   return (
     <section className="metrics-section" style={{ background: BG2, padding: '40px', borderBottom: `1px solid ${BORDER}` }}>
       <div ref={ref} className="metrics-row" style={{ maxWidth: 1240, margin: '0 auto' }}>
-        <StatCell n={fmt(markees)}   label="active Markees"     color={PINK}  dot={PINK}  />
-        <StatCell n={fmt(messages)}  label="messages bought"    color={TEXT}  dot={TEXT}  />
-        <StatCell n={`$${fmt(usd)}`} label="total funds raised" color={GREEN} dot={GREEN} />
-        <StatCell n={fmt(views)}     label="views"              color={PURP}  dot={PURP}  />
+        {loaded ? (
+          <>
+            <StatCell n={fmt(markees)}   label="active Markees"     color={PINK}  dot={PINK}  />
+            <StatCell n={fmt(messages)}  label="messages bought"    color={TEXT}  dot={TEXT}  />
+            <StatCell n={`$${fmt(usd)}`} label="total funds raised" color={GREEN} dot={GREEN} />
+            <StatCell n={fmt(views)}     label="views"              color={PURP}  dot={PURP}  />
+          </>
+        ) : (
+          [1, 2, 3, 4].map(i => <SkeletonStatCell key={i} />)
+        )}
       </div>
     </section>
   )
@@ -492,7 +510,7 @@ export default function MarketplacePage() {
       {featured && <FeaturedHero lb={featured} views={featuredViews} ethPrice={ethPrice} />}
 
       {/* ── Metrics strip ── */}
-      <MetricsStrip stats={{ ...ecoStats, views: totalViews }} />
+      <MetricsStrip stats={{ ...ecoStats, views: totalViews }} loaded={!loading} />
 
       {/* ── Leaderboard table ── */}
       <section style={{ padding: '34px 40px 90px', maxWidth: 1240, margin: '0 auto' }}>

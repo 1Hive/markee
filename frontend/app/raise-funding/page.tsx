@@ -178,7 +178,8 @@ function HowItWorks() {
   return (
     <section id="how" style={{ borderTop: `1px solid ${C.border}`, background: C.bg2 }}>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '72px 40px' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.muted, marginBottom: 14, padding: '6px 14px', background: 'rgba(124,156,255,0.07)', border: `1px solid rgba(124,156,255,0.2)`, borderRadius: 99 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 14 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
           How it works
         </div>
         <h2 style={{ margin: '0 0 12px', fontSize: 'clamp(26px,3.6vw,38px)', fontWeight: 800, letterSpacing: -0.8, color: C.text }}>Embed a paid message to any digital space</h2>
@@ -245,7 +246,8 @@ function IntegrateForm() {
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '72px 40px 90px' }} className="integrate-grid">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 48, alignItems: 'start' }}>
           <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.muted, marginBottom: 18, padding: '6px 14px', background: 'rgba(124,156,255,0.07)', border: `1px solid rgba(124,156,255,0.2)`, borderRadius: 99 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 18 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
               For platforms
             </div>
             <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.6vw,38px)', fontWeight: 800, letterSpacing: -0.8, color: C.text }}>Looking for a deeper integration?</h2>
