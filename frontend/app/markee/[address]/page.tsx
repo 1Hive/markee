@@ -291,6 +291,245 @@ function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onE
   )
 }
 
+// ── Embed panel ───────────────────────────────────────────────────────────────
+type EmbedTab = 'snippet' | 'script' | 'iframe' | 'terminal'
+
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setDone(true)
+      setTimeout(() => setDone(false), 1800)
+    }).catch(() => {})
+  }
+  return (
+    <button
+      onClick={copy}
+      style={{
+        background: done ? `${GREEN}22` : 'rgba(138,143,191,0.1)',
+        color: done ? GREEN : MUTED,
+        border: `1px solid ${done ? GREEN + '44' : 'rgba(138,143,191,0.15)'}`,
+        borderRadius: 6, padding: '4px 10px',
+        fontFamily: MONO, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+        transition: 'all 140ms', whiteSpace: 'nowrap' as const,
+      }}
+    >
+      {done ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
+
+function CodeBlock({ code, label }: { code: string; label?: string }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      {label && (
+        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 8 }}>
+          {label}
+        </div>
+      )}
+      <div style={{ position: 'relative', background: '#030714', border: `1px solid rgba(138,143,191,0.15)`, borderRadius: 10, padding: '14px 16px' }}>
+        <pre style={{ margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap' as const, wordBreak: 'break-all' as const, lineHeight: 1.65 }}>
+          {code}
+        </pre>
+        <div style={{ position: 'absolute', top: 10, right: 10 }}>
+          <CopyButton text={code} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EmbedPanel({ address }: { address: string }) {
+  const [tab, setTab]       = useState<EmbedTab>('snippet')
+  const [open, setOpen]     = useState(false)
+  const [btnHover, setBtnHover] = useState(false)
+
+  const origin  = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin) : 'https://markee.xyz'
+  const apiUrl  = `${origin}/api/embed/${address}`
+  const pageUrl = `${origin}/markee/${address}`
+  const iframeUrl = `${origin}/embed/${address}`
+
+  const snippetCode = `<!-- Insert where you want the message to appear -->
+<span data-markee="${address}"></span>
+
+<!-- Add before </body> -->
+<script>
+(function(){
+  var a="${address}",e=document.querySelector('[data-markee="'+a+'"]');
+  function u(){fetch("${apiUrl}").then(r=>r.json()).then(d=>{if(e&&d.message)e.textContent=d.message}).catch(()=>{})}
+  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',u):u();
+  setInterval(u,60000);
+})();
+</script>`.trim()
+
+  const scriptCode = `<!-- Insert where you want the message to appear -->
+<span data-markee="${address}"></span>
+
+<!-- Hosted script — auto-updates every 60 s -->
+<script src="${apiUrl}/script" defer></script>`.trim()
+
+  const iframeCode = `<iframe
+  src="${iframeUrl}"
+  width="100%"
+  height="52"
+  frameborder="0"
+  style="border:none;display:block;"
+  title="Markee sponsored message"
+></iframe>`.trim()
+
+  const statuslineScript = `// ~/.markee/statusline.mjs
+// Reads the cached message and prints an OSC 8 hyperlink for the terminal.
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+try {
+  const cache = homedir()+'/.markee/${address}.json'
+  const o = JSON.parse(readFileSync(cache,'utf8'))
+  if(o?.message && Date.now()-o.ts < 600_000){
+    const strip=s=>s.replace(/[\\u0000-\\u001f\\u007f-\\u009f]/g,'')
+    const E='\\x1b'
+    process.stdout.write(E+']8;;${pageUrl}'+E+'\\\\markee\\xb7 '+strip(o.message)+E+']8;;'+E+'\\\\')
+  }
+}catch{}
+process.exit(0)`.trim()
+
+  const updateScript = `// ~/.markee/update.mjs
+// Fetches the current top message and caches it locally.
+// Run via cron: */10 * * * * node ~/.markee/update.mjs
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+const dir = homedir()+'/.markee'
+mkdirSync(dir,{recursive:true})
+fetch('${apiUrl}')
+  .then(r=>r.json())
+  .then(d=>writeFileSync(dir+'/${address}.json',JSON.stringify({...d,ts:Date.now()})))
+  .catch(()=>{})`.trim()
+
+  const settingsJson = `// Add to ~/.claude/settings.json:
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node ~/.markee/statusline.mjs",
+    "padding": 0
+  }
+}`.trim()
+
+  const cronLine = `# Add to crontab (run: crontab -e)
+*/10 * * * * node ~/.markee/update.mjs`.trim()
+
+  const tabs: { key: EmbedTab; label: string }[] = [
+    { key: 'snippet',  label: 'JS Snippet'  },
+    { key: 'script',   label: 'Script Tag'  },
+    { key: 'iframe',   label: 'iframe'      },
+    { key: 'terminal', label: 'Terminal'    },
+  ]
+
+  return (
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 12px' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        onMouseEnter={() => setBtnHover(true)}
+        onMouseLeave={() => setBtnHover(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'transparent', border: `1px solid ${btnHover ? 'rgba(248,151,254,0.35)' : BORDER}`,
+          borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
+          fontFamily: MONO, fontSize: 13, color: btnHover ? TEXT : TEXT2,
+          transition: 'border-color 140ms, color 140ms',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+        </svg>
+        Embed this Markee
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms', marginLeft: 2 }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 14, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+          {/* Tab bar */}
+          <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, background: BG, paddingLeft: 4 }}>
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '12px 16px', fontFamily: MONO, fontSize: 12,
+                  color: tab === t.key ? PINK : MUTED,
+                  borderBottom: `2px solid ${tab === t.key ? PINK : 'transparent'}`,
+                  marginBottom: -1, transition: 'color 120ms',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+            {tab === 'snippet' && (
+              <>
+                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+                  Drop this onto any HTML page. The snippet fetches the current top message and re-polls every 60 seconds — no server changes needed.
+                </p>
+                <CodeBlock code={snippetCode} />
+              </>
+            )}
+
+            {tab === 'script' && (
+              <>
+                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+                  One element + one hosted script. The script handles polling automatically.
+                </p>
+                <CodeBlock code={scriptCode} />
+                <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>
+                  The script is served from Markee's CDN and cached for 60 seconds, so nothing extra runs on your server.
+                </p>
+              </>
+            )}
+
+            {tab === 'iframe' && (
+              <>
+                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+                  Paste this anywhere that accepts HTML. The iframe handles all rendering and auto-updates.
+                </p>
+                <CodeBlock code={iframeCode} />
+                <div style={{ marginTop: 8 }}>
+                  <p style={{ margin: '0 0 10px', fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Preview</p>
+                  <iframe
+                    src={iframeUrl}
+                    width="100%"
+                    height="52"
+                    style={{ border: 'none', display: 'block', borderRadius: 8 }}
+                    title="Markee embed preview"
+                  />
+                </div>
+              </>
+            )}
+
+            {tab === 'terminal' && (
+              <>
+                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+                  Show the current top message in your Claude Code terminal status bar — the same way Kickbacks works, but for your Markee.
+                </p>
+                <CodeBlock code={statuslineScript} label="~/.markee/statusline.mjs — prints the ad line" />
+                <CodeBlock code={updateScript}    label="~/.markee/update.mjs — fetches & caches the message" />
+                <CodeBlock code={settingsJson}    label="~/.claude/settings.json — wires the status line" />
+                <CodeBlock code={cronLine}        label="crontab — keeps the cache fresh" />
+                <p style={{ margin: 0, color: MUTED, fontSize: 12.5, lineHeight: 1.6 }}>
+                  The status line script never makes network requests — it only reads the local cache file. All traffic from your machine is the 10-minute cron fetch to the embed API.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Loading skeleton ──────────────────────────────────────────────────────────
 function Skeleton() {
   return (
@@ -454,6 +693,11 @@ export default function MarkeeDetailPage() {
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* ── Embed panel ── */}
+          <section style={{ padding: '0 40px 8px' }}>
+            <EmbedPanel address={leaderboardAddress} />
           </section>
 
           {/* ── Bottom CTAs ── */}

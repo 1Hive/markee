@@ -56,14 +56,28 @@ const cspHeader = Object.entries(cspDirectives)
   .map(([key, vals]) => `${key} ${vals.join(' ')}`)
   .join('; ')
 
+// Embed pages need frame-ancestors: * so third-party sites can iframe them.
+const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['*'] })
+  .map(([key, vals]) => `${key} ${vals.join(' ')}`)
+  .join('; ')
+
 const nextConfig = {
   async headers() {
     return [
+      // /embed/* — allow iframing from any origin, no X-Frame-Options
       {
-        source: '/(.*)',
+        source: '/embed/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: embedCspHeader },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
+      // Everything else — deny framing
+      {
+        source: '/((?!embed(?:/|$)).*)',
         headers: [
           { key: 'Content-Security-Policy', value: cspHeader },
-          // Belt-and-suspenders clickjacking protection
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
