@@ -437,11 +437,12 @@ export default function SuperfluidPlatformPage() {
   const boostedAddressSet = new Set(boostedLeaderboards.map(b => b.address.toLowerCase()))
 
   const activeBoostedEntries = boostedLeaderboards.filter(
-    entry => entry.leaderboard !== null && entry.leaderboard.markeeCount > 0
+    entry => entry.leaderboard !== null &&
+      BigInt(entry.leaderboard.topFundsAddedRaw || '0') > 0n && entry.leaderboard.topMessage
   )
 
   const regularRows = leaderboards.filter(
-    lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && !boostedAddressSet.has(lb.address.toLowerCase())
+    lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage && !boostedAddressSet.has(lb.address.toLowerCase())
   )
 
   // Count active signs across boosted + regular

@@ -217,7 +217,7 @@ export default function GithubPlatformPage() {
   }, [])
 
   const tableRows = [...leaderboards]
-    .filter(lb => lb.markeeCount > 0)
+    .filter(lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage)
     .sort((a, b) => {
       const af = BigInt(a.totalFundsRaw || '0')
       const bf = BigInt(b.totalFundsRaw || '0')
