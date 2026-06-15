@@ -220,6 +220,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         for (uint256 i = 0; i < _markees.length; i++) {
             address m = _markees[i];
             if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
+                require(Markee(m).pricingStrategy() == address(this), "Markee not migrated to this strategy");
                 _registerMarkee(m);
             }
         }

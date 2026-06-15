@@ -15,6 +15,8 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { StreamingLeaderboardFactory } from "../contracts/streaming/StreamingLeaderboardFactory.sol";
 import { StreamingLeaderboard } from "../contracts/streaming/StreamingLeaderboard.sol";
+import { LeaderboardFactory } from "../contracts/v1.3/LeaderboardFactory.sol";
+import { Leaderboard } from "../contracts/v1.3/Leaderboard.sol";
 
 // Minimal external interfaces for driving Superfluid from test EOAs.
 interface ICFAForwarder {
@@ -521,16 +523,62 @@ contract StreamingLeaderboardTest is Test {
         assertEq(_beneficiaryFlow(), expected, "syncMarkee should restore the beneficiary stream");
     }
 
-    function test_migrationIn_registerExistingMarkees() public {
-        // A Markee created on this board already has a preserved address; registering an external
-        // address via registerExistingMarkees adds it without changing the address.
-        address external_ = makeAddr("preexistingMarkee");
+    /// @notice Full cross-contract migration-in handoff: a Markee living on a legacy v1.3 lump-sum
+    ///         Leaderboard is re-pointed to the streaming board (preserving its address), registered
+    ///         here, and is then fully live for streaming. Exercises the real two-step flow —
+    ///         legacy `migratePricingStrategy` → streaming `registerExistingMarkees` — and the
+    ///         `pricingStrategy == this` invariant the registration now enforces.
+    function test_migrationIn_fullHandoff_fromLegacyLeaderboard() public {
+        // 1. Stand up a legacy v1.3 leaderboard on the same fork.
+        LeaderboardFactory legacyFactory =
+            new LeaderboardFactory("Legacy", "legacy", REVNET_TERMINAL, REVNET_PROJECT, address(0), admin);
+        (address legacyBoardAddr,) = legacyFactory.createLeaderboard(beneficiary, "Legacy Board");
+        Leaderboard legacyBoard = Leaderboard(legacyBoardAddr); // legacy admin == this test contract
+
+        // 2. Create a real, paid Markee on the legacy leaderboard (lump-sum model routes via Markee.pay).
+        address creator = makeAddr("legacyCreator");
+        vm.deal(creator, 1 ether);
+        vm.prank(creator);
+        address markee = legacyBoard.createMarkee{value: 0.01 ether}("legacy msg", "legacyName");
+        assertEq(IMarkee(markee).pricingStrategy(), legacyBoardAddr, "markee should start on the legacy board");
+
+        // 3. Hand it off: the legacy board re-points the Markee's strategy to the streaming board.
+        legacyBoard.migratePricingStrategy(markee, address(board));
+        assertEq(IMarkee(markee).pricingStrategy(), address(board), "markee not re-pointed to streaming board");
+
+        // 4. The streaming board registers it — same address, fresh GDA pool. The pricingStrategy
+        //    invariant now gates this (a non-handed-off address would revert here).
         address[] memory arr = new address[](1);
-        arr[0] = external_;
-        // The board admin is whoever called createLeaderboard — the test contract itself in setUp.
+        arr[0] = markee;
         board.registerExistingMarkees(arr);
-        assertTrue(board.isMarkeeOnLeaderboard(external_), "not registered");
-        assertTrue(address(board.poolOf(external_)) != address(0), "pool not created for migrated markee");
+        assertTrue(board.isMarkeeOnLeaderboard(markee), "migrated markee not registered on streaming board");
+        assertTrue(address(board.poolOf(markee)) != address(0), "no GDA pool created for migrated markee");
+
+        // 5. The migrated Markee is fully live: a backer can stream into it and it ranks #1.
+        address backer = _backer("backerA");
+        _open(backer, markee, _rate(0.03 ether));
+        assertEq(board.topMarkee(), markee, "migrated markee should rank once backed");
+        assertGt(_beneficiaryFlow(), int96(0), "beneficiary stream should open for the migrated markee");
+        _notJailed();
+    }
+
+    /// @notice registerExistingMarkees rejects an address that has NOT been handed off to this strategy
+    ///         (its pricingStrategy still points elsewhere) — prevents registering half-migrated Markees.
+    function test_registerExistingMarkees_rejectsNotHandedOff() public {
+        LeaderboardFactory legacyFactory =
+            new LeaderboardFactory("Legacy", "legacy", REVNET_TERMINAL, REVNET_PROJECT, address(0), admin);
+        (address legacyBoardAddr,) = legacyFactory.createLeaderboard(beneficiary, "Legacy Board");
+
+        address creator = makeAddr("legacyCreator");
+        vm.deal(creator, 1 ether);
+        vm.prank(creator);
+        address markee = Leaderboard(legacyBoardAddr).createMarkee{value: 0.01 ether}("m", "n");
+
+        // Still on the legacy board (no migratePricingStrategy call) → registration must revert.
+        address[] memory arr = new address[](1);
+        arr[0] = markee;
+        vm.expectRevert("Markee not migrated to this strategy");
+        board.registerExistingMarkees(arr);
     }
 
     // ─── Migration-out (_vacateTopIf + refund wind-down) ────────────────────────
