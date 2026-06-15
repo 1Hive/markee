@@ -319,19 +319,17 @@ function CopyButton({ text }: { text: string }) {
 
 function CodeBlock({ code, label }: { code: string; label?: string }) {
   return (
-    <div style={{ position: 'relative' }}>
-      {label && (
-        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 8 }}>
-          {label}
-        </div>
-      )}
-      <div style={{ position: 'relative', background: '#030714', border: `1px solid rgba(138,143,191,0.15)`, borderRadius: 10, padding: '14px 16px' }}>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>
+          {label ?? ''}
+        </span>
+        <CopyButton text={code} />
+      </div>
+      <div style={{ background: '#030714', border: `1px solid rgba(138,143,191,0.15)`, borderRadius: 10, padding: '14px 16px', maxHeight: 220, overflowY: 'auto' as const }}>
         <pre style={{ margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap' as const, wordBreak: 'break-all' as const, lineHeight: 1.65 }}>
           {code}
         </pre>
-        <div style={{ position: 'absolute', top: 10, right: 10 }}>
-          <CopyButton text={code} />
-        </div>
       </div>
     </div>
   )
@@ -783,9 +781,7 @@ Please look at this codebase and implement both components. Choose an appropriat
         <div style={{ marginTop: 14, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px 10px', borderBottom: `1px solid ${BORDER}` }}>
             <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-              {isGithub
-                ? 'Paste this prompt into any AI coding agent with access to your repo. It will build a buy modal, sync the top message into your markdown file between the delimiters, and track views via GitHub\'s traffic API.'
-                : 'Paste this prompt into any AI coding agent with access to your repo. It will build a full Markee widget with a buy modal, view count tracking, and moderation.'}
+              Copy this prompt into any AI coding agent with access to your repo.
             </p>
           </div>
           <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
