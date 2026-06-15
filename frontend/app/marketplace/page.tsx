@@ -517,17 +517,32 @@ export default function MarketplacePage() {
       {/* ── Leaderboard table ── */}
       <section style={{ padding: '34px 40px 90px', maxWidth: 1240, margin: '0 auto' }}>
         {/* heading */}
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-            Marketplace
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              Marketplace
+            </div>
+            <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>
+              Search the Markee network
+            </h2>
+            <p style={{ margin: '8px 0 0', color: TEXT2, fontSize: 16, maxWidth: '56ch' }}>
+              Find and buy messages from any Markee on the internet.
+            </p>
           </div>
-          <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>
-            Search the Markee network
-          </h2>
-          <p style={{ margin: '8px 0 0', color: TEXT2, fontSize: 16, maxWidth: '56ch' }}>
-            Find and buy messages from any Markee on the internet.
-          </p>
+          <a
+            href="/raise-funding"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap',
+              background: 'rgba(124,156,255,0.12)', color: BLUE, border: `1px solid rgba(124,156,255,0.3)`,
+              borderRadius: 9, padding: '10px 18px', fontSize: 13.5, fontWeight: 600,
+              textDecoration: 'none', transition: 'background 150ms, border-color 150ms',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.2)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,156,255,0.55)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.12)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,156,255,0.3)' }}
+          >
+            Create Your Own Markee →
+          </a>
         </div>
 
         {/* filters */}
