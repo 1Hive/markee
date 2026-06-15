@@ -44,9 +44,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Get stored OAuth token for the repo owner
-  const userRecord = await kv.get<{ accessToken: string; login: string }>(
-    `github:user:${repoMeta.githubUserId}`
-  )
+  // The callback route stores this value via JSON.stringify(), so KV may return
+  // a raw string rather than a parsed object — handle both cases.
+  const rawUserRecord = await kv.get(`github:user:${repoMeta.githubUserId}`)
+  const userRecord = typeof rawUserRecord === 'string'
+    ? JSON.parse(rawUserRecord) as { accessToken: string; login: string }
+    : rawUserRecord as { accessToken: string; login: string } | null
   if (!userRecord?.accessToken) {
     // Fall back to last-known value if token is gone
     const last = await kv.get<GitHubTrafficResponse>(lastKey)
