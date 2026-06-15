@@ -431,7 +431,9 @@ export default function MarketplacePage() {
 
   // Filter
   const filtered = useMemo(() => {
-    let arr = leaderboards.filter(lb => lb.markeeCount > 0)
+    let arr = leaderboards.filter(lb =>
+      BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage
+    )
     if (factory !== 'all') arr = arr.filter(lb => lb.platform === factory)
     if (search.trim()) {
       const s = search.toLowerCase()
