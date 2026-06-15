@@ -317,15 +317,18 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function CodeBlock({ code, label }: { code: string; label?: string }) {
+function CodeBlock({ code, label, hideCopy }: { code: string; label?: string; hideCopy?: boolean }) {
+  const showHeader = label || !hideCopy
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>
-          {label ?? ''}
-        </span>
-        <CopyButton text={code} />
-      </div>
+      {showHeader && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>
+            {label ?? ''}
+          </span>
+          {!hideCopy && <CopyButton text={code} />}
+        </div>
+      )}
       <div style={{ background: '#030714', border: `1px solid rgba(138,143,191,0.15)`, borderRadius: 10, padding: '14px 16px', maxHeight: 220, overflowY: 'auto' as const }}>
         <pre style={{ margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap' as const, wordBreak: 'break-all' as const, lineHeight: 1.65 }}>
           {code}
@@ -779,16 +782,17 @@ Please look at this codebase and implement both components. Choose an appropriat
 
       {open && (
         <div style={{ marginTop: 14, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px 10px', borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
               Copy this prompt into any AI coding agent with access to your repo.
             </p>
+            <CopyButton text={llmPrompt} />
           </div>
           <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
             {isGithub && (
               <CodeBlock code={delimiterSnippet} label="Step 1 — add these delimiters to your markdown file and commit" />
             )}
-            <CodeBlock code={llmPrompt} label={isGithub ? 'Step 2 — paste this prompt into your agent' : undefined} />
+            <CodeBlock code={llmPrompt} hideCopy label={isGithub ? 'Step 2 — paste this prompt into your agent' : undefined} />
           </div>
         </div>
       )}
