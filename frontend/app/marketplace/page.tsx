@@ -533,13 +533,13 @@ export default function MarketplacePage() {
           <a
             href="/raise-funding"
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap',
-              background: 'rgba(124,156,255,0.12)', color: BLUE, border: `1px solid rgba(124,156,255,0.3)`,
-              borderRadius: 9, padding: '10px 18px', fontSize: 13.5, fontWeight: 600,
-              textDecoration: 'none', transition: 'background 150ms, border-color 150ms',
+              display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+              background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`,
+              borderRadius: 10, padding: '13px 24px', fontSize: 15, fontWeight: 600,
+              textDecoration: 'none', cursor: 'pointer', transition: 'border-color 160ms, color 160ms',
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.2)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,156,255,0.55)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.12)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,156,255,0.3)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = TEXT; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = TEXT2; (e.currentTarget as HTMLElement).style.borderColor = BORDER }}
           >
             Create Your Own Markee →
           </a>
