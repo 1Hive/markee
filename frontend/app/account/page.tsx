@@ -346,7 +346,7 @@ function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 640, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Served on', 'Status', 'Current message', ''].map((h, i) => (
+          {['Markee Name', 'Status', 'Current message', ''].map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
         </div>
@@ -823,7 +823,7 @@ export default function AccountPage() {
                         </div>
                         <SetupTable
                           markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
-                          onVerify={lb => setVerifyBoard(lb)}
+                          onVerify={lb => setIntegrationBoard(lb)}
                           onArchive={addr => setArchived(prev => [...prev, addr])}
                         />
                       </div>

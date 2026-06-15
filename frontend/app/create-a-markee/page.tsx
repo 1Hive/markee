@@ -7,6 +7,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
+import { IntegrationModal } from '@/components/modals/IntegrationModal'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -199,7 +200,7 @@ function ChoosePlatform({ selected, onSelect }: { selected: PlatformKey | null; 
 }
 
 // ── ConnectGitHub ─────────────────────────────────────────────────────────
-function ConnectGitHub({ ghUser }: { ghUser: GhUser }) {
+function ConnectGitHub({ ghUser, onDisconnect }: { ghUser: GhUser; onDisconnect?: () => void }) {
   return (
     <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 32, textAlign: 'center' as const }}>
       <div style={{ width: 56, height: 56, margin: '0 auto 16px', borderRadius: 14, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -212,6 +213,14 @@ function ConnectGitHub({ ghUser }: { ghUser: GhUser }) {
             Connected as <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>@{ghUser.login}</span>
           </div>
           <p style={{ color: C.muted, fontSize: 13, marginTop: 8 }}>You can now pick a repository and file.</p>
+          {onDisconnect && (
+            <button
+              onClick={onDisconnect}
+              style={{ marginTop: 14, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 7, padding: '7px 18px', color: C.muted, fontSize: 12, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
+            >
+              Disconnect — use a different account
+            </button>
+          )}
         </div>
       ) : (
         <div>
@@ -236,9 +245,10 @@ interface GitHubSetupProps {
   selectedRepo: string | null; setSelectedRepo: (r: string) => void
   selectedFile: string | null; setSelectedFile: (f: string | null) => void
   beneficiary: string; setBeneficiary: (v: string) => void
+  onDisconnect?: () => void
 }
 
-function GitHubSetup({ repos, selectedRepo, setSelectedRepo, selectedFile, setSelectedFile, beneficiary, setBeneficiary }: GitHubSetupProps) {
+function GitHubSetup({ repos, selectedRepo, setSelectedRepo, selectedFile, setSelectedFile, beneficiary, setBeneficiary, onDisconnect }: GitHubSetupProps) {
   const [files, setFiles] = useState<string[]>([])
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [fileInput, setFileInput] = useState('')
@@ -263,7 +273,17 @@ function GitHubSetup({ repos, selectedRepo, setSelectedRepo, selectedFile, setSe
       <div>
         <span style={labelCss}>Repository</span>
         {repos.length === 0 ? (
-          <div style={{ color: C.muted, fontSize: 14, padding: 16, border: `1px solid ${C.border}`, borderRadius: 8, textAlign: 'center' as const }}>No repos found. Make sure you have push access.</div>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, textAlign: 'center' as const }}>
+            <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>No repos found. Make sure you have push access.</p>
+            {onDisconnect && (
+              <button
+                onClick={onDisconnect}
+                style={{ marginTop: 10, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 7, padding: '6px 14px', color: C.text2, fontSize: 12, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
+              >
+                Try a different GitHub account →
+              </button>
+            )}
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
             {repos.slice(0, 10).map(r => (
@@ -431,11 +451,12 @@ function CopyBlock({ code }: { code: string }) {
 }
 
 // ── Activation guide ────────────────────────────────────────────────────────
-function ActivationGuide({ platform, leaderboardAddress, selectedFile }: {
-  platform: Platform; leaderboardAddress: string; selectedFile: string | null
+function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
+  platform: Platform; leaderboardAddress: string; selectedFile: string | null; name?: string
 }) {
   const [verified, setVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
+  const [intModalOpen, setIntModalOpen] = useState(false)
   const addr = leaderboardAddress.toLowerCase()
   const isGithub = platform.key === 'github'
   const isSuperfluid = platform.key === 'superfluid'
@@ -479,11 +500,25 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile }: {
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 4px' }}>
             {isGithub
               ? `Paste the snippet below into ${selectedFile ?? 'your markdown file'}, then commit the change.`
-              : 'Copy and paste the snippet. Or paste the instructions into an LLM with repo access.'}
+              : 'Copy and paste the snippet below, or use the integration guide to get a full AI prompt.'}
           </p>
           <CopyBlock code={embedCode} />
+          {!isGithub && (
+            <button
+              onClick={() => setIntModalOpen(true)}
+              style={{ marginTop: 12, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 16px', color: C.text2, fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
+            >
+              Open integration guide →
+            </button>
+          )}
         </div>
       )}
+
+      <IntegrationModal
+        isOpen={intModalOpen}
+        onClose={() => setIntModalOpen(false)}
+        leaderboard={{ address: leaderboardAddress, name: name ?? leaderboardAddress }}
+      />
 
       {!isSuperfluid && step(n++, 'Verify Integration',
         <div>
@@ -640,6 +675,15 @@ function CreateWizardInner() {
 
   const go = (d: number) => setStep(s => Math.max(0, Math.min(s + d, stepKeys.length - 1)))
 
+  const handleDisconnect = async () => {
+    await fetch('/api/github/me', { method: 'DELETE' }).catch(() => {})
+    setGhUser({ connected: false })
+    setRepos([])
+    setSelectedRepo(null)
+    setSelectedFile(null)
+    setStep(stepKeys.indexOf('connect'))
+  }
+
   const handleDeploy = () => {
     setTxError(null)
     if (!platformKey) return
@@ -683,7 +727,7 @@ function CreateWizardInner() {
           sub="We use your connection to add the Markee delimiter and confirm it via the GitHub API."
           onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!ghUser.connected}
         >
-          <ConnectGitHub ghUser={ghUser} />
+          <ConnectGitHub ghUser={ghUser} onDisconnect={handleDisconnect} />
         </StepShell>
       )}
 
@@ -700,6 +744,7 @@ function CreateWizardInner() {
                 selectedRepo={selectedRepo} setSelectedRepo={r => { setSelectedRepo(r); setSelectedFile(null) }}
                 selectedFile={selectedFile} setSelectedFile={setSelectedFile}
                 beneficiary={values.beneficiary ?? ''} setBeneficiary={v => setValue('beneficiary', v)}
+                onDisconnect={handleDisconnect}
               />
             </div>
           ) : (
@@ -746,7 +791,7 @@ function CreateWizardInner() {
             </div>
           </div>
 
-          <ActivationGuide platform={platform} leaderboardAddress={newLeaderboardAddress} selectedFile={selectedFile} />
+          <ActivationGuide platform={platform} leaderboardAddress={newLeaderboardAddress} selectedFile={selectedFile} name={values.name} />
 
           <div style={{ marginTop: 14, paddingTop: 24, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end' }}>
             <Link href="/account" style={{

@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl } from '@/lib/explorer'
@@ -339,8 +340,9 @@ function CodeBlock({ code, label, hideCopy }: { code: string; label?: string; hi
 }
 
 function EmbedPanel({ address, name, platform }: { address: string; name?: string; platform?: string }) {
-  const [open, setOpen]     = useState(false)
-  const [btnHover, setBtnHover] = useState(false)
+  const [open, setOpen]           = useState(false)
+  const [btnHover, setBtnHover]   = useState(false)
+  const [websiteOpen, setWebsiteOpen] = useState(false)
 
   const isGithub    = platform === 'github'
   const displayName = name || address
@@ -538,6 +540,11 @@ export async function GET() {
 \`\`\`
 
 Fetch GET /api/markee/views in MarkeeSign to show a view count badge alongside the current message. The response shape is { count: number, uniques: number, views: [{ timestamp, count, uniques }] }. Display count (total views over the past 14 days) next to the message. GitHub's traffic API requires the token owner to have push access to the repo.`
+
+  // Extract the two TypeScript code blocks from githubExtension for display as separate steps
+  const ghCodeBlocks = [...githubExtension.matchAll(/```ts\n([\s\S]*?)\n```/g)]
+  const syncCode         = ghCodeBlocks[0]?.[1] ?? ''
+  const githubViewsCode  = ghCodeBlocks[1]?.[1] ?? ''
 
   const llmPrompt = `I want to add a full Markee buy-flow modal to my Next.js site -- not just a display widget, but an embedded modal where visitors can buy or boost a message without leaving my site.
 
@@ -755,7 +762,7 @@ Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in your environment (get a free ID at c
 - NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is required. Optionally set NEXT_PUBLIC_BASE_RPC_URL for a custom transport in the wagmi config (e.g. an Alchemy or Infura endpoint).
 - Style to match your site's existing design system. The pattern works with any CSS framework.
 
-Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.` + (isGithub ? githubExtension : '')
+Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.`
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 12px' }}>
@@ -782,18 +789,52 @@ Please look at this codebase and implement both components. Choose an appropriat
 
       {open && (
         <div style={{ marginTop: 14, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-            <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-              Copy this prompt into any AI coding agent with access to your repo.
-            </p>
-            <CopyButton text={llmPrompt} />
-          </div>
-          <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
-            {isGithub && (
-              <CodeBlock code={delimiterSnippet} label="Step 1 — add these delimiters to your markdown file and commit" />
-            )}
-            <CodeBlock code={llmPrompt} hideCopy label={isGithub ? 'Step 2 — paste this prompt into your agent' : undefined} />
-          </div>
+          {isGithub ? (
+            <>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
+                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+                  Add these routes to your repo to sync messages and track views. Fill in <span style={{ fontFamily: MONO, color: PINK }}>REPO_FULL_NAME</span>, <span style={{ fontFamily: MONO, color: PINK }}>FILE_PATH</span>, and set <span style={{ fontFamily: MONO, color: PINK }}>GITHUB_TOKEN</span> (a fine-grained PAT with Contents: read &amp; write).
+                </p>
+              </div>
+              <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+                <CodeBlock code={delimiterSnippet} label="Step 1 — add delimiters to your markdown file and commit" />
+                <CodeBlock code={syncCode} label="Step 2 — message sync route (app/api/markee/sync/route.ts)" />
+                <CodeBlock code={githubViewsCode} label="Step 3 — view tracking route (app/api/markee/views/route.ts)" />
+                <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
+                  <button
+                    onClick={() => setWebsiteOpen(v => !v)}
+                    style={{ background: 'transparent', border: 'none', color: TEXT2, fontSize: 13, fontFamily: MONO, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: websiteOpen ? 'rotate(90deg)' : 'none', transition: 'transform 140ms' }}>
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                    Also embed on a website
+                  </button>
+                  {websiteOpen && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 8 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>Copy this prompt into any AI coding agent with access to your site</span>
+                        <CopyButton text={llmPrompt} />
+                      </div>
+                      <CodeBlock code={llmPrompt} hideCopy />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+                  Copy this prompt into any AI coding agent with access to your repo.
+                </p>
+                <CopyButton text={llmPrompt} />
+              </div>
+              <div style={{ padding: 20 }}>
+                <CodeBlock code={llmPrompt} hideCopy />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -882,6 +923,7 @@ export default function MarkeeDetailPage() {
   const [addFundsOpen, setAddFundsOpen] = useState(false)
   const [editOpen,     setEditOpen]     = useState(false)
   const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
+  const [verifyOpen,   setVerifyOpen]   = useState(false)
 
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
@@ -968,6 +1010,27 @@ export default function MarkeeDetailPage() {
           {/* ── Embed panel ── */}
           <section style={{ padding: '0 40px 8px' }}>
             <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} />
+            {(!ecoEntry?.platform || ecoEntry.platform === 'openinternet') && (
+              <div style={{ maxWidth: 1100, margin: '10px auto 0' }}>
+                <button
+                  onClick={() => setVerifyOpen(true)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    background: 'transparent', border: `1px solid ${BORDER}`,
+                    borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
+                    fontFamily: MONO, fontSize: 13, color: TEXT2,
+                    transition: 'border-color 140ms, color 140ms',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  Verify Integration
+                </button>
+              </div>
+            )}
           </section>
 
           {/* ── Bottom CTAs ── */}
@@ -1028,6 +1091,19 @@ export default function MarkeeDetailPage() {
           userMarkee={modalTarget as any}
           initialMode="updateMessage"
           strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
+        />
+      )}
+
+      {/* Verify integration modal */}
+      {meta && (
+        <VerifyIntegrationModal
+          isOpen={verifyOpen}
+          onClose={() => setVerifyOpen(false)}
+          leaderboard={{
+            address: leaderboardAddress,
+            name: meta.leaderboardName ?? leaderboardAddress,
+            verifiedUrls: ecoEntry?.verifiedUrls ?? (ecoEntry?.verifiedUrl ? [ecoEntry.verifiedUrl] : []),
+          }}
         />
       )}
     </div>

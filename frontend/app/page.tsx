@@ -366,9 +366,9 @@ export default function Home() {
           superfluid: { markees: pAcc.superfluid.markees, usd: ethPrice ? Math.round(pAcc.superfluid.eth * ethPrice) : 0 },
         })
 
-        // Fetch total views across all leaderboard addresses
+        // Fetch total views — keyed by top markee address (where views are actually tracked)
         let totalViews = 0
-        const addresses = leaderboards.map(lb => lb.address).filter(Boolean)
+        const addresses = leaderboards.map(lb => lb.topMarkeeAddress).filter(Boolean) as string[]
         if (addresses.length > 0) {
           try {
             const vRes = await fetch(`/api/views?addresses=${addresses.join(',')}`)
