@@ -139,11 +139,14 @@ function platformColor(lb: AnyLeaderboard) {
 }
 
 function platformSubtitle(lb: AnyLeaderboard) {
-  if (lb.platform === 'github')     return 'GitHub'
-  if (lb.platform === 'superfluid') return 'Superfluid'
+  if (lb.platform === 'github') {
+    const gh = lb as GithubLeaderboard
+    return gh.repoFullName || lb.name || 'GitHub'
+  }
+  if (lb.platform === 'superfluid') return lb.name || 'Superfluid'
   const w = lb as WebsiteLeaderboard
   const u = w.verifiedUrls?.[0] || w.verifiedUrl || w.siteUrl
-  return u ? u.replace(/^https?:\/\//, '').replace(/\/$/, '') : fmtAddr(lb.address)
+  return u ? u.replace(/^https?:\/\//, '').replace(/\/$/, '') : (lb.name || fmtAddr(lb.address))
 }
 
 function platformHref(lb: AnyLeaderboard) {
