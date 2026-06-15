@@ -219,7 +219,7 @@ function IntegrateForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
-          access_key: 'REPLACE_WITH_WEB3FORMS_KEY',
+          access_key: process.env.NEXT_PUBLIC_WEB3FORMS_KEY,
           subject: `Markee integration: ${form.platform}`,
           from_name: form.name || 'Markee site',
           platform: form.platform,
