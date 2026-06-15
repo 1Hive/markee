@@ -227,7 +227,7 @@ const PLATFORMS = [
 function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
   const [hover, setHover] = useState(false)
   return (
-    <Link
+    <a
       href={p.href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -269,7 +269,7 @@ function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { mar
           <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
         )}
       </div>
-    </Link>
+    </a>
   )
 }
 
