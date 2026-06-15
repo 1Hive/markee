@@ -682,22 +682,20 @@ export default function SuperfluidPlatformPage() {
         borderBottom: `1px solid ${BORDER}`,
         padding: '64px 40px',
       }}>
-        <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32, flexWrap: 'wrap' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,34px)', fontWeight: 800, color: TEXT, letterSpacing: -0.5, marginBottom: 10 }}>
-              Add a Markee to your Superfluid project
-            </h2>
-            <p style={{ margin: 0, color: TEXT2, fontSize: 15, maxWidth: '48ch', lineHeight: 1.55 }}>
-              Create a sign for your project and start earning from every message purchase. Boosted signs earn 5x SUP points.
-            </p>
-          </div>
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,34px)', fontWeight: 800, color: TEXT, letterSpacing: -0.5, marginBottom: 10 }}>
+            Add a Markee to your Superfluid project
+          </h2>
+          <p style={{ margin: '0 0 28px', color: TEXT2, fontSize: 15, maxWidth: '48ch', lineHeight: 1.55 }}>
+            Create a sign for your project and start earning from every message purchase. Boosted signs earn 5x SUP points.
+          </p>
           <Link
-            href="/raise-funding"
+            href="/create-a-markee?platform=superfluid"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 8,
-              background: BLUE,
+              background: PINK,
               color: BG,
               borderRadius: 8,
               padding: '13px 26px',
@@ -705,11 +703,10 @@ export default function SuperfluidPlatformPage() {
               fontSize: 15,
               textDecoration: 'none',
               whiteSpace: 'nowrap',
-              boxShadow: '0 4px 20px rgba(124,156,255,0.35)',
-              flexShrink: 0,
+              boxShadow: '0 4px 20px rgba(248,151,254,0.35)',
             }}
           >
-            Create a Markee
+            Create a Superfluid Markee →
           </Link>
         </div>
       </section>
