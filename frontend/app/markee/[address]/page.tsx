@@ -292,8 +292,6 @@ function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onE
 }
 
 // ── Embed panel ───────────────────────────────────────────────────────────────
-type EmbedTab = 'snippet' | 'script' | 'iframe' | 'terminal'
-
 function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false)
   const copy = () => {
@@ -339,89 +337,232 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
   )
 }
 
-function EmbedPanel({ address }: { address: string }) {
-  const [tab, setTab]       = useState<EmbedTab>('snippet')
+function EmbedPanel({ address, name }: { address: string; name?: string }) {
   const [open, setOpen]     = useState(false)
   const [btnHover, setBtnHover] = useState(false)
 
-  const origin  = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin) : 'https://markee.xyz'
-  const apiUrl  = `${origin}/api/embed/${address}`
-  const pageUrl = `${origin}/markee/${address}`
-  const iframeUrl = `${origin}/embed/${address}`
+  const displayName = name || address
+  const buyUrl  = `https://markee.xyz/markee/${address}`
+  const apiUrl  = `https://markee.xyz/api/ecosystem/leaderboards`
+  const dataAttr = `data-markee-address="${address}"`
 
-  const snippetCode = `<!-- Insert where you want the message to appear -->
-<span data-markee="${address}"></span>
+  const llmPrompt = `I want to add a full Markee buy-flow modal to my Next.js site -- not just a display widget, but an embedded modal where visitors can buy or boost a message without leaving my site.
 
-<!-- Add before </body> -->
-<script>
-(function(){
-  var a="${address}",e=document.querySelector('[data-markee="'+a+'"]');
-  function u(){fetch("${apiUrl}").then(r=>r.json()).then(d=>{if(e&&d.message)e.textContent=d.message}).catch(()=>{})}
-  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',u):u();
-  setInterval(u,60000);
-})();
-</script>`.trim()
+My leaderboard:
+- Name: ${displayName}
+- Address: ${address}
+- Buy page (fallback for non-Next.js sites): ${buyUrl}
 
-  const scriptCode = `<!-- Insert where you want the message to appear -->
-<span data-markee="${address}"></span>
+## What to build
 
-<!-- Hosted script — auto-updates every 60 s -->
-<script src="${apiUrl}/script" defer></script>`.trim()
+Two components:
 
-  const iframeCode = `<iframe
-  src="${iframeUrl}"
-  width="100%"
-  height="52"
-  frameborder="0"
-  style="border:none;display:block;"
-  title="Markee sponsored message"
-></iframe>`.trim()
+1. A trigger component (e.g. MarkeeSign) that:
+   - Fetches and displays the current top message from /api/markee/leaderboards (see proxy route below)
+   - Shows the owner name below the message (truncate 0x addresses to 0x1234...abcd, show plain names as-is)
+   - On hover reveals a price badge: "X.XXX ETH to change" or "be first!" if no messages yet
+   - Opens the modal when clicked
+   - Is disabled only while loading (never on fetch error -- fall back to default message and let the modal open)
+   - Wraps its container with ${dataAttr} for integration verification
+   - After a successful transaction, waits 3 seconds then re-fetches to show the new message
 
-  const statuslineScript = `// ~/.markee/statusline.mjs
-// Reads the cached message and prints an OSC 8 hyperlink for the terminal.
-import { readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-try {
-  const cache = homedir()+'/.markee/${address}.json'
-  const o = JSON.parse(readFileSync(cache,'utf8'))
-  if(o?.message && Date.now()-o.ts < 600_000){
-    const strip=s=>s.replace(/[\\u0000-\\u001f\\u007f-\\u009f]/g,'')
-    const E='\\x1b'
-    process.stdout.write(E+']8;;${pageUrl}'+E+'\\\\markee\\xb7 '+strip(o.message)+E+']8;;'+E+'\\\\')
+2. A modal component (e.g. MarkeeModal) that is a full buy flow with:
+   - A header with the site logo, title, and close button
+   - The current top message displayed above the tabs
+   - Two tabs: "Buy a Message" and "Boost Existing Message"
+   - A footer: "You'll receive MARKEE tokens with your purchase and co-own the Markee Network." (link "Markee Network" to the Gardens community for this leaderboard if applicable)
+
+### Buy a Message tab
+- Textarea for the message (left-aligned, monospace, char counter, maxLength from contract)
+- Optional name input
+- ETH amount section:
+  - "Take top spot" preset button (shows only when there is an existing top message)
+  - "Minimum" preset button
+  - Custom number input, capped at 8 total digit characters (before + after decimal)
+  - Clickable balance label that fills the field with the user's full balance, floored to fit within the 8-digit cap and never exceeding actual balance
+  - Inline "Amount exceeds your balance" warning below the input (not just on submit)
+- Wrong network banner with "Switch to Base" button (always visible when connected to wrong chain)
+- Low balance banner when connected balance is below the minimum price
+- Connect Wallet button (closes dialog before opening RainbowKit modal so it appears on top; dialog reopens when the connect modal closes)
+- Buy Message submit button (disabled when loading, insufficient balance, or low balance)
+
+### Boost Existing Message tab
+- List of top messages read directly from the contract via getTopMarkees(10) + useReadContracts for message/name per address -- do NOT use the API for this, the API only returns the top 1
+- Each entry shows: message, owner name, ETH funded, #1 badge for top entry
+- Clicking an entry selects it (highlighted border)
+- When an entry is selected and it already holds the top spot, show a note: "This message has the top spot. Add more funds to make it harder to reach."
+- "Edit messages you own on the Markee app." link (or "See more messages and edit messages you own." if > 5 entries) shown ABOVE the payment section, linking to ${buyUrl}
+- Amount to Pay section (no Minimum button, only Take Top Spot + custom input)
+  - Take top spot amount for the selected entry = topFundsAdded - selectedEntryFunds + 0.001 ETH
+  - If the selected entry IS already the top, HIDE the Take Top Spot button entirely -- show only the custom input and the note above it
+- Destructure isError from both useReadContract (getTopMarkees) and useReadContracts (per-markee data); if either errors, show an error message in the boost tab instead of the list
+- "Add Funds to this Message" submit button
+
+### Success state
+When a transaction confirms, replace the entire modal body (below the header) with:
+- A large checkmark
+- "Transaction confirmed!"
+- "View on Basescan" link to https://basescan.org/tx/{hash}
+- "Refreshing in a moment..." note
+The modal stays open. The close button remains visible in the header. When the user closes the modal after a successful transaction, trigger the data refresh (call the onSuccess callback from handleClose only when isSuccess is true).
+
+## Contract interactions
+
+All on Base (chainId 8453).
+
+Leaderboard contract: ${address}
+
+ABI functions needed:
+- minimumPrice() view -> uint256
+- maxMessageLength() view -> uint256
+- getTopMarkees(limit: uint256) view -> (address[], uint256[]) -- top markee addresses + their funds
+- createMarkee(message: string, name: string) payable -> address  -- buys a new message
+- addFunds(markeeAddress: address) payable  -- boosts an existing message
+
+Per-markee ABI (call on each markee contract address returned by getTopMarkees):
+- message() view -> string
+- name() view -> string
+
+## Data fetching
+
+### Proxy route (required -- avoids CORS)
+Create app/api/markee/leaderboards/route.ts:
+  export async function GET() {
+    const res = await fetch('${apiUrl}', { next: { revalidate: 60 } })
+    if (!res.ok) return Response.json({ leaderboards: [] }, { status: res.status })
+    return Response.json(await res.json())
   }
-}catch{}
-process.exit(0)`.trim()
 
-  const updateScript = `// ~/.markee/update.mjs
-// Fetches the current top message and caches it locally.
-// Run via cron: */10 * * * * node ~/.markee/update.mjs
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { homedir } from 'node:os'
-const dir = homedir()+'/.markee'
-mkdirSync(dir,{recursive:true})
-fetch('${apiUrl}')
-  .then(r=>r.json())
-  .then(d=>writeFileSync(dir+'/${address}.json',JSON.stringify({...d,ts:Date.now()})))
-  .catch(()=>{})`.trim()
+Then fetch /api/markee/leaderboards in the trigger component.
+Find the entry where address matches "${address}" (case-insensitive).
+Fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice, topMarkeeAddress
 
-  const settingsJson = `// Add to ~/.claude/settings.json:
-{
-  "statusLine": {
-    "type": "command",
-    "command": "node ~/.markee/statusline.mjs",
-    "padding": 0
+### On-chain reads
+Use wagmi useReadContract / useReadContracts for:
+- minimumPrice, maxMessageLength (in both components or passed as props)
+- getTopMarkees(10n) -- in the boost tab only (enable query only when on that tab)
+- Per-markee message + name via useReadContracts multicall on the returned addresses
+
+### Network detection
+Use useAccount().chainId (not useChainId()) -- it is bound to the connected account and stays accurate in multi-wallet-extension environments.
+const { address, isConnected, chainId } = useAccount()
+const isOnBase = isConnected && chainId === base.id
+
+### Wallet connect and dialog z-index
+The modal should use the native <dialog> element with showModal(). When opening the RainbowKit connect modal, the dialog must be closed first so RainbowKit appears on top. Handle this in the trigger component (MarkeeSign), not MarkeeModal:
+  // In MarkeeSign:
+  const [pendingReopenModal, setPendingReopenModal] = useState(false)
+  function handleConnectWallet() {
+    dialogRef.current?.close()
+    setPendingReopenModal(true)
+    openConnectModal?.()
   }
-}`.trim()
+  // Reopen the dialog once the connect modal has closed:
+  useEffect(() => {
+    if (pendingReopenModal && !connectModalOpen) {
+      dialogRef.current?.showModal()
+      setPendingReopenModal(false)
+    }
+  }, [pendingReopenModal, connectModalOpen])
+Pass handleConnectWallet as a prop to MarkeeModal. MarkeeModal calls it when the user clicks "Connect Wallet" -- MarkeeModal itself does not manage the dialog open/close.
 
-  const cronLine = `# Add to crontab (run: crontab -e)
-*/10 * * * * node ~/.markee/update.mjs`.trim()
+## View tracking
 
-  const tabs: { key: EmbedTab; label: string }[] = [
-    { key: 'snippet',  label: 'JS Snippet'  },
-    { key: 'script',   label: 'Script Tag'  },
-    { key: 'iframe',   label: 'iframe'      },
-    { key: 'terminal', label: 'Terminal'    },
-  ]
+Add a proxy route to forward view increments to Markee:
+
+// app/api/markee/views/route.ts
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null)
+  if (!body?.address || !body?.message) {
+    return Response.json({ error: 'Missing fields' }, { status: 400 })
+  }
+  const res = await fetch('https://markee.xyz/api/views', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return Response.json(await res.json())
+}
+
+In MarkeeSign, fire this once per session per markee when the top message is first displayed:
+  const viewTracked = useRef(false)
+  useEffect(() => {
+    if (!topMessage || !topMarkeeAddress || viewTracked.current) return
+    viewTracked.current = true
+    fetch('/api/markee/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: topMarkeeAddress, message: topMessage }),
+    }).catch(() => {})
+  }, [topMessage, topMarkeeAddress])
+
+The API rate-limits to 1 increment per IP per markee per hour, so calling this on every page load is safe.
+
+## Moderation
+
+Add a proxy route to fetch the flagged content list:
+
+// app/api/markee/moderation/route.ts
+export async function GET() {
+  const res = await fetch('https://markee.xyz/api/moderation', { next: { revalidate: 60 } })
+  if (!res.ok) return Response.json({ flagged: [] })
+  return Response.json(await res.json())
+}
+
+In MarkeeSign (and in MarkeeModal's boost tab), fetch this once on mount and build a Set:
+  const [flagged, setFlagged] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    fetch('/api/markee/moderation')
+      .then(r => r.json())
+      .then(d => setFlagged(new Set((d.flagged ?? []) as string[])))
+      .catch(() => {})
+  }, [])
+  function isFlagged(markeeAddr: string) {
+    return flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`)
+  }
+
+Flagging behavior:
+- MarkeeSign: if isFlagged(topMarkeeAddress), show "Content unavailable" instead of the message. Still allow the modal to open so users can buy a new top message.
+- MarkeeModal Boost tab: omit flagged entries from the list. If all are flagged, show "No messages available."
+- MarkeeModal Buy tab: always show the current top message (users can replace it by outbidding), even if flagged.
+
+## Optional: health endpoint
+
+Add this route so the Markee integration dashboard can verify your setup:
+
+// app/api/markee/health/route.ts
+export async function GET() {
+  return Response.json({
+    overall: 'ok',
+    checks: {
+      leaderboards: { status: 'ok' },
+      views: { status: 'ok' },
+      moderation: { status: 'ok' },
+    },
+  })
+}
+
+## Packages required
+- wagmi v2
+- viem v2
+- @rainbow-me/rainbowkit v2
+- @tanstack/react-query v5
+
+Wrap the app in (order matters):
+WagmiProvider -> QueryClientProvider -> RainbowKitProvider
+
+wagmi config: getDefaultConfig({ appName, projectId, chains: [base], ssr: true })
+Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in your environment (get a free ID at cloud.walletconnect.com).
+
+## Implementation notes
+- The data-markee-address attribute must be in the server-rendered HTML for verification. In Next.js, placing it in JSX inside a 'use client' component is fine -- Next.js SSRs client components. Avoid setting it only via useEffect or document.setAttribute() (those run client-side only and will fail verification).
+- takeTopSpot passed to the modal = topFundsAdded + 0.001 ETH (MIN_INCREMENT). If no competition yet, use minimumPrice.
+- Form state (message, name, ethAmount, boostAmount) must live in MarkeeSign (parent), not MarkeeModal. The <dialog> element unmounts/remounts when closed and reopened during wallet connect, so state inside MarkeeModal will be lost. Lift all form inputs to the parent and pass them down as props.
+- On fetch error from the proxy route, fall back to the default message and still allow the modal to open -- the modal works fully from on-chain data alone.
+- NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is required. Optionally set NEXT_PUBLIC_BASE_RPC_URL for a custom transport in the wagmi config (e.g. an Alchemy or Infura endpoint).
+- Style to match your site's existing design system. The pattern works with any CSS framework.
+
+Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.`
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 12px' }}>
@@ -448,81 +589,13 @@ fetch('${apiUrl}')
 
       {open && (
         <div style={{ marginTop: 14, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-          {/* Tab bar */}
-          <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, background: BG, paddingLeft: 4 }}>
-            {tabs.map(t => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  padding: '12px 16px', fontFamily: MONO, fontSize: 12,
-                  color: tab === t.key ? PINK : MUTED,
-                  borderBottom: `2px solid ${tab === t.key ? PINK : 'transparent'}`,
-                  marginBottom: -1, transition: 'color 120ms',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div style={{ padding: '16px 20px 10px', borderBottom: `1px solid ${BORDER}` }}>
+            <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+              Paste this prompt into any AI coding agent with access to your repo. It will build a full Markee widget with a buy modal, view count tracking, and moderation.
+            </p>
           </div>
-
-          {/* Tab content */}
-          <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
-            {tab === 'snippet' && (
-              <>
-                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-                  Drop this onto any HTML page. The snippet fetches the current top message and re-polls every 60 seconds — no server changes needed.
-                </p>
-                <CodeBlock code={snippetCode} />
-              </>
-            )}
-
-            {tab === 'script' && (
-              <>
-                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-                  One element + one hosted script. The script handles polling automatically.
-                </p>
-                <CodeBlock code={scriptCode} />
-                <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>
-                  The script is served from Markee's CDN and cached for 60 seconds, so nothing extra runs on your server.
-                </p>
-              </>
-            )}
-
-            {tab === 'iframe' && (
-              <>
-                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-                  Paste this anywhere that accepts HTML. The iframe handles all rendering and auto-updates.
-                </p>
-                <CodeBlock code={iframeCode} />
-                <div style={{ marginTop: 8 }}>
-                  <p style={{ margin: '0 0 10px', fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Preview</p>
-                  <iframe
-                    src={iframeUrl}
-                    width="100%"
-                    height="52"
-                    style={{ border: 'none', display: 'block', borderRadius: 8 }}
-                    title="Markee embed preview"
-                  />
-                </div>
-              </>
-            )}
-
-            {tab === 'terminal' && (
-              <>
-                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-                  Show the current top message in your Claude Code terminal status bar — the same way Kickbacks works, but for your Markee.
-                </p>
-                <CodeBlock code={statuslineScript} label="~/.markee/statusline.mjs — prints the ad line" />
-                <CodeBlock code={updateScript}    label="~/.markee/update.mjs — fetches & caches the message" />
-                <CodeBlock code={settingsJson}    label="~/.claude/settings.json — wires the status line" />
-                <CodeBlock code={cronLine}        label="crontab — keeps the cache fresh" />
-                <p style={{ margin: 0, color: MUTED, fontSize: 12.5, lineHeight: 1.6 }}>
-                  The status line script never makes network requests — it only reads the local cache file. All traffic from your machine is the 10-minute cron fetch to the embed API.
-                </p>
-              </>
-            )}
+          <div style={{ padding: 20 }}>
+            <CodeBlock code={llmPrompt} />
           </div>
         </div>
       )}
@@ -697,7 +770,7 @@ export default function MarkeeDetailPage() {
 
           {/* ── Embed panel ── */}
           <section style={{ padding: '0 40px 8px' }}>
-            <EmbedPanel address={leaderboardAddress} />
+            <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} />
           </section>
 
           {/* ── Bottom CTAs ── */}
