@@ -340,53 +340,7 @@ function CodeBlock({ code, label, hideCopy }: { code: string; label?: string; hi
 }
 
 function EmbedPanel({ address, name, platform }: { address: string; name?: string; platform?: string }) {
-  const [open, setOpen]           = useState(false)
-  const [btnHover, setBtnHover]   = useState(false)
   const [websiteOpen, setWebsiteOpen] = useState(false)
-  const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [syncResult,    setSyncResult]    = useState<string | null>(null)
-  const [trafficStatus, setTrafficStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [traffic,       setTraffic]       = useState<{ count: number; uniques: number } | null>(null)
-
-  const handleSync = async () => {
-    setSyncStatus('loading')
-    setSyncResult(null)
-    try {
-      const res  = await fetch('/api/github/update-markee-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress: address }),
-      })
-      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string; results?: Array<{ success: boolean }> }
-      if (res.ok && data.success) {
-        const n = data.results?.filter(r => r.success).length ?? 1
-        setSyncStatus('success')
-        setSyncResult(`Updated ${n} file${n !== 1 ? 's' : ''}`)
-      } else {
-        setSyncStatus('error')
-        setSyncResult(data.error ?? 'Sync failed')
-      }
-    } catch {
-      setSyncStatus('error')
-      setSyncResult('Network error')
-    }
-  }
-
-  const handleRefreshTraffic = async () => {
-    setTrafficStatus('loading')
-    try {
-      const res  = await fetch(`/api/github/traffic?address=${address.toLowerCase()}`)
-      const data = await res.json().catch(() => ({})) as { count?: number; uniques?: number; error?: string }
-      if (res.ok && data.count !== undefined) {
-        setTraffic({ count: data.count, uniques: data.uniques ?? 0 })
-        setTrafficStatus('success')
-      } else {
-        setTrafficStatus('error')
-      }
-    } catch {
-      setTrafficStatus('error')
-    }
-  }
 
   const isGithub    = platform === 'github'
   const displayName = name || address
@@ -617,99 +571,16 @@ Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in your environment (get a free ID at c
 Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.`
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 12px' }}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        onMouseEnter={() => setBtnHover(true)}
-        onMouseLeave={() => setBtnHover(false)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: 'transparent', border: `1px solid ${btnHover ? 'rgba(248,151,254,0.35)' : BORDER}`,
-          borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
-          fontFamily: MONO, fontSize: 13, color: btnHover ? TEXT : TEXT2,
-          transition: 'border-color 140ms, color 140ms',
-        }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-        </svg>
-        Embed this Markee
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms', marginLeft: 2 }}>
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-
-      {open && (
-        <div style={{ marginTop: 14, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-          {isGithub ? (
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+      {isGithub ? (
             <>
               <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
                 <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-                  Add these routes to your repo to sync messages and track views. Fill in <span style={{ fontFamily: MONO, color: PINK }}>REPO_FULL_NAME</span>, <span style={{ fontFamily: MONO, color: PINK }}>FILE_PATH</span>, and set <span style={{ fontFamily: MONO, color: PINK }}>GITHUB_TOKEN</span> (a fine-grained PAT with Contents: read &amp; write).
+                  Add these delimiters to your markdown file once to mark where the Markee block is rendered. Use the Sync and Refresh buttons above to push the current message and pull traffic stats.
                 </p>
               </div>
               <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
-                <CodeBlock code={delimiterSnippet} label="Step 1 — add delimiters to your markdown file and commit" />
-
-                {/* Step 2 — Sync message */}
-                <div>
-                  <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 10 }}>
-                    Step 2 — sync current message to GitHub
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
-                    <button
-                      onClick={handleSync}
-                      disabled={syncStatus === 'loading'}
-                      style={{
-                        background: PINK, color: BG, border: 'none', borderRadius: 7,
-                        padding: '9px 16px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-                        cursor: syncStatus === 'loading' ? 'wait' : 'pointer',
-                        opacity: syncStatus === 'loading' ? 0.7 : 1, transition: 'opacity 140ms',
-                      }}
-                    >
-                      {syncStatus === 'loading' ? 'Syncing…' : 'Sync Message'}
-                    </button>
-                    {syncResult && (
-                      <span style={{ fontFamily: MONO, fontSize: 12, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>
-                        {syncResult}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Step 3 — GitHub traffic */}
-                <div>
-                  <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 10 }}>
-                    Step 3 — GitHub repo views (last 14 days)
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
-                    <button
-                      onClick={handleRefreshTraffic}
-                      disabled={trafficStatus === 'loading'}
-                      style={{
-                        background: 'rgba(138,143,191,0.1)', color: TEXT,
-                        border: `1px solid ${BORDER}`, borderRadius: 7,
-                        padding: '9px 16px', fontFamily: MONO, fontWeight: 600, fontSize: 12.5,
-                        cursor: trafficStatus === 'loading' ? 'wait' : 'pointer',
-                        opacity: trafficStatus === 'loading' ? 0.7 : 1, transition: 'opacity 140ms',
-                      }}
-                    >
-                      {trafficStatus === 'loading' ? 'Fetching…' : 'Refresh Traffic'}
-                    </button>
-                    {trafficStatus === 'success' && traffic && (
-                      <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
-                        <span style={{ color: BLUE, fontWeight: 700 }}>{traffic.count.toLocaleString()}</span>
-                        {' views · '}
-                        <span style={{ color: MUTED }}>{traffic.uniques.toLocaleString()} unique</span>
-                      </span>
-                    )}
-                    {trafficStatus === 'error' && (
-                      <span style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(255,100,120,0.9)' }}>
-                        Failed — check GitHub connection
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <CodeBlock code={delimiterSnippet} label="Add to your markdown file and commit" />
                 <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
                   <button
                     onClick={() => setWebsiteOpen(v => !v)}
@@ -745,8 +616,6 @@ Please look at this codebase and implement both components. Choose an appropriat
               </div>
             </>
           )}
-        </div>
-      )}
     </div>
   )
 }
@@ -834,10 +703,55 @@ export default function MarkeeDetailPage() {
   const [editOpen,     setEditOpen]     = useState(false)
   const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
   const [verifyOpen,   setVerifyOpen]   = useState(false)
+  const [embedOpen,    setEmbedOpen]    = useState(false)
+  const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [syncResult,    setSyncResult]    = useState<string | null>(null)
+  const [trafficStatus, setTrafficStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [ghTraffic,     setGhTraffic]     = useState<{ count: number; uniques: number } | null>(null)
 
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
   const openEdit = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setEditOpen(true) }, [])
+
+  const handleSync = useCallback(async () => {
+    setSyncStatus('loading')
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/github/update-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress }),
+      })
+      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string; results?: Array<{ success: boolean }> }
+      if (res.ok && data.success) {
+        const n = data.results?.filter(r => r.success).length ?? 1
+        setSyncStatus('success')
+        setSyncResult(`Updated ${n} file${n !== 1 ? 's' : ''}`)
+      } else {
+        setSyncStatus('error')
+        setSyncResult(data.error ?? 'Sync failed')
+      }
+    } catch {
+      setSyncStatus('error')
+      setSyncResult('Network error')
+    }
+  }, [leaderboardAddress])
+
+  const handleRefreshTraffic = useCallback(async () => {
+    setTrafficStatus('loading')
+    try {
+      const res = await fetch(`/api/github/traffic?address=${leaderboardAddress.toLowerCase()}`)
+      const data = await res.json().catch(() => ({})) as { count?: number; uniques?: number; error?: string }
+      if (res.ok && data.count !== undefined) {
+        setGhTraffic({ count: data.count, uniques: data.uniques ?? 0 })
+        setTrafficStatus('success')
+      } else {
+        setTrafficStatus('error')
+      }
+    } catch {
+      setTrafficStatus('error')
+    }
+  }, [leaderboardAddress])
 
   const topMarkee  = markees[0] ?? null
   const topViews   = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
@@ -887,6 +801,115 @@ export default function MarkeeDetailPage() {
             <MetricsBar meta={{ totalLeaderboardFunds: totalFunds, address: leaderboardAddress }} topViews={topViews} markeeCount={markees.length} entry={ecoEntry} ethPrice={ethPrice} />
           </section>
 
+          {/* ── Action bar ── */}
+          <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+              <button
+                onClick={() => setEmbedOpen(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'transparent', border: `1px solid ${BORDER}`,
+                  borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
+                  fontFamily: MONO, fontSize: 13, color: TEXT2,
+                  transition: 'border-color 140ms, color 140ms',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+                Embed this Markee
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: embedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 160ms', marginLeft: 2 }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {ecoEntry?.platform === 'github' && (
+                <>
+                  <button
+                    onClick={handleSync}
+                    disabled={syncStatus === 'loading'}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: 'transparent', border: `1px solid rgba(248,151,254,0.4)`,
+                      borderRadius: 9, padding: '9px 16px', cursor: syncStatus === 'loading' ? 'wait' : 'pointer',
+                      fontFamily: MONO, fontSize: 13, color: PINK,
+                      opacity: syncStatus === 'loading' ? 0.6 : 1, transition: 'opacity 140ms',
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                    {syncStatus === 'loading' ? 'Syncing…' : 'Sync Message'}
+                  </button>
+                  {syncResult && (
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>
+                      {syncResult}
+                    </span>
+                  )}
+
+                  <button
+                    onClick={handleRefreshTraffic}
+                    disabled={trafficStatus === 'loading'}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: 'transparent', border: `1px solid ${BORDER}`,
+                      borderRadius: 9, padding: '9px 16px', cursor: trafficStatus === 'loading' ? 'wait' : 'pointer',
+                      fontFamily: MONO, fontSize: 13, color: TEXT2,
+                      opacity: trafficStatus === 'loading' ? 0.6 : 1, transition: 'opacity 140ms, border-color 140ms, color 140ms',
+                    }}
+                    onMouseEnter={e => { if (trafficStatus !== 'loading') { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                    {trafficStatus === 'loading' ? 'Fetching…' : 'Refresh Traffic'}
+                  </button>
+                  {trafficStatus === 'success' && ghTraffic && (
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
+                      <span style={{ color: BLUE, fontWeight: 700 }}>{ghTraffic.count.toLocaleString()}</span>
+                      {' views · '}
+                      <span style={{ color: MUTED }}>{ghTraffic.uniques.toLocaleString()} unique</span>
+                    </span>
+                  )}
+                  {trafficStatus === 'error' && (
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(255,100,120,0.9)' }}>
+                      Failed — check GitHub connection
+                    </span>
+                  )}
+                </>
+              )}
+
+              {(!ecoEntry?.platform || ecoEntry.platform === 'openinternet') && (
+                <button
+                  onClick={() => setVerifyOpen(true)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    background: 'transparent', border: `1px solid ${BORDER}`,
+                    borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
+                    fontFamily: MONO, fontSize: 13, color: TEXT2,
+                    transition: 'border-color 140ms, color 140ms',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  Verify Integration
+                </button>
+              )}
+            </div>
+            {embedOpen && (
+              <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
+                <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} />
+              </div>
+            )}
+          </section>
+
           {/* ── Leaderboard table ── */}
           <section style={{ padding: '8px 40px 20px' }}>
             <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
@@ -915,32 +938,6 @@ export default function MarkeeDetailPage() {
                 </div>
               </div>
             </div>
-          </section>
-
-          {/* ── Embed panel ── */}
-          <section style={{ padding: '0 40px 8px' }}>
-            <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} />
-            {(!ecoEntry?.platform || ecoEntry.platform === 'openinternet') && (
-              <div style={{ maxWidth: 1100, margin: '10px auto 0' }}>
-                <button
-                  onClick={() => setVerifyOpen(true)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    background: 'transparent', border: `1px solid ${BORDER}`,
-                    borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
-                    fontFamily: MONO, fontSize: 13, color: TEXT2,
-                    transition: 'border-color 140ms, color 140ms',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  </svg>
-                  Verify Integration
-                </button>
-              </div>
-            )}
           </section>
 
           {/* ── Bottom CTAs ── */}
