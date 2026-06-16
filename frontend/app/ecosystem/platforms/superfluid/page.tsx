@@ -9,6 +9,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { RewardsModal } from '@/components/modals/RewardsModal'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -392,6 +393,7 @@ export default function SuperfluidPlatformPage() {
   const [loading, setLoading] = useState(true)
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
   const [buyModal, setBuyModal] = useState<{ address: string; topFundsAdded: bigint } | null>(null)
+  const [rewardsOpen, setRewardsOpen] = useState(false)
 
   useEffect(() => {
     fetch(`/api/superfluid/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
@@ -522,7 +524,29 @@ export default function SuperfluidPlatformPage() {
             </div>
 
             {/* Right CTAs */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setRewardsOpen(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'transparent',
+                  color: PINK,
+                  border: `1px solid rgba(248,151,254,0.4)`,
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+                </svg>
+                View SUP Rewards
+              </button>
               <Link
                 href="/create-a-markee?platform=superfluid"
                 style={{
@@ -724,6 +748,13 @@ export default function SuperfluidPlatformPage() {
           onSuccess={() => setBuyModal(null)}
         />
       )}
+
+      <RewardsModal
+        isOpen={rewardsOpen}
+        onClose={() => setRewardsOpen(false)}
+        title="Season 6 SUP Rewards"
+        description="Earn points by buying messages. Boosted Markees earn 5× points."
+      />
     </div>
   )
 }
