@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAccount } from 'wagmi'
-import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X } from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
@@ -41,11 +41,23 @@ interface BaseLeaderboard {
   minimumPriceRaw?: string
 }
 interface SuperfluidLeaderboard extends BaseLeaderboard { platform: 'superfluid' }
+interface LinkedFile {
+  repoFullName: string
+  repoOwner: string
+  repoName: string
+  repoAvatarUrl: string
+  repoHtmlUrl: string
+  filePath: string
+  verified: boolean
+}
+
 interface GithubLeaderboard extends BaseLeaderboard {
   platform: 'github'
   repoFullName: string | null
   repoAvatarUrl: string | null
   repoHtmlUrl: string | null
+  filePath: string | null
+  linkedFiles: LinkedFile[]
 }
 interface WebsiteLeaderboard extends BaseLeaderboard {
   platform: 'website'
@@ -381,7 +393,7 @@ function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              <ActiveServedLabel lb={lb} />
+              <ServedOnCell lb={lb} />
               <SetupStatusPill lb={lb} />
               <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
                 {lb.topMessage || 'No message yet'}
@@ -409,18 +421,124 @@ function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
 // ── Active Markees table ──────────────────────────────────────────────────────
 const ACT_COLS = '200px 110px 1fr 116px'
 
-function ActiveServedLabel({ lb }: { lb: AnyLeaderboard }) {
-  const primary = platformSubtitle(lb)
-  const extras = lb.platform === 'website' ? Math.max(0, ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) - 1) : 0
+function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const iconBox = (child: React.ReactNode) => (
+    <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+      {child}
+    </span>
+  )
+
+  const pill = (n: number) => (
+    <button
+      onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
+      style={{ background: `${MUTED}20`, border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 99, padding: '1px 6px', fontFamily: MONO, fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' as const }}
+    >
+      +{n}
+    </button>
+  )
+
+  const dropdown = (items: Array<{ href: string; label: string }>) => open && (
+    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 6, minWidth: 220, zIndex: 50, boxShadow: '0 16px 44px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {items.map(({ href, label }) => (
+        <a
+          key={href}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, fontFamily: MONO, padding: '7px 10px', borderRadius: 6, display: 'block', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+        >
+          {label}
+        </a>
+      ))}
+    </div>
+  )
+
+  if (lb.platform === 'github') {
+    const gh = lb as GithubLeaderboard
+    const files = gh.linkedFiles ?? []
+    const first = files[0] ?? null
+    const extras = files.length - 1
+    const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
+    return (
+      <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
+        {iconBox(<Github size={13} style={{ color: TEXT2 }} />)}
+        {first ? (
+          <a
+            href={fileUrl(first)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            title={first.filePath}
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
+          >
+            {first.repoFullName}
+          </a>
+        ) : (
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: MUTED }}>
+            {gh.repoFullName || 'GitHub'}
+          </span>
+        )}
+        {extras > 0 && pill(extras)}
+        {dropdown(files.map(f => ({ href: fileUrl(f), label: f.filePath })))}
+      </span>
+    )
+  }
+
+  if (lb.platform === 'superfluid') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {iconBox(
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src="/partners/superfluid.png" alt="" width={16} height={16} style={{ objectFit: 'contain' }} />
+        )}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
+          {lb.name || 'Superfluid'}
+        </span>
+      </span>
+    )
+  }
+
+  // Website
+  const w = lb as WebsiteLeaderboard
+  const urls = w.verifiedUrls?.length ? w.verifiedUrls : w.verifiedUrl ? [w.verifiedUrl] : []
+  const primaryUrl = urls[0] || w.siteUrl || null
+  const primaryLabel = primaryUrl ? primaryUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (lb.name || fmtAddr(lb.address))
+  const extras = Math.max(0, urls.length - 1)
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-      <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, border: `1px solid ${BORDER}` }}>
-        <PlatIcon lb={lb} size={13} />
-      </span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12.5, color: TEXT2 }}>
-        {primary}
-        {extras > 0 && <span style={{ color: MUTED }}> +{extras}</span>}
-      </span>
+    <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
+      {iconBox(<Globe2 size={13} style={{ color: PINK }} />)}
+      {primaryUrl ? (
+        <a
+          href={primaryUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
+        >
+          {primaryLabel}
+        </a>
+      ) : (
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: MUTED }}>
+          {lb.name || fmtAddr(lb.address)}
+        </span>
+      )}
+      {extras > 0 && pill(extras)}
+      {dropdown(urls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })))}
     </span>
   )
 }
@@ -442,7 +560,7 @@ function ActiveTable({ markees, onManage }: { markees: AnyLeaderboard[]; onManag
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
-            <ActiveServedLabel lb={lb} />
+            <ServedOnCell lb={lb} />
             <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontWeight: 600 }}>{lb.totalFunds}</span>
             <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>{lb.topMessage || 'No message yet'}</span>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -453,6 +571,44 @@ function ActiveTable({ markees, onManage }: { markees: AnyLeaderboard[]; onManag
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
               >
                 Manage
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Archived Markees table ────────────────────────────────────────────────────
+function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
+  return (
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 600, background: BG2, opacity: 0.8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Served on', 'Total raised', 'Current message', ''].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
+        </div>
+        {markees.map(lb => (
+          <div
+            key={lb.address}
+            onClick={() => window.location.href = `/markee/${lb.address}`}
+            style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <ServedOnCell lb={lb} />
+            <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontWeight: 600 }}>{lb.totalFunds}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>{lb.topMessage || 'No message yet'}</span>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={e => { e.stopPropagation(); onUnarchive(lb.address) }}
+                style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${MUTED}66`; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = MUTED }}
+              >
+                Unarchive
               </button>
             </div>
           </div>
@@ -599,6 +755,7 @@ export default function AccountPage() {
   // UI state
   const [tab, setTab]                         = useState<TabId>('markees')
   const [archived, setArchived]               = useState<string[]>([])
+  const [archivedExpanded, setArchivedExpanded] = useState(false)
   const [manageTarget, setManageTarget]       = useState<AnyLeaderboard | null>(null)
   const [editingBoard, setEditingBoard]       = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
@@ -624,8 +781,8 @@ export default function AccountPage() {
         const data = await ghRes.json()
         setGithubBoards(
           (data.leaderboards ?? [])
-            .filter((lb: BaseLeaderboard) => lb.admin.toLowerCase() === addr.toLowerCase())
-            .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'github' as const }))
+            .filter((lb: any) => lb.admin.toLowerCase() === addr.toLowerCase())
+            .map((lb: any) => ({ ...lb, platform: 'github' as const, linkedFiles: lb.linkedFiles ?? [] }))
         )
       }
       if (oiRes.ok) {
@@ -863,15 +1020,20 @@ export default function AccountPage() {
                     {/* Archived */}
                     {archivedBoards.length > 0 && (
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                        <button
+                          onClick={() => setArchivedExpanded(v => !v)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 0 16px', width: '100%', textAlign: 'left' as const }}
+                        >
                           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: MUTED }}>Archived</h2>
                           <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{archivedBoards.length}</span>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
-                          {archivedBoards.map(lb => (
-                            <MarkeeCardDash key={lb.address} lb={lb} archived onUnarchive={() => setArchived(prev => prev.filter(a => a !== lb.address))} />
-                          ))}
-                        </div>
+                          <ChevronDown size={16} style={{ color: MUTED, marginLeft: 'auto', transform: archivedExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
+                        </button>
+                        {archivedExpanded && (
+                          <ArchivedTable
+                            markees={archivedBoards}
+                            onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
