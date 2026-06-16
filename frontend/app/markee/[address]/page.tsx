@@ -343,6 +343,50 @@ function EmbedPanel({ address, name, platform }: { address: string; name?: strin
   const [open, setOpen]           = useState(false)
   const [btnHover, setBtnHover]   = useState(false)
   const [websiteOpen, setWebsiteOpen] = useState(false)
+  const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [syncResult,    setSyncResult]    = useState<string | null>(null)
+  const [trafficStatus, setTrafficStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [traffic,       setTraffic]       = useState<{ count: number; uniques: number } | null>(null)
+
+  const handleSync = async () => {
+    setSyncStatus('loading')
+    setSyncResult(null)
+    try {
+      const res  = await fetch('/api/github/update-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress: address }),
+      })
+      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string; results?: Array<{ success: boolean }> }
+      if (res.ok && data.success) {
+        const n = data.results?.filter(r => r.success).length ?? 1
+        setSyncStatus('success')
+        setSyncResult(`Updated ${n} file${n !== 1 ? 's' : ''}`)
+      } else {
+        setSyncStatus('error')
+        setSyncResult(data.error ?? 'Sync failed')
+      }
+    } catch {
+      setSyncStatus('error')
+      setSyncResult('Network error')
+    }
+  }
+
+  const handleRefreshTraffic = async () => {
+    setTrafficStatus('loading')
+    try {
+      const res  = await fetch(`/api/github/traffic?address=${address.toLowerCase()}`)
+      const data = await res.json().catch(() => ({})) as { count?: number; uniques?: number; error?: string }
+      if (res.ok && data.count !== undefined) {
+        setTraffic({ count: data.count, uniques: data.uniques ?? 0 })
+        setTrafficStatus('success')
+      } else {
+        setTrafficStatus('error')
+      }
+    } catch {
+      setTrafficStatus('error')
+    }
+  }
 
   const isGithub    = platform === 'github'
   const displayName = name || address
@@ -353,198 +397,6 @@ function EmbedPanel({ address, name, platform }: { address: string; name?: strin
 
   const delimiterSnippet = `<!-- MARKEE:START:${addrLower} -->
 <!-- MARKEE:END:${addrLower} -->`
-
-  const githubExtension = `
-## GitHub markdown integration
-
-This leaderboard is linked to a GitHub repo. In addition to the buy-flow modal above, implement the following two server-side routes so that the markdown file stays in sync with the current top message and view counts are tracked.
-
-### 1. Delimiter
-
-The markdown file must contain these two HTML comments to mark where the Markee block is rendered. Everything between them is replaced automatically when a new message is purchased:
-
-\`\`\`
-<!-- MARKEE:START:${addrLower} -->
-<!-- MARKEE:END:${addrLower} -->
-\`\`\`
-
-Place them anywhere in a markdown file in the repo (README.md is typical). Commit the empty delimiters first, then register the file in the Markee dashboard.
-
-### 2. Message sync route
-
-Create app/api/markee/sync/route.ts. Call POST /api/markee/sync after every successful purchase to update the markdown file on GitHub.
-
-\`\`\`ts
-// app/api/markee/sync/route.ts
-import { createPublicClient, http, formatEther } from 'viem'
-import { base } from 'viem/chains'
-
-const LEADERBOARD_ADDRESS = '${addrLower}'
-const REPO_FULL_NAME      = '' // e.g. 'acme/my-repo'
-const FILE_PATH           = '' // e.g. 'README.md'
-const GITHUB_TOKEN        = process.env.GITHUB_TOKEN ?? ''
-const LEADERBOARD_URL     = '${buyUrl}'
-
-const client = createPublicClient({ chain: base, transport: http() })
-
-const LEADERBOARD_ABI = [
-  { inputs: [{ name: 'limit', type: 'uint256' }], name: 'getTopMarkees',
-    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
-    stateMutability: 'view', type: 'function' },
-] as const
-const MARKEE_ABI = [
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name',    outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-] as const
-
-// Counts display columns for Unicode/emoji (emoji = 2 cols, ASCII = 1 col)
-function wcwidth(str: string): number {
-  let w = 0
-  for (const cp of [...str]) {
-    const c = cp.codePointAt(0) ?? 0
-    if ((c >= 0x1F300 && c <= 0x1F9FF) || (c >= 0x2E80 && c <= 0x303E) ||
-        (c >= 0x3040 && c <= 0x33FF)   || (c >= 0x4E00 && c <= 0xA4CF) ||
-        (c >= 0xAC00 && c <= 0xD7FF)   || (c >= 0xFF00 && c <= 0xFF60)) {
-      w += 2
-    } else { w += 1 }
-  }
-  return w
-}
-
-function padToWidth(str: string, width: number) {
-  return str + ' '.repeat(Math.max(0, width - wcwidth(str)))
-}
-
-function centerPad(str: string, width: number) {
-  const tot  = Math.max(0, width - wcwidth(str))
-  const left = Math.floor(tot / 2)
-  return ' '.repeat(left) + str + ' '.repeat(tot - left)
-}
-
-function wrapMessage(str: string, maxWidth: number): string[] {
-  const lines: string[] = []
-  let current = '', currentWidth = 0
-  for (const word of str.split(' ')) {
-    const ww = wcwidth(word)
-    if (currentWidth === 0) { current = word; currentWidth = ww }
-    else if (currentWidth + 1 + ww <= maxWidth) { current += ' ' + word; currentWidth += 1 + ww }
-    else { lines.push(current); current = word; currentWidth = ww }
-  }
-  if (current) lines.push(current)
-  return lines.length ? lines : ['']
-}
-
-function buildBlock(message: string, footerText: string): string {
-  const INNER     = 54
-  const MSG_WIDTH = INNER - 6
-  const border    = '═'.repeat(INNER)
-  const blank     = \`  ║ \${''.padStart(INNER - 2)} ║\`
-  const HDR       = ['⡷⢾ ⣎⣱ ⣏⡱ ⣇⠜ ⣏⡉ ⣏⡉', '⠇⠸ ⠇⠸ ⠇⠱ ⠇⠱ ⠧⠤ ⠧⠤']
-    .map(h => \`  ║                  \${h}                 ║\`).join('\\n')
-  const msgLines  = wrapMessage(message, MSG_WIDTH)
-    .map(l => \`  ║   \${padToWidth(l, MSG_WIDTH)}   ║\`).join('\\n')
-  return \`<!-- MARKEE:START:${addrLower} -->
-\\\`\\\`\\\`
-  ╔\${border}╗
-\${HDR}
-  ╠\${border}╣
-\${blank}
-\${msgLines}
-\${blank}
-  ╠\${border}╣
-  ║ \${centerPad(footerText, INNER - 2)} ║
-  ╚\${border}╝
-                 ││                      ││
-   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-\\\`\\\`\\\`
-*Show the world you support this repo! [Change this message at markee.xyz](\${LEADERBOARD_URL}) ^*
-<!-- MARKEE:END:${addrLower} -->\`
-}
-
-export async function POST() {
-  const [topAddresses, topFunds] = await client.readContract({
-    address: LEADERBOARD_ADDRESS as \`0x\${string}\`,
-    abi: LEADERBOARD_ABI,
-    functionName: 'getTopMarkees',
-    args: [1n],
-  })
-  const topAddr = topAddresses[0]
-  const topFund = topFunds[0] ?? 0n
-  let markeeBlock: string
-  if (topAddr) {
-    const [msg] = await Promise.all([
-      client.readContract({ address: topAddr as \`0x\${string}\`, abi: MARKEE_ABI, functionName: 'message' }),
-    ])
-    const nextEth = formatEther(topFund + BigInt('1000000000000000'))
-    markeeBlock = buildBlock(msg ?? '', \`\${nextEth} ETH to change\`)
-  } else {
-    const minEth = formatEther(topFund + BigInt('1000000000000000'))
-    markeeBlock = buildBlock('This space is available!', \`Add your message for \${minEth} ETH\`)
-  }
-
-  const START = \`<!-- MARKEE:START:${addrLower} -->\`
-  const END   = \`<!-- MARKEE:END:${addrLower} -->\`
-
-  const fileRes = await fetch(
-    \`https://api.github.com/repos/\${REPO_FULL_NAME}/contents/\${encodeURIComponent(FILE_PATH)}\`,
-    { headers: { Authorization: \`Bearer \${GITHUB_TOKEN}\`, Accept: 'application/vnd.github+json' } }
-  )
-  if (!fileRes.ok) return Response.json({ error: 'Fetch failed' }, { status: fileRes.status })
-
-  const fileData = await fileRes.json()
-  const current  = Buffer.from(fileData.content, 'base64').toString('utf-8')
-  const si = current.indexOf(START), ei = current.indexOf(END)
-  if (si === -1 || ei === -1 || ei <= si) return Response.json({ error: 'Delimiters not found' }, { status: 400 })
-
-  const updated = current.slice(0, si) + markeeBlock + current.slice(ei + END.length)
-  const putRes  = await fetch(
-    \`https://api.github.com/repos/\${REPO_FULL_NAME}/contents/\${encodeURIComponent(FILE_PATH)}\`,
-    {
-      method: 'PUT',
-      headers: { Authorization: \`Bearer \${GITHUB_TOKEN}\`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'markee: update sponsored message', content: Buffer.from(updated).toString('base64'), sha: fileData.sha }),
-    }
-  )
-  return Response.json({ ok: putRes.ok }, { status: putRes.ok ? 200 : putRes.status })
-}
-\`\`\`
-
-Call POST /api/markee/sync from the onSuccess callback in MarkeeSign after a confirmed transaction.
-
-Fill in REPO_FULL_NAME (e.g. "acme/my-repo"), FILE_PATH (e.g. "README.md"), and set GITHUB_TOKEN in your environment (a fine-grained PAT with Contents: read & write on this repo). GITHUB_TOKEN must be a server-side env var (no NEXT_PUBLIC_ prefix).
-
-### 3. View tracking route
-
-Create app/api/markee/views/route.ts to surface GitHub traffic data for this repo:
-
-\`\`\`ts
-// app/api/markee/views/route.ts
-const REPO_FULL_NAME = '' // e.g. 'acme/my-repo'
-const GITHUB_TOKEN   = process.env.GITHUB_TOKEN ?? ''
-
-export async function GET() {
-  const res = await fetch(
-    \`https://api.github.com/repos/\${REPO_FULL_NAME}/traffic/views\`,
-    {
-      headers: {
-        Authorization: \`Bearer \${GITHUB_TOKEN}\`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      next: { revalidate: 3600 },
-    }
-  )
-  if (!res.ok) return Response.json({ count: 0, uniques: 0, views: [] }, { status: res.status })
-  return Response.json(await res.json())
-}
-\`\`\`
-
-Fetch GET /api/markee/views in MarkeeSign to show a view count badge alongside the current message. The response shape is { count: number, uniques: number, views: [{ timestamp, count, uniques }] }. Display count (total views over the past 14 days) next to the message. GitHub's traffic API requires the token owner to have push access to the repo.`
-
-  // Extract the two TypeScript code blocks from githubExtension for display as separate steps
-  const ghCodeBlocks = [...githubExtension.matchAll(/```ts\n([\s\S]*?)\n```/g)]
-  const syncCode         = ghCodeBlocks[0]?.[1] ?? ''
-  const githubViewsCode  = ghCodeBlocks[1]?.[1] ?? ''
 
   const llmPrompt = `I want to add a full Markee buy-flow modal to my Next.js site -- not just a display widget, but an embedded modal where visitors can buy or boost a message without leaving my site.
 
@@ -798,8 +650,66 @@ Please look at this codebase and implement both components. Choose an appropriat
               </div>
               <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
                 <CodeBlock code={delimiterSnippet} label="Step 1 — add delimiters to your markdown file and commit" />
-                <CodeBlock code={syncCode} label="Step 2 — message sync route (app/api/markee/sync/route.ts)" />
-                <CodeBlock code={githubViewsCode} label="Step 3 — view tracking route (app/api/markee/views/route.ts)" />
+
+                {/* Step 2 — Sync message */}
+                <div>
+                  <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 10 }}>
+                    Step 2 — sync current message to GitHub
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
+                    <button
+                      onClick={handleSync}
+                      disabled={syncStatus === 'loading'}
+                      style={{
+                        background: PINK, color: BG, border: 'none', borderRadius: 7,
+                        padding: '9px 16px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+                        cursor: syncStatus === 'loading' ? 'wait' : 'pointer',
+                        opacity: syncStatus === 'loading' ? 0.7 : 1, transition: 'opacity 140ms',
+                      }}
+                    >
+                      {syncStatus === 'loading' ? 'Syncing…' : 'Sync Message'}
+                    </button>
+                    {syncResult && (
+                      <span style={{ fontFamily: MONO, fontSize: 12, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>
+                        {syncResult}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 3 — GitHub traffic */}
+                <div>
+                  <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, marginBottom: 10 }}>
+                    Step 3 — GitHub repo views (last 14 days)
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
+                    <button
+                      onClick={handleRefreshTraffic}
+                      disabled={trafficStatus === 'loading'}
+                      style={{
+                        background: 'rgba(138,143,191,0.1)', color: TEXT,
+                        border: `1px solid ${BORDER}`, borderRadius: 7,
+                        padding: '9px 16px', fontFamily: MONO, fontWeight: 600, fontSize: 12.5,
+                        cursor: trafficStatus === 'loading' ? 'wait' : 'pointer',
+                        opacity: trafficStatus === 'loading' ? 0.7 : 1, transition: 'opacity 140ms',
+                      }}
+                    >
+                      {trafficStatus === 'loading' ? 'Fetching…' : 'Refresh Traffic'}
+                    </button>
+                    {trafficStatus === 'success' && traffic && (
+                      <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
+                        <span style={{ color: BLUE, fontWeight: 700 }}>{traffic.count.toLocaleString()}</span>
+                        {' views · '}
+                        <span style={{ color: MUTED }}>{traffic.uniques.toLocaleString()} unique</span>
+                      </span>
+                    )}
+                    {trafficStatus === 'error' && (
+                      <span style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(255,100,120,0.9)' }}>
+                        Failed — check GitHub connection
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
                   <button
                     onClick={() => setWebsiteOpen(v => !v)}
