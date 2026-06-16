@@ -548,25 +548,6 @@ export default function SuperfluidPlatformPage() {
                 View SUP Rewards
               </button>
               <Link
-                href="/create-a-markee?platform=superfluid"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  background: PINK,
-                  color: BG,
-                  borderRadius: 8,
-                  padding: '11px 20px',
-                  fontWeight: 700,
-                  fontSize: 14,
-                  textDecoration: 'none',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 4px 18px rgba(248,151,254,0.35)',
-                }}
-              >
-                Create a Superfluid Markee →
-              </Link>
-              <Link
                 href="/marketplace"
                 style={{
                   display: 'inline-flex',
@@ -664,6 +645,34 @@ export default function SuperfluidPlatformPage() {
               ))
             )}
           </div>
+        </div>
+      </section>
+
+      {/* ── Create CTA between sections ── */}
+      <section style={{ padding: '24px 40px', borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <p style={{ margin: 0, color: TEXT2, fontSize: 14 }}>
+            Want to earn SUP rewards? Create a Markee for your Superfluid project.
+          </p>
+          <Link
+            href="/create-a-markee?platform=superfluid"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: PINK,
+              color: BG,
+              borderRadius: 8,
+              padding: '10px 20px',
+              fontWeight: 700,
+              fontSize: 14,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 18px rgba(248,151,254,0.35)',
+            }}
+          >
+            Create a Superfluid Markee →
+          </Link>
         </div>
       </section>
 

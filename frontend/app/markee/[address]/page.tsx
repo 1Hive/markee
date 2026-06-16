@@ -916,7 +916,7 @@ export default function MarkeeDetailPage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.totalViews !== undefined) setViewsMap(m => new Map(m).set(top.address.toLowerCase(), data.totalViews)) })
       .catch(() => {})
-  }, [markees[0]?.address])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [markees[0]?.address, !!markees[0]?.message])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Modal state
   const [buyOpen,      setBuyOpen]      = useState(false)
