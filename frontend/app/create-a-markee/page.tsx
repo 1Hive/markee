@@ -81,14 +81,6 @@ type StepKey = 'choose' | 'connect' | 'setup' | 'review' | 'activate'
 interface GhUser { connected: boolean; login?: string; avatarUrl?: string }
 interface Repo { fullName: string; name: string; owner: string }
 
-function deriveSiteName(url: string): string {
-  if (!url) return ''
-  const host = url.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split(/[/?#]/)[0]
-  const root = (host || '').split('.')[0]
-  if (!root) return ''
-  return root.split(/[-_]/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
-}
-
 // ── Platform glyph ──────────────────────────────────────────────────────────
 function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; color: string }) {
   const s = { width: size, height: size, viewBox: '0 0 24 24' as const, fill: 'none' as const, stroke: color, strokeWidth: 1.8 as const, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
@@ -343,9 +335,9 @@ function GitHubSetup({ repos, selectedRepo, setSelectedRepo, selectedFile, setSe
 }
 
 // ── Website / Superfluid setup ──────────────────────────────────────────────
-function WebsiteSetupFields({ values, setValue, platformKey, nameAuto }: {
+function WebsiteSetupFields({ values, setValue, platformKey }: {
   values: Record<string, string>; setValue: (k: string, v: string) => void
-  platformKey: PlatformKey; nameAuto: boolean
+  platformKey: PlatformKey
 }) {
   const mono = 'var(--font-jetbrains-mono)'
   const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box' }
@@ -353,38 +345,22 @@ function WebsiteSetupFields({ values, setValue, platformKey, nameAuto }: {
 
   return (
     <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26 }}>
-      {platformKey === 'openinternet' && <>
+      {platformKey === 'openinternet' && (
         <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={labelCss}>Site URL</span>
-          <input value={values.siteUrl ?? ''} onChange={e => setValue('siteUrl', e.target.value)} placeholder="https://myproject.xyz" type="url" style={fieldBase} />
-        </label>
-        <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={labelCss}>Site name</span>
+          <span style={labelCss}>Name this Markee</span>
           <input value={values.siteName ?? ''} onChange={e => setValue('siteName', e.target.value)} placeholder="My Project" style={fieldBase} />
-          {nameAuto && values.siteName && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontFamily: mono, fontSize: 11, color: C.blue }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
-              Pulled from site metadata
-            </span>
-          )}
         </label>
-      </>}
+      )}
       {platformKey === 'superfluid' && (
         <label style={{ display: 'block', marginBottom: 20 }}>
           <span style={labelCss}>Superfluid project name</span>
           <input value={values.projectName ?? ''} onChange={e => setValue('projectName', e.target.value)} placeholder="My Stream" style={fieldBase} />
         </label>
       )}
-      <label style={{ display: 'block', marginBottom: platformKey === 'openinternet' ? 20 : 0 }}>
+      <label style={{ display: 'block' }}>
         <span style={labelCss}>Beneficiary address</span>
         <input value={values.beneficiary ?? ''} onChange={e => setValue('beneficiary', e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={{ ...fieldBase, fontFamily: mono }} />
       </label>
-      {platformKey === 'openinternet' && (
-        <label style={{ display: 'block' }}>
-          <span style={labelCss}>Logo URL <span style={{ color: C.muted, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></span>
-          <input value={values.logoUrl ?? ''} onChange={e => setValue('logoUrl', e.target.value)} placeholder="https://yoursite.com/logo.png" type="url" style={fieldBase} />
-        </label>
-      )}
     </div>
   )
 }
@@ -400,8 +376,7 @@ function ReviewSign({ platform, values, selectedRepo, selectedFile, isPending, i
     ['Integration platform', platform.name],
     ...(selectedRepo ? [['Repository', selectedRepo] as [string, string]] : []),
     ...(selectedFile ? [['File', selectedFile] as [string, string]] : []),
-    ...(platform.key === 'openinternet' && values.siteUrl ? [['Site URL', values.siteUrl] as [string, string]] : []),
-    ...(platform.key === 'openinternet' && values.siteName ? [['Site name', values.siteName] as [string, string]] : []),
+    ...(platform.key === 'openinternet' && values.siteName ? [['Name', values.siteName] as [string, string]] : []),
     ...(platform.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, string]] : []),
     ['Beneficiary', values.beneficiary ?? '-'],
   ]
@@ -571,8 +546,6 @@ function CreateWizardInner() {
   const [platformKey, setPlatformKey] = useState<PlatformKey | null>(null)
   const [step, setStep] = useState(0)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
-  const [nameTouched, setNameTouched] = useState(false)
-  const [nameAuto, setNameAuto] = useState(false)
   const [ghUser, setGhUser] = useState<GhUser>({ connected: false })
   const [repos, setRepos] = useState<Repo[]>([])
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
@@ -610,16 +583,6 @@ function CreateWizardInner() {
     if (ghUser.connected && stepKey === 'connect') setStep(s => s + 1)
   }, [ghUser.connected]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-fill site name from URL
-  useEffect(() => {
-    if (platformKey !== 'openinternet' || nameTouched) return
-    const derived = deriveSiteName(values.siteUrl ?? '')
-    if (derived) {
-      setValuesRaw(prev => ({ ...prev, siteName: derived }))
-      setNameAuto(true)
-    }
-  }, [values.siteUrl, platformKey, nameTouched])
-
   // Handle confirmed tx
   useEffect(() => {
     if (!isSuccess || !receipt || !platformKey) return
@@ -633,12 +596,6 @@ function CreateWizardInner() {
     }
     if (!found) return
     setNewLeaderboardAddress(found)
-    if (platformKey === 'openinternet' && values.logoUrl?.trim()) {
-      fetch('/api/openinternet/meta', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress: found, logoUrl: values.logoUrl.trim() }),
-      }).catch(() => {})
-    }
     if (platformKey === 'github' && selectedRepo && selectedFile) {
       fetch('/api/github/register-markee', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -648,10 +605,7 @@ function CreateWizardInner() {
     setStep(s => s + 1)
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setValue = (k: string, v: string) => {
-    if (k === 'siteName') { setNameTouched(true); setNameAuto(false) }
-    setValuesRaw(prev => ({ ...prev, [k]: v }))
-  }
+  const setValue = (k: string, v: string) => setValuesRaw(prev => ({ ...prev, [k]: v }))
 
   const platform = platformKey ? PLATFORMS.find(p => p.key === platformKey)! : null
 
@@ -667,7 +621,7 @@ function CreateWizardInner() {
   const fieldsComplete = useMemo(() => {
     if (!platform) return false
     const b = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
-    if (platform.key === 'openinternet') return !!(values.siteUrl?.trim() && values.siteName?.trim() && b)
+    if (platform.key === 'openinternet') return !!(values.siteName?.trim() && b)
     if (platform.key === 'github') return !!(selectedRepo && selectedFile && b)
     if (platform.key === 'superfluid') return !!(values.projectName?.trim() && b)
     return false
@@ -734,7 +688,7 @@ function CreateWizardInner() {
       {stepKey === 'setup' && platform && (
         <StepShell
           title="Set up your Markee"
-          sub={platform.key === 'openinternet' ? 'Set the domain where your Markee will live and an address to receive funds.' : 'Configure your Markee and set a beneficiary address to receive funds.'}
+          sub="Name your Markee and set a beneficiary address to receive funds."
           onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!fieldsComplete}
         >
           {platform.key === 'github' ? (
@@ -748,7 +702,7 @@ function CreateWizardInner() {
               />
             </div>
           ) : (
-            <WebsiteSetupFields values={values} setValue={setValue} platformKey={platform.key} nameAuto={nameAuto} />
+            <WebsiteSetupFields values={values} setValue={setValue} platformKey={platform.key} />
           )}
         </StepShell>
       )}
