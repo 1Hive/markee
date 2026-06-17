@@ -464,7 +464,142 @@ function CodeBlock({ code, label, hideCopy }: { code: string; label?: string; hi
   )
 }
 
-function EmbedPanel({ address, name, platform }: { address: string; name?: string; platform?: string }) {
+// ── GitHub verify sub-component ───────────────────────────────────────────────
+function GitHubVerify({ address }: { address: string }) {
+  type Step = 'checking' | 'not-connected' | 'ready' | 'registering' | 'done'
+  const [step,         setStep]         = useState<Step>('checking')
+  const [login,        setLogin]        = useState<string | null>(null)
+  const [repos,        setRepos]        = useState<Array<{ fullName: string; name: string }>>([])
+  const [selectedRepo, setSelectedRepo] = useState('')
+  const [files,        setFiles]        = useState<string[]>([])
+  const [loadingFiles, setLoadingFiles] = useState(false)
+  const [selectedFile, setSelectedFile] = useState('')
+  const [result,       setResult]       = useState<{ verified: boolean; filePath: string } | null>(null)
+  const [error,        setError]        = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/github/me')
+      .then(r => r.json())
+      .then((me: { connected: boolean; login?: string }) => {
+        if (!me.connected) { setStep('not-connected'); return }
+        setLogin(me.login ?? null)
+        return fetch('/api/github/my-repos').then(r => r.json())
+      })
+      .then((data?: { repos?: Array<{ fullName: string; name: string }> }) => {
+        if (data?.repos) { setRepos(data.repos); setStep('ready') }
+      })
+      .catch(() => setStep('not-connected'))
+  }, [])
+
+  useEffect(() => {
+    if (!selectedRepo) { setFiles([]); setSelectedFile(''); return }
+    setLoadingFiles(true)
+    setSelectedFile('')
+    fetch(`/api/github/repo-files?repo=${encodeURIComponent(selectedRepo)}`)
+      .then(r => r.json())
+      .then((d: { files?: string[] }) => setFiles(d.files ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingFiles(false))
+  }, [selectedRepo])
+
+  async function handleRegister() {
+    if (!selectedRepo || !selectedFile) return
+    setStep('registering'); setError(null)
+    try {
+      const res = await fetch('/api/github/register-markee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress: address, repoFullName: selectedRepo, filePath: selectedFile }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setResult({ verified: data.verified, filePath: selectedFile })
+        setStep('done')
+      } else {
+        setError(data.error ?? 'Registration failed')
+        setStep('ready')
+      }
+    } catch {
+      setError('Network error'); setStep('ready')
+    }
+  }
+
+  const inputStyle = {
+    background: '#030714', border: `1px solid ${BORDER}`, borderRadius: 7,
+    padding: '7px 10px', fontFamily: MONO, fontSize: 12, color: TEXT,
+    width: '100%', outline: 'none',
+  }
+
+  if (step === 'checking') return (
+    <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>Checking connection…</span>
+  )
+
+  if (step === 'not-connected') return (
+    <a
+      href={`/api/github/connect?returnTo=${encodeURIComponent(`/markee/${address}?embed=1`)}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        background: '#030714', border: `1px solid ${BORDER}`,
+        borderRadius: 8, padding: '8px 14px', fontFamily: MONO, fontSize: 12,
+        color: TEXT2, textDecoration: 'none', transition: 'border-color 140ms, color 140ms',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+    >
+      <GithubIcon size={13} color="currentColor" />
+      Connect GitHub to link a file
+    </a>
+  )
+
+  if (step === 'done' && result) return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={result.verified ? GREEN : MUTED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      <span style={{ fontFamily: MONO, fontSize: 12, color: result.verified ? GREEN : TEXT2, lineHeight: 1.5 }}>
+        {result.verified
+          ? `Verified — ${result.filePath} is linked`
+          : `Linked — add the delimiter snippet to ${result.filePath}, commit it, then Sync Message`}
+      </span>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {login && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <GithubIcon size={11} color={MUTED} />
+          <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>{login}</span>
+        </div>
+      )}
+      <select value={selectedRepo} onChange={e => setSelectedRepo(e.target.value)} disabled={step === 'registering'} style={{ ...inputStyle, cursor: 'pointer' }}>
+        <option value="">Select repository…</option>
+        {repos.map(r => <option key={r.fullName} value={r.fullName}>{r.fullName}</option>)}
+      </select>
+      {selectedRepo && (
+        <select value={selectedFile} onChange={e => setSelectedFile(e.target.value)} disabled={loadingFiles || step === 'registering'} style={{ ...inputStyle, cursor: loadingFiles ? 'wait' : 'pointer' }}>
+          <option value="">{loadingFiles ? 'Loading files…' : 'Select markdown file…'}</option>
+          {files.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+      )}
+      {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
+      <button
+        onClick={handleRegister}
+        disabled={!selectedRepo || !selectedFile || step === 'registering'}
+        style={{
+          alignSelf: 'flex-start', background: PINK, color: BG, border: 'none',
+          borderRadius: 7, padding: '8px 16px', fontFamily: MONO, fontWeight: 700,
+          fontSize: 12, cursor: (!selectedRepo || !selectedFile || step === 'registering') ? 'not-allowed' : 'pointer',
+          opacity: (!selectedRepo || !selectedFile || step === 'registering') ? 0.5 : 1, transition: 'opacity 140ms',
+        }}
+      >
+        {step === 'registering' ? 'Linking…' : 'Link & Verify File'}
+      </button>
+    </div>
+  )
+}
+
+function EmbedPanel({ address, name, platform, onVerifyClick }: { address: string; name?: string; platform?: string; onVerifyClick?: () => void }) {
   const [websiteOpen, setWebsiteOpen] = useState(false)
 
   const isGithub    = platform === 'github'
@@ -741,6 +876,30 @@ Please look at this codebase and implement both components. Choose an appropriat
               </div>
             </>
           )}
+      {/* ── Verify Integration ── */}
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 20px' }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, textTransform: 'uppercase' as const, color: MUTED, letterSpacing: '0.08em', marginBottom: 12 }}>
+          Verify Integration
+        </div>
+        {isGithub
+          ? <GitHubVerify address={address} />
+          : (
+            <button
+              onClick={onVerifyClick}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                background: '#030714', border: `1px solid ${BORDER}`,
+                borderRadius: 8, padding: '8px 14px', fontFamily: MONO, fontSize: 12,
+                color: TEXT2, cursor: 'pointer', transition: 'border-color 140ms, color 140ms',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+            >
+              Verify Integration
+            </button>
+          )
+        }
+      </div>
     </div>
   )
 }
@@ -833,6 +992,18 @@ export default function MarkeeDetailPage() {
   const [syncResult,    setSyncResult]    = useState<string | null>(null)
   const [trafficStatus, setTrafficStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [ghTraffic,     setGhTraffic]     = useState<{ count: number; uniques: number } | null>(null)
+
+  // Auto-open embed panel when returning from GitHub OAuth with ?embed=1
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('embed')) {
+      setEmbedOpen(true)
+      const clean = new URL(window.location.href)
+      clean.searchParams.delete('embed')
+      window.history.replaceState(null, '', clean.toString())
+    }
+  }, [])
 
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
@@ -1022,27 +1193,10 @@ export default function MarkeeDetailPage() {
                 </>
               )}
 
-              <button
-                onClick={() => setVerifyOpen(true)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  background: 'transparent', border: `1px solid ${BORDER}`,
-                  borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
-                  fontFamily: MONO, fontSize: 13, color: TEXT2,
-                  transition: 'border-color 140ms, color 140ms',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                Verify Integration
-              </button>
             </div>
             {embedOpen && (
               <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
-                <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} />
+                <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} onVerifyClick={() => setVerifyOpen(true)} />
               </div>
             )}
           </section>
