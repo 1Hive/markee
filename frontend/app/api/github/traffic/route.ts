@@ -16,6 +16,19 @@ interface GitHubTrafficResponse {
   views: GitHubTrafficDay[]
 }
 
+import { createPublicClient, http } from 'viem'
+import { base } from 'viem/chains'
+
+const rpcClient = createPublicClient({ chain: base, transport: http(process.env.ALCHEMY_BASE_URL ?? undefined) })
+
+const LEADERBOARD_ABI = [{
+  inputs: [{ name: 'limit', type: 'uint256' }],
+  name: 'getTopMarkees',
+  outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
+  stateMutability: 'view',
+  type: 'function',
+}] as const
+
 // GET /api/github/traffic?address=0x...
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -110,5 +123,31 @@ export async function GET(req: NextRequest) {
     kv.set(lastKey, traffic),
   ])
 
-  return NextResponse.json({ ...traffic, cached: false })
+  // Credit GitHub views to the top markee slot in KV view tracking
+  let syncedViews: number | undefined
+  if (traffic.count > 0) {
+    try {
+      const [topAddresses] = await rpcClient.readContract({
+        address: address as `0x${string}`,
+        abi: LEADERBOARD_ABI,
+        functionName: 'getTopMarkees',
+        args: [1n],
+      })
+      const topSlot = topAddresses[0]?.toLowerCase()
+      if (topSlot) {
+        const viewKey = `views:total:${topSlot}`
+        const current = (await kv.get<number>(viewKey)) ?? 0
+        if (traffic.count > current) {
+          await kv.set(viewKey, traffic.count)
+          syncedViews = traffic.count
+        } else {
+          syncedViews = current
+        }
+      }
+    } catch (err) {
+      console.error('[traffic] view sync error:', err)
+    }
+  }
+
+  return NextResponse.json({ ...traffic, cached: false, ...(syncedViews !== undefined ? { syncedViews } : {}) })
 }

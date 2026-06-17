@@ -870,14 +870,19 @@ export default function MarkeeDetailPage() {
     }
   }, [leaderboardAddress])
 
+  const topMarkeeAddrRef = useRef<string>('')
+
   const handleRefreshTraffic = useCallback(async () => {
     setTrafficStatus('loading')
     try {
       const res = await fetch(`/api/github/traffic?address=${leaderboardAddress.toLowerCase()}`)
-      const data = await res.json().catch(() => ({})) as { count?: number; uniques?: number; error?: string }
+      const data = await res.json().catch(() => ({})) as { count?: number; uniques?: number; error?: string; syncedViews?: number }
       if (res.ok && data.count !== undefined) {
         setGhTraffic({ count: data.count, uniques: data.uniques ?? 0 })
         setTrafficStatus('success')
+        if (data.syncedViews !== undefined && topMarkeeAddrRef.current) {
+          setViewsMap(m => new Map(m).set(topMarkeeAddrRef.current, data.syncedViews!))
+        }
       } else {
         setTrafficStatus('error')
       }
@@ -887,6 +892,7 @@ export default function MarkeeDetailPage() {
   }, [leaderboardAddress])
 
   const topMarkee  = markees[0] ?? null
+  topMarkeeAddrRef.current = topMarkee?.address?.toLowerCase() ?? ''
   const topViews   = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
   const totalFunds = meta?.totalLeaderboardFunds ?? 0n
 
