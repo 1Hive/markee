@@ -136,7 +136,7 @@ function PlatformCell({ entry }: { entry: EcoEntry | null }) {
 // ── Served On cell ────────────────────────────────────────────────────────────
 const NO_INTEGRATIONS = (
   <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' as const }}>
-    No Verified Integrations
+    No Verified URLs
   </span>
 )
 
@@ -1010,25 +1010,23 @@ export default function MarkeeDetailPage() {
                 </>
               )}
 
-              {(!ecoEntry?.platform || ecoEntry.platform === 'openinternet') && (
-                <button
-                  onClick={() => setVerifyOpen(true)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    background: 'transparent', border: `1px solid ${BORDER}`,
-                    borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
-                    fontFamily: MONO, fontSize: 13, color: TEXT2,
-                    transition: 'border-color 140ms, color 140ms',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  </svg>
-                  Verify Integration
-                </button>
-              )}
+              <button
+                onClick={() => setVerifyOpen(true)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  background: 'transparent', border: `1px solid ${BORDER}`,
+                  borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
+                  fontFamily: MONO, fontSize: 13, color: TEXT2,
+                  transition: 'border-color 140ms, color 140ms',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                Verify Integration
+              </button>
             </div>
             {embedOpen && (
               <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
