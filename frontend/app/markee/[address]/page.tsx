@@ -53,7 +53,16 @@ function priceToOvertake(topFunds: bigint) {
 }
 
 // ── Platform / served-on info from ecosystem API ──────────────────────────────
-interface EcoEntry { address: string; platform: string; verifiedUrl?: string; verifiedUrls?: string[]; logoUrl?: string; leaderboardName?: string }
+interface LinkedFile {
+  repoFullName: string; repoOwner: string; repoName: string
+  repoAvatarUrl: string; repoHtmlUrl: string; filePath: string; verified: boolean
+}
+interface EcoEntry {
+  address: string; platform: string
+  verifiedUrl?: string; verifiedUrls?: string[]
+  logoUrl?: string; leaderboardName?: string
+  linkedFiles?: LinkedFile[]
+}
 
 function useServedOn(leaderboardAddress: string) {
   const [entry, setEntry] = useState<EcoEntry | null>(null)
@@ -61,23 +70,83 @@ function useServedOn(leaderboardAddress: string) {
     if (!leaderboardAddress) return
     fetch('/api/ecosystem/leaderboards', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then(async (data) => {
         if (!data?.leaderboards) return
         const found = (data.leaderboards as EcoEntry[]).find(
           lb => lb.address.toLowerCase() === leaderboardAddress.toLowerCase()
         )
-        if (found) setEntry(found)
+        if (!found) return
+        if (found.platform === 'github') {
+          try {
+            const ghRes = await fetch('/api/github/leaderboards', { cache: 'no-store' })
+            if (ghRes.ok) {
+              const ghData = await ghRes.json()
+              const ghEntry = (ghData.leaderboards ?? []).find(
+                (lb: EcoEntry) => lb.address.toLowerCase() === leaderboardAddress.toLowerCase()
+              )
+              if (ghEntry?.linkedFiles) found.linkedFiles = ghEntry.linkedFiles
+            }
+          } catch {}
+        }
+        setEntry(found)
       })
       .catch(() => {})
   }, [leaderboardAddress])
   return entry
 }
 
+// ── Shared SVG icons ──────────────────────────────────────────────────────────
+const GithubIcon = ({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden>
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+  </svg>
+)
+
+// ── Platform cell ─────────────────────────────────────────────────────────────
+function PlatformCell({ entry }: { entry: EcoEntry | null }) {
+  if (!entry) return <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>—</span>
+
+  if (entry.platform === 'github') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 14, color: TEXT }}>
+        <GithubIcon size={15} color={TEXT2} />
+        GitHub
+      </span>
+    )
+  }
+  if (entry.platform === 'superfluid') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 14, color: TEXT }}>
+        <img src="/partners/superfluid.png" width={15} height={15} alt="" style={{ borderRadius: 3, objectFit: 'contain' }} />
+        Superfluid
+      </span>
+    )
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 14, color: TEXT }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+      Open Internet
+    </span>
+  )
+}
+
 // ── Served On cell ────────────────────────────────────────────────────────────
-function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
+const NO_INTEGRATIONS = (
+  <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' as const }}>
+    No Verified Integrations
+  </span>
+)
+
+function DropdownLinks({ items, renderItem, renderDropdownItem }: {
+  items: string[]
+  renderItem: (first: string) => React.ReactNode
+  renderDropdownItem: (item: string, idx: number) => React.ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
-
   useEffect(() => {
     if (!open) return
     const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
@@ -85,39 +154,88 @@ function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
     return () => document.removeEventListener('mousedown', close)
   }, [open])
 
-  if (!entry) return <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED }}>—</span>
-  if (entry.platform === 'github') return <span style={{ fontFamily: MONO, fontSize: 15, color: TEXT }}>GitHub Repo</span>
-  if (entry.platform === 'superfluid') return <span style={{ fontFamily: MONO, fontSize: 15, color: TEXT }}>Superfluid</span>
-
-  const urls = entry.verifiedUrls?.length ? entry.verifiedUrls : entry.verifiedUrl ? [entry.verifiedUrl] : []
-  if (urls.length === 0) return <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED }}>—</span>
-
-  const first = urls[0].replace(/^https?:\/\//, '').replace(/\/$/, '')
   return (
-    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 15 }}>
-      <a href={`https://${first}`} target="_blank" rel="noopener noreferrer" style={{ color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}>{first}</a>
-      {urls.length > 1 && (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {renderItem(items[0])}
+      {items.length > 1 && (
         <>
-          <button onClick={() => setOpen(v => !v)} style={{ background: `${PINK}22`, border: `1px solid ${BORDER}`, color: PINK, borderRadius: 99, padding: '2px 8px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-            +{urls.length - 1}
+          <button onClick={() => setOpen(v => !v)} style={{ background: `${PINK}22`, border: `1px solid rgba(248,151,254,0.3)`, color: PINK, borderRadius: 99, padding: '2px 8px', fontFamily: MONO, fontSize: 11, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>
+            +{items.length - 1}
           </button>
           {open && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 200, zIndex: 30, boxShadow: '0 16px 44px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {urls.map(u => {
-                const clean = u.replace(/^https?:\/\//, '').replace(/\/$/, '')
-                return (
-                  <a key={u} href={`https://${clean}`} target="_blank" rel="noopener noreferrer"
-                    style={{ color: TEXT2, textDecoration: 'none', fontSize: 13, padding: '8px 10px', borderRadius: 7, display: 'block', transition: 'background 100ms, color 100ms' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                  >{clean}</a>
-                )
-              })}
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 220, zIndex: 30, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {items.map((item, idx) => renderDropdownItem(item, idx))}
             </div>
           )}
         </>
       )}
     </span>
+  )
+}
+
+function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
+  if (!entry) return NO_INTEGRATIONS
+
+  if (entry.platform === 'github') {
+    const files = (entry.linkedFiles ?? []).filter(f => f.verified)
+    if (files.length === 0) return NO_INTEGRATIONS
+
+    const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
+    const fileLabel = (f: LinkedFile) => f.filePath.split('/').pop() ?? f.filePath
+
+    return (
+      <DropdownLinks
+        items={files.map(f => f.repoFullName + '::' + f.filePath)}
+        renderItem={() => (
+          <a href={fileUrl(files[0])} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
+            title={`${files[0].repoFullName}/${files[0].filePath}`}
+          >
+            <GithubIcon size={12} color={TEXT2} />
+            {files[0].repoName}/{fileLabel(files[0])}
+          </a>
+        )}
+        renderDropdownItem={(_, idx) => {
+          const f = files[idx]
+          return (
+            <a key={`${f.repoFullName}/${f.filePath}`} href={fileUrl(f)} target="_blank" rel="noopener noreferrer"
+              style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, padding: '7px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 7, transition: 'background 100ms, color 100ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+            >
+              <GithubIcon size={12} color="currentColor" />
+              <span style={{ fontFamily: MONO }}>{f.repoName}/{f.filePath}</span>
+            </a>
+          )
+        }}
+      />
+    )
+  }
+
+  const urls = entry.verifiedUrls?.length ? entry.verifiedUrls : entry.verifiedUrl ? [entry.verifiedUrl] : []
+  if (urls.length === 0) return NO_INTEGRATIONS
+
+  const clean = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
+
+  return (
+    <DropdownLinks
+      items={urls}
+      renderItem={(u) => (
+        <a href={href(u)} target="_blank" rel="noopener noreferrer"
+          style={{ fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
+        >
+          {clean(u)}
+        </a>
+      )}
+      renderDropdownItem={(u, idx) => (
+        <a key={idx} href={href(u)} target="_blank" rel="noopener noreferrer"
+          style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, padding: '7px 10px', borderRadius: 7, display: 'block', fontFamily: MONO, transition: 'background 100ms, color 100ms' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+        >{clean(u)}</a>
+      )}
+    />
   )
 }
 
@@ -143,7 +261,8 @@ function MetricsBar({ meta, topViews, markeeCount, entry, ethPrice }: {
   )
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
+    <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
+      {cell('Platform', <PlatformCell entry={entry} />)}
       {cell('Served on', <ServedOnCell entry={entry} />)}
       {cell('Total funds added', val(totalLabel, GREEN))}
       {cell('Total views', val(formatViews(topViews), BLUE))}
