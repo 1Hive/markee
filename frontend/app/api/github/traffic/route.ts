@@ -123,9 +123,11 @@ export async function GET(req: NextRequest) {
     kv.set(lastKey, traffic),
   ])
 
-  // Credit GitHub views to the top markee slot in KV view tracking
+  // Credit GitHub views to the top markee slot in KV view tracking.
+  // Uses per-day granularity so we accumulate across the rolling 14-day window
+  // without double-counting days we've already credited.
   let syncedViews: number | undefined
-  if (traffic.count > 0) {
+  if (traffic.views.length > 0) {
     try {
       const [topAddresses] = await rpcClient.readContract({
         address: address as `0x${string}`,
@@ -135,13 +137,32 @@ export async function GET(req: NextRequest) {
       })
       const topSlot = topAddresses[0]?.toLowerCase()
       if (topSlot) {
-        const viewKey = `views:total:${topSlot}`
-        const current = (await kv.get<number>(viewKey)) ?? 0
-        if (traffic.count > current) {
-          await kv.set(viewKey, traffic.count)
-          syncedViews = traffic.count
+        const viewKey     = `views:total:${topSlot}`
+        const creditedKey = `views:github:credited:${address}`
+
+        // credited = { "2024-01-15": 42, ... } — counts already added to KV per day
+        const credited = (await kv.get<Record<string, number>>(creditedKey)) ?? {}
+
+        let newCredits = 0
+        const updatedCredited = { ...credited }
+        for (const day of traffic.views) {
+          const date          = day.timestamp.split('T')[0]
+          const alreadyCredited = credited[date] ?? 0
+          const delta           = Math.max(0, day.count - alreadyCredited)
+          if (delta > 0) {
+            newCredits += delta
+            updatedCredited[date] = day.count
+          }
+        }
+
+        if (newCredits > 0) {
+          const newTotal = await kv.incrby(viewKey, newCredits)
+          syncedViews = newTotal
+          // Keep credited map for 20 days — longer than GitHub's 14-day window so
+          // we never re-credit days that have rolled off the window.
+          await kv.set(creditedKey, updatedCredited, { ex: 60 * 60 * 24 * 20 })
         } else {
-          syncedViews = current
+          syncedViews = (await kv.get<number>(viewKey)) ?? 0
         }
       }
     } catch (err) {
