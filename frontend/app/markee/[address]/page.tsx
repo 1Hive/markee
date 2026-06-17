@@ -9,7 +9,6 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
-import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl } from '@/lib/explorer'
@@ -599,7 +598,217 @@ function GitHubVerify({ address }: { address: string }) {
   )
 }
 
-function EmbedPanel({ address, name, platform, onVerifyClick }: { address: string; name?: string; platform?: string; onVerifyClick?: () => void }) {
+// ── OpenInternet verify sub-component ─────────────────────────────────────────
+function OpenInternetVerify({ address }: { address: string }) {
+  const [verifiedUrls, setVerifiedUrls] = useState<string[]>([])
+  const [logoUrl,      setLogoUrl]      = useState('')
+  const [siteUrl,      setSiteUrl]      = useState('')
+  const [loading,      setLoading]      = useState(true)
+  const [newUrl,       setNewUrl]       = useState('')
+  const [verifying,    setVerifying]    = useState<string | null>(null)
+  const [urlStatus,    setUrlStatus]    = useState<Record<string, 'ok' | 'fail'>>({})
+  const [urlErrors,    setUrlErrors]    = useState<Record<string, string>>({})
+  const [newUrlError,  setNewUrlError]  = useState<string | null>(null)
+  const [savingMeta,   setSavingMeta]   = useState(false)
+  const [metaSaved,    setMetaSaved]    = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/openinternet/meta?address=${address}`)
+      .then(r => r.json())
+      .then((d: { verifiedUrls?: string[]; verifiedUrl?: string; logoUrl?: string; siteUrl?: string }) => {
+        const urls = Array.isArray(d.verifiedUrls) ? d.verifiedUrls : d.verifiedUrl ? [d.verifiedUrl] : []
+        setVerifiedUrls(urls)
+        setLogoUrl(d.logoUrl ?? '')
+        setSiteUrl(d.siteUrl ?? '')
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [address])
+
+  async function verify(url: string, isRecheck = false) {
+    setVerifying(url)
+    if (isRecheck) setUrlErrors(e => { const n = { ...e }; delete n[url]; return n })
+    else setNewUrlError(null)
+    try {
+      const res  = await fetch('/api/openinternet/verify-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, url }),
+      })
+      const data = await res.json()
+      if (data.verified) {
+        setVerifiedUrls(data.verifiedUrls ?? [...verifiedUrls, url])
+        setUrlStatus(s => ({ ...s, [url]: 'ok' }))
+        if (!isRecheck) setNewUrl('')
+      } else {
+        setUrlStatus(s => ({ ...s, [url]: 'fail' }))
+        const msg = data.error ?? 'Not found'
+        if (isRecheck) setUrlErrors(e => ({ ...e, [url]: msg }))
+        else setNewUrlError(msg)
+      }
+    } catch {
+      setUrlStatus(s => ({ ...s, [url]: 'fail' }))
+      if (!isRecheck) setNewUrlError('Network error')
+    } finally {
+      setVerifying(null)
+    }
+  }
+
+  async function removeUrl(url: string) {
+    setVerifiedUrls(u => u.filter(x => x !== url))
+    setUrlStatus(s => { const n = { ...s }; delete n[url]; return n })
+    fetch('/api/openinternet/meta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leaderboardAddress: address, removeVerifiedUrl: url }),
+    }).catch(() => {})
+  }
+
+  async function saveMeta() {
+    setSavingMeta(true)
+    try {
+      await fetch('/api/openinternet/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leaderboardAddress: address,
+          logoUrl: logoUrl.trim(),
+          siteUrl: siteUrl.trim(),
+        }),
+      })
+      setMetaSaved(true)
+      setTimeout(() => setMetaSaved(false), 2000)
+    } catch {}
+    setSavingMeta(false)
+  }
+
+  const inputStyle = {
+    background: '#030714', border: `1px solid ${BORDER}`, borderRadius: 7,
+    padding: '7px 10px', fontFamily: MONO, fontSize: 12, color: TEXT,
+    outline: 'none', minWidth: 0,
+  }
+  const smallBtn = (color = TEXT2): React.CSSProperties => ({
+    background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6,
+    padding: '4px 9px', fontFamily: MONO, fontSize: 11, color,
+    cursor: 'pointer', flexShrink: 0, transition: 'border-color 120ms, color 120ms',
+    whiteSpace: 'nowrap' as const,
+  })
+
+  if (loading) return <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>Loading…</span>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      {/* Existing verified URLs */}
+      {verifiedUrls.map(url => {
+        const status = urlStatus[url]
+        const iconColor = status === 'fail' ? 'rgba(255,100,120,0.9)' : GREEN
+        return (
+          <div key={url}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#030714', border: `1px solid ${status === 'fail' ? 'rgba(255,100,120,0.25)' : status === 'ok' ? 'rgba(29,178,39,0.25)' : BORDER}`, borderRadius: 8, padding: '6px 10px' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                {status === 'fail'
+                  ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>
+                  : <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>
+                }
+              </svg>
+              <a href={url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.color = TEXT)} onMouseLeave={e => (e.currentTarget.style.color = TEXT2)}
+              >{url}</a>
+              <button
+                onClick={() => verify(url, true)}
+                disabled={verifying === url}
+                style={smallBtn(verifying === url ? MUTED : TEXT2)}
+                onMouseEnter={e => { if (verifying !== url) { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT } }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = verifying === url ? MUTED : TEXT2 }}
+              >
+                {verifying === url ? 'Checking…' : 'Re-check'}
+              </button>
+              <button
+                onClick={() => removeUrl(url)}
+                style={{ ...smallBtn('rgba(255,100,120,0.7)'), border: 'none', padding: '4px 4px' }}
+                title="Remove"
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,100,120,1)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,100,120,0.7)'}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            {urlErrors[url] && (
+              <p style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)', margin: '4px 0 0 2px' }}>{urlErrors[url]}</p>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Add new URL */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          type="url"
+          value={newUrl}
+          onChange={e => { setNewUrl(e.target.value); setNewUrlError(null) }}
+          onKeyDown={e => { if (e.key === 'Enter' && newUrl.trim() && !verifying) verify(newUrl.trim()) }}
+          placeholder="https://yoursite.com"
+          style={{ ...inputStyle, flex: 1 }}
+          disabled={!!verifying}
+        />
+        <button
+          onClick={() => verify(newUrl.trim())}
+          disabled={!newUrl.trim() || !!verifying}
+          style={{
+            background: PINK, color: BG, border: 'none', borderRadius: 7,
+            padding: '7px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12,
+            cursor: !newUrl.trim() || !!verifying ? 'not-allowed' : 'pointer',
+            opacity: !newUrl.trim() || !!verifying ? 0.5 : 1, flexShrink: 0, transition: 'opacity 140ms',
+          }}
+        >
+          {verifying === newUrl.trim() ? 'Checking…' : 'Verify'}
+        </button>
+      </div>
+      {newUrlError && <p style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)', margin: '-4px 0 0 2px' }}>{newUrlError}</p>}
+
+      {/* Site settings */}
+      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, textTransform: 'uppercase' as const, color: MUTED, letterSpacing: '0.08em' }}>
+          Site Settings
+        </div>
+        <input
+          type="url"
+          value={siteUrl}
+          onChange={e => setSiteUrl(e.target.value)}
+          placeholder="Site URL (e.g. https://yoursite.com)"
+          style={{ ...inputStyle, width: '100%' }}
+          disabled={savingMeta}
+        />
+        <input
+          type="url"
+          value={logoUrl}
+          onChange={e => setLogoUrl(e.target.value)}
+          placeholder="Logo URL (e.g. https://yoursite.com/logo.png)"
+          style={{ ...inputStyle, width: '100%' }}
+          disabled={savingMeta}
+        />
+        <button
+          onClick={saveMeta}
+          disabled={savingMeta || (!logoUrl.trim() && !siteUrl.trim())}
+          style={{
+            alignSelf: 'flex-start', background: metaSaved ? 'rgba(29,178,39,0.15)' : '#030714',
+            border: `1px solid ${metaSaved ? 'rgba(29,178,39,0.4)' : BORDER}`,
+            borderRadius: 7, padding: '7px 14px', fontFamily: MONO, fontSize: 12,
+            color: metaSaved ? GREEN : TEXT2, cursor: savingMeta || (!logoUrl.trim() && !siteUrl.trim()) ? 'not-allowed' : 'pointer',
+            opacity: savingMeta || (!logoUrl.trim() && !siteUrl.trim()) ? 0.5 : 1, transition: 'all 140ms',
+          }}
+        >
+          {metaSaved ? 'Saved' : savingMeta ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function EmbedPanel({ address, name, platform }: { address: string; name?: string; platform?: string }) {
   const [websiteOpen, setWebsiteOpen] = useState(false)
 
   const isGithub    = platform === 'github'
@@ -883,21 +1092,7 @@ Please look at this codebase and implement both components. Choose an appropriat
         </div>
         {isGithub
           ? <GitHubVerify address={address} />
-          : (
-            <button
-              onClick={onVerifyClick}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-                background: '#030714', border: `1px solid ${BORDER}`,
-                borderRadius: 8, padding: '8px 14px', fontFamily: MONO, fontSize: 12,
-                color: TEXT2, cursor: 'pointer', transition: 'border-color 140ms, color 140ms',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-            >
-              Verify Integration
-            </button>
-          )
+          : <OpenInternetVerify address={address} />
         }
       </div>
     </div>
@@ -986,7 +1181,6 @@ export default function MarkeeDetailPage() {
   const [addFundsOpen, setAddFundsOpen] = useState(false)
   const [editOpen,     setEditOpen]     = useState(false)
   const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
-  const [verifyOpen,   setVerifyOpen]   = useState(false)
   const [embedOpen,    setEmbedOpen]    = useState(false)
   const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [syncResult,    setSyncResult]    = useState<string | null>(null)
@@ -1196,7 +1390,7 @@ export default function MarkeeDetailPage() {
             </div>
             {embedOpen && (
               <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
-                <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} onVerifyClick={() => setVerifyOpen(true)} />
+                <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} />
               </div>
             )}
           </section>
@@ -1292,18 +1486,6 @@ export default function MarkeeDetailPage() {
         />
       )}
 
-      {/* Verify integration modal */}
-      {meta && (
-        <VerifyIntegrationModal
-          isOpen={verifyOpen}
-          onClose={() => setVerifyOpen(false)}
-          leaderboard={{
-            address: leaderboardAddress,
-            name: meta.leaderboardName ?? leaderboardAddress,
-            verifiedUrls: ecoEntry?.verifiedUrls ?? (ecoEntry?.verifiedUrl ? [ecoEntry.verifiedUrl] : []),
-          }}
-        />
-      )}
     </div>
   )
 }
