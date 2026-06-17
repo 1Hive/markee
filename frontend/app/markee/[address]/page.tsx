@@ -841,14 +841,22 @@ export default function MarkeeDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leaderboardAddress }),
       })
-      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string; results?: Array<{ success: boolean }> }
+      const data = await res.json().catch(() => ({})) as {
+        success?: boolean; error?: string
+        results?: Array<{ success: boolean; error?: string; filePath?: string }>
+      }
       if (res.ok && data.success) {
-        const n = data.results?.filter(r => r.success).length ?? 1
+        const ok   = data.results?.filter(r => r.success).length ?? 1
+        const fail = data.results?.filter(r => !r.success).length ?? 0
         setSyncStatus('success')
-        setSyncResult(`Updated ${n} file${n !== 1 ? 's' : ''}`)
+        setSyncResult(fail > 0 ? `Updated ${ok}, ${fail} failed` : `Updated ${ok} file${ok !== 1 ? 's' : ''}`)
       } else {
         setSyncStatus('error')
-        setSyncResult(data.error ?? 'Sync failed')
+        const firstResultErr = data.results?.find(r => !r.success)?.error
+        const raw = data.error ?? firstResultErr ?? 'Sync failed'
+        setSyncResult(raw.toLowerCase().includes('delimiter')
+          ? `Delimiters missing — add the snippet from the Embed panel to your file first`
+          : raw)
       }
     } catch {
       setSyncStatus('error')
