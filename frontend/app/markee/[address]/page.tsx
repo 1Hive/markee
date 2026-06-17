@@ -155,11 +155,13 @@ function DropdownLinks({ items, renderItem, renderDropdownItem }: {
   }, [open])
 
   return (
-    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      {renderItem(items[0])}
+    <span ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <span style={{ minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
+        {renderItem(items[0])}
+      </span>
       {items.length > 1 && (
         <>
-          <button onClick={() => setOpen(v => !v)} style={{ background: `${PINK}22`, border: `1px solid rgba(248,151,254,0.3)`, color: PINK, borderRadius: 99, padding: '2px 8px', fontFamily: MONO, fontSize: 11, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>
+          <button onClick={() => setOpen(v => !v)} style={{ flexShrink: 0, background: `${PINK}22`, border: `1px solid rgba(248,151,254,0.3)`, color: PINK, borderRadius: 99, padding: '2px 7px', fontFamily: MONO, fontSize: 11, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>
             +{items.length - 1}
           </button>
           {open && (
@@ -188,11 +190,13 @@ function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
         items={files.map(f => f.repoFullName + '::' + f.filePath)}
         renderItem={() => (
           <a href={fileUrl(files[0])} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}`, minWidth: 0, overflow: 'hidden' }}
             title={`${files[0].repoFullName}/${files[0].filePath}`}
           >
-            <GithubIcon size={12} color={TEXT2} />
-            {files[0].repoName}/{fileLabel(files[0])}
+            <span style={{ flexShrink: 0, display: 'flex' }}><GithubIcon size={12} color={TEXT2} /></span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {files[0].repoName}/{fileLabel(files[0])}
+            </span>
           </a>
         )}
         renderDropdownItem={(_, idx) => {
@@ -217,15 +221,17 @@ function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
 
   const clean = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/$/, '')
   const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
+  const host = (u: string) => { try { return new URL(href(u)).hostname } catch { return clean(u) } }
 
   return (
     <DropdownLinks
       items={urls}
       renderItem={(u) => (
         <a href={href(u)} target="_blank" rel="noopener noreferrer"
-          style={{ fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
+          style={{ display: 'block', fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          title={clean(u)}
         >
-          {clean(u)}
+          {host(u)}
         </a>
       )}
       renderDropdownItem={(u, idx) => (
