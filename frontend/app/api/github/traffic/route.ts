@@ -36,9 +36,22 @@ export async function GET(req: NextRequest) {
   // Reverse-lookup: address → { owner, repo, githubUserId }
   // Written by register-markee/route.ts on each successful registration.
   // githubUserId is stored as a string (the uid cookie value) — not a number.
-  const repoMeta = await kv.get<{ owner: string; repo: string; githubUserId: string }>(
+  let repoMeta = await kv.get<{ owner: string; repo: string; githubUserId: string }>(
     `github:contract:${address}`
   )
+
+  // Fallback for Markees registered before github:contract: was written — derive from linked files.
+  if (!repoMeta) {
+    const { getLinkedFiles } = await import('@/lib/github/linkedFiles')
+    const linkedFiles = await getLinkedFiles(address)
+    const first = linkedFiles.find(f => f.verified) ?? linkedFiles[0]
+    if (first) {
+      repoMeta = { owner: first.repoOwner, repo: first.repoName, githubUserId: first.linkedByUid }
+      // Backfill so future calls skip this lookup.
+      await kv.set(`github:contract:${address}`, repoMeta, { ex: 60 * 60 * 24 * 365 * 5 })
+    }
+  }
+
   if (!repoMeta) {
     return NextResponse.json({ error: 'No GitHub repo linked to this address' }, { status: 404 })
   }
