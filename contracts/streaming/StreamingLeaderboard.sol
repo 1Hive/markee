@@ -96,6 +96,26 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///         Markee is #1 at a time).
     uint256 public lastAccrualTime;
 
+    // ─── Legacy grandfather floor (migrated lump-sum spots) ────────────────────
+    /// @notice Months of streaming "rent" a migrated Markee's lump-sum total is treated as having
+    ///         pre-bought: its grandfather floor (as a monthly rate) = totalFundsAdded / this. A
+    ///         streaming Markee overtakes a grandfathered one only once its monthly rate clears that
+    ///         floor. Default 3 (the "must exceed 33% of the legacy total as a monthly rate" rule);
+    ///         admin-tunable. 0 disables grandfathering (migrated Markees start at floor 0).
+    uint256 public legacyFloorMonths;
+    /// @notice Hard-protect window after migration during which a Markee's floor does NOT decay
+    ///         (0 = none). Lets grandfathered holders set up a stream before the bar starts dropping.
+    uint256 public legacyFloorGraceSeconds;
+    /// @notice Linear decay window applied to the floor after the grace ends (0 = permanent, never
+    ///         decays). After grace + this the floor is 0 and the spot is open to pure streaming, so
+    ///         every grandfathered spot eventually converts to recurring revenue.
+    uint256 public legacyFloorDecaySeconds;
+    /// @notice Per-Markee initial grandfather floor in wei/sec, captured from totalFundsAdded the moment
+    ///         it is migrated in. 0 for every natively-created (createMarkee) Markee.
+    mapping(address => uint256) public legacyFloorRate0;
+    /// @notice Per-Markee start of the floor clock (its registerExistingMarkees timestamp).
+    mapping(address => uint256) public legacyFloorStart;
+
     // ─── Events ───────────────────────────────────────────────────────────────
     event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name);
     event MarkeeRegistered(address indexed markeeAddress, address indexed pool);
@@ -111,6 +131,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     event MinimumMonthlyRateChanged(uint256 oldRate, uint256 newRate);
     event Settled(address indexed backer, uint256 amount, bool viaRevNet);
     event PlatformFeeSettled(address indexed feeReceiver, uint256 amount);
+    event LegacyFloorCaptured(address indexed markee, uint256 floorRate0, uint256 totalFundsAdded);
+    event LegacyFloorConfigChanged(uint256 months, uint256 graceSeconds, uint256 decaySeconds);
 
     /// @dev Receives native ETH from ETHx.downgradeToETH() during settle(), before forwarding to RevNet.
     receive() external payable {}
@@ -166,6 +188,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         minimumMonthlyRate = _minimumMonthlyRate;
         maxMessageLength = _maxMessageLength;
         maxNameLength = _maxNameLength;
+        legacyFloorMonths = 3;
 
         seedMarkeeAddress = _deploySeedMarkee(_seedOwner);
     }
@@ -217,13 +240,46 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     /// @dev Mirrors v1.3 Leaderboard.initializeHistory. The Markee addresses (and KV view/reaction
     ///      continuity) are preserved — migrate via the legacy Leaderboard's migratePricingStrategy first.
     function registerExistingMarkees(address[] calldata _markees) external onlyAdmin {
+        _accrueTop();
         for (uint256 i = 0; i < _markees.length; i++) {
             address m = _markees[i];
             if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
                 require(Markee(m).pricingStrategy() == address(this), "Markee not migrated to this strategy");
                 _registerMarkee(m);
+                _captureLegacyFloor(m);
+                _seedTopIfHigher(m);
             }
         }
+    }
+
+    /// @dev Capture a migrated Markee's grandfather floor from its carried-over lump-sum total: a monthly
+    ///      rate of totalFundsAdded / legacyFloorMonths, stored as wei/sec. Read trustlessly from the
+    ///      Markee's own on-chain state (cannot be inflated). No-op when grandfathering is disabled or
+    ///      the Markee never took a payment (natively-created Markees have totalFundsAdded == 0).
+    function _captureLegacyFloor(address markee) internal {
+        uint256 months = legacyFloorMonths;
+        if (months == 0) return;
+        uint256 total = Markee(markee).totalFundsAdded();
+        if (total == 0) return;
+        uint256 rate0 = total / (months * SECONDS_IN_MONTH);
+        if (rate0 == 0) return;
+        legacyFloorRate0[markee] = rate0;
+        legacyFloorStart[markee] = block.timestamp;
+        emit LegacyFloorCaptured(markee, rate0, total);
+    }
+
+    /// @dev Seed #1 at migration time so the highest grandfather floor holds the spot until a stream
+    ///      overtakes it. Mirrors a claimTop flip so state stays consistent even if streams are already
+    ///      live; in the normal pre-launch migration every aggregate is 0, so a pre-paid holder becomes
+    ///      top with topRate 0 (no beneficiary stream) — it has already paid.
+    function _seedTopIfHigher(address markee) internal {
+        if (_effRate(markee) <= _topThreshold()) return;
+        address oldTop = topMarkee;
+        _setTop(markee);
+        if (oldTop != address(0) && refundRate[oldTop] != aggregateRate[oldTop]) {
+            _setRefund(oldTop, aggregateRate[oldTop]);
+        }
+        _setBeneficiaryFlow(_beneficiaryTarget());
     }
 
     // ─── Deposits (refundable buffer cover for refund flows) ───────────────────
@@ -256,7 +312,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     function claimTop(address challenger) external nonReentrant {
         require(isMarkeeOnLeaderboard[challenger], "Unknown markee");
         require(challenger != topMarkee, "Already top");
-        require(aggregateRate[challenger] > topRate, "Not higher than top");
+        require(_effRate(challenger) > _topThreshold(), "Not higher than top");
 
         _accrueTop();
         address oldTop = topMarkee;
@@ -401,6 +457,19 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         minimumMonthlyRate = _newRate;
     }
 
+    /// @notice Tune grandfathering: K (months a lump sum pre-buys), the post-migration grace window,
+    ///         and the linear decay window. Applies to floors captured from here on (already-captured
+    ///         per-Markee floor rates are unchanged; grace/decay are read live so they affect all).
+    function setLegacyFloorConfig(uint256 _months, uint256 _graceSeconds, uint256 _decaySeconds)
+        external
+        onlyAdmin
+    {
+        legacyFloorMonths = _months;
+        legacyFloorGraceSeconds = _graceSeconds;
+        legacyFloorDecaySeconds = _decaySeconds;
+        emit LegacyFloorConfigChanged(_months, _graceSeconds, _decaySeconds);
+    }
+
     // ─── Views ────────────────────────────────────────────────────────────────
 
     function markeeCount() external view returns (uint256) {
@@ -418,6 +487,18 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
 
     function isAcceptedSuperToken(ISuperToken superToken) public view override returns (bool) {
         return address(superToken) == address(ETHX);
+    }
+
+    /// @notice A Markee's grandfather floor (wei/sec) at the current block — decays per the admin config.
+    function currentLegacyFloor(address markee) external view returns (uint256) {
+        return _currentLegacyFloor(markee);
+    }
+
+    /// @notice A Markee's effective rank value: max(live aggregate stream rate, current grandfather
+    ///         floor). The frontend/subgraph must rank by THIS so the displayed #1 matches the on-chain
+    ///         #1 the contract enforces.
+    function effectiveRate(address markee) external view returns (uint256) {
+        return _effRate(markee);
     }
 
     // ─── SuperApp CFA callbacks (via CFASuperAppBase hooks) ────────────────────
@@ -511,7 +592,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         if (markee == topMarkee) {
             topRate = agg;
             newCtx = _setBeneficiaryFlowWithCtx(_beneficiaryTarget(), true, newCtx);
-        } else if (agg > topRate) {
+        } else if (_effRate(markee) > _topThreshold()) {
             address oldTop = topMarkee;
             _setTop(markee);
             newCtx = _setRefundWithCtx(markee, 0, false, newCtx);
@@ -533,6 +614,36 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     function _beneficiaryTarget() internal view returns (uint256) {
         if (beneficiaryAddress == address(0)) return 0;
         return (topRate * percentToBeneficiary()) / BASIS_POINTS_DIVISOR;
+    }
+
+    /// @dev A Markee's grandfather floor right now: full during the grace window, then linear-decaying
+    ///      to zero over legacyFloorDecaySeconds, then zero. Pure storage + arithmetic — cannot revert,
+    ///      safe to read from any callback. 0 for streaming-only Markees (no captured floor).
+    function _currentLegacyFloor(address markee) internal view returns (uint256) {
+        uint256 rate0 = legacyFloorRate0[markee];
+        if (rate0 == 0) return 0;
+        uint256 decayWindow = legacyFloorDecaySeconds;
+        if (decayWindow == 0) return rate0;
+        uint256 decayStart = legacyFloorStart[markee] + legacyFloorGraceSeconds;
+        if (block.timestamp <= decayStart) return rate0;
+        uint256 elapsed = block.timestamp - decayStart;
+        if (elapsed >= decayWindow) return 0;
+        return (rate0 * (decayWindow - elapsed)) / decayWindow;
+    }
+
+    /// @dev A Markee's rank value: the better of its live aggregate stream rate and its (decaying)
+    ///      grandfather floor. Streaming-only Markees have floor 0, so effRate == aggregate.
+    function _effRate(address markee) internal view returns (uint256) {
+        uint256 agg = aggregateRate[markee];
+        uint256 floor = _currentLegacyFloor(markee);
+        return agg > floor ? agg : floor;
+    }
+
+    /// @dev The bar a challenger must clear to take #1: the current top's effective rate (its
+    ///      grandfather floor while it is a not-yet-overtaken migrated holder, else its stream rate).
+    function _topThreshold() internal view returns (uint256) {
+        if (topMarkee == address(0)) return 0;
+        return _effRate(topMarkee);
     }
 
     // ─── Settlement accrual (MasterChef-style, jail-safe storage math) ─────────
@@ -730,6 +841,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         markees.pop();
         delete markeeIndex[markeeAddress];
         isMarkeeOnLeaderboard[markeeAddress] = false;
+        delete legacyFloorRate0[markeeAddress];
+        delete legacyFloorStart[markeeAddress];
     }
 
     function _toInt96(uint256 x) internal pure returns (int96) {

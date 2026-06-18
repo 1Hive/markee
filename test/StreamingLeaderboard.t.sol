@@ -581,6 +581,90 @@ contract StreamingLeaderboardTest is Test {
         board.registerExistingMarkees(arr);
     }
 
+    // ─── Legacy grandfather floor (migrated lump-sum spots hold #1 until overtaken) ──
+
+    /// @dev Stand up a fresh legacy v1.3 board, create a paid Markee on it, hand it off to the streaming
+    ///      board, and register it — the real migration path. Returns the (address-preserved) Markee.
+    function _migrateInPaidMarkee(uint256 payWei, string memory salt) internal returns (address markee) {
+        LeaderboardFactory legacyFactory =
+            new LeaderboardFactory("Legacy", "legacy", REVNET_TERMINAL, REVNET_PROJECT, address(0), admin);
+        (address legacyBoardAddr,) = legacyFactory.createLeaderboard(beneficiary, "Legacy Board");
+        Leaderboard legacyBoard = Leaderboard(legacyBoardAddr); // legacy admin == this test contract
+
+        address creator = makeAddr(string.concat("legacyCreator-", salt));
+        vm.deal(creator, 10 ether);
+        vm.prank(creator);
+        markee = legacyBoard.createMarkee{value: payWei}("legacy", salt);
+
+        legacyBoard.migratePricingStrategy(markee, address(board));
+        address[] memory arr = new address[](1);
+        arr[0] = markee;
+        board.registerExistingMarkees(arr); // streaming board admin == this test contract
+    }
+
+    /// @notice The customer requirement: a migrated lump-sum Markee with no stream holds #1, a stream
+    ///         BELOW its grandfather floor does not overtake it (and is refunded as a loser), and a
+    ///         stream ABOVE the floor does overtake it and starts paying the beneficiary.
+    function test_legacyFloor_holdsTopUntilStreamOvertakes() public {
+        address L = _migrateInPaidMarkee(0.03 ether, "L");
+        assertEq(board.topMarkee(), L, "migrated legacy markee should hold #1 by its floor");
+        assertGt(board.legacyFloorRate0(L), 0, "legacy floor not captured at migration");
+        assertEq(_beneficiaryFlow(), int96(0), "a pre-paid legacy top must not open a beneficiary stream");
+
+        uint256 floorMonthly = board.currentLegacyFloor(L) * SECONDS_IN_MONTH;
+        assertGt(floorMonthly, 0, "no live floor");
+
+        // A stream below the floor does NOT overtake — legacy keeps #1, the streamer is a refunded loser.
+        address low = _newMarkee("low", "low");
+        _open(_backer("bLow"), low, _rate(floorMonthly / 2));
+        assertEq(board.topMarkee(), L, "sub-floor stream must not overtake the legacy spot");
+        assertEq(board.refundRate(low), board.aggregateRate(low), "sub-floor streamer should be refunded (loser)");
+        assertEq(_beneficiaryFlow(), int96(0), "no beneficiary stream while the legacy spot still holds #1");
+
+        // A stream above the floor overtakes — it becomes #1 and starts paying the beneficiary.
+        address high = _newMarkee("high", "high");
+        _open(_backer("bHigh"), high, _rate(floorMonthly * 2));
+        assertEq(board.topMarkee(), high, "above-floor stream should overtake the legacy spot");
+        int96 expected = int96(int256(board.aggregateRate(high) * factory.percentToBeneficiary() / BPS));
+        assertEq(_beneficiaryFlow(), expected, "beneficiary stream should open at 62% once a stream wins");
+        _notJailed();
+    }
+
+    /// @notice With decay enabled, a sub-floor streamer waits below the (still-high) floor, then takes
+    ///         #1 via the permissionless claimTop poke once the floor decays past it — the same decay
+    ///         mechanism streaming uses, so grandfathered spots eventually convert to recurring revenue.
+    function test_legacyFloor_decaysThenStreamOvertakes() public {
+        address L = _migrateInPaidMarkee(0.03 ether, "L");
+        assertEq(board.topMarkee(), L);
+        uint256 floorMonthly = board.currentLegacyFloor(L) * SECONDS_IN_MONTH;
+
+        board.setLegacyFloorConfig(3, 0, 30 days); // K=3, no grace, 30-day linear decay
+
+        address s = _newMarkee("s", "s");
+        _open(_backer("bs"), s, _rate(floorMonthly / 2)); // sub-floor → waits
+        assertEq(board.topMarkee(), L, "sub-floor streamer must wait while the floor is high");
+        assertEq(_beneficiaryFlow(), int96(0), "no beneficiary stream while legacy still holds");
+
+        vm.warp(block.timestamp + 31 days);
+        assertEq(board.currentLegacyFloor(L), 0, "floor should have fully decayed");
+
+        board.claimTop(s);
+        assertEq(board.topMarkee(), s, "streamer should take #1 after the legacy floor decays");
+        assertGt(_beneficiaryFlow(), int96(0), "beneficiary stream opens once the streamer wins");
+        _notJailed();
+    }
+
+    /// @notice Migrating several legacy Markees seeds #1 to the highest lump-sum total, regardless of
+    ///         registration order.
+    function test_legacyFloor_higherTotalSeedsTop() public {
+        address small = _migrateInPaidMarkee(0.01 ether, "small");
+        assertEq(board.topMarkee(), small, "first migrated markee seeds #1");
+        address big = _migrateInPaidMarkee(0.05 ether, "big");
+        assertEq(board.topMarkee(), big, "higher-total migrated markee should take #1");
+        assertGt(board.legacyFloorRate0(big), board.legacyFloorRate0(small), "floor should scale with total");
+        _notJailed();
+    }
+
     // ─── Migration-out (_vacateTopIf + refund wind-down) ────────────────────────
 
     /// @notice Migrating the current #1 to another strategy must vacate the top (no auto-promotion),
