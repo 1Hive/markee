@@ -17,22 +17,15 @@ export const REVNET_V6_CONFIG = {
     terminal: '0x2dB6d704058E552DeFE415753465df8dF0361846' as const,
   },
 } as const
-// V1.3 Leaderboard addresses (Base only) — migrated from v1.2 via migrate-to-v13.sh
-export const V13_LEADERBOARDS = {
-  COOPERATIVE: '0x0590b56430426A38D0fA065b839c10D542E75CCD' as const,
-  GARDENS: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' as const,
-  CLAWCHEMY: '0xdF4769a9593CB8E40d0409dEF2645651412A8A97' as const,
-  SUPERFLUID_MIGRATION: '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as const,
-} as const
 
-// Factory contract addresses (v1.3)
+// V1.3 LeaderboardFactory contract addresses 
 export const FACTORIES = {
   SUPERFLUID: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
   OPEN_INTERNET: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
 } as const
 
-// Fixed-price strategy contracts (still in use for the fixed-price leaderboard on the home page)
+// Fixed-price strategy contracts (in use for the fixed-price messages on the home page)
 export const CONTRACTS = {
   [base.id]: {
     fixedPriceStrategies: [

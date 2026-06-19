@@ -35,7 +35,6 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const router = useRouter()
   const [name, setName] = useState('')
   const [beneficiary, setBeneficiary] = useState('')
-  const [logoUrl, setLogoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [newAddress, setNewAddress] = useState<string | null>(null)
 
@@ -46,7 +45,6 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
     if (isOpen) {
       setName('')
       setBeneficiary('')
-      setLogoUrl('')
       setError(null)
       setNewAddress(null)
       reset()
@@ -69,16 +67,6 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
 
     if (foundAddress) {
       setNewAddress(foundAddress)
-      if (logoUrl.trim()) {
-        fetch('/api/openinternet/meta', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            leaderboardAddress: foundAddress,
-            logoUrl: logoUrl.trim(),
-          }),
-        }).catch(e => console.error('[CreateOpenInternetModal] meta POST failed:', e))
-      }
     }
 
     onSuccess?.()
@@ -151,7 +139,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="sm:col-span-2">
                     <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                      Website Name <span className="text-[#F897FE]">*</span>
+                      Name this Markee <span className="text-[#F897FE]">*</span>
                     </label>
                     <input
                       type="text"
@@ -178,19 +166,6 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                     <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                      Logo URL <span className="text-[#8A8FBF]/60">(optional)</span>
-                    </label>
-                    <input
-                      type="url"
-                      value={logoUrl}
-                      onChange={e => setLogoUrl(e.target.value)}
-                      placeholder="https://yoursite.com/logo.png"
-                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
-                      disabled={isPending || isConfirming}
-                    />
-                  </div>
                 </div>
 
                 <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15">

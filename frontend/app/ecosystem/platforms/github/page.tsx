@@ -1,230 +1,372 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { formatEther } from 'viem'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import {
-  ChevronRight, Github, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, LogOut, ExternalLink, ShieldCheck, ShieldAlert, RefreshCw, Eye,
-} from 'lucide-react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { ConnectButton } from '@/components/wallet/ConnectButton'
-import type { LinkedFile } from './[address]/page'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 
-const GITHUB_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const PINK   = '#F897FE'
+const BLUE   = '#7C9CFF'
+const BG     = '#060A2A'
+const BG2    = '#0A0F3D'
+const TEXT   = '#EDEEFF'
+const TEXT2  = '#B8B6D9'
+const MUTED  = '#8A8FBF'
+const BORDER = 'rgba(138,143,191,0.2)'
 
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: '_beneficiaryAddress', type: 'address' },
-      { name: '_leaderboardName', type: 'string' },
-    ],
-    name: 'createLeaderboard',
-    outputs: [
-      { name: 'leaderboardAddress', type: 'address' },
-      { name: 'seedMarkeeAddress', type: 'address' },
-    ],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-] as const
-
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface GithubLeaderboard {
   address: string
   name: string
-  totalFunds: string
   totalFundsRaw: string
   markeeCount: number
-  admin: string
-  minimumPrice: string
-  minimumPriceRaw: string
   topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
-  linkedFiles: LinkedFile[]
+  topMarkeeAddress: string | null
   repoVerified: boolean
   repoFullName: string | null
-  repoOwner: string | null
-  repoName: string | null
   repoAvatarUrl: string | null
-  repoHtmlUrl: string | null
-  filePath: string | null
   githubTrafficViews: number | null
 }
 
-interface GithubUser {
-  connected: boolean
-  uid?: string
-  login?: string
-  avatarUrl?: string
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatViews(n: number) {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
 }
 
-interface GithubRepo {
-  id: number
-  fullName: string
-  name: string
-  owner: string
-  avatarUrl: string
-  htmlUrl: string
-  description: string | null
-  private: boolean
+function priceToChange(lb: GithubLeaderboard): bigint {
+  return BigInt(lb.topFundsAddedRaw || '0') + BigInt('1000000000000000')
 }
 
-export default function GithubPlatformPage() {
-  const { address: walletAddress } = useAccount()
-  const [leaderboards, setLeaderboards] = useState<GithubLeaderboard[]>([])
-  const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
-  const [isLoadingLeaderboards, setIsLoadingLeaderboards] = useState(true)
-  const [githubUser, setGithubUser] = useState<GithubUser>({ connected: false })
-  const [repos, setRepos] = useState<GithubRepo[]>([])
-  const [createModalOpen, setCreateModalOpen] = useState(false)
+// ── GitHub octocat SVG ────────────────────────────────────────────────────────
+function GithubIcon({ size = 13, color = TEXT2 }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z" />
+    </svg>
+  )
+}
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('modal') === 'create') {
-      setCreateModalOpen(true)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [])
+// ── Eye SVG ───────────────────────────────────────────────────────────────────
+function EyeIcon({ size = 10, color = MUTED }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  )
+}
 
-  const fetchRepos = useCallback(async () => {
-    const res = await fetch('/api/github/my-repos')
-    if (res.ok) {
-      const data = await res.json()
-      setRepos(data.repos ?? [])
-    }
-  }, [])
+// ── Table row ─────────────────────────────────────────────────────────────────
+function TableRow({
+  lb,
+  ethPrice,
+  onBuy,
+}: {
+  lb: GithubLeaderboard
+  ethPrice: number | null
+  onBuy: () => void
+}) {
+  const [hover, setHover] = useState(false)
+  const views = lb.githubTrafficViews ?? 0
 
-  const fetchGithubUser = useCallback(async () => {
-    const res = await fetch('/api/github/me')
-    if (res.ok) {
-      const data = await res.json()
-      setGithubUser(data)
-      if (data.connected) fetchRepos()
-    }
-  }, [fetchRepos])
+  const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
+  const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
 
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const priceEth = parseFloat(formatEther(priceToChange(lb)))
+  const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
 
-  const fetchLeaderboards = useCallback(async (silent = false, bust = false) => {
-    try {
-      if (!silent) setIsLoadingLeaderboards(true)
-      else setIsRefreshing(true)
-      const url = bust
-        ? `/api/github/leaderboards?bust=1&t=${Date.now()}`
-        : `/api/github/leaderboards?t=${Date.now()}`
-      const res = await fetch(url, { cache: 'no-store' })
-      if (res.ok) {
-        const data = await res.json()
-        setLeaderboards(data.leaderboards ?? [])
-        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setIsLoadingLeaderboards(false)
-      setIsRefreshing(false)
-    }
-  }, [])
+  const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
-  useEffect(() => {
-    fetchGithubUser()
-    fetchLeaderboards()
-  }, [fetchGithubUser, fetchLeaderboards])
-
-  const formatFunds = (eth: string) => {
-    const n = parseFloat(eth)
-    if (n === 0) return '0 ETH'
-    if (n < 0.001) return '< 0.001 ETH'
-    return `${n.toFixed(3)} ETH`
+  const boxStyle: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: `1px solid ${BORDER}`,
+    overflow: 'hidden',
   }
 
-  const myLeaderboards = walletAddress
-    ? leaderboards.filter(l => l.admin.toLowerCase() === walletAddress.toLowerCase())
-    : []
+  return (
+    <a
+      href={`/markee/${lb.address}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gap: 16,
+        padding: '11px 14px',
+        textDecoration: 'none',
+        borderBottom: `1px solid ${BORDER}`,
+        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
+        transition: 'background 120ms',
+        cursor: 'pointer',
+        alignItems: 'center',
+      }}
+    >
+      {/* SERVED ON */}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
+        {lb.repoAvatarUrl ? (
+          <span style={boxStyle}>
+            <img src={lb.repoAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </span>
+        ) : (
+          <span style={{ ...boxStyle, background: 'rgba(237,238,255,0.08)' }}>
+            <GithubIcon />
+          </span>
+        )}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {lb.repoFullName || lb.name}
+        </span>
+      </span>
 
-  const liveLeaderboards = leaderboards.filter(l => l.linkedFiles.some(f => f.verified))
-  const unliveLeaderboards = leaderboards.filter(l => !l.linkedFiles.some(f => f.verified))
+      {/* TOTAL RAISED */}
+      <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+        {totalLabel}
+      </span>
+
+      {/* CURRENT MESSAGE */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+        </div>
+      </div>
+
+      {/* VIEWS */}
+      <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <EyeIcon />
+        {views > 0 ? formatViews(views) : '—'}
+      </span>
+
+      {/* PRICE TO CHANGE */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        {hasTopFunds ? (
+          <button
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
+            style={{
+              width: '100%',
+              textAlign: 'center',
+              background: PINK,
+              color: BG,
+              border: 'none',
+              borderRadius: 7,
+              padding: '8px 10px',
+              fontFamily: MONO,
+              fontWeight: 700,
+              fontSize: 12.5,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+              transition: 'transform 120ms, box-shadow 120ms',
+            }}
+            onMouseEnter={e => {
+              e.stopPropagation()
+              const el = e.currentTarget as HTMLElement
+              el.style.transform = 'translateY(-1px)'
+              el.style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)'
+            }}
+            onMouseLeave={e => {
+              e.stopPropagation()
+              const el = e.currentTarget as HTMLElement
+              el.style.transform = 'none'
+              el.style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)'
+            }}
+          >
+            {priceLabel}
+          </button>
+        ) : (
+          <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
+        )}
+      </div>
+    </a>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function GithubPlatformPage() {
+  const ethPrice = useEthPrice()
+  const [leaderboards, setLeaderboards] = useState<GithubLeaderboard[]>([])
+  const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
+  const [loading, setLoading] = useState(true)
+  const [buyModal, setBuyModal] = useState<{ address: string; topFundsAdded: bigint } | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/github/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        setLeaderboards(data.leaderboards ?? [])
+        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const tableRows = [...leaderboards]
+    .filter(lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage)
+    .sort((a, b) => {
+      const af = BigInt(a.totalFundsRaw || '0')
+      const bf = BigInt(b.totalFundsRaw || '0')
+      return bf > af ? 1 : bf < af ? -1 : 0
+    })
+
+  const totalEth = parseFloat(totalPlatformFunds)
+  const totalLabel = ethPrice
+    ? formatUsd(totalEth * ethPrice)
+    : `${totalEth.toFixed(3)} ETH`
 
   return (
-    <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
+    <div style={{ minHeight: '100vh', background: BG }}>
+      <Header activePage="raise" useRegularLinks />
 
-      {/* Breadcrumbs */}
-      <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 text-sm">
-            <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#EDEEFF]">GitHub</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="relative py-20 overflow-hidden">
+      {/* ── Hero ── */}
+      <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>
         <HeroBackground />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-[#0A0F3D] border border-[#8A8FBF]/30">
-                <Github size={32} className="text-[#EDEEFF]" />
+        <div style={{ maxWidth: 1240, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 40, flexWrap: 'wrap' }}>
+            {/* Left */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, flex: 1, minWidth: 280 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 10,
+                background: BG2,
+                border: `1px solid ${BORDER}`,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <GithubIcon size={22} color={TEXT} />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-[#EDEEFF] mb-2">Raise Funds on GitHub</h1>
-                <p className="text-[#8A8FBF] max-w-xl">
+                <h1 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6, lineHeight: 1.1 }}>
+                  GitHub Repos
+                </h1>
+                <p style={{ margin: '10px 0 0', color: TEXT2, fontSize: 16, maxWidth: '54ch', lineHeight: 1.55 }}>
                   Raise funds for your open source project by adding a Markee message to any markdown file in your repository.
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setCreateModalOpen(true)}
-              className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-            >
-              <Plus size={18} />
-              Create a Markee
-            </button>
+
+            {/* Right CTAs */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+              <Link
+                href="/create-a-markee?platform=github"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: PINK,
+                  color: BG,
+                  borderRadius: 8,
+                  padding: '11px 20px',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 18px rgba(248,151,254,0.35)',
+                }}
+              >
+                Create a GitHub Markee →
+              </Link>
+              <Link
+                href="/marketplace"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  background: 'transparent',
+                  color: TEXT2,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                See All Markees →
+              </Link>
+            </div>
           </div>
 
-          <div className="flex items-center gap-8 mt-10">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-              <span className="text-[#F897FE] font-semibold">{leaderboards.length}</span>
-              <span className="text-[#8A8FBF]">active signs</span>
+          {/* Stat pills */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 32, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{leaderboards.length}</span>
+              <span style={{ color: MUTED }}>active signs</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Trophy size={14} className="text-[#7C9CFF]" />
-              <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-              <span className="text-[#8A8FBF]">total funded</span>
+            <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                <polyline points="17 6 23 6 23 12"/>
+              </svg>
+              <span style={{ color: BLUE, fontWeight: 700, fontFamily: MONO }}>{totalLabel}</span>
+              <span style={{ color: MUTED }}>total raised</span>
             </div>
-            <button
-              onClick={() => fetchLeaderboards(true, true)}
-              disabled={isRefreshing}
-              className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
-            >
-              <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-              {isRefreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
           </div>
         </div>
       </section>
 
-      <section className="py-12 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      {/* ── How it works ── */}
+      <section style={{ background: BG2, padding: '52px 40px', borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 36 }}>
             {[
-              { step: '1', title: 'Connect GitHub & Create a Markee', body: 'Link your repo via OAuth so Markee can verify ownership, then deploy your sign onchain.' },
-              { step: '2', title: 'Add Tags to a File', body: "Your sign's page shows the exact address-specific tags to drop into any markdown file. Place them anywhere you want the sponsored message to appear." },
-              { step: '3', title: 'Start Earning', body: 'Buyers compete to set the message that everyone viewing your file will see - human or agent.' },
+              {
+                step: '1',
+                title: 'Connect GitHub & Create a Markee',
+                body: 'Link your repo via OAuth so Markee can verify ownership, then deploy your sign onchain.',
+              },
+              {
+                step: '2',
+                title: 'Add Tags to a File',
+                body: "Drop your sign's address-specific tags into any markdown file. Place them anywhere you want the sponsored message to appear.",
+              },
+              {
+                step: '3',
+                title: 'Start Earning',
+                body: 'Buyers compete to set the message that everyone viewing your file will see — human or agent.',
+              },
             ].map(({ step, title, body }) => (
-              <div key={step} className="flex gap-4">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#F897FE]/15 border border-[#F897FE]/40 flex items-center justify-center text-[#F897FE] text-sm font-bold">{step}</div>
+              <div key={step} style={{ display: 'flex', gap: 16 }}>
+                <div style={{
+                  flexShrink: 0,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 99,
+                  background: 'rgba(248,151,254,0.12)',
+                  border: `1px solid rgba(248,151,254,0.35)`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: PINK,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: MONO,
+                }}>
+                  {step}
+                </div>
                 <div>
-                  <h3 className="text-[#EDEEFF] font-semibold mb-1">{title}</h3>
-                  <p className="text-[#8A8FBF] text-sm">{body}</p>
+                  <h3 style={{ margin: 0, color: TEXT, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{title}</h3>
+                  <p style={{ margin: 0, color: MUTED, fontSize: 13.5, lineHeight: 1.6 }}>{body}</p>
                 </div>
               </div>
             ))}
@@ -232,529 +374,123 @@ export default function GithubPlatformPage() {
         </div>
       </section>
 
-      <section className="py-16 bg-[#060A2A]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* ── Table section ── */}
+      <section style={{ padding: '44px 40px 80px', maxWidth: 1240, margin: '0 auto' }}>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            GitHub Markees
+          </div>
+          <h2 style={{ margin: 0, fontSize: 'clamp(22px,2.8vw,30px)', fontWeight: 800, color: TEXT, letterSpacing: -0.4 }}>
+            Active Signs
+          </h2>
+        </div>
 
-          {isLoadingLeaderboards ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="bg-[#0A0F3D] rounded-lg p-8 border border-[#8A8FBF]/20 animate-pulse h-48" />
-              ))}
-            </div>
-          ) : leaderboards.length === 0 ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
-              <Trophy size={40} className="text-[#8A8FBF] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No signs yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Be the first to create a Markee for your repo.</p>
-              <button
-                onClick={() => setCreateModalOpen(true)}
-                className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-              >
-                <Plus size={18} />
-                Create a Markee
-              </button>
+        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '190px 110px 1fr 74px 120px',
+            gap: 16,
+            padding: '11px 14px',
+            borderBottom: `1px solid ${BORDER}`,
+            background: BG,
+            alignItems: 'center',
+          }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Served On</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Total Raised</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current Message</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Views</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Price to Change</span>
+          </div>
+
+          {/* Rows */}
+          {loading ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+                {[1, 2, 3, 4, 5].map(j => (
+                  <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+                ))}
+              </div>
+            ))
+          ) : tableRows.length === 0 ? (
+            <div style={{ padding: '56px 24px', textAlign: 'center' }}>
+              <div style={{
+                display: 'inline-block',
+                padding: '32px 40px',
+                background: BG,
+                borderRadius: 14,
+                border: `1px solid ${BORDER}`,
+              }}>
+                <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
+                  <GithubIcon size={32} color={MUTED} />
+                </div>
+                <p style={{ margin: 0, color: TEXT, fontWeight: 600, fontSize: 15, marginBottom: 6 }}>No signs yet</p>
+                <p style={{ margin: 0, color: MUTED, fontSize: 13 }}>Be the first to create a Markee for your repo.</p>
+              </div>
             </div>
           ) : (
-            <div className="space-y-12">
-              {liveLeaderboards.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <Trophy size={20} className="text-[#F897FE]" />
-                    <h2 className="text-2xl font-bold text-[#EDEEFF]">Live Integrations</h2>
-                    <span className="flex items-center gap-1.5 bg-[#F897FE]/15 border border-[#F897FE]/40 text-[#F897FE] text-xs font-semibold px-3 py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#F897FE] animate-pulse" />
-                      Live
-                    </span>
-                    <span className="text-[#8A8FBF] text-sm">ranked by total funds</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {liveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={idx + 1} formatFunds={formatFunds} viewCount={lb.githubTrafficViews ?? undefined} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {unliveLeaderboards.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <h2 className="text-2xl font-bold text-[#EDEEFF]">Awaiting Integration</h2>
-                    <span className="bg-[#8A8FBF]/15 border border-[#8A8FBF]/30 text-[#8A8FBF] text-xs font-semibold px-3 py-1 rounded-full">
-                      Setup Needed
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80">
-                    {unliveLeaderboards.map((lb, idx) => (
-                      <LeaderboardCard key={lb.address} leaderboard={lb} rank={liveLeaderboards.length + idx + 1} formatFunds={formatFunds} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            tableRows.map(lb => (
+              <TableRow
+                key={lb.address}
+                lb={lb}
+                ethPrice={ethPrice}
+                onBuy={() => setBuyModal({ address: lb.address, topFundsAdded: BigInt(lb.topFundsAddedRaw || '0') })}
+              />
+            ))
           )}
+        </div>
+      </section>
+
+      {/* ── Raise Funding CTA ── */}
+      <section style={{
+        background: 'linear-gradient(135deg, rgba(124,156,255,0.12), rgba(124,156,255,0.06))',
+        borderTop: `1px solid ${BORDER}`,
+        borderBottom: `1px solid ${BORDER}`,
+        padding: '64px 40px',
+      }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,34px)', fontWeight: 800, color: TEXT, letterSpacing: -0.5, marginBottom: 10 }}>
+            Add a Markee to your GitHub repo
+          </h2>
+          <p style={{ margin: '0 0 28px', color: TEXT2, fontSize: 15, maxWidth: '48ch', lineHeight: 1.55 }}>
+            Turn your repo README into a revenue stream. Buyers compete to post their message where your readers are.
+          </p>
+          <Link
+            href="/create-a-markee?platform=github"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: PINK,
+              color: BG,
+              borderRadius: 8,
+              padding: '13px 26px',
+              fontWeight: 700,
+              fontSize: 15,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 20px rgba(248,151,254,0.35)',
+            }}
+          >
+            Create a GitHub Markee →
+          </Link>
         </div>
       </section>
 
       <Footer />
 
-      {createModalOpen && (
-        <CreateMarkeeModal
-          githubUser={githubUser}
-          myLeaderboards={myLeaderboards}
-          repos={repos}
-          onClose={() => setCreateModalOpen(false)}
-          onSuccess={() => setTimeout(() => fetchLeaderboards(true, true), 3000)}
-          onGithubChange={() => { fetchGithubUser(); fetchRepos() }}
+      {buyModal && (
+        <BuyMessageModal
+          isOpen={true}
+          initialMode="create"
+          strategyAddress={buyModal.address as `0x${string}`}
+          topFundsAdded={buyModal.topFundsAdded}
+          platformId="github"
+          onClose={() => setBuyModal(null)}
+          onSuccess={() => setBuyModal(null)}
         />
       )}
-    </div>
-  )
-}
-
-// ─── Leaderboard Card ─────────────────────────────────────────────────────────
-
-const GITHUB_LOGO = 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'
-const MAX_FILES_SHOWN = 3
-
-function LeaderboardCard({
-  leaderboard, formatFunds, viewCount,
-}: {
-  leaderboard: GithubLeaderboard
-  rank: number
-  formatFunds: (eth: string) => string
-  viewCount?: number
-}) {
-  const router = useRouter()
-
-  const minIncrement = BigInt('1000000000000000')
-  const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
-  const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
-  const rawBuyPrice = topFunds + minIncrement
-  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
-  const buyPriceFormatted = Number(buyPrice) / 1e18
-
-  const primaryFile = leaderboard.linkedFiles.find(f => f.verified) ?? leaderboard.linkedFiles[0] ?? null
-  const title = primaryFile?.repoName ?? leaderboard.name
-  const avatarUrl = primaryFile?.repoAvatarUrl ?? GITHUB_LOGO
-  const repoHtmlUrl = primaryFile?.repoHtmlUrl ?? null
-
-  const liveFiles = leaderboard.linkedFiles.filter(f => f.verified)
-  const awaitingFiles = leaderboard.linkedFiles.filter(f => !f.verified)
-  const allFiles = [...liveFiles, ...awaitingFiles]
-  const shownFiles = allFiles.slice(0, MAX_FILES_SHOWN)
-  const overflowCount = allFiles.length - MAX_FILES_SHOWN
-
-  const displayMessageCount = Math.max(0, leaderboard.markeeCount - 1)
-
-  // ← Cache linkedFiles in sessionStorage before navigating so the detail
-  //   page can render the correct verified state immediately, bypassing
-  //   Vercel KV read-replica lag.
-  const handleNavigate = () => {
-    try {
-      sessionStorage.setItem(
-        `markee:linkedFiles:${leaderboard.address.toLowerCase()}`,
-        JSON.stringify(leaderboard.linkedFiles)
-      )
-    } catch {}
-    router.push(`/ecosystem/platforms/github/${leaderboard.address}`)
-  }
-
-  return (
-    <div className="relative">
-      {repoHtmlUrl ? (
-        <a
-          href={repoHtmlUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 bg-[#0A0F3D] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-          onClick={e => e.stopPropagation()}
-        >
-          <ExternalLink size={12} />
-          {repoHtmlUrl.replace(/^https?:\/\//, '')}
-        </a>
-      ) : null}
-
-      <div className={repoHtmlUrl ? 'rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20' : ''}>
-        <div
-          onClick={handleNavigate}
-          className={`bg-[#0A0F3D] p-6 border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer ${
-            repoHtmlUrl ? 'rounded-t-none rounded-b-lg' : 'rounded-lg'
-          }`}
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <img src={avatarUrl} alt={title} className="h-12 w-12 object-contain rounded-lg" />
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{title}</h3>
-              {allFiles.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {shownFiles.map(file => (
-                    <div key={`${file.repoFullName}:${file.filePath}`} className="flex items-center gap-1.5">
-                      {file.verified ? (
-                        <ShieldCheck size={10} className="text-green-400 flex-shrink-0" />
-                      ) : (
-                        <ShieldAlert size={10} className="text-[#8A8FBF] flex-shrink-0" />
-                      )}
-                      <span className={`text-xs font-mono truncate ${file.verified ? 'text-[#7C9CFF]' : 'text-[#8A8FBF]'}`}>
-                        {file.filePath}
-                      </span>
-                    </div>
-                  ))}
-                  {overflowCount > 0 && (
-                    <span className="text-[#8A8FBF] text-xs">+{overflowCount} more</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {leaderboard.topMessage ? (
-            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
-              <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
-                {leaderboard.topMessage}
-              </p>
-              {leaderboard.topMessageOwner && (
-                <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {leaderboard.topMessageOwner}</p>
-              )}
-            </div>
-          ) : (
-            <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
-              <div className="text-4xl mb-2">🪧</div>
-              <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between text-xs mb-4">
-            <span className="text-[#7C9CFF] font-medium">
-              {formatFunds(leaderboard.totalFunds)} total raised.
-            </span>
-            <div className="flex items-center gap-3 text-[#8A8FBF]">
-              {viewCount !== undefined && viewCount > 0 && (
-                <span className="flex items-center gap-1">
-                  <Eye size={12} className="opacity-60" />
-                  <span>{viewCount.toLocaleString()}</span>
-                </span>
-              )}
-              <span>
-                {displayMessageCount} {displayMessageCount === 1 ? 'message' : 'messages'}
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={e => { e.stopPropagation(); handleNavigate() }}
-            className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
-          >
-            {buyPriceFormatted.toFixed(3)} ETH to change
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Create Markee Modal ──────────────────────────────────────────────────────
-
-type ModalView = 'overview' | 'create'
-
-function CreateMarkeeModal({
-  githubUser, myLeaderboards, repos, onClose, onSuccess, onGithubChange,
-}: {
-  githubUser: GithubUser
-  myLeaderboards: GithubLeaderboard[]
-  repos: GithubRepo[]
-  onClose: () => void
-  onSuccess: () => void
-  onGithubChange: () => void
-}) {
-  const router = useRouter()
-  const [view, setView] = useState<ModalView>('overview')
-  const [repoSearch, setRepoSearch] = useState('')
-  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
-  const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null)
-  const [beneficiary, setBeneficiary] = useState('')
-  const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const { isConnected } = useAccount()
-
-  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
-
-  useEffect(() => {
-    if (!isSuccess || !receipt) return
-
-    let foundAddress: string | null = null
-    for (const log of receipt.logs) {
-      if (
-        log.address.toLowerCase() === GITHUB_FACTORY_ADDRESS.toLowerCase() &&
-        log.topics[1]
-      ) {
-        foundAddress = `0x${log.topics[1].slice(26)}`
-        break
-      }
-    }
-
-    setNewLeaderboardAddress(foundAddress)
-    onSuccess()
-  }, [isSuccess, receipt, onSuccess])
-
-  const handleDisconnect = async () => {
-    await fetch('/api/github/me', { method: 'DELETE' })
-    onGithubChange()
-  }
-
-  const handleCreate = () => {
-    setError(null)
-    if (!selectedRepo) { setError('Select a repo.'); return }
-    if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
-      setError('Enter a valid Ethereum address.')
-      return
-    }
-    writeContract({
-      address: GITHUB_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, selectedRepo.fullName],
-    })
-  }
-
-  const filteredRepos = repos.filter(r =>
-    r.fullName.toLowerCase().includes(repoSearch.toLowerCase())
-  )
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors">
-          <X size={20} />
-        </button>
-
-        {isSuccess ? (
-          <div className="flex flex-col items-center gap-4 py-4">
-            <CheckCircle2 size={44} className="text-green-400" />
-            <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
-            <p className="text-[#8A8FBF] text-sm text-center">
-              Your sign for <span className="text-[#EDEEFF] font-mono">{selectedRepo?.fullName}</span> is live. Add a file integration from the sign's page.
-            </p>
-            <div className="flex flex-col gap-3 w-full mt-2">
-              <button
-                onClick={() => newLeaderboardAddress && router.push(`/ecosystem/platforms/github/${newLeaderboardAddress}`)}
-                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
-              >
-                Set up integration →
-              </button>
-              <button onClick={onClose} className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center">
-                Close
-              </button>
-            </div>
-          </div>
-
-        ) : view === 'overview' ? (
-          <>
-            <h2 className="text-[#EDEEFF] font-bold text-lg mb-6">Create a Markee</h2>
-
-            <div className="mb-6">
-              {githubUser.connected ? (
-                <div className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
-                  <div className="flex items-center gap-3">
-                    {githubUser.avatarUrl && (
-                      <img src={githubUser.avatarUrl} alt={githubUser.login} className="w-7 h-7 rounded-full" />
-                    )}
-                    <div>
-                      <p className="text-[#EDEEFF] text-sm font-semibold">@{githubUser.login}</p>
-                      <p className="text-[#8A8FBF] text-xs">Connected</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleDisconnect}
-                    className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-red-400 transition-colors text-xs"
-                  >
-                    <LogOut size={13} />
-                    Disconnect
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center text-center gap-4 py-4">
-                  <Github size={32} className="text-[#8A8FBF]" />
-                  <p className="text-[#8A8FBF] text-sm leading-relaxed">
-                    GitHub OAuth lets us verify your GitHub account and securely link your Markee to it.
-                  </p>
-                  <a
-                    href="/api/github/connect?returnTo=modal"
-                    className="flex items-center gap-2 bg-[#EDEEFF] text-[#060A2A] text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#F897FE] transition-colors"
-                  >
-                    <Github size={15} />
-                    Connect GitHub
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {myLeaderboards.length > 0 && (
-              <div className="mb-6">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
-                <div className="space-y-2">
-                  {myLeaderboards.map(lb => {
-                    const live = lb.linkedFiles.filter(f => f.verified).length
-                    const awaiting = lb.linkedFiles.filter(f => !f.verified).length
-                    return (
-                      <div key={lb.address} className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[#EDEEFF] text-sm truncate">
-                            {lb.repoFullName ?? lb.name}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {live > 0 && (
-                              <span className="flex items-center gap-1 text-green-400 text-xs">
-                                <ShieldCheck size={10} /> {live} live
-                              </span>
-                            )}
-                            {awaiting > 0 && (
-                              <span className="flex items-center gap-1 text-[#8A8FBF] text-xs">
-                                <ShieldAlert size={10} /> {awaiting} awaiting
-                              </span>
-                            )}
-                            {lb.linkedFiles.length === 0 && (
-                              <span className="text-[#8A8FBF] text-xs">No files linked</span>
-                            )}
-                          </div>
-                        </div>
-                        <a
-                          href={`/ecosystem/platforms/github/${lb.address}`}
-                          className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
-                        >
-                          Manage →
-                        </a>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {githubUser.connected && (
-              isConnected ? (
-                <button
-                  onClick={() => setView('create')}
-                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
-                >
-                  Create a Markee
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-[#8A8FBF] text-sm">Connect your wallet to create a Markee.</p>
-                  <ConnectButton />
-                </div>
-              )
-            )}
-          </>
-
-        ) : (
-          <>
-            <button
-              onClick={() => setView('overview')}
-              className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] text-sm mb-5 transition-colors"
-            >
-              ← Back
-            </button>
-            <h2 className="text-[#EDEEFF] font-bold text-lg mb-1">New Markee</h2>
-            <p className="text-[#8A8FBF] text-xs mb-6">as @{githubUser.login}</p>
-
-            <div className="space-y-5">
-              <div className="relative">
-                <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">Repo</label>
-                {selectedRepo ? (
-                  <div className="flex items-center justify-between bg-[#060A2A] border border-[#F897FE]/40 rounded-lg px-4 py-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <img src={selectedRepo.avatarUrl} alt={selectedRepo.owner} className="w-5 h-5 rounded-full flex-shrink-0" />
-                      <span className="text-[#EDEEFF] text-sm font-mono truncate">{selectedRepo.fullName}</span>
-                      {selectedRepo.private && <span className="text-[#8A8FBF] text-xs flex-shrink-0">private</span>}
-                    </div>
-                    <button
-                      onClick={() => { setSelectedRepo(null); setRepoSearch('') }}
-                      className="text-[#8A8FBF] hover:text-[#EDEEFF] ml-3 flex-shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      type="text"
-                      value={repoSearch}
-                      onChange={e => { setRepoSearch(e.target.value); setRepoDropdownOpen(true) }}
-                      onFocus={() => setRepoDropdownOpen(true)}
-                      placeholder={repos.length ? 'Search your repos…' : 'Loading repos…'}
-                      className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-                    />
-                    {repoDropdownOpen && filteredRepos.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-lg shadow-xl max-h-52 overflow-y-auto">
-                        {filteredRepos.slice(0, 20).map(r => (
-                          <button
-                            key={r.id}
-                            onClick={() => { setSelectedRepo(r); setRepoSearch(''); setRepoDropdownOpen(false) }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#F897FE]/10 transition-colors text-left"
-                          >
-                            <img src={r.avatarUrl} alt={r.owner} className="w-5 h-5 rounded-full flex-shrink-0" />
-                            <span className="text-[#EDEEFF] text-sm font-mono truncate">{r.fullName}</span>
-                            {r.private && <span className="text-[#8A8FBF] text-xs ml-auto flex-shrink-0">private</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <p className="text-[#8A8FBF] text-xs mt-1.5">Repos where you have push access, verified via GitHub.</p>
-              </div>
-
-              <div>
-                <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                  Treasury Address <span className="text-[#F897FE]">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={beneficiary}
-                  onChange={e => setBeneficiary(e.target.value)}
-                  placeholder="0x…"
-                  className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-                />
-                <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
-              </div>
-
-              <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
-                <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
-                <div className="flex justify-between">
-                  <span className="text-[#EDEEFF]">Your treasury</span>
-                  <span className="text-[#F897FE] font-semibold">62%</span>
-                </div>
-                <div className="flex justify-between mt-1.5">
-                  <span className="text-[#EDEEFF]">Markee Cooperative</span>
-                  <span className="text-[#7C9CFF] font-semibold">38%</span>
-                </div>
-              </div>
-
-              {(error || writeError) && (
-                <div className="flex items-start gap-2 text-red-400 text-sm">
-                  <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                  <span>{error ?? writeError?.message}</span>
-                </div>
-              )}
-
-              <button
-                onClick={handleCreate}
-                disabled={isPending || isConfirming}
-                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isPending || isConfirming ? (
-                  <><Loader2 size={18} className="animate-spin" /> {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}</>
-                ) : (
-                  'Create a Markee'
-                )}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   )
 }

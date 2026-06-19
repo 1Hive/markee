@@ -341,5 +341,19 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: results.some(r => r.success), results })
+  const succeeded = results.filter(r => r.success)
+  const failed    = results.filter(r => !r.success)
+  const delimiterFails = failed.filter(r => r.error?.toLowerCase().includes('delimiter'))
+
+  let topLevelError: string | undefined
+  if (succeeded.length === 0) {
+    if (delimiterFails.length > 0 && delimiterFails.length === failed.length) {
+      const names = delimiterFails.map(r => r.filePath).join(', ')
+      topLevelError = `Delimiters not found in ${names} — add the snippet from the Embed panel to your file, then sync again`
+    } else {
+      topLevelError = failed[0]?.error ?? 'Sync failed'
+    }
+  }
+
+  return NextResponse.json({ success: succeeded.length > 0, results, ...(topLevelError ? { error: topLevelError } : {}) })
 }

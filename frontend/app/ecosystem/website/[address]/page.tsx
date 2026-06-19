@@ -139,8 +139,6 @@ export default function WebsiteLeaderboardPage() {
   const leaderboardName  = meta?.[0]?.result as string | undefined
   const totalFunds       = meta?.[1]?.result as bigint | undefined
   const markeeCount      = meta?.[2]?.result as bigint | undefined
-  const minimumPrice     = meta?.[3]?.result as bigint | undefined
-  const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const topResult        = meta?.[6]?.result as [string[], bigint[]] | undefined
   const topAddresses     = topResult?.[0] ?? []
   const topFunds         = topResult?.[1] ?? []
@@ -429,10 +427,9 @@ export default function WebsiteLeaderboardPage() {
 
       {buyModalOpen && (
         <BuyMessageModal
-          leaderboardAddress={leaderboardAddress}
-          minimumPrice={minimumPrice ?? 0n}
-          maxMessageLength={Number(maxMessageLength ?? 222n)}
-          existingMarkee={selectedMarkee}
+          isOpen={true}
+          strategyAddress={leaderboardAddress}
+          userMarkee={selectedMarkee}
           topFundsAdded={markees[0]?.totalFundsAdded}
           initialMode={initialMode}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}

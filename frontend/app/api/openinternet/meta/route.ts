@@ -26,10 +26,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { leaderboardAddress, logoUrl, siteUrl } = body as {
+    const { leaderboardAddress, logoUrl, siteUrl, removeVerifiedUrl } = body as {
       leaderboardAddress: string
       logoUrl?: string
       siteUrl?: string
+      removeVerifiedUrl?: string
     }
 
     if (!leaderboardAddress) {
@@ -40,11 +41,21 @@ export async function POST(request: Request) {
     const existing = await kv.get<Record<string, unknown>>(key) ?? {}
 
     // Only update provided fields; preserve verifiedUrl and status set by admin
-    const updated = {
+    const updated: Record<string, unknown> = {
       ...existing,
       ...(logoUrl !== undefined && { logoUrl }),
       ...(siteUrl !== undefined && { siteUrl }),
       status: existing.status ?? 'pending',
+    }
+
+    if (removeVerifiedUrl) {
+      const existingUrls: string[] = Array.isArray(existing.verifiedUrls)
+        ? (existing.verifiedUrls as string[])
+        : existing.verifiedUrl ? [existing.verifiedUrl as string] : []
+      const newUrls = existingUrls.filter(u => u !== removeVerifiedUrl)
+      updated.verifiedUrls = newUrls
+      updated.verifiedUrl = newUrls[0] ?? null
+      if (newUrls.length === 0) updated.status = 'pending'
     }
 
     await kv.set(key, updated)

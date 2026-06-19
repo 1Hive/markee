@@ -294,8 +294,6 @@ export default function SuperfluidLeaderboardPage() {
   const leaderboardName = meta?.[0]?.result as string | undefined
   const totalFunds = meta?.[1]?.result as bigint | undefined
   const markeeCount = meta?.[2]?.result as bigint | undefined
-  const minimumPrice = meta?.[3]?.result as bigint | undefined
-  const maxMessageLength = meta?.[5]?.result as bigint | undefined
   const contractVersion = meta?.[6]?.result as string | undefined
   const isLegacyContract = contractVersion !== undefined && contractVersion !== '1.1.0' && contractVersion !== '1.2.0' && contractVersion !== '1.3.0'
   const topResult = meta?.[7]?.result as [string[], bigint[]] | undefined
@@ -553,10 +551,9 @@ export default function SuperfluidLeaderboardPage() {
 
       {buyModalOpen && !isLegacyContract && (
         <BuyMessageModal
-          leaderboardAddress={leaderboardAddress}
-          minimumPrice={minimumPrice ?? 0n}
-          maxMessageLength={Number(maxMessageLength ?? 222n)}
-          existingMarkee={selectedMarkee}
+          isOpen={true}
+          strategyAddress={leaderboardAddress}
+          userMarkee={selectedMarkee}
           topFundsAdded={markees[0]?.totalFundsAdded}
           initialMode={initialMode}
           platformId="superfluid"
