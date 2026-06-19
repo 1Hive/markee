@@ -50,6 +50,7 @@ interface IMarkee {
     function pricingStrategy() external view returns (address);
     function owner() external view returns (address);
     function setPricingStrategy(address newStrategy) external;
+    function totalFundsAdded() external view returns (uint256);
 }
 
 interface IPermitToken {
@@ -1265,6 +1266,108 @@ contract StreamingLeaderboardTest is Test {
         assertEq(empty.length, 0, "getMarkees past end should be empty");
         address[] memory empty2 = factory.getLeaderboards(100, 10);
         assertEq(empty2.length, 0, "getLeaderboards past end should be empty");
+    }
+
+    // ─── getTopMarkees (effective-rate ranking view) ────────────────────────────
+
+    /// @notice getTopMarkees orders Markees by descending effective rate (not registration order),
+    ///         returns each one's effectiveRate as the second array, slots #1 == the enforced topMarkee,
+    ///         and clamps a limit above the registry size to the full count.
+    function test_getTopMarkees_ranksByEffectiveRate() public {
+        address a = _newMarkee("a", "alpha");
+        address b = _newMarkee("b", "bravo");
+        address c = _newMarkee("c", "charlie");
+        _open(_backer("backerA"), a, _rate(0.02 ether));
+        _open(_backer("backerB"), b, _rate(0.01 ether));
+        _open(_backer("backerC"), c, _rate(0.03 ether)); // highest → auto-flips to #1
+        assertEq(board.topMarkee(), c, "C should be the enforced top");
+
+        (address[] memory top, uint256[] memory rates) = board.getTopMarkees(3);
+        assertEq(top[0], c, "slot 0 should be the highest rate (C)");
+        assertEq(top[1], a, "slot 1 should be the middle rate (A)");
+        assertEq(top[2], b, "slot 2 should be the lowest backed rate (B)");
+        assertGt(rates[0], rates[1], "rates not descending (0 vs 1)");
+        assertGt(rates[1], rates[2], "rates not descending (1 vs 2)");
+        assertEq(rates[0], board.effectiveRate(c), "rate[0] != C effectiveRate");
+        assertEq(rates[1], board.effectiveRate(a), "rate[1] != A effectiveRate");
+        assertEq(rates[2], board.effectiveRate(b), "rate[2] != B effectiveRate");
+
+        (address[] memory one,) = board.getTopMarkees(1);
+        assertEq(one.length, 1, "limit 1 should return a single entry");
+        assertEq(one[0], board.topMarkee(), "getTopMarkees(1) #1 must equal the enforced topMarkee");
+
+        (address[] memory all,) = board.getTopMarkees(1000);
+        assertEq(all.length, board.markeeCount(), "an over-large limit must clamp to markeeCount");
+        _notJailed();
+    }
+
+    /// @notice The view recomputes effective rates live, so after a decay/demotion it already ranks the
+    ///         rightful winner #1 while the enforced `topMarkee` is still the stale incumbent. Once the
+    ///         permissionless claimTop poke heals the lag, the view's #1 and the enforced #1 agree.
+    function test_getTopMarkees_reflectsLiveRanking_beforeClaimTopHeals() public {
+        address a = _newMarkee("a", "alpha");
+        address b = _newMarkee("b", "bravo");
+        address backerA = _backer("backerA");
+        _open(backerA, a, _rate(0.03 ether)); // A top
+        _open(_backer("backerB"), b, _rate(0.02 ether)); // B below A
+        assertEq(board.topMarkee(), a);
+
+        // A drops below B; the decay direction fires no promotion, so the enforced top stays stale.
+        vm.prank(backerA);
+        CFA.updateFlow(ETHX, backerA, address(board), _rate(0.005 ether), abi.encode(a));
+        assertEq(board.topMarkee(), a, "enforced top should still be the stale A");
+
+        (address[] memory top, uint256[] memory rates) = board.getTopMarkees(2);
+        assertEq(top[0], b, "live ranking should already put B first before the poke");
+        assertEq(top[1], a, "A should rank second after dropping below B");
+        assertGt(rates[0], rates[1], "rates not descending");
+        assertEq(rates[0], board.effectiveRate(b), "rate[0] != B effectiveRate");
+
+        board.claimTop(b);
+        assertEq(board.topMarkee(), b, "claimTop did not flip");
+        (address[] memory healed,) = board.getTopMarkees(1);
+        assertEq(healed[0], board.topMarkee(), "view #1 must equal enforced #1 after claimTop");
+        _notJailed();
+    }
+
+    /// @notice A migrated lump-sum Markee with no stream is ranked by its grandfather floor, and the
+    ///         second array reports that floor (its effectiveRate), matching the on-chain seeded #1.
+    function test_getTopMarkees_ranksMigratedMarkeeByLegacyFloor() public {
+        address L = _migrateInPaidMarkee(0.03 ether, "L"); // holds #1 by its floor, zero inflow
+
+        (address[] memory top, uint256[] memory rates) = board.getTopMarkees(1);
+        assertEq(top[0], L, "migrated lump-sum Markee should top the view by its floor");
+        assertEq(top[0], board.topMarkee(), "view #1 must equal the seeded on-chain #1");
+        assertEq(rates[0], board.currentLegacyFloor(L), "view rate for a floor-held spot must equal its floor");
+        assertGt(rates[0], 0, "floor-held #1 must have a positive effective rate");
+        _notJailed();
+    }
+
+    // ─── v1.3 ABI-compat reads (minimumPrice / totalLeaderboardFunds) ────────────
+
+    /// @notice minimumPrice() is the streaming board's monthly participation floor: it aliases
+    ///         minimumMonthlyRate and tracks it across an admin update.
+    function test_minimumPrice_aliasesMonthlyRate() public {
+        assertEq(board.minimumPrice(), board.minimumMonthlyRate(), "minimumPrice must alias minimumMonthlyRate");
+        uint256 newRate = 0.01 ether;
+        board.setMinimumMonthlyRate(newRate); // board admin == this test contract
+        assertEq(board.minimumPrice(), newRate, "minimumPrice must track minimumMonthlyRate after update");
+    }
+
+    /// @notice totalLeaderboardFunds() sums each Markee's carried-over lump-sum total: migrated Markees
+    ///         keep their historical funds, natively-created streaming Markees contribute zero.
+    function test_totalLeaderboardFunds_sumsCarriedOverTotals() public {
+        address a = _migrateInPaidMarkee(0.03 ether, "a");
+        address b = _migrateInPaidMarkee(0.05 ether, "b");
+        address native = _newMarkee("n", "native"); // streaming-only, never took a lump-sum payment
+
+        assertGt(IMarkee(a).totalFundsAdded(), 0, "migrated Markee should carry its lump-sum total");
+        assertEq(IMarkee(native).totalFundsAdded(), 0, "native streaming Markee should carry zero funds");
+
+        uint256 expected =
+            IMarkee(a).totalFundsAdded() + IMarkee(b).totalFundsAdded() + IMarkee(native).totalFundsAdded();
+        assertEq(board.totalLeaderboardFunds(), expected, "totalLeaderboardFunds != sum of carried-over totals");
+        _notJailed();
     }
 }
 

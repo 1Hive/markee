@@ -503,6 +503,64 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         return _effRate(markee);
     }
 
+    /// @notice The leaderboard ranked by effective rate: up to `limit` Markees in descending
+    ///         effectiveRate order, with each one's effective rate (wei/sec) alongside. Mirrors v1.3
+    ///         Leaderboard.getTopMarkees so existing consumers keep the same (address[], uint256[])
+    ///         ABI; the second array here is a streaming rate, not a cumulative fund total.
+    /// @dev Recomputes effRate live for every Markee, so topAddresses[0] is the true current #1 even
+    ///      while a decay/demotion lag leaves the enforced `topMarkee` stale until claimTop heals it.
+    ///      O(n^2) like v1.3; a view, so it is only ever eth_call'd off-chain.
+    function getTopMarkees(uint256 limit)
+        external
+        view
+        returns (address[] memory topAddresses, uint256[] memory topRates)
+    {
+        uint256 total = markees.length;
+        if (limit > total) limit = total;
+
+        address[] memory addrs = new address[](total);
+        uint256[] memory rates = new uint256[](total);
+        for (uint256 i = 0; i < total; i++) {
+            addrs[i] = markees[i];
+            rates[i] = _effRate(markees[i]);
+        }
+        for (uint256 i = 1; i < total; i++) {
+            address addrKey = addrs[i];
+            uint256 rateKey = rates[i];
+            uint256 j = i;
+            while (j > 0 && rates[j - 1] < rateKey) {
+                rates[j] = rates[j - 1];
+                addrs[j] = addrs[j - 1];
+                j--;
+            }
+            rates[j] = rateKey;
+            addrs[j] = addrKey;
+        }
+
+        topAddresses = new address[](limit);
+        topRates = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            topAddresses[i] = addrs[i];
+            topRates[i] = rates[i];
+        }
+    }
+
+    /// @notice ABI-compatible alias of v1.3's lump-sum `minimumPrice`: here the participation floor is a
+    ///         minimum monthly rate (wei/month) a backer's stream must clear, not a per-payment minimum.
+    function minimumPrice() external view returns (uint256) {
+        return minimumMonthlyRate;
+    }
+
+    /// @notice Sum of every registered Markee's carried-over lump-sum total (wei). Mirrors v1.3
+    ///         Leaderboard.totalLeaderboardFunds so existing consumers keep working; on a streaming board
+    ///         this is the migrated historical funds (frozen, since backers now fund via CFA streams, not
+    ///         Markee.pay), and 0 for natively-created Markees.
+    function totalLeaderboardFunds() external view returns (uint256 total) {
+        for (uint256 i = 0; i < markees.length; i++) {
+            total += Markee(markees[i]).totalFundsAdded();
+        }
+    }
+
     // ─── SuperApp CFA callbacks (via CFASuperAppBase hooks) ────────────────────
 
     /// @dev A new inbound stream. userData tags the target Markee. Reverts (safe, non-termination)
