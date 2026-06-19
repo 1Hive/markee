@@ -1,0 +1,987 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.23;
+
+import { ISuperfluid, ISuperToken } from
+    "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
+import { ISuperfluidPool } from
+    "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/gdav1/ISuperfluidPool.sol";
+import { PoolConfig } from
+    "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/gdav1/IGeneralDistributionAgreementV1.sol";
+import { SuperTokenV1Library } from
+    "@superfluid-finance/ethereum-contracts/contracts/apps/SuperTokenV1Library.sol";
+import { CFASuperAppBase } from
+    "@superfluid-finance/ethereum-contracts/contracts/apps/CFASuperAppBase.sol";
+import { ISETH } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import { Markee } from "../Markee.sol";
+import { IPricingStrategy, ILeaderboardFactory, IJBMultiTerminal } from "../Interfaces.sol";
+
+/// @title StreamingLeaderboard (Option B, GDA-refund escrow)
+/// @notice A SuperApp pricing strategy where backers stream a monthly ETHx rate into this contract
+///         (tagged via `userData` with their target Markee). The Markee with the highest effective
+///         rate holds #1, where effective rate = max(aggregate active inflow, decaying grandfather
+///         floor), so a migrated lump-sum Markee can hold #1 with zero inflow until a stream
+///         overtakes its floor. Every non-#1 Markee's GDA pool is refunded at its aggregate
+///         (losers net ≈ zero); a factory-configurable share of the #1's aggregate (62% by default)
+///         is forwarded to the beneficiary as one CFA stream; the remainder (38% by default) accrues
+///         for per-funder RevNet settlement.
+///
+/// @dev Promotions flip inside the inflow callback (O(1)); the decay/demotion direction is healed by
+///      the permissionless `claimTop` poke. Per-funder RevNet settlement uses a MasterChef-style
+///      per-unit accumulator (`_accrueTop`/`_moveUnits`/`settle`). Refund/forward buffers are funded
+///      from per-backer ETHx deposits (`depositBuffer`, checked against `rate * BUFFER_PERIOD`). The
+///      termination callback is jail-safe: storage-only + bounded flow ops, with buffer-needing raises
+///      or re-creates deferred and re-applied on the next organic flow event on that Markee.
+///
+/// @dev Deployed as an EIP-1167 clone of an implementation held by StreamingLeaderboardFactory. The
+///      clone cannot self-register (its constructor never runs), the factory registers each clone as
+///      a SuperApp via host.registerApp() after cloning. HOST and ETHX are implementation immutables,
+///      shared correctly by every clone (read from the implementation's runtime bytecode).
+contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
+    using SuperTokenV1Library for ISuperToken;
+
+    string public constant VERSION = "streaming-1.0.0";
+    uint256 public constant SECONDS_IN_MONTH = 2628000;
+    uint256 public constant BASIS_POINTS_DIVISOR = 10000;
+    /// @dev Superfluid liquidation (buffer) period on Base: 4h. Refund/forward flow buffers ≈ rate*this.
+    uint256 public constant BUFFER_PERIOD = 14400;
+    /// @dev Fixed-point scale for the rewards-per-unit settlement accumulator.
+    uint256 public constant PRECISION = 1e18;
+    /// @dev Juicebox native-token sentinel (ETH), passed to IJBMultiTerminal.pay (mirrors v1.3 Markee).
+    address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
+
+    /// @notice The only SuperToken this leaderboard accepts (ETHx on Base). Implementation immutable.
+    ISuperToken public immutable ETHX;
+
+    // ─── Initialized-once per-clone config ────────────────────────────────────
+    bool public initialized;
+    address public factory;
+    address public admin;
+    address public override beneficiaryAddress;
+    string public leaderboardName;
+    address public markeeImplementation;
+    uint256 public minimumMonthlyRate;
+    uint256 public maxMessageLength;
+    uint256 public maxNameLength;
+
+    // ─── Markee registry ──────────────────────────────────────────────────────
+    address[] public markees;
+    mapping(address => uint256) private markeeIndex;
+    mapping(address => bool) public isMarkeeOnLeaderboard;
+
+    // ─── Per-Markee streaming state ───────────────────────────────────────────
+    /// @notice GDA refund pool per Markee (members = backers, units = flowRate).
+    mapping(address => ISuperfluidPool) public poolOf;
+    /// @notice Sum of all backers' flow rates for a Markee (wei/sec) == total pool units == bid.
+    mapping(address => uint256) public aggregateRate;
+    /// @notice Current refund distributeFlow rate to a Markee's pool (0 for the #1 Markee).
+    mapping(address => uint256) public refundRate;
+
+    address public topMarkee;
+    uint256 public topRate;
+
+    // ─── Per-backer state (CFA allows one flow per sender→receiver, so one Markee per backer) ──
+    mapping(address => address) public backerMarkee;
+    mapping(address => uint256) public backerDeposit;
+
+    // ─── Per-funder RevNet settlement accumulator (MasterChef-style, per Markee) ──
+    /// @notice Cumulative ETHx-per-unit (scaled by PRECISION) accrued to a Markee's backers while
+    ///         that Markee held #1. Only the current top Markee's accumulator advances over time;
+    ///         it freezes the instant #1 flips away, so each backer earns only for the periods its
+    ///         Markee was #1, pro-rata by flow rate (== its pool units).
+    mapping(address => uint256) public accRevNetPerUnit;
+    /// @notice Snapshot of `units * accRevNetPerUnit[backerMarkee] / PRECISION` at a backer's last
+    ///         units change, the MasterChef "reward debt" baseline.
+    mapping(address => uint256) public backerRewardDebt;
+    /// @notice Realized-but-unsettled ETHx owed to a backer (moved here on every units change / settle).
+    mapping(address => uint256) public claimable;
+    /// @notice Last time the top Markee's accumulator was rolled forward (one global clock, only one
+    ///         Markee is #1 at a time).
+    uint256 public lastAccrualTime;
+
+    // ─── Legacy grandfather floor (migrated lump-sum spots) ────────────────────
+    /// @notice Months of streaming "rent" a migrated Markee's lump-sum total is treated as having
+    ///         pre-bought: its grandfather floor (as a monthly rate) = totalFundsAdded / this. A
+    ///         streaming Markee overtakes a grandfathered one only once its monthly rate clears that
+    ///         floor. Default 3 (the "must exceed 33% of the legacy total as a monthly rate" rule);
+    ///         admin-tunable. 0 disables grandfathering (migrated Markees start at floor 0).
+    uint256 public legacyFloorMonths;
+    /// @notice Hard-protect window after migration during which a Markee's floor does NOT decay
+    ///         (0 = none). Lets grandfathered holders set up a stream before the bar starts dropping.
+    uint256 public legacyFloorGraceSeconds;
+    /// @notice Linear decay window applied to the floor after the grace ends (0 = permanent, never
+    ///         decays). After grace + this the floor is 0 and the spot is open to pure streaming, so
+    ///         every grandfathered spot eventually converts to recurring revenue.
+    uint256 public legacyFloorDecaySeconds;
+    /// @notice Per-Markee initial grandfather floor in wei/sec, captured from totalFundsAdded the moment
+    ///         it is migrated in. 0 for every natively-created (createMarkee) Markee.
+    mapping(address => uint256) public legacyFloorRate0;
+    /// @notice Per-Markee start of the floor clock (its registerExistingMarkees timestamp).
+    mapping(address => uint256) public legacyFloorStart;
+    /// @notice Set the first time a Markee's floor is captured and never cleared, so a migrate-out then
+    ///         re-register cycle cannot rebirth a decayed floor at full value from the monotonic total.
+    mapping(address => bool) public floorCaptured;
+
+    // ─── Events ───────────────────────────────────────────────────────────────
+    event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name);
+    event MarkeeRegistered(address indexed markeeAddress, address indexed pool);
+    event MarkeeLeft(address indexed markeeAddress);
+    event BackerUpdated(address indexed backer, address indexed markee, uint256 flowRate, uint256 newAggregate);
+    event TopChanged(address indexed oldTop, address indexed newTop, uint256 newTopRate);
+    event DepositAdded(address indexed backer, uint256 amount, uint256 newBalance);
+    event DepositWithdrawn(address indexed backer, uint256 amount);
+    event MessageUpdated(address indexed markeeAddress, address indexed updatedBy, string newMessage);
+    event NameUpdated(address indexed markeeAddress, address indexed updatedBy, string newName);
+    event MarkeeOwnershipTransferred(address indexed markeeAddress, address indexed oldOwner, address indexed newOwner);
+    event AdminChanged(address indexed oldAdmin, address indexed newAdmin);
+    event BeneficiaryChanged(address indexed oldBeneficiary, address indexed newBeneficiary);
+    event MinimumMonthlyRateChanged(uint256 oldRate, uint256 newRate);
+    event Settled(address indexed backer, uint256 amount, bool viaRevNet);
+    event PlatformFeeSettled(address indexed feeReceiver, uint256 amount);
+    event LegacyFloorCaptured(address indexed markee, uint256 floorRate0, uint256 totalFundsAdded);
+    event LegacyFloorConfigChanged(uint256 months, uint256 graceSeconds, uint256 decaySeconds);
+
+    /// @dev Receives native ETH from ETHx.downgradeToETH() during settle(), before forwarding to RevNet.
+    receive() external payable {}
+
+    /// @dev Clone-safe reentrancy mutex. A fresh EIP-1167 clone leaves this 0 (treated as unlocked), so
+    ///      it never depends on a constructor/initializer to arm. Guards the permissionless paths that
+    ///      make external calls (settle's ETH sends / RevNet pays, deposit withdrawals, the flow pokes).
+    uint256 private _reentrancyLock;
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin");
+        _;
+    }
+
+    modifier nonReentrant() {
+        require(_reentrancyLock != 2, "Reentrant call");
+        _reentrancyLock = 2;
+        _;
+        _reentrancyLock = 1;
+    }
+
+    /// @param host_ Superfluid host (Base). @param ethx_ ETHx SuperToken (Base).
+    constructor(ISuperfluid host_, ISuperToken ethx_) CFASuperAppBase(host_) {
+        ETHX = ethx_;
+    }
+
+    // ─── Initializer (factory-called on the clone) ────────────────────────────
+
+    function initialize(
+        address _admin,
+        address _beneficiaryAddress,
+        string calldata _leaderboardName,
+        address _markeeImplementation,
+        uint256 _minimumMonthlyRate,
+        uint256 _maxMessageLength,
+        uint256 _maxNameLength,
+        address _seedOwner
+    ) external returns (address seedMarkeeAddress) {
+        require(!initialized, "Already initialized");
+        require(_admin != address(0), "Admin cannot be zero address");
+        require(_markeeImplementation != address(0), "Markee implementation cannot be zero address");
+        require(bytes(_leaderboardName).length > 0, "Name cannot be empty");
+        require(_maxMessageLength > 0, "Max message length must be > 0");
+        require(_maxNameLength > 0, "Max name length must be > 0");
+        require(_seedOwner != address(0), "Seed owner cannot be zero address");
+
+        initialized = true;
+        factory = msg.sender;
+        admin = _admin;
+        beneficiaryAddress = _beneficiaryAddress;
+        leaderboardName = _leaderboardName;
+        markeeImplementation = _markeeImplementation;
+        minimumMonthlyRate = _minimumMonthlyRate;
+        maxMessageLength = _maxMessageLength;
+        maxNameLength = _maxNameLength;
+        legacyFloorMonths = 3;
+
+        seedMarkeeAddress = _deploySeedMarkee(_seedOwner);
+    }
+
+    // ─── IPricingStrategy proxies → factory (Coop multisig updates all clones at once) ──
+
+    function revNetEnabled() external view override returns (bool) {
+        return ILeaderboardFactory(factory).revNetEnabled();
+    }
+
+    function percentToBeneficiary() public view override returns (uint256) {
+        return ILeaderboardFactory(factory).percentToBeneficiary();
+    }
+
+    function revNetTerminal() external view override returns (address) {
+        return ILeaderboardFactory(factory).revNetTerminal();
+    }
+
+    function revNetProjectId() external view override returns (uint256) {
+        return ILeaderboardFactory(factory).revNetProjectId();
+    }
+
+    function platformFeeReceiver() external view override returns (address) {
+        return ILeaderboardFactory(factory).platformFeeReceiver();
+    }
+
+    function percentToPlatformFeeReceiver() external view override returns (uint256) {
+        return ILeaderboardFactory(factory).percentToPlatformFeeReceiver();
+    }
+
+    // ─── Markee creation / migration-in ───────────────────────────────────────
+
+    /// @notice Creates a new Markee + its GDA refund pool. Backing happens by streaming (no payment here).
+    function createMarkee(string calldata _message, string calldata _name)
+        external
+        returns (address markeeAddress)
+    {
+        require(initialized, "Not initialized");
+        require(bytes(_message).length <= maxMessageLength, "Message too long");
+        require(bytes(_name).length <= maxNameLength, "Name too long");
+
+        markeeAddress = _clone(markeeImplementation);
+        Markee(markeeAddress).initialize(msg.sender, address(this), _message, _name, 0);
+        _registerMarkee(markeeAddress);
+        emit MarkeeCreated(markeeAddress, msg.sender, _message, _name);
+    }
+
+    /// @notice Registers already-existing Markees (in-place migration), creating a pool for each.
+    /// @dev Mirrors v1.3 Leaderboard.initializeHistory. The Markee addresses (and KV view/reaction
+    ///      continuity) are preserved, migrate via the legacy Leaderboard's migratePricingStrategy first.
+    ///      Each entry deploys a GDA pool, so chunk a large migration across several calls to stay under
+    ///      the block gas limit.
+    function registerExistingMarkees(address[] calldata _markees) external onlyAdmin {
+        _accrueTop();
+        for (uint256 i = 0; i < _markees.length; i++) {
+            address m = _markees[i];
+            if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
+                require(Markee(m).pricingStrategy() == address(this), "Markee not migrated to this strategy");
+                _registerMarkee(m);
+                _captureLegacyFloor(m);
+                _seedTopIfHigher(m);
+            }
+        }
+    }
+
+    /// @dev Capture a migrated Markee's grandfather floor from its carried-over lump-sum total: a monthly
+    ///      rate of totalFundsAdded / legacyFloorMonths, stored as wei/sec. Read trustlessly from the
+    ///      Markee's own on-chain state (cannot be inflated). No-op when grandfathering is disabled or
+    ///      the Markee never took a payment (natively-created Markees have totalFundsAdded == 0).
+    function _captureLegacyFloor(address markee) internal {
+        if (floorCaptured[markee]) return;
+        uint256 months = legacyFloorMonths;
+        if (months == 0) return;
+        uint256 total = Markee(markee).totalFundsAdded();
+        if (total == 0) return;
+        uint256 rate0 = total / (months * SECONDS_IN_MONTH);
+        if (rate0 == 0) return;
+        floorCaptured[markee] = true;
+        legacyFloorRate0[markee] = rate0;
+        legacyFloorStart[markee] = block.timestamp;
+        emit LegacyFloorCaptured(markee, rate0, total);
+    }
+
+    /// @dev Seed #1 at migration time so the highest grandfather floor holds the spot until a stream
+    ///      overtakes it. Mirrors a claimTop flip so state stays consistent even if streams are already
+    ///      live; in the normal pre-launch migration every aggregate is 0, so a pre-paid holder becomes
+    ///      top with topRate 0 (no beneficiary stream), it has already paid.
+    function _seedTopIfHigher(address markee) internal {
+        if (_effRate(markee) <= _topThreshold()) return;
+        address oldTop = topMarkee;
+        _setTop(markee);
+        if (oldTop != address(0) && refundRate[oldTop] != aggregateRate[oldTop]) {
+            _setRefund(oldTop, aggregateRate[oldTop]);
+        }
+        _setBeneficiaryFlow(_beneficiaryTarget());
+    }
+
+    // ─── Deposits (refundable buffer cover for refund flows) ───────────────────
+
+    /// @notice Pre-post an ETHx deposit covering `backer`'s refund-flow buffer share, pulled from and
+    ///         credited to `backer` (who must have approved this contract). The backer is explicit
+    ///         rather than msg.sender so the frontend can bundle this into the same payable
+    ///         `host.batchCall` as the wrap and createFlow, where the forwarded call's sender is the
+    ///         host. Permissionless is safe: a deposit can only move funds the backer itself approved
+    ///         and always credits the backer's own refundable balance.
+    function depositBuffer(address backer, uint256 amount) external nonReentrant {
+        require(amount > 0, "Zero deposit");
+        require(IERC20(address(ETHX)).transferFrom(backer, address(this), amount), "Deposit transfer failed");
+        backerDeposit[backer] += amount;
+        emit DepositAdded(backer, amount, backerDeposit[backer]);
+    }
+
+    /// @notice Reclaim a deposit once the backer has no active stream.
+    function withdrawDeposit() external nonReentrant {
+        require(backerMarkee[msg.sender] == address(0), "Still streaming");
+        uint256 amount = backerDeposit[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+        backerDeposit[msg.sender] = 0;
+        require(IERC20(address(ETHX)).transfer(msg.sender, amount), "Withdraw transfer failed");
+        emit DepositWithdrawn(msg.sender, amount);
+    }
+
+    // ─── Permissionless decay poke (promotions are automatic in the callback) ──
+
+    /// @notice Flip #1 to `challenger` when it outbids the incumbent. O(1). Anyone may call, the
+    ///         incentivized rival, the frontend, or a cron. Promotions need no poke (they flip in the
+    ///         inflow callback); this only heals the decay direction, where the incumbent's drop fires
+    ///         no callback for the rising rival.
+    function claimTop(address challenger) external nonReentrant {
+        require(isMarkeeOnLeaderboard[challenger], "Unknown markee");
+        require(challenger != topMarkee, "Already top");
+        require(_effRate(challenger) > _topThreshold(), "Not higher than top");
+
+        _accrueTop();
+        address oldTop = topMarkee;
+        _setTop(challenger);
+
+        _setRefund(challenger, 0);
+        if (oldTop != address(0)) {
+            _setRefund(oldTop, aggregateRate[oldTop]);
+        }
+        _setBeneficiaryFlow(_beneficiaryTarget());
+    }
+
+    // ─── Per-funder RevNet settlement ──────────────────────────────────────────
+
+    /// @notice Settle the accrued RevNet share owed to each given backer: convert the owed ETHx to
+    ///         native ETH and route it through the Markee Cooperative RevNet with the backer as the
+    ///         token recipient. Permissionless, anyone (a backer, the frontend, a cron) may settle
+    ///         any set of backers; funds always flow to the rightful backer, never the caller.
+    /// @dev Mirrors v1.3 Markee `_routeRevNet`: the platform fee (percentToPlatformFeeReceiver) is
+    ///      taken from the RevNet bucket, here aggregated into one pay() to the fee receiver, and
+    ///      the remainder is paid per backer as their RevNet contribution. Active (still-streaming)
+    ///      backers are first brought current via the accumulator without disturbing their units.
+    function settle(address[] calldata backers) external nonReentrant {
+        _accrueTop();
+
+        uint256 n = backers.length;
+        uint256[] memory amounts = new uint256[](n);
+        uint256 total;
+        for (uint256 i = 0; i < n; i++) {
+            address backer = backers[i];
+            _realizeCurrent(backer);
+            uint256 amt = claimable[backer];
+            if (amt > 0) {
+                claimable[backer] = 0;
+                amounts[i] = amt;
+                total += amt;
+            }
+        }
+        if (total == 0) return;
+
+        _routeRevNetSettlement(backers, amounts);
+    }
+
+    /// @notice Live (unsettled) ETHx owed to a backer, including accrual up to the current block.
+    /// @dev View helper for the frontend / tests, does not mutate state.
+    function pendingSettlement(address backer) external view returns (uint256) {
+        uint256 owed = claimable[backer];
+        address m = backerMarkee[backer];
+        if (m == address(0)) return owed;
+
+        uint256 acc = accRevNetPerUnit[m];
+        if (m == topMarkee && topRate > 0 && aggregateRate[m] > 0) {
+            uint256 dt = block.timestamp - lastAccrualTime;
+            uint256 accrued = _retainedTopRate() * dt;
+            acc += (accrued * PRECISION) / aggregateRate[m];
+        }
+        uint256 units = uint256(poolOf[m].getUnits(backer));
+        uint256 accumulated = (units * acc) / PRECISION;
+        uint256 debt = backerRewardDebt[backer];
+        return owed + (accumulated > debt ? accumulated - debt : 0);
+    }
+
+    // ─── Migration-out / free edits / admin ───────────────────────────────────
+
+    /// @notice Move a Markee to a new pricing strategy. Vacates #1 if held, then refunds the departing
+    ///         Markee's backers at their full aggregate so they keep netting ~zero while they close their
+    ///         own streams lazily (O(1) each). An off-board Markee can only wind down: onFlowUpdated
+    ///         refuses to re-promote it, and its per-Markee state is cleared once the last backer leaves.
+    function migratePricingStrategy(address _markee, address _newStrategy) external onlyAdmin {
+        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
+        require(_newStrategy != address(0), "Strategy cannot be zero address");
+        _accrueTop();
+        _vacateTopIf(_markee);
+        _setRefund(_markee, aggregateRate[_markee]);
+        _unregisterMarkee(_markee);
+        Markee(_markee).setPricingStrategy(_newStrategy);
+        emit MarkeeLeft(_markee);
+    }
+
+    /// @notice Transfer a Markee's free-edit ownership. Only the current owner may call; the board is
+    ///         the Markee's pricingStrategy, so without this wrapper the owner could never reassign.
+    function transferMarkeeOwnership(address _markee, address _newOwner) external {
+        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
+        require(msg.sender == Markee(_markee).owner(), "Only Markee owner");
+        require(_newOwner != address(0), "New owner cannot be zero address");
+        Markee(_markee).transferOwnership(_newOwner);
+        emit MarkeeOwnershipTransferred(_markee, msg.sender, _newOwner);
+    }
+
+    function updateMessage(address _markee, string calldata _newMessage) external {
+        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
+        require(msg.sender == Markee(_markee).owner(), "Only Markee owner");
+        require(bytes(_newMessage).length <= maxMessageLength, "Message too long");
+        Markee(_markee).setMessage(_newMessage);
+        emit MessageUpdated(_markee, msg.sender, _newMessage);
+    }
+
+    function updateName(address _markee, string calldata _newName) external {
+        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
+        require(msg.sender == Markee(_markee).owner(), "Only Markee owner");
+        require(bytes(_newName).length <= maxNameLength, "Name too long");
+        Markee(_markee).setName(_newName);
+        emit NameUpdated(_markee, msg.sender, _newName);
+    }
+
+    function setAdmin(address _newAdmin) external onlyAdmin {
+        require(_newAdmin != address(0), "Admin cannot be zero address");
+        emit AdminChanged(admin, _newAdmin);
+        admin = _newAdmin;
+    }
+
+    /// @dev Migrates the live beneficiary stream: closes the outflow to the old beneficiary (otherwise
+    ///      it would keep draining the contract forever and break buffer accounting) and opens the
+    ///      stream to the new one at the current 62%-of-top rate.
+    function setBeneficiaryAddress(address _newBeneficiary) external onlyAdmin {
+        address old = beneficiaryAddress;
+        if (old != address(0) && ETHX.getCFAFlowRate(address(this), old) > 0) {
+            ETHX.deleteFlow(address(this), old);
+        }
+        emit BeneficiaryChanged(old, _newBeneficiary);
+        beneficiaryAddress = _newBeneficiary;
+        _setBeneficiaryFlow(_beneficiaryTarget());
+    }
+
+    function setMinimumMonthlyRate(uint256 _newRate) external onlyAdmin {
+        emit MinimumMonthlyRateChanged(minimumMonthlyRate, _newRate);
+        minimumMonthlyRate = _newRate;
+    }
+
+    /// @notice Tune grandfathering: K (months a lump sum pre-buys), the post-migration grace window,
+    ///         and the linear decay window. Applies to floors captured from here on (already-captured
+    ///         per-Markee floor rates are unchanged; grace/decay are read live so they affect all).
+    function setLegacyFloorConfig(uint256 _months, uint256 _graceSeconds, uint256 _decaySeconds)
+        external
+        onlyAdmin
+    {
+        legacyFloorMonths = _months;
+        legacyFloorGraceSeconds = _graceSeconds;
+        legacyFloorDecaySeconds = _decaySeconds;
+        emit LegacyFloorConfigChanged(_months, _graceSeconds, _decaySeconds);
+    }
+
+    // ─── Views ────────────────────────────────────────────────────────────────
+
+    function markeeCount() external view returns (uint256) {
+        return markees.length;
+    }
+
+    function getMarkees(uint256 offset, uint256 limit) external view returns (address[] memory result) {
+        if (offset >= markees.length) return new address[](0);
+        uint256 end = offset + limit;
+        if (end > markees.length) end = markees.length;
+        result = new address[](end - offset);
+        for (uint256 i = offset; i < end; i++) {
+            result[i - offset] = markees[i];
+        }
+    }
+
+    function isAcceptedSuperToken(ISuperToken superToken) public view override returns (bool) {
+        return address(superToken) == address(ETHX);
+    }
+
+    /// @notice A Markee's grandfather floor (wei/sec) at the current block, decays per the admin config.
+    function currentLegacyFloor(address markee) external view returns (uint256) {
+        return _currentLegacyFloor(markee);
+    }
+
+    /// @notice A Markee's effective rank value: max(live aggregate stream rate, current grandfather
+    ///         floor). The frontend/subgraph must rank by THIS so the displayed #1 matches the on-chain
+    ///         #1 the contract enforces.
+    function effectiveRate(address markee) external view returns (uint256) {
+        return _effRate(markee);
+    }
+
+    /// @notice The leaderboard ranked by effective rate: up to `limit` Markees in descending
+    ///         effectiveRate order, with each one's effective rate (wei/sec) alongside. Mirrors v1.3
+    ///         Leaderboard.getTopMarkees so existing consumers keep the same (address[], uint256[])
+    ///         ABI; the second array here is a streaming rate, not a cumulative fund total.
+    /// @dev Recomputes effRate live for every Markee, so topAddresses[0] is the true current #1 even
+    ///      while a decay/demotion lag leaves the enforced `topMarkee` stale until claimTop heals it.
+    ///      O(n^2) like v1.3; a view, so it is only ever eth_call'd off-chain.
+    function getTopMarkees(uint256 limit)
+        external
+        view
+        returns (address[] memory topAddresses, uint256[] memory topRates)
+    {
+        uint256 total = markees.length;
+        if (limit > total) limit = total;
+
+        address[] memory addrs = new address[](total);
+        uint256[] memory rates = new uint256[](total);
+        for (uint256 i = 0; i < total; i++) {
+            addrs[i] = markees[i];
+            rates[i] = _effRate(markees[i]);
+        }
+        for (uint256 i = 1; i < total; i++) {
+            address addrKey = addrs[i];
+            uint256 rateKey = rates[i];
+            uint256 j = i;
+            while (j > 0 && rates[j - 1] < rateKey) {
+                rates[j] = rates[j - 1];
+                addrs[j] = addrs[j - 1];
+                j--;
+            }
+            rates[j] = rateKey;
+            addrs[j] = addrKey;
+        }
+
+        topAddresses = new address[](limit);
+        topRates = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            topAddresses[i] = addrs[i];
+            topRates[i] = rates[i];
+        }
+    }
+
+    /// @notice ABI-compatible alias of v1.3's lump-sum `minimumPrice`: here the participation floor is a
+    ///         minimum monthly rate (wei/month) a backer's stream must clear, not a per-payment minimum.
+    function minimumPrice() external view returns (uint256) {
+        return minimumMonthlyRate;
+    }
+
+    /// @notice Sum of every registered Markee's carried-over lump-sum total (wei). Mirrors v1.3
+    ///         Leaderboard.totalLeaderboardFunds so existing consumers keep working; on a streaming board
+    ///         this is the migrated historical funds (frozen, since backers now fund via CFA streams, not
+    ///         Markee.pay), and 0 for natively-created Markees.
+    function totalLeaderboardFunds() external view returns (uint256 total) {
+        for (uint256 i = 0; i < markees.length; i++) {
+            total += Markee(markees[i]).totalFundsAdded();
+        }
+    }
+
+    // ─── SuperApp CFA callbacks (via CFASuperAppBase hooks) ────────────────────
+
+    /// @dev A new inbound stream. userData tags the target Markee. Reverts (safe, non-termination)
+    ///      if the Markee is unknown, the deposit is insufficient, or the rate is below the minimum.
+    function onFlowCreated(ISuperToken, address sender, int96 flowRate, bytes calldata ctx)
+        internal
+        override
+        returns (bytes memory newCtx)
+    {
+        address markee = abi.decode(HOST.decodeCtx(ctx).userData, (address));
+        require(isMarkeeOnLeaderboard[markee], "Unknown markee");
+        uint256 rate = uint256(uint96(flowRate));
+        require(rate * SECONDS_IN_MONTH >= minimumMonthlyRate, "Below minimum monthly rate");
+        require(backerDeposit[sender] >= rate * BUFFER_PERIOD, "Insufficient deposit");
+
+        _accrueTop();
+        backerMarkee[sender] = markee;
+        aggregateRate[markee] += rate;
+        poolOf[markee].updateMemberUnits(sender, uint128(rate));
+        _moveUnits(sender, markee, 0, rate);
+        emit BackerUpdated(sender, markee, rate, aggregateRate[markee]);
+
+        newCtx = _applyRankingWithCtx(markee, ctx);
+    }
+
+    /// @dev An existing backer changed its rate.
+    function onFlowUpdated(
+        ISuperToken,
+        address sender,
+        int96 flowRate,
+        int96 previousFlowRate,
+        uint256,
+        bytes calldata ctx
+    ) internal override returns (bytes memory newCtx) {
+        address markee = backerMarkee[sender];
+        if (markee == address(0)) return ctx;
+
+        uint256 newRate = uint256(uint96(flowRate));
+        uint256 oldRate = uint256(uint96(previousFlowRate));
+        require(backerDeposit[sender] >= newRate * BUFFER_PERIOD, "Insufficient deposit");
+        _accrueTop();
+        aggregateRate[markee] = aggregateRate[markee] - oldRate + newRate;
+        poolOf[markee].updateMemberUnits(sender, uint128(newRate));
+        _moveUnits(sender, markee, oldRate, newRate);
+        emit BackerUpdated(sender, markee, newRate, aggregateRate[markee]);
+
+        if (isMarkeeOnLeaderboard[markee]) {
+            newCtx = _applyRankingWithCtx(markee, ctx);
+        } else {
+            newCtx = _setRefundWithCtx(markee, aggregateRate[markee], false, ctx);
+        }
+    }
+
+    /// @dev A backer closed its stream (or was liquidated). MUST NOT revert (jail-safe): all work is
+    ///      storage + bounded flow updates; the incumbent's decay does not search for a new top
+    ///      (a rival promotes itself via claimTop).
+    function onInFlowDeleted(ISuperToken, address sender, int96 previousFlowRate, uint256, bytes calldata ctx)
+        internal
+        override
+        returns (bytes memory newCtx)
+    {
+        newCtx = ctx;
+        address markee = backerMarkee[sender];
+        if (markee == address(0)) return newCtx;
+
+        uint256 oldRate = uint256(uint96(previousFlowRate));
+        _accrueTop();
+        if (aggregateRate[markee] >= oldRate) {
+            aggregateRate[markee] -= oldRate;
+        } else {
+            aggregateRate[markee] = 0;
+        }
+        poolOf[markee].updateMemberUnits(sender, 0);
+        _moveUnits(sender, markee, oldRate, 0);
+        backerMarkee[sender] = address(0);
+        emit BackerUpdated(sender, markee, 0, aggregateRate[markee]);
+
+        if (markee == topMarkee) {
+            topRate = aggregateRate[markee];
+            newCtx = _setBeneficiaryFlowWithCtx(_beneficiaryTarget(), false, newCtx);
+        } else {
+            newCtx = _setRefundWithCtx(markee, aggregateRate[markee], true, newCtx);
+        }
+
+        if (!isMarkeeOnLeaderboard[markee] && aggregateRate[markee] == 0) {
+            delete poolOf[markee];
+            delete refundRate[markee];
+            delete accRevNetPerUnit[markee];
+        }
+    }
+
+    // ─── Ranking core ─────────────────────────────────────────────────────────
+
+    /// @dev Apply promotion/refund after an inbound create/update, threading ctx.
+    function _applyRankingWithCtx(address markee, bytes memory ctx) internal returns (bytes memory newCtx) {
+        newCtx = ctx;
+        uint256 agg = aggregateRate[markee];
+
+        if (markee == topMarkee) {
+            topRate = agg;
+            newCtx = _setBeneficiaryFlowWithCtx(_beneficiaryTarget(), true, newCtx);
+        } else if (_effRate(markee) > _topThreshold()) {
+            address oldTop = topMarkee;
+            _setTop(markee);
+            newCtx = _setRefundWithCtx(markee, 0, false, newCtx);
+            if (oldTop != address(0)) {
+                newCtx = _setRefundWithCtx(oldTop, aggregateRate[oldTop], false, newCtx);
+            }
+            newCtx = _setBeneficiaryFlowWithCtx(_beneficiaryTarget(), true, newCtx);
+        } else {
+            newCtx = _setRefundWithCtx(markee, agg, false, newCtx);
+        }
+    }
+
+    function _setTop(address markee) internal {
+        emit TopChanged(topMarkee, markee, aggregateRate[markee]);
+        topMarkee = markee;
+        topRate = aggregateRate[markee];
+    }
+
+    function _beneficiaryTarget() internal view returns (uint256) {
+        if (beneficiaryAddress == address(0)) return 0;
+        return (topRate * percentToBeneficiary()) / BASIS_POINTS_DIVISOR;
+    }
+
+    /// @dev The share of the top inflow the contract actually retains per second: topRate minus the live
+    ///      beneficiary CFA outflow. Accrual derives the RevNet credit from THIS (the real outflow) rather
+    ///      than from percentToBeneficiary() applied across an un-checkpointed window, so credited RevNet
+    ///      always equals retained ETHx even across a factory percent change (settle can never downgrade
+    ///      more than the contract holds), and backers are credited the full inflow when there is no
+    ///      beneficiary (nothing is stranded).
+    function _retainedTopRate() internal view returns (uint256) {
+        if (beneficiaryAddress == address(0)) return topRate;
+        int96 benRate = ETHX.getCFAFlowRate(address(this), beneficiaryAddress);
+        uint256 ben = benRate > 0 ? uint256(uint96(benRate)) : 0;
+        return topRate > ben ? topRate - ben : 0;
+    }
+
+    /// @dev A Markee's grandfather floor right now: full during the grace window, then linear-decaying
+    ///      to zero over legacyFloorDecaySeconds, then zero. Pure storage + arithmetic, cannot revert,
+    ///      safe to read from any callback. 0 for streaming-only Markees (no captured floor).
+    function _currentLegacyFloor(address markee) internal view returns (uint256) {
+        uint256 rate0 = legacyFloorRate0[markee];
+        if (rate0 == 0) return 0;
+        uint256 decayWindow = legacyFloorDecaySeconds;
+        if (decayWindow == 0) return rate0;
+        uint256 decayStart = legacyFloorStart[markee] + legacyFloorGraceSeconds;
+        if (block.timestamp <= decayStart) return rate0;
+        uint256 elapsed = block.timestamp - decayStart;
+        if (elapsed >= decayWindow) return 0;
+        return (rate0 * (decayWindow - elapsed)) / decayWindow;
+    }
+
+    /// @dev A Markee's rank value: the better of its live aggregate stream rate and its (decaying)
+    ///      grandfather floor. Streaming-only Markees have floor 0, so effRate == aggregate.
+    function _effRate(address markee) internal view returns (uint256) {
+        uint256 agg = aggregateRate[markee];
+        uint256 floor = _currentLegacyFloor(markee);
+        return agg > floor ? agg : floor;
+    }
+
+    /// @dev The bar a challenger must clear to take #1: the current top's effective rate (its
+    ///      grandfather floor while it is a not-yet-overtaken migrated holder, else its stream rate).
+    function _topThreshold() internal view returns (uint256) {
+        if (topMarkee == address(0)) return 0;
+        return _effRate(topMarkee);
+    }
+
+    // ─── Settlement accrual (MasterChef-style, jail-safe storage math) ─────────
+
+    /// @dev Roll the current top Markee's per-unit accumulator forward to now. Must be called before
+    ///      any change to topMarkee / topRate / a top backer's units. Pure storage + a trusted-view
+    ///      factory read (no revert), so it is safe inside the termination callback.
+    function _accrueTop() internal {
+        address t = topMarkee;
+        uint256 last = lastAccrualTime;
+        lastAccrualTime = block.timestamp;
+        if (t == address(0) || last == 0) return;
+        uint256 units = aggregateRate[t];
+        if (units == 0) return;
+        uint256 dt = block.timestamp - last;
+        if (dt == 0) return;
+        uint256 accrued = _retainedTopRate() * dt;
+        accRevNetPerUnit[t] += (accrued * PRECISION) / units;
+    }
+
+    /// @dev Realize a backer's pending reward at its OLD units, then reset its debt to NEW units.
+    ///      Call after _accrueTop and after the pool units have been updated. `markee` is passed in
+    ///      (not read from backerMarkee) so it works while backerMarkee is being cleared on deletion.
+    function _moveUnits(address backer, address markee, uint256 oldUnits, uint256 newUnits) internal {
+        uint256 acc = accRevNetPerUnit[markee];
+        uint256 accumulated = (oldUnits * acc) / PRECISION;
+        uint256 debt = backerRewardDebt[backer];
+        if (accumulated > debt) {
+            claimable[backer] += accumulated - debt;
+        }
+        backerRewardDebt[backer] = (newUnits * acc) / PRECISION;
+    }
+
+    /// @dev Bring an active backer current (realize pending without changing its units) ahead of a
+    ///      settlement. No-op for a backer with no live stream, their claimable is already final.
+    function _realizeCurrent(address backer) internal {
+        address m = backerMarkee[backer];
+        if (m == address(0)) return;
+        uint256 units = uint256(poolOf[m].getUnits(backer));
+        _moveUnits(backer, m, units, units);
+    }
+
+    /// @dev If `markee` is the current #1, vacate the top (no auto-promotion) and stop the beneficiary
+    ///      stream. Used when a Markee leaves the leaderboard so the accumulator stops crediting it.
+    function _vacateTopIf(address markee) internal {
+        if (markee != topMarkee) return;
+        topMarkee = address(0);
+        topRate = 0;
+        _setBeneficiaryFlow(0);
+    }
+
+    /// @dev Downgrade each backer's owed ETHx to native ETH and route it, mirroring v1.3 Markee
+    ///      `_routeRevNet`. Every backer is settled in isolation: a recipient that reverts (a contract
+    ///      rejecting ETH, or a paused/reverting RevNet pay) only re-wraps that backer's amount and
+    ///      restores its claimable, so one bad recipient never bricks the batch. The platform fee is
+    ///      aggregated into one pay() to the (trusted, governance-set) fee receiver. Factory config is
+    ///      read once up front (invariant within this nonReentrant call).
+    function _routeRevNetSettlement(address[] calldata backers, uint256[] memory amounts) internal {
+        ILeaderboardFactory f = ILeaderboardFactory(factory);
+        if (!f.revNetEnabled()) {
+            _settleDirect(backers, amounts);
+            return;
+        }
+
+        address terminal = f.revNetTerminal();
+        uint256 projectId = f.revNetProjectId();
+        address feeReceiver = f.platformFeeReceiver();
+        uint256 feePct = feeReceiver == address(0) ? 0 : f.percentToPlatformFeeReceiver();
+
+        uint256 totalFee = _settleViaRevNet(backers, amounts, terminal, projectId, feePct);
+        if (totalFee > 0) {
+            _revNetPay(terminal, projectId, feeReceiver, totalFee);
+            emit PlatformFeeSettled(feeReceiver, totalFee);
+        }
+    }
+
+    /// @dev RevNet-disabled fallback: pay each backer in native ETH, isolated. A recipient that rejects
+    ///      ETH only re-wraps its own amount and restores its claimable; the batch is never bricked.
+    function _settleDirect(address[] calldata backers, uint256[] memory amounts) internal {
+        for (uint256 i = 0; i < amounts.length; i++) {
+            uint256 amt = amounts[i];
+            if (amt == 0) continue;
+            ISETH(address(ETHX)).downgradeToETH(amt);
+            (bool ok,) = backers[i].call{value: amt}("");
+            if (ok) {
+                emit Settled(backers[i], amt, false);
+            } else {
+                ISETH(address(ETHX)).upgradeByETH{value: amt}();
+                claimable[backers[i]] += amt;
+            }
+        }
+    }
+
+    /// @dev RevNet path: pay each backer's remainder (net of the platform fee) through the terminal,
+    ///      try/catch-isolated so one paused/reverting pay only re-wraps that backer's amount and
+    ///      restores its claimable. Returns the aggregated fee for a single downstream pay().
+    function _settleViaRevNet(
+        address[] calldata backers,
+        uint256[] memory amounts,
+        address terminal,
+        uint256 projectId,
+        uint256 feePct
+    ) internal returns (uint256 totalFee) {
+        for (uint256 i = 0; i < amounts.length; i++) {
+            uint256 amt = amounts[i];
+            if (amt == 0) continue;
+            uint256 fee = (amt * feePct) / BASIS_POINTS_DIVISOR;
+            uint256 buyerAmount = amt - fee;
+            ISETH(address(ETHX)).downgradeToETH(amt);
+            if (buyerAmount == 0) {
+                totalFee += fee;
+                emit Settled(backers[i], amt, true);
+                continue;
+            }
+            try this._revNetPaySelf(terminal, projectId, backers[i], buyerAmount) {
+                totalFee += fee;
+                emit Settled(backers[i], amt, true);
+            } catch {
+                ISETH(address(ETHX)).upgradeByETH{value: amt}();
+                claimable[backers[i]] += amt;
+            }
+        }
+    }
+
+    /// @dev External self-call wrapper so a single backer's RevNet pay can be try/catch-isolated.
+    ///      Only callable by this contract (from `_routeRevNetSettlement`).
+    function _revNetPaySelf(address terminal, uint256 projectId, address recipient, uint256 amount)
+        external
+    {
+        require(msg.sender == address(this), "Only self");
+        _revNetPay(terminal, projectId, recipient, amount);
+    }
+
+    /// @dev One native-ETH RevNet contribution with `recipient` as the token recipient (isolated in
+    ///      its own frame so the 7-arg pay() call does not blow the stack of its caller).
+    function _revNetPay(address terminal, uint256 projectId, address recipient, uint256 amount) internal {
+        IJBMultiTerminal(terminal).pay{value: amount}(projectId, NATIVE_TOKEN, amount, recipient, 0, "", "");
+    }
+
+    // ─── Flow helpers (ctx variants for callbacks, plain variants for external calls) ──
+
+    /// @param onlyLower when true (the no-revert termination path), a rate increase is skipped rather
+    ///        than applied, raising a distributeFlow needs buffer and could revert → jail. The raise
+    ///        is deferred and re-applied on the next organic flow event on that Markee.
+    function _setRefundWithCtx(address markee, uint256 rate, bool onlyLower, bytes memory ctx)
+        internal
+        returns (bytes memory newCtx)
+    {
+        newCtx = ctx;
+        if (refundRate[markee] == rate) return newCtx;
+        if (onlyLower && rate > refundRate[markee]) return newCtx;
+        if (onlyLower && rate > 0 && _availableBalanceNegative()) return newCtx;
+        refundRate[markee] = rate;
+        newCtx = ETHX.distributeFlowWithCtx(address(this), poolOf[markee], _toInt96(rate), newCtx);
+    }
+
+    /// @dev True when the contract's own ETHx availableBalance is negative (insolvent). A positive-rate
+    ///      distributeFlow then reverts GDA_INSUFFICIENT_BALANCE, so the no-revert termination path must
+    ///      defer such a refund lowering (re-applied on the next organic flow event) rather than risk a jail.
+    function _availableBalanceNegative() internal view returns (bool) {
+        (int256 availableBalance,,,) = ETHX.realtimeBalanceOfNow(address(this));
+        return availableBalance < 0;
+    }
+
+    function _setRefund(address markee, uint256 rate) internal {
+        if (refundRate[markee] == rate) return;
+        refundRate[markee] = rate;
+        ETHX.distributeFlow(poolOf[markee], _toInt96(rate));
+    }
+
+    /// @param allowCreate when false (the no-revert termination path), creating a fresh beneficiary
+    ///        stream is skipped, a create needs buffer and could revert → jail. This only matters if
+    ///        the beneficiary previously force-closed the contract's outflow (a self-inflicted renounce);
+    ///        the stream self-heals on the next organic flow event on the #1 Markee.
+    function _setBeneficiaryFlowWithCtx(uint256 target, bool allowCreate, bytes memory ctx)
+        internal
+        returns (bytes memory newCtx)
+    {
+        newCtx = ctx;
+        if (beneficiaryAddress == address(0)) return newCtx;
+        int96 current = ETHX.getCFAFlowRate(address(this), beneficiaryAddress);
+        int96 t = _toInt96(target);
+        if (t == current) return newCtx;
+        if (current == 0) {
+            if (!allowCreate) return newCtx;
+            newCtx = ETHX.createFlowWithCtx(beneficiaryAddress, t, newCtx);
+        } else if (t == 0) {
+            newCtx = ETHX.deleteFlowWithCtx(address(this), beneficiaryAddress, newCtx);
+        } else {
+            newCtx = ETHX.updateFlowWithCtx(beneficiaryAddress, t, newCtx);
+        }
+    }
+
+    function _setBeneficiaryFlow(uint256 target) internal {
+        if (beneficiaryAddress == address(0)) return;
+        int96 current = ETHX.getCFAFlowRate(address(this), beneficiaryAddress);
+        int96 t = _toInt96(target);
+        if (t == current) return;
+        if (current == 0) {
+            ETHX.createFlow(beneficiaryAddress, t);
+        } else if (t == 0) {
+            ETHX.deleteFlow(address(this), beneficiaryAddress);
+        } else {
+            ETHX.updateFlow(beneficiaryAddress, t);
+        }
+    }
+
+    // ─── Internal registry / clone helpers ────────────────────────────────────
+
+    function _deploySeedMarkee(address _owner) internal returns (address markeeAddress) {
+        markeeAddress = _clone(markeeImplementation);
+        Markee(markeeAddress).initialize(_owner, address(this), "", "", 0);
+        _registerMarkee(markeeAddress);
+    }
+
+    function _registerMarkee(address markeeAddress) internal {
+        require(address(poolOf[markeeAddress]) == address(0), "Markee still winding down");
+        markeeIndex[markeeAddress] = markees.length;
+        markees.push(markeeAddress);
+        isMarkeeOnLeaderboard[markeeAddress] = true;
+        PoolConfig memory cfg =
+            PoolConfig({ transferabilityForUnitsOwner: false, distributionFromAnyAddress: false });
+        ISuperfluidPool pool = ETHX.createPool(address(this), cfg);
+        poolOf[markeeAddress] = pool;
+        emit MarkeeRegistered(markeeAddress, address(pool));
+    }
+
+    function _unregisterMarkee(address markeeAddress) internal {
+        require(isMarkeeOnLeaderboard[markeeAddress], "Not in registry");
+        uint256 index = markeeIndex[markeeAddress];
+        address last = markees[markees.length - 1];
+        markees[index] = last;
+        markeeIndex[last] = index;
+        markees.pop();
+        delete markeeIndex[markeeAddress];
+        isMarkeeOnLeaderboard[markeeAddress] = false;
+    }
+
+    function _toInt96(uint256 x) internal pure returns (int96) {
+        require(x <= uint256(uint96(type(int96).max)), "Rate overflow");
+        return int96(uint96(x));
+    }
+
+    function _clone(address implementation) internal returns (address instance) {
+        assembly {
+            mstore(0x00, or(
+                shr(0xe8, shl(0x60, implementation)),
+                0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000
+            ))
+            mstore(0x20, or(
+                shl(0x78, implementation),
+                0x5af43d82803e903d91602b57fd5bf3
+            ))
+            instance := create(0, 0x09, 0x37)
+        }
+        require(instance != address(0), "Clone deployment failed");
+    }
+}

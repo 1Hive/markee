@@ -1,7 +1,15 @@
 [profile.default]
 src = "contracts"
+test = "test"
 out = "out"
-libs = ["lib"]
+libs = ["lib", "node_modules"]
 solc = "0.8.23"
+evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# contracts/v0.1/* is pre-existing broken legacy (imports a Markee.sol/Interfaces.sol
+# that never existed in that dir); exclude so the project compiles.
+skip = ["contracts/v0.1/*"]
+
+[rpc_endpoints]
+base = "${BASE_RPC_URL}"

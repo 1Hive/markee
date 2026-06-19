@@ -1,0 +1,11 @@
+# Node dependencies (Solidity remapping targets — installed via npm, not committed)
+node_modules/
+
+# Foundry build artifacts
+out/
+cache/
+foundry.lock
+
+# Claude Code artifacts
+CLAUDE.md
+.claude/
