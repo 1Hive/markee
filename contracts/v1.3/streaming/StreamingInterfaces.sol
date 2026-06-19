@@ -3,7 +3,7 @@ pragma solidity ^0.8.23;
 
 /// @title Streaming strategy interfaces
 /// @notice The v1.3 strategy interfaces (IPricingStrategy, ILeaderboardFactory, IJBMultiTerminal)
-///         are reused unchanged — import them directly from ../v1.3/Interfaces.sol. This file only
+///         are reused unchanged, import them directly from ../v1.3/Interfaces.sol. This file only
 ///         declares the streaming-specific surface the factory needs on a freshly cloned leaderboard.
 
 /// @notice Surface the StreamingLeaderboardFactory calls on a freshly cloned StreamingLeaderboard,
@@ -31,10 +31,6 @@ interface IStreamingLeaderboard {
 
     /// @notice Permissionless decay poke: flip #1 to a challenger that has outbid the incumbent.
     function claimTop(address challenger) external;
-
-    /// @notice Permissionless poke: realign a Markee's outbound flow with its current aggregate after
-    ///         the jail-safe termination callback deferred a buffer-needing adjustment.
-    function syncMarkee(address markee) external;
 
     /// @notice Live (unsettled) ETHx owed to a backer, including accrual up to the current block.
     function pendingSettlement(address backer) external view returns (uint256);

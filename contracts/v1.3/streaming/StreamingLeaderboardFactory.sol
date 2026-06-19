@@ -5,8 +5,8 @@ import { ISuperfluid, ISuperToken, ISuperApp } from
     "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
 import { StreamingLeaderboard } from "./StreamingLeaderboard.sol";
-import { Markee } from "../v1.3/Markee.sol";
-import { ILeaderboardFactory } from "../v1.3/Interfaces.sol";
+import { Markee } from "../Markee.sol";
+import { ILeaderboardFactory } from "../Interfaces.sol";
 
 /// @title StreamingLeaderboardFactory (Option B)
 /// @notice Platform-level factory for the streaming pricing strategy. Mirrors v1.3 LeaderboardFactory
@@ -16,7 +16,7 @@ import { ILeaderboardFactory } from "../v1.3/Interfaces.sol";
 ///
 /// @dev On the permissioned Base host, the host gates registerApp() by the *caller* (this factory).
 ///      Superfluid governance authorizes this factory once via
-///      `gov.setAppRegistrationKey(host, factory, "k1", farFutureTs)` — one authorization covers
+///      `gov.setAppRegistrationKey(host, factory, "k1", farFutureTs)`, one authorization covers
 ///      unlimited deploys. (Fork tests replicate this by impersonating the governance owner.)
 contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
@@ -32,7 +32,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     string public platformName;
     string public platformId;
 
-    // ─── RevNet + fee config — factory admin (Coop multisig) only ─────────────
+    // ─── RevNet + fee config, factory admin (Coop multisig) only ─────────────
     address public override revNetTerminal;
     uint256 public override revNetProjectId;
     bool public override revNetEnabled;
@@ -153,6 +153,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     function getLeaderboards(uint256 offset, uint256 limit) external view returns (address[] memory result) {
+        if (offset >= leaderboards.length) return new address[](0);
         uint256 end = offset + limit;
         if (end > leaderboards.length) end = leaderboards.length;
         result = new address[](end - offset);

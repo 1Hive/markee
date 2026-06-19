@@ -13,8 +13,8 @@ import { ISuperfluidPool } from
 import { ISETH } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { StreamingLeaderboardFactory } from "../contracts/streaming/StreamingLeaderboardFactory.sol";
-import { StreamingLeaderboard } from "../contracts/streaming/StreamingLeaderboard.sol";
+import { StreamingLeaderboardFactory } from "../contracts/v1.3/streaming/StreamingLeaderboardFactory.sol";
+import { StreamingLeaderboard } from "../contracts/v1.3/streaming/StreamingLeaderboard.sol";
 import { LeaderboardFactory } from "../contracts/v1.3/LeaderboardFactory.sol";
 import { Leaderboard } from "../contracts/v1.3/Leaderboard.sol";
 
@@ -48,6 +48,20 @@ interface IOwnable {
 
 interface IMarkee {
     function pricingStrategy() external view returns (address);
+    function owner() external view returns (address);
+    function setPricingStrategy(address newStrategy) external;
+}
+
+interface IPermitToken {
+    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external;
+    function nonces(address owner) external view returns (uint256);
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+}
+
+interface ICFAv1Agreement {
+    function createFlow(ISuperToken token, address receiver, int96 flowRate, bytes calldata ctx)
+        external returns (bytes memory);
 }
 
 /// @notice Base-mainnet fork tests for the Option B streaming strategy. Reads BASE_RPC_URL from env.
@@ -64,6 +78,8 @@ contract StreamingLeaderboardTest is Test {
     uint256 constant SECONDS_IN_MONTH = 2628000;
     uint256 constant BUFFER_PERIOD = 14400;
     uint256 constant BPS = 10000;
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     StreamingLeaderboardFactory factory;
     StreamingLeaderboard board;
@@ -120,7 +136,7 @@ contract StreamingLeaderboardTest is Test {
     function _open(address who, address markee, int96 rate) internal {
         uint256 deposit = uint256(uint96(rate)) * BUFFER_PERIOD;
         vm.startPrank(who);
-        board.depositBuffer(deposit);
+        board.depositBuffer(who, deposit);
         GDA.connectPool(board.poolOf(markee), "");
         CFA.createFlow(ETHX, who, address(board), rate, abi.encode(markee));
         vm.stopPrank();
@@ -493,7 +509,8 @@ contract StreamingLeaderboardTest is Test {
 
     /// @notice If the beneficiary force-closes the contract's outflow to itself, a later top-backer
     ///         termination must NOT try to re-create that stream inside the no-revert callback (a
-    ///         create can revert on buffer → jail). The flow is restored later by the syncMarkee poke.
+    ///         create can revert on buffer → jail). The beneficiary renounced it (no one loses money),
+    ///         and the stream self-heals on the next organic flow event on the #1 Markee.
     function test_beneficiaryClosesOutflow_thenTermination_jailSafe() public {
         address m = _newMarkee("m", "alpha");
         int96 r1 = _rate(0.05 ether);
@@ -516,11 +533,12 @@ contract StreamingLeaderboardTest is Test {
         assertEq(board.aggregateRate(m), _r(r1), "aggregate should drop to the remaining backer");
         assertEq(_beneficiaryFlow(), int96(0), "termination must not re-create the beneficiary stream");
 
-        // The deferred beneficiary stream is restored by the permissionless poke.
-        board.syncMarkee(m);
+        // The next organic flow event on the #1 Markee re-creates the deferred beneficiary stream.
+        int96 r3 = _rate(0.04 ether);
+        _open(_backer("b3"), m, r3);
         _notJailed();
-        int96 expected = int96(int256(_r(r1) * factory.percentToBeneficiary() / BPS));
-        assertEq(_beneficiaryFlow(), expected, "syncMarkee should restore the beneficiary stream");
+        int96 expected = int96(int256(_r(r1 + r3) * factory.percentToBeneficiary() / BPS));
+        assertEq(_beneficiaryFlow(), expected, "next organic bid should restore the beneficiary stream");
     }
 
     /// @notice Full cross-contract migration-in handoff: a Markee living on a legacy v1.3 lump-sum
@@ -719,10 +737,11 @@ contract StreamingLeaderboardTest is Test {
         assertEq(IERC20(address(ETHX)).balanceOf(backer) - ethxBefore, deposit, "deposit not fully refunded");
     }
 
-    /// @notice Migrating a non-#1 Markee out winds down its refund flow to 0 and leaves the current
-    ///         #1 (and its beneficiary stream) untouched. The departed Markee's backer can still close
-    ///         and reclaim its deposit.
-    function test_migrationOut_loserMarkee_windsDownRefund() public {
+    /// @notice Migrating a non-#1 Markee out KEEPS refunding its backers at their full aggregate so they
+    ///         stay net-zero while they close lazily (no stranded principal). The refund winds down and
+    ///         the per-Markee state is cleared once the last backer closes; the current #1 (and its
+    ///         beneficiary stream) is untouched throughout.
+    function test_migrationOut_loserMarkee_keepsRefundUntilBackerCloses() public {
         address top = _newMarkee("top", "alpha");
         address loser = _newMarkee("loser", "bravo");
         _open(_backer("topBacker"), top, _rate(0.1 ether));
@@ -734,15 +753,21 @@ contract StreamingLeaderboardTest is Test {
         address newStrategy = makeAddr("newStrategy");
         board.migratePricingStrategy(loser, newStrategy);
 
-        assertEq(board.refundRate(loser), 0, "refund not wound down on migration-out");
+        // Refund is KEPT at the aggregate so the departing backer keeps netting ~zero until it closes.
+        assertEq(board.refundRate(loser), board.aggregateRate(loser), "departing backer must stay refunded");
         assertFalse(board.isMarkeeOnLeaderboard(loser), "loser still registered");
         assertEq(board.topMarkee(), top, "top must be unaffected by a loser leaving");
         assertGt(_beneficiaryFlow(), int96(0), "beneficiary stream must continue");
+        vm.warp(block.timestamp + 5 days);
         _notJailed();
 
         vm.prank(loserBacker);
         CFA.deleteFlow(ETHX, loserBacker, address(board), "");
         _notJailed();
+        // Once the last backer closes, the refund winds to 0 and per-Markee state is cleared so the
+        // Markee can be cleanly re-registered later.
+        assertEq(board.refundRate(loser), 0, "refund not wound down after last backer closed");
+        assertEq(address(board.poolOf(loser)), address(0), "pool not cleared after wind-down");
         uint256 deposit = board.backerDeposit(loserBacker);
         uint256 ethxBefore = IERC20(address(ETHX)).balanceOf(loserBacker);
         vm.prank(loserBacker);
@@ -761,7 +786,7 @@ contract StreamingLeaderboardTest is Test {
 
         address shy = _backer("shy");
         vm.startPrank(shy);
-        board.depositBuffer(required - 1);
+        board.depositBuffer(shy, required - 1);
         GDA.connectPool(board.poolOf(m), "");
         vm.expectRevert();
         CFA.createFlow(ETHX, shy, address(board), r, abi.encode(m));
@@ -769,11 +794,100 @@ contract StreamingLeaderboardTest is Test {
 
         address exact = _backer("exact");
         vm.startPrank(exact);
-        board.depositBuffer(required);
+        board.depositBuffer(exact, required);
         GDA.connectPool(board.poolOf(m), "");
         CFA.createFlow(ETHX, exact, address(board), r, abi.encode(m));
         vm.stopPrank();
         assertEq(board.backerMarkee(exact), m, "exact-buffer deposit should be accepted");
+        _notJailed();
+    }
+
+    /// @notice depositBuffer pulls from and credits the explicit `backer`, not msg.sender, so the
+    ///         frontend can bundle it into the host.batchCall whose forwarded sender is the host. A
+    ///         third-party caller moves only funds the backer itself approved, crediting the backer.
+    function test_depositBuffer_creditsExplicitBackerNotCaller() public {
+        address bob = _backer("bob");
+        uint256 amount = uint256(uint96(_rate(0.02 ether))) * BUFFER_PERIOD;
+        uint256 bobBefore = IERC20(address(ETHX)).balanceOf(bob);
+
+        vm.prank(makeAddr("relayer"));
+        board.depositBuffer(bob, amount);
+
+        assertEq(board.backerDeposit(bob), amount, "deposit must credit the backer");
+        assertEq(board.backerDeposit(makeAddr("relayer")), 0, "caller must not be credited");
+        assertEq(bobBefore - IERC20(address(ETHX)).balanceOf(bob), amount, "funds must come from the backer");
+    }
+
+    /// @notice The frontend's single-tx open, built from native ETH with no pre-wrap and no pre-approval:
+    ///         one payable host.batchCall of wrap → permit → depositBuffer → createFlow. Verifies the
+    ///         three things the design hinges on: (1) msg.value routes only to the value-bearing wrap
+    ///         (each SIMPLE_FORWARD_CALL forwards the host's whole balance, which the wrap drains to 0,
+    ///         so the value-0 depositBuffer forward-call does not revert), (2) depositBuffer credits the
+    ///         explicit backer even though the forwarded sender is Superfluid's SimpleForwarder, and
+    ///         (3) the buffer allowance is authorized in-batch via EIP-2612 permit, since this Superfluid
+    ///         version has no ERC20-approve batch op.
+    function test_batchCall_singleTxOpensStream_fromNativeEth() public {
+        address m = _newMarkee("m", "alpha");
+        int96 r = _rate(0.05 ether);
+        uint256 buffer = uint256(uint96(r)) * BUFFER_PERIOD;
+        uint256 wrapAmount = 1 ether + buffer;
+
+        (address backer, uint256 pk) = makeAddrAndKey("batchBacker");
+        vm.deal(backer, wrapAmount);
+
+        ISuperfluid.Operation[] memory ops = new ISuperfluid.Operation[](4);
+
+        ops[0] = ISuperfluid.Operation({
+            operationType: uint32(301), // SIMPLE_FORWARD_CALL, carries the whole msg.value
+            target: address(ETHX),
+            data: abi.encodeWithSignature("upgradeByETHTo(address)", backer)
+        });
+
+        {
+            uint256 deadline = block.timestamp + 1 hours;
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    PERMIT_TYPEHASH, backer, address(board), buffer, IPermitToken(address(ETHX)).nonces(backer), deadline
+                )
+            );
+            bytes32 digest =
+                keccak256(abi.encodePacked("\x19\x01", IPermitToken(address(ETHX)).DOMAIN_SEPARATOR(), structHash));
+            (uint8 v, bytes32 sr, bytes32 ss) = vm.sign(pk, digest);
+            ops[1] = ISuperfluid.Operation({
+                operationType: uint32(301),
+                target: address(ETHX),
+                data: abi.encodeWithSelector(
+                    IPermitToken.permit.selector, backer, address(board), buffer, deadline, v, sr, ss
+                )
+            });
+        }
+
+        ops[2] = ISuperfluid.Operation({
+            operationType: uint32(301),
+            target: address(board),
+            data: abi.encodeWithSelector(StreamingLeaderboard.depositBuffer.selector, backer, buffer)
+        });
+
+        {
+            address cfa = address(
+                ISuperfluid(HOST).getAgreementClass(keccak256("org.superfluid-finance.agreements.ConstantFlowAgreement.v1"))
+            );
+            bytes memory callData =
+                abi.encodeWithSelector(ICFAv1Agreement.createFlow.selector, ETHX, address(board), r, new bytes(0));
+            ops[3] = ISuperfluid.Operation({
+                operationType: uint32(201), // SUPERFLUID_CALL_AGREEMENT, preserves backer as the flow sender
+                target: cfa,
+                data: abi.encode(callData, abi.encode(m))
+            });
+        }
+
+        vm.prank(backer);
+        ISuperfluid(HOST).batchCall{value: wrapAmount}(ops);
+
+        assertEq(board.backerDeposit(backer), buffer, "buffer not credited to the explicit backer in-batch");
+        assertEq(board.backerMarkee(backer), m, "stream not opened to the markee");
+        assertEq(board.aggregateRate(m), uint256(uint96(r)), "aggregate rate mismatch");
+        assertEq(board.topMarkee(), m, "first backer's markee should be #1");
         _notJailed();
     }
 
@@ -926,7 +1040,7 @@ contract StreamingLeaderboardTest is Test {
 
         uint256 topUp = uint256(uint96(rUp)) * BUFFER_PERIOD - board.backerDeposit(backer);
         vm.startPrank(backer);
-        board.depositBuffer(topUp);
+        board.depositBuffer(backer, topUp);
         CFA.updateFlow(ETHX, backer, address(board), rUp, "");
         vm.stopPrank();
         assertEq(board.aggregateRate(m), uint256(uint96(rUp)), "rate not raised after deposit top-up");
@@ -952,5 +1066,234 @@ contract StreamingLeaderboardTest is Test {
             "new beneficiary stream not opened at the top rate"
         );
         _notJailed();
+    }
+
+    // ─── Regression tests for the security-review fixes ─────────────────────────
+
+    function _fundApprove(address who, address spender) internal {
+        vm.deal(who, 100 ether);
+        vm.startPrank(who);
+        ISETH(address(ETHX)).upgradeByETH{value: 50 ether}();
+        IERC20(address(ETHX)).approve(spender, type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function _openOn(StreamingLeaderboard bd, address who, address markee, int96 rate) internal {
+        uint256 deposit = uint256(uint96(rate)) * BUFFER_PERIOD;
+        vm.startPrank(who);
+        bd.depositBuffer(who, deposit);
+        GDA.connectPool(bd.poolOf(markee), "");
+        CFA.createFlow(ETHX, who, address(bd), rate, abi.encode(markee));
+        vm.stopPrank();
+    }
+
+    /// @notice A backer of a migrated-out Markee that raises its flow must NOT re-promote the departed
+    ///         Markee back to #1 (onFlowUpdated guards on isMarkeeOnLeaderboard).
+    function test_onFlowUpdated_cannotRepromoteDepartedMarkee() public {
+        vm.prank(admin);
+        factory.setRevNetEnabled(false);
+        address top = _newMarkee("top", "alpha");
+        address dep = _newMarkee("dep", "bravo");
+        _open(_backer("topBacker"), top, _rate(0.1 ether));
+        address depBacker = _backer("depBacker");
+        _open(depBacker, dep, _rate(0.02 ether));
+        assertEq(board.topMarkee(), top);
+
+        board.migratePricingStrategy(dep, makeAddr("newStrategy"));
+        assertFalse(board.isMarkeeOnLeaderboard(dep), "dep should be off the board");
+
+        int96 huge = _rate(1 ether);
+        vm.startPrank(depBacker);
+        board.depositBuffer(depBacker, uint256(uint96(huge)) * BUFFER_PERIOD);
+        CFA.updateFlow(ETHX, depBacker, address(board), huge, abi.encode(dep));
+        vm.stopPrank();
+
+        assertEq(board.topMarkee(), top, "departed Markee was re-promoted to #1");
+        _notJailed();
+    }
+
+    /// @notice Re-registering a Markee that left while backers were still streaming must revert rather
+    ///         than reuse stale per-Markee state against a fresh empty pool.
+    function test_reRegisterWhileWindingDown_reverts() public {
+        address top = _newMarkee("top", "alpha");
+        address dep = _newMarkee("dep", "bravo");
+        _open(_backer("topBacker"), top, _rate(0.1 ether));
+        _open(_backer("depBacker"), dep, _rate(0.02 ether));
+
+        StubStrategy stub = new StubStrategy();
+        board.migratePricingStrategy(dep, address(stub));
+        stub.repoint(dep, address(board));
+        assertEq(IMarkee(dep).pricingStrategy(), address(board));
+
+        address[] memory arr = new address[](1);
+        arr[0] = dep;
+        vm.expectRevert(bytes("Markee still winding down"));
+        board.registerExistingMarkees(arr);
+    }
+
+    /// @notice With a drained/critical top backer present, closing one of a loser's several backers
+    ///         exercises the positive-rate refund LOWERING in the no-revert termination callback. It must
+    ///         stay jail-safe and, while the board itself is solvent, the refund tracks the remaining
+    ///         aggregate. (The deferral guard added for the deep-insolvency edge is defense-in-depth: the
+    ///         deposit-surplus invariant keeps the board net-positive, so a negative board balance is not
+    ///         reachable through normal flows.)
+    function test_drainedTop_loserPartialClose_jailSafe() public {
+        address top = _newMarkee("top", "alpha");
+        address loser = _newMarkee("loser", "bravo");
+        address drainedTop = _openThenDrain("topBackerDrained", top, _rate(0.1 ether));
+        address l1 = _backer("loserOne");
+        address l2 = _backer("loserTwo");
+        _open(l1, loser, _rate(0.02 ether));
+        _open(l2, loser, _rate(0.02 ether));
+        assertEq(board.topMarkee(), top);
+        assertEq(board.refundRate(loser), board.aggregateRate(loser), "loser refunded at aggregate");
+
+        vm.warp(block.timestamp + 12 hours);
+        assertTrue(_critical(drainedTop), "drained top backer should be critical");
+
+        vm.prank(l1);
+        CFA.deleteFlow(ETHX, l1, address(board), "");
+        _notJailed();
+        assertEq(board.refundRate(loser), board.aggregateRate(loser), "refund should track the remaining aggregate");
+    }
+
+    /// @notice Lowering percentToBeneficiary after a long accrual window must NOT retroactively
+    ///         over-credit backers (accrual tracks the actual beneficiary outflow, not the live percent),
+    ///         so settle stays solvent.
+    function test_percentChange_noRetroactiveOverCredit() public {
+        vm.prank(admin);
+        factory.setRevNetEnabled(false);
+        address m = _newMarkee("m", "alpha");
+        address backer = _backer("pctBacker");
+        _open(backer, m, _rate(0.1 ether));
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 pendingBefore = board.pendingSettlement(backer);
+        assertGt(pendingBefore, 0, "nothing accrued");
+
+        vm.prank(admin);
+        factory.setPercentToBeneficiary(3000); // lower the beneficiary share
+
+        uint256 pendingAfter = board.pendingSettlement(backer);
+        assertApproxEqAbs(pendingAfter, pendingBefore, 1e9, "percent change retroactively re-priced accrual");
+
+        uint256 balBefore = backer.balance;
+        address[] memory arr = new address[](1);
+        arr[0] = backer;
+        board.settle(arr);
+        assertApproxEqAbs(backer.balance - balBefore, pendingBefore, 1e9, "settle paid the wrong amount");
+        assertFalse(_critical(address(board)), "settle over-downgraded and made the contract insolvent");
+        _notJailed();
+    }
+
+    /// @notice One recipient that rejects ETH must not brick a settle batch: its amount is re-wrapped and
+    ///         its claimable restored, leaving the contract solvent and unjailed.
+    function test_settle_isolatesRevertingRecipient() public {
+        vm.prank(admin);
+        factory.setRevNetEnabled(false);
+        address m = _newMarkee("m", "alpha");
+        int96 r = _rate(0.05 ether);
+
+        BadBacker bad = new BadBacker();
+        vm.deal(address(this), 100 ether);
+        bad.setup{value: 50 ether}(CFA, GDA, ETHX, board, m, r, uint256(uint96(r)) * BUFFER_PERIOD);
+        assertEq(board.backerMarkee(address(bad)), m, "bad backer not opened");
+
+        vm.warp(block.timestamp + 20 days);
+        assertGt(board.pendingSettlement(address(bad)), 0, "bad backer should have accrued");
+
+        uint256 ethxBoardBefore = IERC20(address(ETHX)).balanceOf(address(board));
+        address[] memory arr = new address[](1);
+        arr[0] = address(bad);
+        board.settle(arr);
+
+        assertGt(board.claimable(address(bad)), 0, "claimable not restored after the failed send");
+        assertApproxEqAbs(
+            IERC20(address(ETHX)).balanceOf(address(board)), ethxBoardBefore, 1e9, "ETHx not re-wrapped"
+        );
+        _notJailed();
+    }
+
+    /// @notice A leaderboard with no beneficiary credits backers the full inflow (nothing is stranded),
+    ///         and settle pays it out without going insolvent.
+    function test_zeroBeneficiary_creditsBackersFully() public {
+        vm.prank(admin);
+        factory.setRevNetEnabled(false);
+        (address b2,) = factory.createLeaderboard(address(0), "No Beneficiary");
+        StreamingLeaderboard nb = StreamingLeaderboard(payable(b2));
+
+        address creator = makeAddr("nbCreator");
+        vm.prank(creator);
+        address m = nb.createMarkee("m", "alpha");
+
+        address backer = makeAddr("nbBacker");
+        _fundApprove(backer, address(nb));
+        int96 r = _rate(0.05 ether);
+        _openOn(nb, backer, m, r);
+        assertEq(nb.topMarkee(), m);
+
+        vm.warp(block.timestamp + 30 days);
+        uint256 pending = nb.pendingSettlement(backer);
+        uint256 expectedFull = uint256(uint96(r)) * 30 days;
+        assertApproxEqRel(pending, expectedFull, 5e16, "no-beneficiary backer not credited the full inflow");
+
+        uint256 balBefore = backer.balance;
+        address[] memory arr = new address[](1);
+        arr[0] = backer;
+        nb.settle(arr);
+        assertApproxEqAbs(backer.balance - balBefore, pending, 1e12, "backer not paid ~full");
+        assertFalse(_critical(address(nb)), "no-beneficiary board went insolvent on settle");
+    }
+
+    /// @notice The Markee owner can reassign free-edit ownership through the board; non-owners cannot.
+    function test_transferMarkeeOwnership() public {
+        address m = _newMarkee("m", "alpha");
+        address owner0 = IMarkee(m).owner();
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner0);
+        board.transferMarkeeOwnership(m, newOwner);
+        assertEq(IMarkee(m).owner(), newOwner, "ownership not transferred");
+
+        vm.expectRevert(bytes("Only Markee owner"));
+        board.transferMarkeeOwnership(m, makeAddr("x"));
+    }
+
+    /// @notice Pagination past the end returns an empty array instead of reverting on underflow.
+    function test_pagination_offsetPastEnd_returnsEmpty() public {
+        address[] memory empty = board.getMarkees(board.markeeCount() + 5, 10);
+        assertEq(empty.length, 0, "getMarkees past end should be empty");
+        address[] memory empty2 = factory.getLeaderboards(100, 10);
+        assertEq(empty2.length, 0, "getLeaderboards past end should be empty");
+    }
+}
+
+/// @dev Repoints a Markee back to a board it was migrated away from (only the current strategy may).
+contract StubStrategy {
+    function repoint(address markee, address newStrategy) external {
+        IMarkee(markee).setPricingStrategy(newStrategy);
+    }
+}
+
+/// @dev A backer contract that rejects ETH on receive, to exercise settle's per-backer isolation.
+contract BadBacker {
+    function setup(
+        ICFAForwarder cfa,
+        IGDAForwarder gda,
+        ISuperToken ethx,
+        StreamingLeaderboard board,
+        address markee,
+        int96 rate,
+        uint256 deposit
+    ) external payable {
+        ISETH(address(ethx)).upgradeByETH{value: msg.value}();
+        IERC20(address(ethx)).approve(address(board), type(uint256).max);
+        board.depositBuffer(address(this), deposit);
+        gda.connectPool(board.poolOf(markee), "");
+        cfa.createFlow(ethx, address(this), address(board), rate, abi.encode(markee));
+    }
+
+    receive() external payable {
+        revert("BadBacker rejects ETH");
     }
 }
