@@ -596,7 +596,7 @@ contract StreamingLeaderboardTest is Test {
         // Still on the legacy board (no migratePricingStrategy call) → registration must revert.
         address[] memory arr = new address[](1);
         arr[0] = markee;
-        vm.expectRevert("Markee not migrated to this strategy");
+        vm.expectRevert(StreamingLeaderboard.MarkeeNotMigrated.selector);
         board.registerExistingMarkees(arr);
     }
 
@@ -1128,7 +1128,7 @@ contract StreamingLeaderboardTest is Test {
 
         address[] memory arr = new address[](1);
         arr[0] = dep;
-        vm.expectRevert(bytes("Markee still winding down"));
+        vm.expectRevert(StreamingLeaderboard.MarkeeWindingDown.selector);
         board.registerExistingMarkees(arr);
     }
 
@@ -1256,7 +1256,7 @@ contract StreamingLeaderboardTest is Test {
         board.transferMarkeeOwnership(m, newOwner);
         assertEq(IMarkee(m).owner(), newOwner, "ownership not transferred");
 
-        vm.expectRevert(bytes("Only Markee owner"));
+        vm.expectRevert(StreamingLeaderboard.OnlyMarkeeOwner.selector);
         board.transferMarkeeOwnership(m, makeAddr("x"));
     }
 

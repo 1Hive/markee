@@ -142,6 +142,40 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     event LegacyFloorCaptured(address indexed markee, uint256 floorRate0, uint256 totalFundsAdded);
     event LegacyFloorConfigChanged(uint256 months, uint256 graceSeconds, uint256 decaySeconds);
 
+    // ─── Custom errors (smaller bytecode than require strings) ────────────────
+    error OnlyAdmin();
+    error Reentrant();
+    error AlreadyInitialized();
+    error ZeroAdmin();
+    error ZeroMarkeeImpl();
+    error EmptyName();
+    error ZeroMaxMessageLength();
+    error ZeroMaxNameLength();
+    error ZeroSeedOwner();
+    error NotInitialized();
+    error MessageTooLong();
+    error NameTooLong();
+    error MarkeeNotMigrated();
+    error ZeroDeposit();
+    error DepositTransferFailed();
+    error StillStreaming();
+    error NothingToWithdraw();
+    error WithdrawTransferFailed();
+    error UnknownMarkee();
+    error AlreadyTop();
+    error NotHigherThanTop();
+    error MarkeeNotOnLeaderboard();
+    error ZeroStrategy();
+    error OnlyMarkeeOwner();
+    error ZeroNewOwner();
+    error BelowMinimumRate();
+    error InsufficientDeposit();
+    error OnlySelf();
+    error MarkeeWindingDown();
+    error NotInRegistry();
+    error RateOverflow();
+    error CloneFailed();
+
     /// @dev Receives native ETH from ETHx.downgradeToETH() during settle(), before forwarding to RevNet.
     receive() external payable {}
 
@@ -151,12 +185,12 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     uint256 private _reentrancyLock;
 
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin");
+        if (!(msg.sender == admin)) revert OnlyAdmin();
         _;
     }
 
     modifier nonReentrant() {
-        require(_reentrancyLock != 2, "Reentrant call");
+        if (!(_reentrancyLock != 2)) revert Reentrant();
         _reentrancyLock = 2;
         _;
         _reentrancyLock = 1;
@@ -179,14 +213,13 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         uint256 _maxNameLength,
         address _seedOwner
     ) external returns (address seedMarkeeAddress) {
-        require(!initialized, "Already initialized");
-        require(_admin != address(0), "Admin cannot be zero address");
-        require(_markeeImplementation != address(0), "Markee implementation cannot be zero address");
-        require(bytes(_leaderboardName).length > 0, "Name cannot be empty");
-        require(_maxMessageLength > 0, "Max message length must be > 0");
-        require(_maxNameLength > 0, "Max name length must be > 0");
-        require(_seedOwner != address(0), "Seed owner cannot be zero address");
-
+        if (!(!initialized)) revert AlreadyInitialized();
+        if (!(_admin != address(0))) revert ZeroAdmin();
+        if (!(_markeeImplementation != address(0))) revert ZeroMarkeeImpl();
+        if (!(bytes(_leaderboardName).length > 0)) revert EmptyName();
+        if (!(_maxMessageLength > 0)) revert ZeroMaxMessageLength();
+        if (!(_maxNameLength > 0)) revert ZeroMaxNameLength();
+        if (!(_seedOwner != address(0))) revert ZeroSeedOwner();
         initialized = true;
         factory = msg.sender;
         admin = _admin;
@@ -234,10 +267,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         external
         returns (address markeeAddress)
     {
-        require(initialized, "Not initialized");
-        require(bytes(_message).length <= maxMessageLength, "Message too long");
-        require(bytes(_name).length <= maxNameLength, "Name too long");
-
+        if (!(initialized)) revert NotInitialized();
+        if (!(bytes(_message).length <= maxMessageLength)) revert MessageTooLong();
+        if (!(bytes(_name).length <= maxNameLength)) revert NameTooLong();
         markeeAddress = _clone(markeeImplementation);
         Markee(markeeAddress).initialize(msg.sender, address(this), _message, _name, 0);
         _registerMarkee(markeeAddress);
@@ -254,7 +286,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         for (uint256 i = 0; i < _markees.length; i++) {
             address m = _markees[i];
             if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
-                require(Markee(m).pricingStrategy() == address(this), "Markee not migrated to this strategy");
+                if (!(Markee(m).pricingStrategy() == address(this))) revert MarkeeNotMigrated();
                 _registerMarkee(m);
                 _captureLegacyFloor(m);
                 _seedTopIfHigher(m);
@@ -303,19 +335,19 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///         host. Permissionless is safe: a deposit can only move funds the backer itself approved
     ///         and always credits the backer's own refundable balance.
     function depositBuffer(address backer, uint256 amount) external nonReentrant {
-        require(amount > 0, "Zero deposit");
-        require(IERC20(address(ETHX)).transferFrom(backer, address(this), amount), "Deposit transfer failed");
+        if (!(amount > 0)) revert ZeroDeposit();
+        if (!(IERC20(address(ETHX)).transferFrom(backer, address(this), amount))) revert DepositTransferFailed();
         backerDeposit[backer] += amount;
         emit DepositAdded(backer, amount, backerDeposit[backer]);
     }
 
     /// @notice Reclaim a deposit once the backer has no active stream.
     function withdrawDeposit() external nonReentrant {
-        require(backerMarkee[msg.sender] == address(0), "Still streaming");
+        if (!(backerMarkee[msg.sender] == address(0))) revert StillStreaming();
         uint256 amount = backerDeposit[msg.sender];
-        require(amount > 0, "Nothing to withdraw");
+        if (!(amount > 0)) revert NothingToWithdraw();
         backerDeposit[msg.sender] = 0;
-        require(IERC20(address(ETHX)).transfer(msg.sender, amount), "Withdraw transfer failed");
+        if (!(IERC20(address(ETHX)).transfer(msg.sender, amount))) revert WithdrawTransferFailed();
         emit DepositWithdrawn(msg.sender, amount);
     }
 
@@ -326,10 +358,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///         inflow callback); this only heals the decay direction, where the incumbent's drop fires
     ///         no callback for the rising rival.
     function claimTop(address challenger) external nonReentrant {
-        require(isMarkeeOnLeaderboard[challenger], "Unknown markee");
-        require(challenger != topMarkee, "Already top");
-        require(_effRate(challenger) > _topThreshold(), "Not higher than top");
-
+        if (!(isMarkeeOnLeaderboard[challenger])) revert UnknownMarkee();
+        if (!(challenger != topMarkee)) revert AlreadyTop();
+        if (!(_effRate(challenger) > _topThreshold())) revert NotHigherThanTop();
         _accrueTop();
         address oldTop = topMarkee;
         _setTop(challenger);
@@ -398,8 +429,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///         own streams lazily (O(1) each). An off-board Markee can only wind down: onFlowUpdated
     ///         refuses to re-promote it, and its per-Markee state is cleared once the last backer leaves.
     function migratePricingStrategy(address _markee, address _newStrategy) external onlyAdmin {
-        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
-        require(_newStrategy != address(0), "Strategy cannot be zero address");
+        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
+        if (!(_newStrategy != address(0))) revert ZeroStrategy();
         _accrueTop();
         _vacateTopIf(_markee);
         _setRefund(_markee, aggregateRate[_markee]);
@@ -411,31 +442,31 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     /// @notice Transfer a Markee's free-edit ownership. Only the current owner may call; the board is
     ///         the Markee's pricingStrategy, so without this wrapper the owner could never reassign.
     function transferMarkeeOwnership(address _markee, address _newOwner) external {
-        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
-        require(msg.sender == Markee(_markee).owner(), "Only Markee owner");
-        require(_newOwner != address(0), "New owner cannot be zero address");
+        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
+        if (!(msg.sender == Markee(_markee).owner())) revert OnlyMarkeeOwner();
+        if (!(_newOwner != address(0))) revert ZeroNewOwner();
         Markee(_markee).transferOwnership(_newOwner);
         emit MarkeeOwnershipTransferred(_markee, msg.sender, _newOwner);
     }
 
     function updateMessage(address _markee, string calldata _newMessage) external {
-        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
-        require(msg.sender == Markee(_markee).owner(), "Only Markee owner");
-        require(bytes(_newMessage).length <= maxMessageLength, "Message too long");
+        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
+        if (!(msg.sender == Markee(_markee).owner())) revert OnlyMarkeeOwner();
+        if (!(bytes(_newMessage).length <= maxMessageLength)) revert MessageTooLong();
         Markee(_markee).setMessage(_newMessage);
         emit MessageUpdated(_markee, msg.sender, _newMessage);
     }
 
     function updateName(address _markee, string calldata _newName) external {
-        require(isMarkeeOnLeaderboard[_markee], "Markee not on this leaderboard");
-        require(msg.sender == Markee(_markee).owner(), "Only Markee owner");
-        require(bytes(_newName).length <= maxNameLength, "Name too long");
+        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
+        if (!(msg.sender == Markee(_markee).owner())) revert OnlyMarkeeOwner();
+        if (!(bytes(_newName).length <= maxNameLength)) revert NameTooLong();
         Markee(_markee).setName(_newName);
         emit NameUpdated(_markee, msg.sender, _newName);
     }
 
     function setAdmin(address _newAdmin) external onlyAdmin {
-        require(_newAdmin != address(0), "Admin cannot be zero address");
+        if (!(_newAdmin != address(0))) revert ZeroAdmin();
         emit AdminChanged(admin, _newAdmin);
         admin = _newAdmin;
     }
@@ -571,11 +602,10 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         returns (bytes memory newCtx)
     {
         address markee = abi.decode(HOST.decodeCtx(ctx).userData, (address));
-        require(isMarkeeOnLeaderboard[markee], "Unknown markee");
+        if (!(isMarkeeOnLeaderboard[markee])) revert UnknownMarkee();
         uint256 rate = uint256(uint96(flowRate));
-        require(rate * SECONDS_IN_MONTH >= minimumMonthlyRate, "Below minimum monthly rate");
-        require(backerDeposit[sender] >= rate * BUFFER_PERIOD, "Insufficient deposit");
-
+        if (!(rate * SECONDS_IN_MONTH >= minimumMonthlyRate)) revert BelowMinimumRate();
+        if (!(backerDeposit[sender] >= rate * BUFFER_PERIOD)) revert InsufficientDeposit();
         _accrueTop();
         backerMarkee[sender] = markee;
         aggregateRate[markee] += rate;
@@ -600,7 +630,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
 
         uint256 newRate = uint256(uint96(flowRate));
         uint256 oldRate = uint256(uint96(previousFlowRate));
-        require(backerDeposit[sender] >= newRate * BUFFER_PERIOD, "Insufficient deposit");
+        if (!(backerDeposit[sender] >= newRate * BUFFER_PERIOD)) revert InsufficientDeposit();
         _accrueTop();
         aggregateRate[markee] = aggregateRate[markee] - oldRate + newRate;
         poolOf[markee].updateMemberUnits(sender, uint128(newRate));
@@ -856,7 +886,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     function _revNetPaySelf(address terminal, uint256 projectId, address recipient, uint256 amount)
         external
     {
-        require(msg.sender == address(this), "Only self");
+        if (!(msg.sender == address(this))) revert OnlySelf();
         _revNetPay(terminal, projectId, recipient, amount);
     }
 
@@ -943,7 +973,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     }
 
     function _registerMarkee(address markeeAddress) internal {
-        require(address(poolOf[markeeAddress]) == address(0), "Markee still winding down");
+        if (!(address(poolOf[markeeAddress]) == address(0))) revert MarkeeWindingDown();
         markeeIndex[markeeAddress] = markees.length;
         markees.push(markeeAddress);
         isMarkeeOnLeaderboard[markeeAddress] = true;
@@ -955,7 +985,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     }
 
     function _unregisterMarkee(address markeeAddress) internal {
-        require(isMarkeeOnLeaderboard[markeeAddress], "Not in registry");
+        if (!(isMarkeeOnLeaderboard[markeeAddress])) revert NotInRegistry();
         uint256 index = markeeIndex[markeeAddress];
         address last = markees[markees.length - 1];
         markees[index] = last;
@@ -966,7 +996,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     }
 
     function _toInt96(uint256 x) internal pure returns (int96) {
-        require(x <= uint256(uint96(type(int96).max)), "Rate overflow");
+        if (!(x <= uint256(uint96(type(int96).max)))) revert RateOverflow();
         return int96(uint96(x));
     }
 
@@ -982,6 +1012,6 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
             ))
             instance := create(0, 0x09, 0x37)
         }
-        require(instance != address(0), "Clone deployment failed");
+        if (!(instance != address(0))) revert CloneFailed();
     }
 }
