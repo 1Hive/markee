@@ -16,6 +16,7 @@ import { runKeeper } from '../lib/streaming/keeper'
 const RPC = process.env.RPC ?? 'http://localhost:8545'
 const FACTORY = process.env.FACTORY as `0x${string}` | undefined
 const LIVE = process.env.LIVE === '1'
+const FROM_BLOCK = process.env.FROM_BLOCK ? BigInt(process.env.FROM_BLOCK) : undefined
 // anvil account[0]
 const PK = (process.env.PK ?? '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80') as `0x${string}`
 
@@ -42,6 +43,7 @@ const report = await runKeeper({
   walletClient,
   account,
   factory: FACTORY,
+  fromBlock: FROM_BLOCK,
   log: (m) => console.log('[keeper]', m),
 })
 

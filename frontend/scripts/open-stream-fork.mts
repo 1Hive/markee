@@ -21,7 +21,7 @@ import {
   splitSignature,
 } from '../lib/superfluid/streaming'
 
-const RPC = 'http://localhost:8545'
+const RPC = process.env.RPC || 'http://localhost:8545'
 const BOARD = process.env.BOARD as `0x${string}`
 const SEED = process.env.SEED as `0x${string}`
 // anvil account[1]
