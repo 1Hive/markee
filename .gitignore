@@ -13,3 +13,6 @@ node_modules/
 
 # Local-only design docs and Claude Code workspace
 /.claude/
+
+# Local-only streaming dev/testnet scripts (kept out of the repo)
+/frontend/scripts/

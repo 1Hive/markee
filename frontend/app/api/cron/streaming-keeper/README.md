@@ -29,6 +29,4 @@ The route authorizes a `Bearer <secret>` or `x-keeper-secret: <secret>` against 
 
 - `?dryRun=1` reads + plans but signs nothing (no `KEEPER_PRIVATE_KEY` needed):
   `curl -H 'Authorization: Bearer <secret>' 'https://<deploy>/api/cron/streaming-keeper?dryRun=1'`
-- Decision logic: `npx tsx scripts/keeper-logic-check.mts` (deterministic, mock client).
-- Against a fork board: `FACTORY=0x.. LIVE=1 npx tsx scripts/keeper-fork.mts`.
 - On-chain heal: `test/StreamingLeaderboard.t.sol::test_getTopMarkees_reflectsLiveRanking_beforeClaimTopHeals`.
