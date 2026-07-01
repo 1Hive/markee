@@ -9,6 +9,8 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { StrategyBadge } from '@/components/StrategyBadge'
+import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -35,6 +37,14 @@ interface GithubLeaderboard {
   repoFullName: string | null
   repoAvatarUrl: string | null
   githubTrafficViews: number | null
+  strategy?: Strategy
+  effectiveRateRaw?: string
+}
+
+function rowEffectiveRate(lb: GithubLeaderboard): bigint {
+  return lb.strategy === 'streaming'
+    ? BigInt(lb.effectiveRateRaw || '0')
+    : imputeEffectiveRate(BigInt(lb.totalFundsRaw || '0'))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -79,6 +89,7 @@ function TableRow({
 }) {
   const [hover, setHover] = useState(false)
   const views = lb.githubTrafficViews ?? 0
+  const isStreaming = lb.strategy === 'streaming'
 
   const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
@@ -140,8 +151,9 @@ function TableRow({
       </span>
 
       {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
       </div>
@@ -154,7 +166,11 @@ function TableRow({
 
       {/* PRICE TO CHANGE */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {hasTopFunds ? (
+        {isStreaming ? (
+          <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>
+            Stream →
+          </span>
+        ) : hasTopFunds ? (
           <button
             onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
             style={{
@@ -200,6 +216,7 @@ function TableRow({
 export default function GithubPlatformPage() {
   const ethPrice = useEthPrice()
   const [leaderboards, setLeaderboards] = useState<GithubLeaderboard[]>([])
+  const [streamRows, setStreamRows] = useState<GithubLeaderboard[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [loading, setLoading] = useState(true)
   const [buyModal, setBuyModal] = useState<{ address: string; topFundsAdded: bigint } | null>(null)
@@ -216,12 +233,42 @@ export default function GithubPlatformPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const tableRows = [...leaderboards]
+  // Streaming boards placed on the GitHub vertical (empty unless the streaming factory is configured).
+  useEffect(() => {
+    fetch(`/api/streaming/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        const rows: GithubLeaderboard[] = (data.leaderboards ?? [])
+          .filter((l: any) => l.platform === 'github')
+          .map((l: any) => ({
+            address: l.address,
+            name: l.name,
+            totalFundsRaw: l.totalFundsRaw ?? '0',
+            markeeCount: l.markeeCount ?? 0,
+            topFundsAddedRaw: l.topFundsAddedRaw ?? '0',
+            topMessage: l.topMessage ?? null,
+            topMessageOwner: l.topMessageOwner ?? null,
+            topMarkeeAddress: l.topMarkeeAddress ?? null,
+            repoVerified: false,
+            repoFullName: null,
+            repoAvatarUrl: null,
+            githubTrafficViews: null,
+            strategy: 'streaming' as const,
+            effectiveRateRaw: l.effectiveRateRaw ?? '0',
+          }))
+        setStreamRows(rows)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Fixed-price and streaming rank together on effectiveRate (imputed for fixed, on-chain for streaming).
+  const tableRows = [...leaderboards.map(lb => ({ ...lb, strategy: lb.strategy ?? ('fixed' as const) })), ...streamRows]
     .filter(lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage)
     .sort((a, b) => {
-      const af = BigInt(a.totalFundsRaw || '0')
-      const bf = BigInt(b.totalFundsRaw || '0')
-      return bf > af ? 1 : bf < af ? -1 : 0
+      const ar = rowEffectiveRate(a)
+      const br = rowEffectiveRate(b)
+      return br > ar ? 1 : br < ar ? -1 : 0
     })
 
   const totalEth = parseFloat(totalPlatformFunds)

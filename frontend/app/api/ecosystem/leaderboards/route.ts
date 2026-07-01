@@ -11,6 +11,8 @@
 import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { formatEther } from 'viem'
+import { imputeEffectiveRate } from '@/lib/strategy'
+import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,6 +68,14 @@ export async function GET(request: Request) {
       sfRes.ok ? sfRes.json() : { leaderboards: [] },
     ])
 
+    // Streaming boards (vertical-agnostic) are already tagged with their platform + strategy by the
+    // streaming API. Only fetched when the streaming factory is configured.
+    const streamData = STREAMING_ENABLED
+      ? await fetch(`${origin}/api/streaming/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders })
+          .then(r => r.ok ? r.json() : { leaderboards: [] })
+          .catch(() => ({ leaderboards: [] }))
+      : { leaderboards: [] }
+
     // Tag each with platform identifier
     const oiLeaderboards = (oiData.leaderboards ?? []).map((l: any) => ({
       ...l,
@@ -102,14 +112,25 @@ export async function GET(request: Request) {
       }
     })
 
-    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards]
-      .map((l: any) => ({ ...l, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }))
+    const streamLeaderboards = (streamData.leaderboards ?? [])
 
-    // Sort descending by total funds
+    // Every row carries a strategy (fixed-price unless the streaming API tagged it) and an
+    // effectiveRateRaw (wei/sec) yardstick: streaming reads it on-chain, fixed-price imputes it from
+    // cumulative funds so both strategies rank on one axis.
+    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards, ...streamLeaderboards]
+      .map((l: any) => {
+        const strategy = l.strategy === 'streaming' ? 'streaming' : 'fixed'
+        const effectiveRateRaw = strategy === 'streaming'
+          ? (l.effectiveRateRaw ?? '0')
+          : imputeEffectiveRate(BigInt(l.totalFundsRaw ?? '0')).toString()
+        return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }
+      })
+
+    // Sort descending by effective rate (the universal cross-strategy ranking).
     leaderboards.sort((a: any, b: any) => {
-      const aWei = BigInt(a.totalFundsRaw ?? '0')
-      const bWei = BigInt(b.totalFundsRaw ?? '0')
-      return bWei > aWei ? 1 : bWei < aWei ? -1 : 0
+      const aRate = BigInt(a.effectiveRateRaw ?? '0')
+      const bRate = BigInt(b.effectiveRateRaw ?? '0')
+      return bRate > aRate ? 1 : bRate < aRate ? -1 : 0
     })
 
     // Compute aggregate total across all platforms, excluding gamed leaderboards

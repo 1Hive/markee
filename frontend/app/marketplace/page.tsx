@@ -9,6 +9,8 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { StrategyBadge } from '@/components/StrategyBadge'
+import type { Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -29,6 +31,8 @@ const PAGE_SIZE = 25
 interface Leaderboard {
   address: string
   platform: 'website' | 'github' | 'superfluid'
+  strategy?: Strategy
+  effectiveRateRaw?: string
   totalFundsRaw: string
   topFundsAddedRaw: string
   markeeCount: number
@@ -68,6 +72,15 @@ function servedOnLabel(lb: Leaderboard): string {
 
 function priceToOvertake(lb: Leaderboard): bigint {
   return BigInt(lb.topFundsAddedRaw || '0') + BigInt('1000000000000000')
+}
+
+function effRateOf(lb: Leaderboard): bigint {
+  return BigInt(lb.effectiveRateRaw || '0')
+}
+
+// One board-detail route for every board; /markee/[address] renders fixed or streaming by strategy.
+function detailHref(lb: Leaderboard): string {
+  return `/markee/${lb.address}`
 }
 
 // ── Count-up ──────────────────────────────────────────────────────────────────
@@ -244,7 +257,7 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
       <HeroBackground />
       <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
         <a
-          href={`/markee/${lb.address}`}
+          href={detailHref(lb)}
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
           style={{
@@ -258,8 +271,9 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
             boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
           }}
         >
-          {/* top-right: views */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
+          {/* top row: strategy badge + views */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
+            <StrategyBadge strategy={lb.strategy ?? 'fixed'} />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
               <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(views)}
             </span>
@@ -298,7 +312,7 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
             opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms',
             pointerEvents: 'none', zIndex: 3,
           }}>
-            {priceLabel} to change
+            {lb.strategy === 'streaming' ? 'Stream to back' : `${priceLabel} to change`}
           </span>
         </a>
       </div>
@@ -309,6 +323,7 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
 // ── Dense table row ───────────────────────────────────────────────────────────
 function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void }) {
   const [hover, setHover] = useState(false)
+  const isStreaming = lb.strategy === 'streaming'
   const totalEth  = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const priceEth  = parseFloat(formatEther(priceToOvertake(lb)))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
@@ -316,7 +331,7 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
 
   return (
     <a
-      href={`/markee/${lb.address}`}
+      href={detailHref(lb)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -341,8 +356,9 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
       </span>
 
       {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
       </div>
@@ -355,21 +371,31 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
 
       {/* PRICE TO CHANGE */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
-          style={{
+        {isStreaming ? (
+          <span style={{
             width: '100%', textAlign: 'center',
-            background: PINK, color: BG, border: 'none', borderRadius: 7,
-            padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-            cursor: 'pointer', whiteSpace: 'nowrap',
-            boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
-            transition: 'transform 120ms, box-shadow 120ms',
-          }}
-          onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
-          onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
-        >
-          {priceLabel}
-        </button>
+            background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7,
+            padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
+          }}>
+            Stream →
+          </span>
+        ) : (
+          <button
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
+            style={{
+              width: '100%', textAlign: 'center',
+              background: PINK, color: BG, border: 'none', borderRadius: 7,
+              padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+              transition: 'transform 120ms, box-shadow 120ms',
+            }}
+            onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
+            onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
+          >
+            {priceLabel}
+          </button>
+        )}
       </div>
     </a>
   )
@@ -462,9 +488,9 @@ export default function MarketplacePage() {
         const bp = priceToOvertake(b)
         return (ap > bp ? 1 : ap < bp ? -1 : 0) * dir
       }
-      // raised (default)
-      const af = BigInt(a.totalFundsRaw || '0')
-      const bf = BigInt(b.totalFundsRaw || '0')
+      // default — rank by the universal effective rate so streaming + fixed share one order
+      const af = effRateOf(a)
+      const bf = effRateOf(b)
       return (af > bf ? 1 : af < bf ? -1 : 0) * dir
     })
   }, [filtered, sortKey, sortDir, viewsMap])
@@ -484,7 +510,7 @@ export default function MarketplacePage() {
 
   // Top leaderboard for featured hero (by totalFunds, must have a message)
   const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage).sort((a, b) => {
-    const af = BigInt(a.totalFundsRaw || '0'), bf = BigInt(b.totalFundsRaw || '0')
+    const af = effRateOf(a), bf = effRateOf(b)
     return bf > af ? 1 : bf < af ? -1 : 0
   })[0] ?? null, [leaderboards])
 

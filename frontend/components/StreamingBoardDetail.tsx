@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Zap, Trophy, Plus, Copy, Check } from 'lucide-react'
 import {
@@ -69,10 +68,7 @@ function MarkeeRowSkeleton() {
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
-export default function StreamingLeaderboardPage() {
-  const params = useParams()
-  const board = (params.address as string) as Address
-
+export function StreamingBoardDetail({ board }: { board: Address }) {
   const { meta, markees, isLoading, refetch } = useStreamingMarkees(board)
 
   const [target, setTarget] = useState<StreamTarget | null>(null)
