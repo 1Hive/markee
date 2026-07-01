@@ -4,6 +4,7 @@ import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
+import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
 const BASELINE_PREFIX = 'superfluid:s6:baseline:'
@@ -36,40 +37,6 @@ const GAMED_LEADERBOARD_ADDRESSES = new Set([
   '0x4ad89044f5f3f324935747a4bce7ba7954d2aaa4', // Gvv (2 ETH)
   '0xc936a036b7727865a696398de30f616be98e266b', // Sup (2 ETH)
 ])
-
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: 'offset', type: 'uint256' },
-      { name: 'limit', type: 'uint256' },
-    ],
-    name: 'getLeaderboards',
-    outputs: [{ name: 'result', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const LEADERBOARD_ABI = [
-  { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  {
-    inputs: [{ name: 'limit', type: 'uint256' }],
-    name: 'getTopMarkees',
-    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const MARKEE_ABI = [
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-] as const
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 
@@ -151,7 +118,7 @@ export async function GET(request: Request) {
 
     const addresses = await client.readContract({
       address: SUPERFLUID_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
+      abi: LeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }) as `0x${string}`[]
@@ -176,13 +143,13 @@ export async function GET(request: Request) {
 
     // 2. Multicall — fetch metadata for each leaderboard (7 calls per address)
     const metaCalls = addresses.flatMap(addr => [
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },        // b+0
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },  // b+1
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },            // b+2
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },           // b+3
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'admin' as const },                  // b+4
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'beneficiaryAddress' as const },     // b+5
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] }, // b+6
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },        // b+0
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const },  // b+1
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const },            // b+2
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'minimumPrice' as const },           // b+3
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'admin' as const },                  // b+4
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'beneficiaryAddress' as const },     // b+5
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] }, // b+6
     ])
 
     const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
@@ -196,8 +163,8 @@ export async function GET(request: Request) {
     const markeeCalls = topMarkeeAddresses.flatMap(addr =>
       addr
         ? [
-            { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
-            { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
+            { address: addr, abi: MarkeeABI, functionName: 'message' as const },
+            { address: addr, abi: MarkeeABI, functionName: 'name' as const },
           ]
         : []
     )

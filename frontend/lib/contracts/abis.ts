@@ -853,6 +853,21 @@ export const LeaderboardV11ABI = [
   },
 ] as const
 
+// LeaderboardFactory pagination — shared by the per-vertical listing routes
+// (openinternet / superfluid / streaming), which each enumerate their factory.
+export const LeaderboardFactoryABI = [
+  {
+    inputs: [
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
+    ],
+    name: 'getLeaderboards',
+    outputs: [{ name: 'result', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
 // Legacy exports for backward compatibility during migration
 export const InvestorStrategyABI = TopDawgStrategyABI
 export const FixedStrategyABI = FixedPriceStrategyABI

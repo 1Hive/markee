@@ -12,6 +12,7 @@ import { kv } from '@vercel/kv'
 import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { getStreamingBoardMeta } from '@/lib/streaming/boardMeta'
 import type { Vertical } from '@/lib/strategy'
+import { LeaderboardFactoryABI, StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,43 +27,14 @@ const VERTICAL_TO_PLATFORM: Record<Vertical, string> = {
   superfluid: 'superfluid',
 }
 
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: 'offset', type: 'uint256' },
-      { name: 'limit', type: 'uint256' },
-    ],
-    name: 'getLeaderboards',
-    outputs: [{ name: 'result', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const LEADERBOARD_ABI = [
-  { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  {
-    inputs: [{ name: 'limit', type: 'uint256' }],
-    name: 'getTopMarkees',
-    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topRates', type: 'uint256[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const MARKEE_ABI = [
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-] as const
-
 function getClient() {
+  // The streaming factory lives on whatever chain NEXT_PUBLIC_STREAMING_FACTORY was deployed to,
+  // which is the chain NEXT_PUBLIC_BASE_RPC_URL points at (the same RPC every client-side streaming
+  // hook reads). Prefer it so this server-side read sees the same factory; fall back to Alchemy/default.
   return createPublicClient({
     chain: base,
     transport: http(
-      process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org',
+      process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
       { fetchOptions: { cache: 'no-store' } },
     ),
   })
@@ -85,7 +57,7 @@ export async function GET(request: Request) {
 
     const addresses = await client.readContract({
       address: factory,
-      abi: FACTORY_ABI,
+      abi: LeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }) as `0x${string}`[]
@@ -107,11 +79,11 @@ export async function GET(request: Request) {
     }
 
     const metaCalls = addresses.flatMap(addr => [
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'beneficiaryAddress' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'leaderboardName' as const },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'totalLeaderboardFunds' as const },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'markeeCount' as const },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'beneficiaryAddress' as const },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'getTopMarkees' as const, args: [1n] },
     ])
     const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
@@ -122,8 +94,8 @@ export async function GET(request: Request) {
 
     const markeeCalls = topMarkeeAddresses.flatMap(addr =>
       addr ? [
-        { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
-        { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'message' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'name' as const },
       ] : []
     )
     const [markeeResults, metas] = await Promise.all([

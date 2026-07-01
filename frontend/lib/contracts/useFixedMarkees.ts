@@ -3,61 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useReadContracts } from 'wagmi'
 import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-
-const FixedPriceStrategyABI = [
-  {
-    inputs: [],
-    name: "markeeAddress",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "price",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "owner",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "revNetEnabled",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "maxMessageLength",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
-  }
-] as const
-
-const MarkeeABI = [
-  {
-    inputs: [],
-    name: "message",
-    outputs: [{ internalType: "string", name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "name",
-    outputs: [{ internalType: "string", name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function"
-  }
-] as const
+import { FixedPriceStrategyABI, MarkeeABI } from '@/lib/contracts/abis'
 
 export type FixedMarkee = {
   name: string
