@@ -10,7 +10,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
-import type { Strategy } from '@/lib/strategy'
+import { SECONDS_IN_MONTH, type Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -76,6 +76,12 @@ function priceToOvertake(lb: Leaderboard): bigint {
 
 function effRateOf(lb: Leaderboard): bigint {
   return BigInt(lb.effectiveRateRaw || '0')
+}
+
+// Streaming boards are valued by flow rate, not cumulative funds — render effectiveRate (wei/sec) as $/mo.
+function monthlyRateLabel(lb: Leaderboard, ethPrice: number | null): string {
+  const monthlyEth = parseFloat(formatEther(effRateOf(lb) * SECONDS_IN_MONTH))
+  return ethPrice ? `${formatUsd(monthlyEth * ethPrice)}/mo` : `${monthlyEth.toFixed(3)} ETH/mo`
 }
 
 // One board-detail route for every board; /markee/[address] renders fixed or streaming by strategy.
@@ -312,7 +318,7 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
             opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms',
             pointerEvents: 'none', zIndex: 3,
           }}>
-            {lb.strategy === 'streaming' ? 'Stream to back' : `${priceLabel} to change`}
+            {lb.strategy === 'streaming' ? `${monthlyRateLabel(lb, ethPrice)} to back` : `${priceLabel} to change`}
           </span>
         </a>
       </div>
@@ -377,7 +383,7 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
             background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7,
             padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
           }}>
-            Stream →
+            {monthlyRateLabel(lb, ethPrice)} →
           </span>
         ) : (
           <button
