@@ -7,8 +7,11 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
+import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { SECONDS_IN_MONTH, type Strategy } from '@/lib/strategy'
 
@@ -34,6 +37,8 @@ interface Leaderboard {
   strategy?: Strategy
   effectiveRateRaw?: string
   totalFundsRaw: string
+  streamedRateRaw?: string
+  streamedAt?: number
   topFundsAddedRaw: string
   markeeCount: number
   topMessage: string | null
@@ -327,12 +332,20 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
 }
 
 // ── Dense table row ───────────────────────────────────────────────────────────
-function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void }) {
+function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void; onStream: () => void }) {
   const [hover, setHover] = useState(false)
   const isStreaming = lb.strategy === 'streaming'
-  const totalEth  = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
+  // Streaming totals tick up live from the API snapshot; fixed boards pass rate 0 → static base.
+  const liveTotalWei = useFlowingAmount(
+    BigInt(lb.totalFundsRaw || '0'),
+    lb.streamedAt ?? 0,
+    isStreaming ? BigInt(lb.streamedRateRaw || '0') : 0n,
+  )
+  const totalEth  = parseFloat(formatEther(liveTotalWei))
   const priceEth  = parseFloat(formatEther(priceToOvertake(lb)))
-  const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
+  const totalLabel = ethPrice
+    ? formatUsd(totalEth * ethPrice)
+    : `${totalEth.toFixed(isStreaming ? 6 : 3)} ETH`
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
 
   return (
@@ -356,7 +369,7 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
         </span>
       </span>
 
-      {/* TOTAL RAISED */}
+      {/* TOTAL RAISED — fixed: lump-sum funds; streaming: cumulative ETHx streamed in (getLogs) */}
       <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
         {totalLabel}
       </span>
@@ -378,13 +391,21 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
       {/* PRICE TO CHANGE */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         {isStreaming ? (
-          <span style={{
-            width: '100%', textAlign: 'center',
-            background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7,
-            padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
-          }}>
-            {monthlyRateLabel(lb, ethPrice)} →
-          </span>
+          <button
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onStream() }}
+            style={{
+              width: '100%', textAlign: 'center',
+              background: PINK, color: BG, border: 'none', borderRadius: 7,
+              padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+              transition: 'transform 120ms, box-shadow 120ms',
+            }}
+            onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
+            onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
+          >
+            {monthlyRateLabel(lb, ethPrice)}
+          </button>
         ) : (
           <button
             onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
@@ -417,6 +438,8 @@ export default function MarketplacePage() {
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
 
   const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
+  const [streamCreate, setStreamCreate] = useState<Leaderboard | null>(null)
+  const [streamTarget, setStreamTarget] = useState<{ board: `0x${string}`; markee: StreamTarget } | null>(null)
 
   const [search,  setSearch]   = useState('')
   const [factory, setFactory]  = useState('all')
@@ -494,10 +517,11 @@ export default function MarketplacePage() {
         const bp = priceToOvertake(b)
         return (ap > bp ? 1 : ap < bp ? -1 : 0) * dir
       }
-      // default — rank by the universal effective rate so streaming + fixed share one order
-      const af = effRateOf(a)
-      const bf = effRateOf(b)
-      return (af > bf ? 1 : af < bf ? -1 : 0) * dir
+      // default (raised) — rank by cumulative funds: fixed boards' lump-sum total, streaming boards'
+      // total streamed-in. One cumulative-$ axis so the "Total raised" column and its sort are honest.
+      const at = BigInt(a.totalFundsRaw || '0')
+      const bt = BigInt(b.totalFundsRaw || '0')
+      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
     })
   }, [filtered, sortKey, sortDir, viewsMap])
 
@@ -516,8 +540,8 @@ export default function MarketplacePage() {
 
   // Top leaderboard for featured hero (by totalFunds, must have a message)
   const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage).sort((a, b) => {
-    const af = effRateOf(a), bf = effRateOf(b)
-    return bf > af ? 1 : bf < af ? -1 : 0
+    const at = BigInt(a.totalFundsRaw || '0'), bt = BigInt(b.totalFundsRaw || '0')
+    return bt > at ? 1 : bt < at ? -1 : 0
   })[0] ?? null, [leaderboards])
 
   const featuredViews = featured?.topMarkeeAddress
@@ -649,6 +673,7 @@ export default function MarketplacePage() {
                 views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
                 ethPrice={ethPrice}
                 onBuy={() => setBuyModal(lb)}
+                onStream={() => setStreamCreate(lb)}
               />
             ))
           )}
@@ -676,6 +701,28 @@ export default function MarketplacePage() {
           platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
+        />
+      )}
+
+      {streamCreate && (
+        <CreateMessageModal
+          board={streamCreate.address as `0x${string}`}
+          onClose={() => setStreamCreate(null)}
+          onCreated={(addr, message, name) => {
+            const board = streamCreate.address as `0x${string}`
+            setStreamCreate(null)
+            setStreamTarget({ board, markee: { address: addr, message, name } })
+          }}
+        />
+      )}
+
+      {streamTarget && (
+        <StreamModal
+          isOpen={true}
+          board={streamTarget.board}
+          markee={streamTarget.markee}
+          onClose={() => setStreamTarget(null)}
+          onSuccess={() => setStreamTarget(null)}
         />
       )}
     </div>

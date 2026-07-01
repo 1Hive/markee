@@ -126,11 +126,12 @@ export async function GET(request: Request) {
         return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }
       })
 
-    // Sort descending by effective rate (the universal cross-strategy ranking).
+    // Sort descending by cumulative funds — fixed boards' lump-sum total, streaming boards' total
+    // streamed-in (getLogs). One cumulative-$ axis across strategies.
     leaderboards.sort((a: any, b: any) => {
-      const aRate = BigInt(a.effectiveRateRaw ?? '0')
-      const bRate = BigInt(b.effectiveRateRaw ?? '0')
-      return bRate > aRate ? 1 : bRate < aRate ? -1 : 0
+      const aTotal = BigInt(a.totalFundsRaw ?? '0')
+      const bTotal = BigInt(b.totalFundsRaw ?? '0')
+      return bTotal > aTotal ? 1 : bTotal < aTotal ? -1 : 0
     })
 
     // Compute aggregate total across all platforms, excluding gamed leaderboards
