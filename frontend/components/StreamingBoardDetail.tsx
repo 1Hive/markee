@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ChevronRight, Zap, Trophy, Plus, Copy, Check } from 'lucide-react'
+import { ChevronRight, Zap, Trophy, Plus, Copy, Check, Eye } from 'lucide-react'
 import { formatEther, type Address } from 'viem'
 import { useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
@@ -33,6 +33,12 @@ function formatRate(weiPerSec: bigint): string {
   if (eth === 0) return '0 ETH/mo'
   if (eth < 0.00005) return '< 0.0001 ETH/mo' // would round to 0.0000 at 4 dp
   return `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
+}
+
+function formatViews(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
 }
 
 function SkeletonBar({ className = '' }: { className?: string }) {
@@ -78,6 +84,22 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     : undefined
 
   const topMarkee = markees[0]
+  const [topViews, setTopViews] = useState<number | null>(null)
+
+  // Track a view for the board's top message, mirroring the fixed reader. The POST both increments
+  // (production only, gated server-side) and returns the current total for display.
+  useEffect(() => {
+    const top = markees[0]
+    if (!top?.address || !top?.message) return
+    fetch('/api/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: top.address, message: top.message }),
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (typeof data?.totalViews === 'number') setTopViews(data.totalViews) })
+      .catch(() => {})
+  }, [markees[0]?.address, !!markees[0]?.message]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const copyAddress = () => {
     navigator.clipboard.writeText(board)
@@ -165,6 +187,13 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                 {topMarkee ? formatRate(topMarkee.rate) : '—'}
               </span>
               <span className="text-[#8A8FBF]">top rate</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Eye size={14} className="text-[#8A8FBF]" />
+              <span className="text-[#EDEEFF] font-semibold">
+                {topViews !== null ? formatViews(topViews) : '—'}
+              </span>
+              <span className="text-[#8A8FBF]">views</span>
             </div>
           </div>
 
