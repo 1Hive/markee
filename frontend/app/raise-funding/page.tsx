@@ -6,6 +6,7 @@ import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -14,7 +15,7 @@ const C = {
   border: 'rgba(138,143,191,0.2)', borderHover: 'rgba(248,151,254,0.4)',
 }
 
-type PlatformKey = 'openinternet' | 'github' | 'superfluid'
+type PlatformKey = 'openinternet' | 'github' | 'superfluid' | 'streaming'
 
 const PLATFORMS = [
   {
@@ -44,6 +45,16 @@ const PLATFORMS = [
     summary: 'Create a Markee sign for your Superfluid project and earn SUP rewards for every message bought.',
     seeUrl: '/ecosystem/platforms/superfluid',
   },
+  // Gated on a configured streaming factory; hidden until NEXT_PUBLIC_STREAMING_FACTORY is set.
+  ...(STREAMING_ENABLED ? [{
+    key: 'streaming' as PlatformKey,
+    name: 'Streaming Board',
+    tagline: 'Stream to hold #1',
+    icon: 'zap',
+    color: C.blue,
+    summary: 'Create a board where backers stream ETH by the second to hold the top message. Highest active rate wins.',
+    seeUrl: '/ecosystem/platforms/streaming',
+  }] : []),
 ]
 
 function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; color: string }) {

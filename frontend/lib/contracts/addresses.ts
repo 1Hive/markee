@@ -18,12 +18,18 @@ export const REVNET_V6_CONFIG = {
   },
 } as const
 
-// V1.3 LeaderboardFactory contract addresses 
+// V1.3 LeaderboardFactory contract addresses
 export const FACTORIES = {
   SUPERFLUID: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
   OPEN_INTERNET: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
 } as const
+
+// StreamingLeaderboardFactory — not yet deployed on Base mainnet (gated on the Superfluid governance
+// setAppRegistrationKey). Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed (or anvil-fork) factory
+// address to light up the streaming listing + create flow; unset/invalid keeps the feature hidden.
+export const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '') as `0x${string}` | ''
+export const STREAMING_ENABLED = /^0x[0-9a-fA-F]{40}$/.test(STREAMING_FACTORY)
 
 // Fixed-price strategy contracts (in use for the fixed-price messages on the home page)
 export const CONTRACTS = {
