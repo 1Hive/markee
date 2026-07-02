@@ -2,7 +2,6 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   keccak256,
-  parseSignature,
   toBytes,
   type Address,
   type Hex,
@@ -48,71 +47,13 @@ export function runwaySeconds(balance: bigint, ratePerSec: bigint): bigint {
   return balance / ratePerSec
 }
 
-// ── EIP-2612 permit (authorizes the in-batch depositBuffer pull, no ERC20 approve op exists) ──
-
-export interface PermitParams {
-  tokenName: string
-  chainId: number
-  ethx: Address
-  owner: Address
-  spender: Address
-  value: bigint
-  nonce: bigint
-  deadline: bigint
-}
-
-export function buildPermitTypedData(p: PermitParams) {
-  return {
-    domain: {
-      name: p.tokenName,
-      version: '1', // Superfluid SuperToken EIP-712 version; verify against ETHx on a Base fork.
-      chainId: p.chainId,
-      verifyingContract: p.ethx,
-    },
-    types: {
-      Permit: [
-        { name: 'owner', type: 'address' },
-        { name: 'spender', type: 'address' },
-        { name: 'value', type: 'uint256' },
-        { name: 'nonce', type: 'uint256' },
-        { name: 'deadline', type: 'uint256' },
-      ],
-    },
-    primaryType: 'Permit' as const,
-    message: {
-      owner: p.owner,
-      spender: p.spender,
-      value: p.value,
-      nonce: p.nonce,
-      deadline: p.deadline,
-    },
-  }
-}
-
-export function splitSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-  const { r, s, v } = parseSignature(signature)
-  return { v: Number(v ?? 27n), r, s }
-}
-
-// ── Single-tx open: wrap → permit → depositBuffer → createFlow (host.batchCall) ──
+// ── Batched open: wrap → depositBuffer → createFlow (host.batchCall). The depositBuffer pull is
+// authorized by a plain ERC20 approve sent as its own transaction beforehand (an in-batch approve is
+// impossible: op-301 forwards with SimpleForwarder as sender, and Privy's embedded-wallet typed-data
+// signing UI is broken, which rules the EIP-2612 permit route out).
 
 const ETHX_BATCH_ABI = [
   { type: 'function', name: 'upgradeByETHTo', stateMutability: 'payable', inputs: [{ name: 'to', type: 'address' }], outputs: [] },
-  {
-    type: 'function',
-    name: 'permit',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'deadline', type: 'uint256' },
-      { name: 'v', type: 'uint8' },
-      { name: 'r', type: 'bytes32' },
-      { name: 's', type: 'bytes32' },
-    ],
-    outputs: [],
-  },
 ] as const
 
 const DEPOSIT_BUFFER_ABI = [
@@ -157,28 +98,17 @@ export interface OpenStreamParams {
   ratePerSec: bigint
   buffer: bigint
   cfaAgreement: Address
-  permit: { deadline: bigint; v: number; r: Hex; s: Hex }
 }
 
-// Returns the 4 ops for host.batchCall, in the order the strategy requires: the value-bearing wrap
-// first (it drains the host balance so the later value-0 forwards don't revert), then the permit that
-// authorizes the buffer pull, then the buffer deposit credited to the explicit backer, then the
+// Returns the 3 ops for host.batchCall, in the order the strategy requires: the value-bearing wrap
+// first (it drains the host balance so the later value-0 forwards don't revert), then the buffer
+// deposit credited to the explicit backer (pulled via the backer's prior ERC20 approve), then the
 // markee-tagged createFlow (op 201 preserves the backer as the flow sender).
 export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
   const wrap: Operation = {
     operationType: OP_SIMPLE_FORWARD_CALL,
     target: p.ethx,
     data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
-  }
-
-  const permit: Operation = {
-    operationType: OP_SIMPLE_FORWARD_CALL,
-    target: p.ethx,
-    data: encodeFunctionData({
-      abi: ETHX_BATCH_ABI,
-      functionName: 'permit',
-      args: [p.backer, p.board, p.buffer, p.permit.deadline, p.permit.v, p.permit.r, p.permit.s],
-    }),
   }
 
   const deposit: Operation = {
@@ -200,7 +130,7 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
     data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [callData, userData]),
   }
 
-  return [wrap, permit, deposit, flow]
+  return [wrap, deposit, flow]
 }
 
 // Native ETH to send with the batch: the buffer (pulled back into the board as the SuperApp deposit)
@@ -265,8 +195,3 @@ export const CFA_FORWARDER_ABI = [
   },
 ] as const
 
-export const ETHX_READ_ABI = [
-  { type: 'function', name: 'name', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
-  { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
-  { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
-] as const

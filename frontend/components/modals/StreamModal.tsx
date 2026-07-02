@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   useAccount,
   useBalance,
+  usePublicClient,
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
   useSwitchChain,
-  useSignTypedData,
 } from 'wagmi'
-import { parseEther, formatEther, type Address } from 'viem'
+import { erc20Abi, parseEther, formatEther, type Address, type Hex } from 'viem'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -18,15 +18,12 @@ import {
   STREAMING_BASE,
   SUPERFLUID_HOST_ABI,
   CFA_FORWARDER_ABI,
-  ETHX_READ_ABI,
   CFA_AGREEMENT_ID,
   monthlyToRatePerSec,
   ratePerSecToMonthly,
   bufferFor,
   openStreamValue,
-  buildPermitTypedData,
   buildOpenStreamOps,
-  splitSignature,
 } from '@/lib/superfluid/streaming'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -98,12 +95,20 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
   const [monthly, setMonthly] = useState('')
   const [fundMonths, setFundMonths] = useState('1')
   const [error, setError] = useState<string | null>(null)
-  const [signingPermit, setSigningPermit] = useState(false)
+  const [approving, setApproving] = useState(false)
   const [action, setAction] = useState<'open' | 'stop' | 'withdraw'>('open')
 
-  const { signTypedDataAsync } = useSignTypedData()
-  const { writeContract, writeContractAsync, data: hash, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN.id })
+  // The approve transaction is awaited inline, so only the action's final hash lands here and
+  // drives the confirmation/success UI (an approve receipt must not trigger the success screen).
+  const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
+  const [submitting, setSubmitting] = useState(false)
+  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+
+  // Lets the async open flow bail out after each await if the user closed the modal meanwhile.
+  const openRef = useRef(isOpen)
+  openRef.current = isOpen
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
@@ -111,10 +116,6 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
   // ── Reads ─────────────────────────────────────────────────────────────────
   const { data: minMonthlyWei } = useReadContract({
     address: board, abi: StreamingLeaderboardABI, functionName: 'minimumMonthlyRate', chainId: CANONICAL_CHAIN.id,
-    query: { enabled: isOpen },
-  })
-  const { data: ethxName } = useReadContract({
-    address: ETHX, abi: ETHX_READ_ABI, functionName: 'name', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
   const { data: cfaAgreement } = useReadContract({
@@ -133,13 +134,14 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI, functionName: 'getFlowrate', args: address ? [ETHX, address, board] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled },
   })
-  const { data: nonce, refetch: refetchNonce } = useReadContract({
-    address: ETHX, abi: ETHX_READ_ABI, functionName: 'nonces', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: ETHX, abi: erc20Abi, functionName: 'allowance', args: address ? [address, board] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled },
   })
 
   const backsThis = !!backedMarkee && backedMarkee.toLowerCase() === markee.address.toLowerCase()
   const backsOther = !!backedMarkee && backedMarkee !== '0x0000000000000000000000000000000000000000' && !backsThis
+  const readsReady = !!cfaAgreement && allowance !== undefined && !!publicClient
 
   const minMonthlyEth = minMonthlyWei ? formatEther(minMonthlyWei) : '0'
 
@@ -162,22 +164,26 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
   // ── Reset / close-on-success ────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) {
-      setMonthly(''); setFundMonths('1'); setError(null); setSigningPermit(false); reset()
+      setMonthly(''); setFundMonths('1'); setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
 
   useEffect(() => {
     if (isSuccess && isOpen) {
-      refetchBacked(); refetchDeposit(); refetchRate(); refetchNonce(); refetchBalance()
+      refetchBacked(); refetchDeposit(); refetchRate(); refetchAllowance(); refetchBalance()
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchNonce, refetchBalance])
+  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance])
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   async function handleOpenStream() {
     setError(null)
-    if (!address || !cfaAgreement || ethxName === undefined || nonce === undefined) return
+    if (!address) return
+    if (!cfaAgreement) {
+      setError('Still loading chain data. Try again in a moment.')
+      return
+    }
     if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
     // Mirror the on-chain check exactly: it validates ratePerSec * SECONDS_IN_MONTH, not the typed amount.
     if (minMonthlyWei && ratePerSecToMonthly(calc.ratePerSec) < minMonthlyWei) {
@@ -187,23 +193,30 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     // GDA buffer. Require the prefund to clear that so createFlow can't revert for insufficient balance.
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
 
+    if (!publicClient) {
+      setError('Still loading chain data. Try again in a moment.')
+      return
+    }
+
     try {
       setAction('open')
-      setSigningPermit(true)
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600)
-      const typed = buildPermitTypedData({
-        tokenName: ethxName as string,
-        chainId: CANONICAL_CHAIN.id,
-        ethx: ETHX,
-        owner: address,
-        spender: board,
-        value: calc.buffer,
-        nonce: nonce as bigint,
-        deadline,
-      })
-      const signature = await signTypedDataAsync(typed)
-      const { v, r, s } = splitSignature(signature)
-      setSigningPermit(false)
+      setSubmitting(true)
+
+      if ((allowance ?? 0n) < calc.buffer) {
+        setApproving(true)
+        const approveHash = await writeContractAsync({
+          address: ETHX,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [board, calc.buffer],
+          chainId: CANONICAL_CHAIN.id,
+        })
+        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        if (approveReceipt.status !== 'success') throw new Error('The approval transaction reverted.')
+        await refetchAllowance()
+        if (!openRef.current) return
+        setApproving(false)
+      }
 
       const ops = buildOpenStreamOps({
         ethx: ETHX,
@@ -213,10 +226,9 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
         ratePerSec: calc.ratePerSec,
         buffer: calc.buffer,
         cfaAgreement: cfaAgreement as Address,
-        permit: { deadline, v, r, s },
       })
 
-      await writeContractAsync({
+      const batchHash = await writeContractAsync({
         address: HOST,
         abi: SUPERFLUID_HOST_ABI,
         functionName: 'batchCall',
@@ -224,43 +236,57 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
         value: calc.value,
         chainId: CANONICAL_CHAIN.id,
       })
+      if (!openRef.current) return
+      setTxHash(batchHash)
     } catch (e: unknown) {
-      setSigningPermit(false)
+      if (!openRef.current) return
+      setApproving(false)
+      setSubmitting(false)
       setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.')
     }
   }
 
-  function handleStopStream() {
+  async function handleStopStream() {
     setError(null)
     setAction('stop')
-    writeContract({
-      address: CFA_FORWARDER,
-      abi: CFA_FORWARDER_ABI,
-      functionName: 'setFlowrate',
-      args: [ETHX, board, 0n],
-      chainId: CANONICAL_CHAIN.id,
-    })
+    try {
+      const hash = await writeContractAsync({
+        address: CFA_FORWARDER,
+        abi: CFA_FORWARDER_ABI,
+        functionName: 'setFlowrate',
+        args: [ETHX, board, 0n],
+        chainId: CANONICAL_CHAIN.id,
+      })
+      setTxHash(hash)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.')
+    }
   }
 
-  function handleWithdrawDeposit() {
+  async function handleWithdrawDeposit() {
     setError(null)
     setAction('withdraw')
-    writeContract({
-      address: board,
-      abi: StreamingLeaderboardABI,
-      functionName: 'withdrawDeposit',
-      args: [],
-      chainId: CANONICAL_CHAIN.id,
-    })
+    try {
+      const hash = await writeContractAsync({
+        address: board,
+        abi: StreamingLeaderboardABI,
+        functionName: 'withdrawDeposit',
+        args: [],
+        chainId: CANONICAL_CHAIN.id,
+      })
+      setTxHash(hash)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.')
+    }
   }
 
   if (!isOpen) return null
 
-  const busy = signingPermit || isPending || isConfirming
+  const busy = approving || submitting || isPending || isConfirming
   const txActive = busy || isSuccess
   const stepLabel = isSuccess
     ? 'Done'
-    : signingPermit ? 'Sign approval'
+    : approving ? 'Approve deposit'
     : isPending ? 'Confirm in wallet'
     : isConfirming ? 'On Base'
     : backsThis ? 'Manage stream'
@@ -308,7 +334,7 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
               <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
                 {isSuccess
                   ? (action === 'stop' ? '✓ Stream stopped' : action === 'withdraw' ? '✓ Deposit withdrawn' : '🎉 Stream live')
-                  : signingPermit ? 'Sign the deposit approval' : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
+                  : approving ? 'Approving the deposit' : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
               </div>
               <div style={{ color: MUTED, fontSize: 13, maxWidth: 320, lineHeight: 1.5 }}>
                 {isSuccess
@@ -317,8 +343,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                       : action === 'withdraw'
                         ? 'Your refundable buffer deposit is back in your wallet.'
                         : 'Your stream is backing this Markee. The board ranks by streamed rate.')
-                  : signingPermit
-                    ? 'A gasless signature authorizes the buffer deposit. No funds move yet.'
+                  : approving
+                    ? 'A small approval lets the board hold your refundable buffer. The stream opens next.'
                     : 'Usually under 2 seconds on Base.'}
               </div>
             </div>
@@ -349,8 +375,12 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                   <Row label="Your stream" value={`${currentMonthlyEth} ETH / mo`} />
                   <Row label="Buffer on deposit" value={`${deposit ? formatEther(deposit) : '0'} ETHx`} />
                 </div>
-                <button onClick={handleStopStream} disabled={busy} style={btnStyle(false)}>Stop stream</button>
-                <button onClick={handleWithdrawDeposit} disabled={busy || (!!currentRate && currentRate > 0n)} style={btnStyle(true)}>
+                <button onClick={handleStopStream} disabled={busy} style={btnStyle(false, busy)}>Stop stream</button>
+                <button
+                  onClick={handleWithdrawDeposit}
+                  disabled={busy || (!!currentRate && currentRate > 0n)}
+                  style={btnStyle(true, busy || (!!currentRate && currentRate > 0n))}
+                >
                   Withdraw deposit
                 </button>
                 {!!currentRate && currentRate > 0n && (
@@ -403,12 +433,12 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                     Add funds
                   </button>
                 ) : (
-                  <button onClick={handleOpenStream} disabled={busy || calc.value <= 0n || !cfaAgreement} style={btnStyle(true)}>
-                    Start streaming
+                  <button onClick={handleOpenStream} disabled={busy || !readsReady} style={btnStyle(true, busy || !readsReady)}>
+                    {readsReady ? 'Start streaming' : 'Loading chain data…'}
                   </button>
                 )}
                 <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                  One signature (approval) + one transaction. The buffer is fully refundable when you stop.
+                  Two quick transactions: a deposit approval, then the stream. The buffer is fully refundable when you stop.
                 </div>
               </>
             )}
@@ -427,11 +457,13 @@ const inputStyle = {
   fontFamily: MONO, fontSize: 13, outline: 'none',
 }
 
-function btnStyle(primary: boolean): React.CSSProperties {
+function btnStyle(primary: boolean, disabled = false): React.CSSProperties {
   return {
     width: '100%', padding: '13px 0', borderRadius: 10, border: primary ? 'none' : `1px solid ${BORDER}`,
     background: primary ? PINK : 'transparent', color: primary ? BG : TEXT,
-    fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+    fontFamily: 'inherit', fontWeight: 700, fontSize: 15,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
   }
 }
 
