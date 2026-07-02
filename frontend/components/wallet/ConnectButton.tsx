@@ -1,5 +1,6 @@
 'use client'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { useAccount } from 'wagmi'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const BORDER = 'rgba(138,143,191,0.2)'
@@ -16,6 +17,7 @@ function GlowDot() {
 export function ConnectButton() {
   const { authenticated, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
+  const { address } = useAccount()
 
   if (!authenticated) {
     return (
@@ -34,7 +36,7 @@ export function ConnectButton() {
     )
   }
 
-  const displayAddress = wallets[0]?.address
+  const displayAddress = address ?? wallets[0]?.address
   const displayName = displayAddress
     ? `${displayAddress.slice(0, 6)}…${displayAddress.slice(-4)}`
     : user?.email?.address ?? 'Account'
