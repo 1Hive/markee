@@ -120,7 +120,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
           <div className="flex items-center gap-2 text-sm flex-wrap">
             <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#8A8FBF]">Streaming</span>
+            <Link href="/create-a-markee?strategy=streaming" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Streaming</Link>
             <ChevronRight size={16} className="text-[#8A8FBF]" />
             {isLoading && !meta.name
               ? <SkeletonBar className="w-32 h-3.5" />

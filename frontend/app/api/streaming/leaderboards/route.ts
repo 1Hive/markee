@@ -145,12 +145,14 @@ export async function GET(request: Request) {
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'totalLeaderboardFunds' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'markeeCount' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'beneficiaryAddress' as const },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'admin' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'getTopMarkees' as const, args: [1n] },
     ])
+    const CALLS_PER_BOARD = 6
     const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
     const topMarkeeAddresses: (`0x${string}` | null)[] = addresses.map((_, i) => {
-      const topResult = metaResults[i * 5 + 4]?.result as [string[], bigint[]] | undefined
+      const topResult = metaResults[i * CALLS_PER_BOARD + 5]?.result as [string[], bigint[]] | undefined
       return (topResult?.[0]?.[0] ?? null) as `0x${string}` | null
     })
 
@@ -170,13 +172,14 @@ export async function GET(request: Request) {
 
     let markeeCallIndex = 0
     const leaderboards = addresses.map((addr, i) => {
-      const b = i * 5
+      const b = i * CALLS_PER_BOARD
       const name        = (metaResults[b]?.result as string) ?? addr
       const streamed    = streamedByBoard[i]?.streamed ?? 0n
       const inflowRate  = streamedByBoard[i]?.inflowRate ?? 0n
       const markeeCount = (metaResults[b + 2]?.result as bigint) ?? 0n
       const beneficiary = (metaResults[b + 3]?.result as string) ?? ''
-      const topResult   = metaResults[b + 4]?.result as [string[], bigint[]] | undefined
+      const admin       = (metaResults[b + 4]?.result as string) ?? ''
+      const topResult   = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
       const topRate     = topResult?.[1]?.[0] ?? 0n
 
       let topMessage: string | null = null
@@ -204,6 +207,7 @@ export async function GET(request: Request) {
         streamedAt,
         markeeCount: Number(markeeCount),
         beneficiary,
+        admin,
         // effectiveRateRaw = current top wei/sec (the $/mo "price to change"); topFundsAddedRaw reuses it
         // as the activity signal (topFundsAddedRaw > 0 && topMessage) the listings filter on.
         effectiveRateRaw: topRate.toString(),
