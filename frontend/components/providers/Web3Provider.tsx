@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { config } from '@/lib/config/wagmi'
 import { ModerationProvider } from '@/components/moderation'
 import { ReactNode, useState } from 'react'
-import { base } from 'viem/chains'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 
 export function Web3Provider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
@@ -20,8 +20,8 @@ export function Web3Provider({ children }: { children: ReactNode }) {
             createOnLogin: 'all-users',
           },
         },
-        defaultChain: base,
-        supportedChains: [base],
+        defaultChain: CANONICAL_CHAIN,
+        supportedChains: [CANONICAL_CHAIN],
         appearance: {
           theme: 'dark',
           accentColor: '#7C9CFF',

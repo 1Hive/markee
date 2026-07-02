@@ -1,7 +1,23 @@
 // Contract addresses and configuration for Markee
 import { base } from 'wagmi/chains'
+import type { Chain } from 'viem'
 // All Markees are deployed on Base (canonical chain)
-export const CANONICAL_CHAIN = base
+//
+// FORK-TESTING ONLY — REMOVE BEFORE MAINNET. When NEXT_PUBLIC_BASE_RPC_URL points at a Base fork, we
+// override the chain's rpcUrls so Privy embedded wallets broadcast writes through the fork (Privy reads
+// chain.rpcUrls, not the wagmi transport). Same chainId (8453), so the ETHx permit domain is unchanged.
+// External wallets still use their own RPC and are NOT fork-safe. Delete this override + the env var for prod.
+const FORK_RPC = process.env.NEXT_PUBLIC_BASE_RPC_URL
+export const CANONICAL_CHAIN: Chain = FORK_RPC
+  ? {
+      ...base,
+      rpcUrls: {
+        ...base.rpcUrls,
+        default: { http: [FORK_RPC] },
+        privyWalletOverride: { http: [FORK_RPC] },
+      },
+    }
+  : base
 export const CANONICAL_CHAIN_ID = base.id
 // MARKEE token address (same across all chains)
 export const MARKEE_TOKEN = '0xee3027f1e021b09D629922D40436C5DeA3c6cb38' as const
