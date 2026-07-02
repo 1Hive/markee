@@ -11,6 +11,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { StrategyBadge } from '@/components/StrategyBadge'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -39,6 +40,7 @@ interface BaseLeaderboard {
   topMessageOwner?: string | null
   topFundsAddedRaw: string
   minimumPriceRaw?: string
+  strategy?: 'fixed' | 'streaming'
 }
 interface SuperfluidLeaderboard extends BaseLeaderboard { platform: 'superfluid' }
 interface LinkedFile {
@@ -173,6 +175,12 @@ function detailUrl(lb: AnyLeaderboard) {
   return `/markee/${lb.address}`
 }
 
+// The website verify/integrate/edit management flows only exist for fixed-price website boards;
+// streaming boards share the 'website' placement but are managed from their board page.
+function isFixedWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
+  return lb.platform === 'website' && lb.strategy !== 'streaming'
+}
+
 // ── Platform icon ─────────────────────────────────────────────────────────────
 function PlatIcon({ lb, size = 20 }: { lb: AnyLeaderboard; size?: number }) {
   if (lb.platform === 'github')     return <Github size={size} style={{ color: TEXT2 }} />
@@ -272,7 +280,10 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
             <PlatIcon lb={lb} size={22} />
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: TEXT, fontWeight: 700, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <div style={{ color: TEXT, fontWeight: 700, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name}</div>
+              {lb.strategy === 'streaming' && <StrategyBadge strategy="streaming" size="xs" />}
+            </div>
             <div style={{ color: MUTED, fontSize: 12, fontFamily: MONO }}>{sub}</div>
           </div>
         </div>
@@ -337,7 +348,7 @@ const SETUP_COLS = '180px 165px 1fr 220px'
 
 function SetupStatusPill({ lb }: { lb: AnyLeaderboard }) {
   const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
-  const missingVerify = lb.platform === 'website' && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
+  const missingVerify = isFixedWebsiteBoard(lb) && (lb.verifiedUrls?.length ?? 0) === 0
   const needsIntegration = hasFunds && missingVerify
   const col = needsIntegration ? BLUE : MUTED
   const label = needsIntegration ? 'Integration Needed' : 'No Messages Yet'
@@ -364,7 +375,7 @@ function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
         </div>
         {markees.map(lb => {
           const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
-          const missingVerify = lb.platform === 'website' && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0
+          const missingVerify = isFixedWebsiteBoard(lb) && (lb.verifiedUrls?.length ?? 0) === 0
 
           // Awaiting Integration: has funds but no verified URL → Verify Integration
           // Awaiting Activation: no funds → Buy First Message (all platforms, same blue style)
@@ -744,6 +755,7 @@ export default function AccountPage() {
   const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
   const [githubBoards, setGithubBoards]         = useState<GithubLeaderboard[]>([])
   const [websiteBoards, setWebsiteBoards]       = useState<WebsiteLeaderboard[]>([])
+  const [streamingBoards, setStreamingBoards]   = useState<AnyLeaderboard[]>([])
   const [isLoading, setIsLoading]               = useState(false)
 
   // Messages
@@ -764,10 +776,11 @@ export default function AccountPage() {
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
     try {
-      const [sfRes, ghRes, oiRes] = await Promise.all([
+      const [sfRes, ghRes, oiRes, strRes] = await Promise.all([
         fetch('/api/superfluid/leaderboards?bust=1',   { cache: 'no-store' }),
         fetch('/api/github/leaderboards?bust=1',       { cache: 'no-store' }),
         fetch('/api/openinternet/leaderboards?bust=1', { cache: 'no-store' }),
+        fetch('/api/streaming/leaderboards?bust=1',    { cache: 'no-store' }),
       ])
       if (sfRes.ok) {
         const data = await sfRes.json()
@@ -795,6 +808,22 @@ export default function AccountPage() {
               return c && c.toLowerCase() === addr.toLowerCase()
             })
             .map((lb: any) => ({ ...lb, platform: 'website' as const }))
+        )
+      }
+      if (strRes.ok) {
+        const data = await strRes.json()
+        setStreamingBoards(
+          (data.leaderboards ?? [])
+            .filter((lb: any) => lb.admin && lb.admin.toLowerCase() === addr.toLowerCase())
+            .map((lb: any): AnyLeaderboard => {
+              if (lb.platform === 'github') {
+                return { ...lb, platform: 'github', repoFullName: null, repoAvatarUrl: null, repoHtmlUrl: null, filePath: null, linkedFiles: [] }
+              }
+              if (lb.platform === 'superfluid') {
+                return { ...lb, platform: 'superfluid' }
+              }
+              return { ...lb, platform: 'website', creator: lb.admin, logoUrl: null, siteUrl: null, verifiedUrl: null, verifiedUrls: [], status: 'pending', isLegacy: false }
+            })
         )
       }
     } catch (err) {
@@ -875,13 +904,13 @@ export default function AccountPage() {
 
   // Derived board lists
   const allBoards = useMemo(() =>
-    [...superfluidBoards, ...githubBoards, ...websiteBoards].sort((a, b) => {
+    [...superfluidBoards, ...githubBoards, ...websiteBoards, ...streamingBoards].sort((a, b) => {
       const d = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return d > 0n ? 1 : d < 0n ? -1 : 0
-    }), [superfluidBoards, githubBoards, websiteBoards])
+    }), [superfluidBoards, githubBoards, websiteBoards, streamingBoards])
 
   const awaitingVerification = useMemo(() =>
-    allBoards.filter(lb => lb.platform === 'website' && BigInt(lb.topFundsAddedRaw ?? '0') > 0n && ((lb as WebsiteLeaderboard).verifiedUrls?.length ?? 0) === 0) as WebsiteLeaderboard[], [allBoards])
+    allBoards.filter(lb => isFixedWebsiteBoard(lb) && BigInt(lb.topFundsAddedRaw ?? '0') > 0n && (lb.verifiedUrls?.length ?? 0) === 0) as WebsiteLeaderboard[], [allBoards])
   const awaitingVerificationAddrs = useMemo(() => new Set(awaitingVerification.map(lb => lb.address)), [awaitingVerification])
 
   const activeBoards = useMemo(() =>
@@ -901,7 +930,7 @@ export default function AccountPage() {
 
   // Manage a leaderboard (from active table) — opens the manage modal
   const handleManage = useCallback((lb: AnyLeaderboard) => {
-    if (lb.platform === 'website') setManageTarget(lb)
+    if (isFixedWebsiteBoard(lb)) setManageTarget(lb)
     else window.open(detailUrl(lb), '_self')
   }, [])
 

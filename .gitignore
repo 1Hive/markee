@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Vercel
+.vercel
+
+# Foundry build/deploy artifacts (repo-root only — anchored so frontend/lib source is never ignored)
+/out/
+/cache/
+/broadcast/
+/lib/
+/foundry.lock
+
+# Local-only design docs and Claude Code workspace
+/.claude/
+
+# Local-only streaming dev/testnet scripts (kept out of the repo)
+/frontend/scripts/

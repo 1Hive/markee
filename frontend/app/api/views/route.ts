@@ -99,6 +99,20 @@ export async function POST(req: NextRequest) {
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
 
+  // Only production deployments mutate the shared view store. Previews and local dev read the same
+  // store through (so counts look real) but never increment it, keeping preview traffic and bots
+  // out of the production totals.
+  if (process.env.VERCEL_ENV !== 'production') {
+    const [totalViews, messageViews] = await kv.mget<number[]>(
+      `views:total:${address}`,
+      `views:msg:${address}:${msgHash}`,
+    )
+    return NextResponse.json(
+      { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
+      { headers: corsHeaders(origin) },
+    )
+  }
+
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
   const dedupeKey = `dedup:${ip}:${address}`

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { parseEther } from 'viem'
 import { base } from 'viem/chains'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 
@@ -76,7 +76,8 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   const [message,  setMessage]  = useState('')
 
   const { authenticated, login } = usePrivy()
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
+  const { switchChain } = useSwitchChain()
 
   const { writeContract, data: txHash, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -92,6 +93,10 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   const handleBuy = () => {
     if (!authenticated || !address) { login(); return }
     if (eth <= 0) return
+    if (chain?.id !== base.id) {
+      switchChain?.({ chainId: base.id })
+      return
+    }
     writeContract({
       address: cfg.terminal,
       abi:     JB_TERMINAL_PAY_ABI,
@@ -106,6 +111,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         '0x' as `0x${string}`,
       ],
       value: parseEther(amount),
+      chainId: base.id,
     })
   }
 
@@ -156,7 +162,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 4px 0' }}>
           <span style={{ color: '#8A8FBF', fontSize: 13 }}>You receive</span>
           <span style={{ color: '#F897FE', fontWeight: 800, fontFamily: MONO, fontSize: 18, letterSpacing: -0.3 }}>
-            {receive.toLocaleString()} MARKEE
+            {receive.toLocaleString('en-US')} MARKEE
           </span>
         </div>
 

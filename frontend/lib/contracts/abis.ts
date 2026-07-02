@@ -853,6 +853,60 @@ export const LeaderboardV11ABI = [
   },
 ] as const
 
+// LeaderboardFactory pagination — shared by the per-vertical listing routes
+// (openinternet / superfluid / streaming), which each enumerate their factory.
+export const LeaderboardFactoryABI = [
+  {
+    inputs: [
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
+    ],
+    name: 'getLeaderboards',
+    outputs: [{ name: 'result', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
 // Legacy exports for backward compatibility during migration
 export const InvestorStrategyABI = TopDawgStrategyABI
 export const FixedStrategyABI = FixedPriceStrategyABI
+
+// StreamingLeaderboard (Option B, GDA-refund escrow). Reads are v1.3-compatible
+// (getTopMarkees/minimumPrice/totalLeaderboardFunds), but the rate views (effectiveRate,
+// aggregateRate, currentLegacyFloor, topRate) are wei/sec, not cumulative funds.
+export const StreamingLeaderboardABI = [
+  { inputs: [], name: 'VERSION', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'minimumMonthlyRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'maxMessageLength', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'maxNameLength', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'topMarkee', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'topRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'markee', type: 'address' }], name: 'effectiveRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'markee', type: 'address' }], name: 'currentLegacyFloor', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'markee', type: 'address' }], name: 'aggregateRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }], name: 'backerMarkee', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }], name: 'backerDeposit', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'backer', type: 'address' }], name: 'pendingSettlement', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  {
+    inputs: [{ name: 'limit', type: 'uint256' }],
+    name: 'getTopMarkees',
+    outputs: [
+      { name: 'topAddresses', type: 'address[]' },
+      { name: 'topRates', type: 'uint256[]' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  { inputs: [{ name: 'message', type: 'string' }, { name: 'name', type: 'string' }], name: 'createMarkee', outputs: [{ name: 'markeeAddress', type: 'address' }], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: 'backer', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'depositBuffer', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [], name: 'withdrawDeposit', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: 'challenger', type: 'address' }], name: 'claimTop', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: 'backers', type: 'address[]' }], name: 'settle', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+] as const

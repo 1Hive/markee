@@ -89,7 +89,7 @@ function PhasesViz() {
             <div key={p.idx} style={{ position: 'relative', borderRadius: 12, padding: '18px 14px', textAlign: 'center' as const, border: `1px solid ${isCur ? C.pink : C.border}`, background: isCur ? 'rgba(248,151,254,0.08)' : C.bg, opacity: past ? 0.5 : 1 }}>
               {isCur && <span style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', background: C.pink, color: C.bg, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 99 }}>ACTIVE</span>}
               <div style={{ fontSize: 12, fontWeight: 600, color: isCur ? C.pink : C.muted, marginBottom: 6 }}>Phase {p.idx} · S{p.stage}</div>
-              <div style={{ fontSize: 21, fontWeight: 800, color: isCur ? C.text : C.text2, fontFamily: 'var(--font-jetbrains-mono)' }}>{p.rate.toLocaleString()}</div>
+              <div style={{ fontSize: 21, fontWeight: 800, color: isCur ? C.text : C.text2, fontFamily: 'var(--font-jetbrains-mono)' }}>{p.rate.toLocaleString('en-US')}</div>
               <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>MARKEE / ETH</div>
               <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>{past ? 'Ended' : isCur ? 'Ends' : 'From'} {fmtDate(p.end)}</div>
             </div>

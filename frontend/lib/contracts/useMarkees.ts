@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useReadContracts } from 'wagmi'
-import { V13_LEADERBOARDS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import type { Markee } from '@/types'
 
@@ -17,7 +17,7 @@ export function useMarkees() {
     refetch: refetchTop,
   } = useReadContracts({
     contracts: [{
-      address: V13_LEADERBOARDS.COOPERATIVE,
+      address: '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`,
       abi: LeaderboardV11ABI,
       functionName: 'getTopMarkees',
       args: [100n],

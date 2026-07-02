@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
+import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { STRATEGIES, type Strategy, type Vertical } from '@/lib/strategy'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -16,10 +18,22 @@ const C = {
   border: 'rgba(138,143,191,0.2)', borderHover: 'rgba(248,151,254,0.4)',
 }
 
-const FACTORIES = {
-  openinternet: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
-  github:       '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
-  superfluid:   '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const
+
+// (strategy x vertical) -> factory. Fixed price has a factory per vertical; streaming is
+// vertical-agnostic (one factory, vertical stored as board metadata), so all verticals map to it.
+const STREAMING_FACTORY_ADDR = (STREAMING_FACTORY || ZERO_ADDRESS) as `0x${string}`
+const FACTORIES: Record<Strategy, Record<Vertical, `0x${string}`>> = {
+  fixed: {
+    openinternet: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c',
+    github:       '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2',
+    superfluid:   '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad',
+  },
+  streaming: {
+    openinternet: STREAMING_FACTORY_ADDR,
+    github:       STREAMING_FACTORY_ADDR,
+    superfluid:   STREAMING_FACTORY_ADDR,
+  },
 }
 
 const FACTORY_ABI = [{
@@ -36,24 +50,24 @@ const FACTORY_ABI = [{
   type: 'function',
 }] as const
 
-type PlatformKey = 'openinternet' | 'github' | 'superfluid'
-
-interface Platform {
-  key: PlatformKey
+interface VerticalInfo {
+  key: Vertical
   name: string
   tagline: string
   color: string
   summary: string
+  icon: string
   steps: string[]
   requiresConnect?: 'github'
 }
 
-const PLATFORMS: Platform[] = [
+const VERTICALS: VerticalInfo[] = [
   {
     key: 'openinternet',
     name: 'Website',
     tagline: 'Any site you own',
     color: C.pink,
+    icon: 'globe',
     summary: 'Add a Markee sign to any website you manage with a highly flexible LLM-guided integration.',
     steps: ['Set up your Markee', 'Deploy Markee', 'Embed & Activate'],
   },
@@ -62,6 +76,7 @@ const PLATFORMS: Platform[] = [
     name: 'GitHub Repo',
     tagline: 'README, docs, any markdown',
     color: C.text,
+    icon: 'github',
     summary: 'Drop a Markee sign into any markdown file in your repo. Perfect for READMEs, docs and skill.md files.',
     steps: ['Connect GitHub', 'Set up your Markee', 'Deploy Markee', 'Embed & Activate'],
     requiresConnect: 'github',
@@ -71,12 +86,15 @@ const PLATFORMS: Platform[] = [
     name: 'Superfluid Project',
     tagline: 'Earn SUP incentives',
     color: C.green,
+    icon: 'zap',
     summary: 'Create a Markee sign for your Superfluid project and earn SUP rewards for every message bought.',
     steps: ['Set up your Markee', 'Deploy Markee', 'Activate'],
   },
 ]
 
-type StepKey = 'choose' | 'connect' | 'setup' | 'review' | 'activate'
+const STRATEGY_KEYS: Strategy[] = ['fixed', 'streaming']
+
+type StepKey = 'strategy' | 'vertical' | 'connect' | 'setup' | 'review' | 'activate'
 
 interface GhUser { connected: boolean; login?: string; avatarUrl?: string }
 interface Repo { fullName: string; name: string; owner: string }
@@ -87,6 +105,7 @@ function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; co
   if (icon === 'globe') return <svg {...s}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
   if (icon === 'github') return <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
   if (icon === 'zap') return <svg {...s}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+  if (icon === 'tag') return <svg {...s}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
   return <svg {...s}><path d="M12 5v14M5 12h14"/></svg>
 }
 
@@ -155,44 +174,90 @@ function StepShell({ title, sub, children, onBack, onNext, nextLabel, nextDisabl
   )
 }
 
-// ── ChoosePlatform ──────────────────────────────────────────────────────────
-function ChoosePlatform({ selected, onSelect }: { selected: PlatformKey | null; onSelect: (k: PlatformKey) => void }) {
-  const icons: Record<PlatformKey, string> = { openinternet: 'globe', github: 'github', superfluid: 'zap' }
+// ── Selection card (shared by strategy + vertical choosers) ──────────────────
+function ChoiceCard({ icon, color, name, tagline, summary, on, disabled, badge, onSelect }: {
+  icon: string; color: string; name: string; tagline: string; summary: string
+  on: boolean; disabled?: boolean; badge?: string; onSelect: () => void
+}) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 8 }}>
-      {PLATFORMS.map(p => {
-        const on = selected === p.key
+    <button onClick={disabled ? undefined : onSelect} disabled={disabled} style={{
+      textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
+      background: on ? 'rgba(248,151,254,0.06)' : 'rgba(10,15,61,0.5)',
+      border: `1px solid ${on ? C.borderHover : C.border}`,
+      borderRadius: 14, padding: 20, opacity: disabled ? 0.55 : 1,
+      display: 'flex', flexDirection: 'column' as const, gap: 12,
+      transition: 'border-color 160ms, background 160ms',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ width: 46, height: 46, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <PlatGlyph icon={icon} color={color} size={24} />
+        </div>
+        {badge ? (
+          <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>{badge}</span>
+        ) : (
+          <div style={{ width: 20, height: 20, borderRadius: 99, border: `1px solid ${on ? C.pink : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {on && <div style={{ width: 10, height: 10, borderRadius: 99, background: C.pink }} />}
+          </div>
+        )}
+      </div>
+      <div>
+        <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{name}</div>
+        <div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{tagline}</div>
+      </div>
+      <div style={{ color: C.text2, fontSize: 13, lineHeight: 1.5 }}>{summary}</div>
+    </button>
+  )
+}
+
+// ── ChooseStrategy ──────────────────────────────────────────────────────────
+function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onSelect: (s: Strategy) => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14, marginBottom: 8 }}>
+      {STRATEGY_KEYS.map(key => {
+        const meta = STRATEGIES[key]
+        const disabled = key === 'streaming' && !STREAMING_ENABLED
         return (
-          <button key={p.key} onClick={() => onSelect(p.key)} style={{
-            textAlign: 'left', cursor: 'pointer',
-            background: on ? 'rgba(248,151,254,0.06)' : 'rgba(10,15,61,0.5)',
-            border: `1px solid ${on ? C.borderHover : C.border}`,
-            borderRadius: 14, padding: 20,
-            display: 'flex', flexDirection: 'column' as const, gap: 12,
-            transition: 'border-color 160ms, background 160ms',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ width: 46, height: 46, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <PlatGlyph icon={icons[p.key]} color={p.color} size={24} />
-              </div>
-              <div style={{ width: 20, height: 20, borderRadius: 99, border: `1px solid ${on ? C.pink : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {on && <div style={{ width: 10, height: 10, borderRadius: 99, background: C.pink }} />}
-              </div>
-            </div>
-            <div>
-              <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{p.name}</div>
-              <div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{p.tagline}</div>
-            </div>
-            <div style={{ color: C.text2, fontSize: 13, lineHeight: 1.5 }}>{p.summary}</div>
-          </button>
+          <ChoiceCard
+            key={key}
+            icon={meta.glyph === 'stream' ? 'zap' : 'tag'}
+            color={meta.accent}
+            name={meta.label}
+            tagline={meta.tagline}
+            summary={meta.summary}
+            on={selected === key}
+            disabled={disabled}
+            badge={disabled ? 'Coming soon' : undefined}
+            onSelect={() => onSelect(key)}
+          />
         )
       })}
     </div>
   )
 }
 
+// ── ChooseVertical ──────────────────────────────────────────────────────────
+function ChooseVertical({ selected, onSelect }: { selected: Vertical | null; onSelect: (k: Vertical) => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 8 }}>
+      {VERTICALS.map(v => (
+        <ChoiceCard
+          key={v.key}
+          icon={v.icon}
+          color={v.color}
+          name={v.name}
+          tagline={v.tagline}
+          summary={v.summary}
+          on={selected === v.key}
+          onSelect={() => onSelect(v.key)}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ── ConnectGitHub ─────────────────────────────────────────────────────────
-function ConnectGitHub({ ghUser, onDisconnect }: { ghUser: GhUser; onDisconnect?: () => void }) {
+function ConnectGitHub({ ghUser, strategy, onDisconnect }: { ghUser: GhUser; strategy: Strategy; onDisconnect?: () => void }) {
+  const returnTo = encodeURIComponent(`/create-a-markee?vertical=github&strategy=${strategy}`)
   return (
     <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 32, textAlign: 'center' as const }}>
       <div style={{ width: 56, height: 56, margin: '0 auto 16px', borderRadius: 14, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -217,7 +282,7 @@ function ConnectGitHub({ ghUser, onDisconnect }: { ghUser: GhUser; onDisconnect?
       ) : (
         <div>
           <p style={{ color: C.text2, fontSize: 15, margin: '0 0 20px', lineHeight: 1.55 }}>Connect your GitHub account so we can verify your repo and confirm the Markee integration via the GitHub API.</p>
-          <a href="/api/github/connect?returnTo=/create-a-markee?platform=github" style={{
+          <a href={`/api/github/connect?returnTo=${returnTo}`} style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             background: C.text, color: C.bg, borderRadius: 8, padding: '11px 24px',
             fontSize: 14, fontWeight: 700 as const, textDecoration: 'none',
@@ -335,9 +400,9 @@ function GitHubSetup({ repos, selectedRepo, setSelectedRepo, selectedFile, setSe
 }
 
 // ── Website / Superfluid setup ──────────────────────────────────────────────
-function WebsiteSetupFields({ values, setValue, platformKey }: {
+function WebsiteSetupFields({ values, setValue, vertical }: {
   values: Record<string, string>; setValue: (k: string, v: string) => void
-  platformKey: PlatformKey
+  vertical: Vertical
 }) {
   const mono = 'var(--font-jetbrains-mono)'
   const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box' }
@@ -345,13 +410,13 @@ function WebsiteSetupFields({ values, setValue, platformKey }: {
 
   return (
     <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26 }}>
-      {platformKey === 'openinternet' && (
+      {vertical === 'openinternet' && (
         <label style={{ display: 'block', marginBottom: 20 }}>
           <span style={labelCss}>Name this Markee</span>
           <input value={values.siteName ?? ''} onChange={e => setValue('siteName', e.target.value)} placeholder="My Project" style={fieldBase} />
         </label>
       )}
-      {platformKey === 'superfluid' && (
+      {vertical === 'superfluid' && (
         <label style={{ display: 'block', marginBottom: 20 }}>
           <span style={labelCss}>Superfluid project name</span>
           <input value={values.projectName ?? ''} onChange={e => setValue('projectName', e.target.value)} placeholder="My Stream" style={fieldBase} />
@@ -366,18 +431,19 @@ function WebsiteSetupFields({ values, setValue, platformKey }: {
 }
 
 // ── Review + deploy ─────────────────────────────────────────────────────────
-function ReviewSign({ platform, values, selectedRepo, selectedFile, isPending, isConfirming, error, isConnected }: {
-  platform: Platform; values: Record<string, string>
+function ReviewSign({ vertical, strategy, values, selectedRepo, selectedFile, isPending, isConfirming, error, isConnected }: {
+  vertical: VerticalInfo; strategy: Strategy; values: Record<string, string>
   selectedRepo: string | null; selectedFile: string | null
   isPending: boolean; isConfirming: boolean; error: string | null; isConnected: boolean
 }) {
   const mono = 'var(--font-jetbrains-mono)'
   const rows: [string, string][] = [
-    ['Integration platform', platform.name],
+    ['Strategy', STRATEGIES[strategy].label],
+    ['Placement', vertical.name],
     ...(selectedRepo ? [['Repository', selectedRepo] as [string, string]] : []),
     ...(selectedFile ? [['File', selectedFile] as [string, string]] : []),
-    ...(platform.key === 'openinternet' && values.siteName ? [['Name', values.siteName] as [string, string]] : []),
-    ...(platform.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, string]] : []),
+    ...(vertical.key === 'openinternet' && values.siteName ? [['Name', values.siteName] as [string, string]] : []),
+    ...(vertical.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, string]] : []),
     ['Beneficiary', values.beneficiary ?? '-'],
   ]
 
@@ -426,15 +492,19 @@ function CopyBlock({ code }: { code: string }) {
 }
 
 // ── Activation guide ────────────────────────────────────────────────────────
-function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
-  platform: Platform; leaderboardAddress: string; selectedFile: string | null; name?: string
+function ActivationGuide({ vertical, strategy, leaderboardAddress, selectedFile, name }: {
+  vertical: VerticalInfo; strategy: Strategy; leaderboardAddress: string; selectedFile: string | null; name?: string
 }) {
   const [verified, setVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [intModalOpen, setIntModalOpen] = useState(false)
   const addr = leaderboardAddress.toLowerCase()
-  const isGithub = platform.key === 'github'
-  const isSuperfluid = platform.key === 'superfluid'
+  const isGithub = vertical.key === 'github'
+  const isSuperfluid = vertical.key === 'superfluid'
+  const isStreaming = strategy === 'streaming'
+  // Embed/verify is a placement (vertical) concern: a streaming GitHub board still needs delimiters.
+  // Only Superfluid has no external integration to embed.
+  const skipEmbed = isSuperfluid
 
   const embedCode = isGithub
     ? `<!-- MARKEE:START:${addr} -->\n<!-- MARKEE:END:${addr} -->`
@@ -470,7 +540,7 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
   let n = 1
   return (
     <div>
-      {!isSuperfluid && step(n++, isGithub ? 'Add the Markee delimiters to your markdown file' : 'Embed on your site',
+      {!skipEmbed && step(n++, isGithub ? 'Add the Markee delimiters to your markdown file' : 'Embed on your site',
         <div>
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 4px' }}>
             {isGithub
@@ -495,7 +565,7 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
         leaderboard={{ address: leaderboardAddress, name: name ?? leaderboardAddress }}
       />
 
-      {!isSuperfluid && step(n++, 'Verify Integration',
+      {!skipEmbed && step(n++, 'Verify Integration',
         <div>
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' }}>
             {isGithub ? 'Click once your delimiter is committed.' : 'Click once your embed is live on the site.'}
@@ -517,10 +587,12 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
         </div>
       )}
 
-      {step(isSuperfluid ? 1 : n, 'Activate your Markee',
+      {step(skipEmbed ? 1 : n, 'Activate your Markee',
         <div>
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' }}>
-            Buy the first message to activate your Markee.
+            {isStreaming
+              ? 'Add a message and open a stream to claim the #1 spot on your board.'
+              : 'Buy the first message to activate your Markee.'}
           </p>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <Link href={`/markee/${leaderboardAddress}`} style={{
@@ -528,7 +600,7 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
               fontSize: 14, fontWeight: 700 as const, textDecoration: 'none',
               display: 'inline-flex', alignItems: 'center', gap: 8,
             }}>
-              View your Markee →
+              {isStreaming ? 'Open your board →' : 'View your Markee →'}
             </Link>
           </div>
         </div>
@@ -541,9 +613,11 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
 function CreateWizardInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { isConnected } = useAccount()
+  const { isConnected, chain } = useAccount()
+  const { switchChain } = useSwitchChain()
 
-  const [platformKey, setPlatformKey] = useState<PlatformKey | null>(null)
+  const [strategy, setStrategy] = useState<Strategy | null>(null)
+  const [vertical, setVertical] = useState<Vertical | null>(null)
   const [step, setStep] = useState(0)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [ghUser, setGhUser] = useState<GhUser>({ connected: false })
@@ -556,10 +630,27 @@ function CreateWizardInner() {
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // Deep-link via ?platform=
+  // Deep-link via ?strategy= / ?vertical= (and legacy ?platform= where streaming was a "platform").
   useEffect(() => {
-    const p = searchParams.get('platform') as PlatformKey | null
-    if (p && PLATFORMS.find(pl => pl.key === p)) { setPlatformKey(p); setStep(1) }
+    const verticals = VERTICALS.map(v => v.key)
+    const strategyParam = searchParams.get('strategy') as Strategy | null
+    const verticalParam = searchParams.get('vertical') as Vertical | null
+    const platformParam = searchParams.get('platform')
+    const resolvedStrategy: Strategy =
+      strategyParam === 'streaming' && STREAMING_ENABLED ? 'streaming' : 'fixed'
+
+    if (verticalParam && verticals.includes(verticalParam)) {
+      setStrategy(resolvedStrategy)
+      setVertical(verticalParam)
+      setStep(2)
+      return
+    }
+    if (platformParam === 'streaming' && STREAMING_ENABLED) {
+      setStrategy('streaming'); setStep(1); return
+    }
+    if (platformParam && verticals.includes(platformParam as Vertical)) {
+      setStrategy('fixed'); setVertical(platformParam as Vertical); setStep(2)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check GitHub on mount
@@ -585,8 +676,8 @@ function CreateWizardInner() {
 
   // Handle confirmed tx
   useEffect(() => {
-    if (!isSuccess || !receipt || !platformKey) return
-    const factoryAddr = FACTORIES[platformKey].toLowerCase()
+    if (!isSuccess || !receipt || !strategy || !vertical) return
+    const factoryAddr = FACTORIES[strategy][vertical].toLowerCase()
     let found: string | null = null
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() === factoryAddr && log.topics[1]) {
@@ -596,10 +687,18 @@ function CreateWizardInner() {
     }
     if (!found) return
     setNewLeaderboardAddress(found)
-    if (platformKey === 'github' && selectedRepo && selectedFile) {
+    if (vertical === 'github' && selectedRepo && selectedFile) {
       fetch('/api/github/register-markee', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leaderboardAddress: found, repoFullName: selectedRepo, filePath: selectedFile }),
+      }).catch(() => {})
+    }
+    // Streaming boards are vertical-agnostic on-chain; tag the placement off-chain so it surfaces on
+    // the right vertical listing.
+    if (strategy === 'streaming') {
+      fetch('/api/streaming/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: found, vertical }),
       }).catch(() => {})
     }
     setStep(s => s + 1)
@@ -607,25 +706,26 @@ function CreateWizardInner() {
 
   const setValue = (k: string, v: string) => setValuesRaw(prev => ({ ...prev, [k]: v }))
 
-  const platform = platformKey ? PLATFORMS.find(p => p.key === platformKey)! : null
+  const vInfo = vertical ? VERTICALS.find(v => v.key === vertical)! : null
 
   const stepKeys: StepKey[] = useMemo(() => {
-    if (!platform) return ['choose']
-    return platform.requiresConnect === 'github'
-      ? ['choose', 'connect', 'setup', 'review', 'activate']
-      : ['choose', 'setup', 'review', 'activate']
-  }, [platform?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!strategy) return ['strategy']
+    if (!vInfo) return ['strategy', 'vertical']
+    return vInfo.requiresConnect === 'github'
+      ? ['strategy', 'vertical', 'connect', 'setup', 'review', 'activate']
+      : ['strategy', 'vertical', 'setup', 'review', 'activate']
+  }, [strategy, vInfo?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const stepKey = stepKeys[step] ?? 'choose'
+  const stepKey = stepKeys[step] ?? 'strategy'
 
   const fieldsComplete = useMemo(() => {
-    if (!platform) return false
+    if (!vInfo) return false
     const b = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
-    if (platform.key === 'openinternet') return !!(values.siteName?.trim() && b)
-    if (platform.key === 'github') return !!(selectedRepo && selectedFile && b)
-    if (platform.key === 'superfluid') return !!(values.projectName?.trim() && b)
+    if (vInfo.key === 'openinternet') return !!(values.siteName?.trim() && b)
+    if (vInfo.key === 'github') return !!(selectedRepo && selectedFile && b)
+    if (vInfo.key === 'superfluid') return !!(values.projectName?.trim() && b)
     return false
-  }, [platform, values, selectedRepo, selectedFile])
+  }, [vInfo, values, selectedRepo, selectedFile])
 
   const go = (d: number) => setStep(s => Math.max(0, Math.min(s + d, stepKeys.length - 1)))
 
@@ -640,19 +740,25 @@ function CreateWizardInner() {
 
   const handleDeploy = () => {
     setTxError(null)
-    if (!platformKey) return
+    if (!strategy || !vertical) return
+    if (chain?.id !== CANONICAL_CHAIN.id) {
+      setTxError(`Wrong network. Switch your wallet to ${CANONICAL_CHAIN.name}, then deploy again.`)
+      switchChain?.({ chainId: CANONICAL_CHAIN.id })
+      return
+    }
     const bene = values.beneficiary?.trim() ?? ''
     if (!/^0x[0-9a-fA-F]{40}$/.test(bene)) { setTxError('Enter a valid beneficiary address.'); return }
     const name =
-      platformKey === 'openinternet' ? (values.siteName?.trim() ?? 'My Website') :
-      platformKey === 'github' ? (selectedRepo?.split('/').pop() ?? 'My Repo') :
-      (values.projectName?.trim() ?? 'My Project')
+      vertical === 'openinternet' ? (values.siteName?.trim() || 'My Website') :
+      vertical === 'github' ? (selectedRepo?.split('/').pop() ?? 'My Repo') :
+      (values.projectName?.trim() || 'My Project')
     resetWrite()
     writeContract({
-      address: FACTORIES[platformKey],
+      address: FACTORIES[strategy][vertical],
       abi: FACTORY_ABI,
       functionName: 'createLeaderboard',
       args: [bene as `0x${string}`, name],
+      chainId: CANONICAL_CHAIN.id,
     })
   }
 
@@ -662,16 +768,28 @@ function CreateWizardInner() {
     <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '48px 24px 80px' }}>
       <Link href="/raise-funding" style={{ color: C.muted, textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)' }}>← Raise Funding</Link>
       <h1 style={{ margin: '14px 0 32px', fontSize: 'clamp(28px,4vw,40px)', fontWeight: 800, letterSpacing: -1, color: C.text }}>
-        {step === 0 ? 'Choose a Platform' : 'Create a Markee'}
+        {stepKey === 'strategy' ? 'Choose a pricing strategy' : stepKey === 'vertical' ? 'Choose where it lives' : 'Create a Markee'}
       </h1>
 
-      {step > 0 && platform && (
-        <Stepper steps={platform.steps} current={Math.min(step - 1, platform.steps.length - 1)} />
+      {step >= 2 && vInfo && (
+        <Stepper steps={vInfo.steps} current={Math.min(step - 2, vInfo.steps.length - 1)} />
       )}
 
-      {stepKey === 'choose' && (
-        <StepShell onBack={() => router.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!platformKey}>
-          <ChoosePlatform selected={platformKey} onSelect={setPlatformKey} />
+      {stepKey === 'strategy' && (
+        <StepShell
+          sub="Pick how backers pay to hold the top message. You choose where the board lives next."
+          onBack={() => router.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!strategy}
+        >
+          <ChooseStrategy selected={strategy} onSelect={setStrategy} />
+        </StepShell>
+      )}
+
+      {stepKey === 'vertical' && (
+        <StepShell
+          sub="Pick where your board lives. The pricing strategy stays the same wherever you place it."
+          onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!vertical}
+        >
+          <ChooseVertical selected={vertical} onSelect={setVertical} />
         </StepShell>
       )}
 
@@ -681,17 +799,17 @@ function CreateWizardInner() {
           sub="We use your connection to add the Markee delimiter and confirm it via the GitHub API."
           onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!ghUser.connected}
         >
-          <ConnectGitHub ghUser={ghUser} onDisconnect={handleDisconnect} />
+          <ConnectGitHub ghUser={ghUser} strategy={strategy ?? 'fixed'} onDisconnect={handleDisconnect} />
         </StepShell>
       )}
 
-      {stepKey === 'setup' && platform && (
+      {stepKey === 'setup' && vInfo && (
         <StepShell
           title="Set up your Markee"
           sub="Name your Markee and set a beneficiary address to receive funds."
           onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!fieldsComplete}
         >
-          {platform.key === 'github' ? (
+          {vInfo.key === 'github' ? (
             <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26 }}>
               <GitHubSetup
                 repos={repos}
@@ -702,12 +820,12 @@ function CreateWizardInner() {
               />
             </div>
           ) : (
-            <WebsiteSetupFields values={values} setValue={setValue} platformKey={platform.key} />
+            <WebsiteSetupFields values={values} setValue={setValue} vertical={vInfo.key} />
           )}
         </StepShell>
       )}
 
-      {stepKey === 'review' && platform && (
+      {stepKey === 'review' && vInfo && strategy && (
         <StepShell
           title="Deploy Markee"
           sub="Review your info and sign the transaction to deploy your Markee on Base."
@@ -717,7 +835,7 @@ function CreateWizardInner() {
           nextDisabled={!isConnected || busy}
         >
           <ReviewSign
-            platform={platform} values={values}
+            vertical={vInfo} strategy={strategy} values={values}
             selectedRepo={selectedRepo} selectedFile={selectedFile}
             isPending={isPending} isConfirming={isConfirming}
             error={txError ?? (writeError ? (writeError as Error).message : null)}
@@ -726,7 +844,7 @@ function CreateWizardInner() {
         </StepShell>
       )}
 
-      {stepKey === 'activate' && platform && newLeaderboardAddress && (
+      {stepKey === 'activate' && vInfo && strategy && newLeaderboardAddress && (
         <div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', background: 'rgba(29,178,39,0.08)', border: `1px solid ${C.green}`, borderRadius: 14, padding: '20px 22px', marginBottom: 26 }}>
             <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 99, background: 'rgba(29,178,39,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -735,7 +853,7 @@ function CreateWizardInner() {
             <div>
               <div style={{ color: C.text, fontWeight: 700 as const, fontSize: 17 }}>Transaction confirmed</div>
               <p style={{ color: C.text2, fontSize: 14, margin: '4px 0 0', lineHeight: 1.55 }}>
-                Your {platform.name} Markee was deployed onchain.{' '}
+                Your {vInfo.name} Markee was deployed onchain.{' '}
                 {hash && (
                   <a href={`https://basescan.org/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'var(--font-jetbrains-mono)', color: C.blue, textDecoration: 'none', borderBottom: `1px dotted ${C.blue}` }}>
                     {hash.slice(0, 6)}…{hash.slice(-4)} ↗
@@ -745,7 +863,7 @@ function CreateWizardInner() {
             </div>
           </div>
 
-          <ActivationGuide platform={platform} leaderboardAddress={newLeaderboardAddress} selectedFile={selectedFile} name={values.name} />
+          <ActivationGuide vertical={vInfo} strategy={strategy} leaderboardAddress={newLeaderboardAddress} selectedFile={selectedFile} name={values.name} />
 
           <div style={{ marginTop: 14, paddingTop: 24, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end' }}>
             <Link href="/account" style={{

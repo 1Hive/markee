@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatEther } from 'viem'
-import { useAccount } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
 import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -16,6 +16,7 @@ import { formatUsd } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useLeaderboardDetail } from '@/lib/contracts/useLeaderboardDetail'
 import type { LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
+import { StreamingBoardDetail } from '@/components/StreamingBoardDetail'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -1134,9 +1135,7 @@ function Skeleton() {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export default function MarkeeDetailPage() {
-  const params = useParams()
-  const leaderboardAddress = params.address as string
+function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string }) {
   const ethPrice = useEthPrice()
   const { address: connectedAddress } = useAccount()
 
@@ -1488,4 +1487,28 @@ export default function MarkeeDetailPage() {
 
     </div>
   )
+}
+
+// A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed report "1.3.0".
+const VERSION_ABI = [
+  { inputs: [], name: 'VERSION', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function' },
+] as const
+
+// One board-detail route for every board. Detect the pricing strategy on-chain and render the matching
+// detail; while VERSION loads we default to the (common) fixed detail, which shows its own skeletons.
+export default function MarkeeDetailPage() {
+  const params = useParams()
+  const leaderboardAddress = params.address as string
+  const { data: version } = useReadContract({
+    address: leaderboardAddress as `0x${string}`,
+    abi: VERSION_ABI,
+    functionName: 'VERSION',
+    chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: /^0x[0-9a-fA-F]{40}$/.test(leaderboardAddress ?? '') },
+  })
+
+  if (typeof version === 'string' && version.startsWith('streaming')) {
+    return <StreamingBoardDetail board={leaderboardAddress as `0x${string}`} />
+  }
+  return <FixedMarkeeDetail leaderboardAddress={leaderboardAddress} />
 }
