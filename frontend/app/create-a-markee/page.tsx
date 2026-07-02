@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
-import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { STRATEGIES, type Strategy, type Vertical } from '@/lib/strategy'
 
 const C = {
@@ -613,7 +613,8 @@ function ActivationGuide({ vertical, strategy, leaderboardAddress, selectedFile,
 function CreateWizardInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { isConnected } = useAccount()
+  const { isConnected, chain } = useAccount()
+  const { switchChain } = useSwitchChain()
 
   const [strategy, setStrategy] = useState<Strategy | null>(null)
   const [vertical, setVertical] = useState<Vertical | null>(null)
@@ -740,6 +741,11 @@ function CreateWizardInner() {
   const handleDeploy = () => {
     setTxError(null)
     if (!strategy || !vertical) return
+    if (chain?.id !== CANONICAL_CHAIN.id) {
+      setTxError(`Wrong network. Switch your wallet to ${CANONICAL_CHAIN.name}, then deploy again.`)
+      switchChain?.({ chainId: CANONICAL_CHAIN.id })
+      return
+    }
     const bene = values.beneficiary?.trim() ?? ''
     if (!/^0x[0-9a-fA-F]{40}$/.test(bene)) { setTxError('Enter a valid beneficiary address.'); return }
     const name =
@@ -752,6 +758,7 @@ function CreateWizardInner() {
       abi: FACTORY_ABI,
       functionName: 'createLeaderboard',
       args: [bene as `0x${string}`, name],
+      chainId: CANONICAL_CHAIN.id,
     })
   }
 
