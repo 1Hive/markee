@@ -162,7 +162,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 4px 0' }}>
           <span style={{ color: '#8A8FBF', fontSize: 13 }}>You receive</span>
           <span style={{ color: '#F897FE', fontWeight: 800, fontFamily: MONO, fontSize: 18, letterSpacing: -0.3 }}>
-            {receive.toLocaleString()} MARKEE
+            {receive.toLocaleString('en-US')} MARKEE
           </span>
         </div>
 
