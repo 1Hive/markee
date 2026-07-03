@@ -13,7 +13,7 @@ export const COOPERATIVE_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'
 // RevNet v6 config — JB terminal and project ID on Base
 export const REVNET_V6_CONFIG = {
   [base.id]: {
-    projectId: 152,
+    projectId: 7,
     terminal: '0x130f5Dd2bD8805443Cf41755253D778a75a67f53' as const,
   },
 } as const

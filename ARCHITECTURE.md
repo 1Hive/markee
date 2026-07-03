@@ -142,7 +142,7 @@ Payment (when revNetEnabled = true — pending RevNet v6 deployment):
     └── 38% → RevNet Terminal 0x130f5Dd2...
                 └── project 119 (Base) → mints MARKEE tokens → distributed to holders/reserves
 
-Currently using an interim legacy Juicebox project at https://juicebox.money/v5/base:152 while Revnets v6 is completed. 
+Currently using an interim legacy Juicebox project at https://juicebox.money/v5/base:7 while Revnets v6 is completed. 
 ```
 
 

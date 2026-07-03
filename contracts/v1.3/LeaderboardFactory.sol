@@ -96,7 +96,7 @@ contract LeaderboardFactory is ILeaderboardFactory {
     /// @param _platformName  Human-readable platform name (e.g. "Open Internet", "GitHub", "Superfluid")
     /// @param _platformId    Short programmatic slug (e.g. "openinternet", "github", "superfluid")
     /// @param _revNetTerminal    JB Multi-Terminal address: 0x130f5Dd2bD8805443Cf41755253D778a75a67f53
-    /// @param _revNetProjectId  Markee Cooperative RevNet project ID: 152
+    /// @param _revNetProjectId  Markee Cooperative RevNet project ID: 7
     /// @param _platformFeeReceiver  Address that receives the Coop's MARKEE token share (can be address(0))
     /// @param _factoryAdmin  Markee Cooperative multisig — same address across all three factories
     constructor(
