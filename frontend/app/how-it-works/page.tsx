@@ -351,7 +351,7 @@ function CondensedFAQ() {
         <div>
           <p className="mb-3">The Markee Cooperative is the collective of MARKEE token holders who collectively own the Markee Network — including its smart contracts, domains, brand assets, and treasury. Holding any amount of MARKEE makes you an Owner.</p>
           <p className="mb-3">Governance decisions are made onchain through the Gardens community using conviction voting. The foundational ownership rights and tokenomics are immutable — no one, including the Council Safe, can alter them.</p>
-          <a href="https://app.gardens.fund/gardens/8453/0xee3027f1e021b09d629922d40436c5dea3c6cb38/0xce6b968c8bd130ca08f1fcc97b509a824380d867" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
+          <a href="https://app.gardens.fund/gardens/8453/0xf6627cf19317c33b457f77452876e6e297c4942f/0xce6b968c8bd130ca08f1fcc97b509a824380d867" target="_blank" rel="noopener noreferrer" className="text-soft-pink hover:underline font-semibold">
             Participate in governance on Gardens →
           </a>
         </div>
