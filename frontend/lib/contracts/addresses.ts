@@ -18,7 +18,15 @@ export const REVNET_V6_CONFIG = {
   },
 } as const
 
-// V1.3 LeaderboardFactory contract addresses 
+// V1.3 Leaderboard addresses (Base only) — migrated from v1.2 via migrate-to-v13.sh
+export const V13_LEADERBOARDS = {
+  COOPERATIVE: '0x0590b56430426A38D0fA065b839c10D542E75CCD' as const,
+  GARDENS: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' as const,
+  CLAWCHEMY: '0xdF4769a9593CB8E40d0409dEF2645651412A8A97' as const,
+  SUPERFLUID_MIGRATION: '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as const,
+} as const
+
+// V1.3 LeaderboardFactory contract addresses
 export const FACTORIES = {
   SUPERFLUID: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
   OPEN_INTERNET: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
