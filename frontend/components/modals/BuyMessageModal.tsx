@@ -476,7 +476,7 @@ export function BuyMessageModal({
                     <textarea
                       value={message}
                       onChange={e => setMessage(e.target.value.slice(0, maxLen))}
-                      placeholder="the name's mark. agent mark 🕵️"
+                      placeholder="Your message here"
                       rows={2}
                       style={{ ...inputStyle, resize: 'vertical' }}
                       onFocus={e => { e.target.style.borderColor = PINK }}
