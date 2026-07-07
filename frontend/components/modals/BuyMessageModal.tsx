@@ -42,7 +42,7 @@ function getCurrentPhaseRate(): number {
 }
 
 function calculateMarkeeTokens(ethAmount: number): number {
-  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
+  return ethAmount * 0.38 * 0.62 * getCurrentPhaseRate() * 0.62
 }
 
 const REV_NET_ENABLED_ABI = [
