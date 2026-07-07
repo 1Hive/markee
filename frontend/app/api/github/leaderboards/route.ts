@@ -172,8 +172,9 @@ export async function GET(request: Request) {
       const topMarkeeAddr = topResult?.[0]?.[0]
       const topFundsRaw = topResult?.[1]?.[0] ?? 0n
       const topMarkee = topMarkeeAddr ? markeeMap.get(topMarkeeAddr.toLowerCase()) : undefined
+      const displayTotalFundsWei = totalFundsWei > topFundsRaw ? totalFundsWei : topFundsRaw
 
-      totalPlatformFundsWei += totalFundsWei
+      totalPlatformFundsWei += displayTotalFundsWei
 
       const linkedFiles = linkedFilesMap[i]
       const primaryFile = linkedFiles.find(f => f.verified) ?? linkedFiles[0] ?? null
@@ -181,8 +182,8 @@ export async function GET(request: Request) {
       return {
         address: addr,
         name,
-        totalFunds: formatEther(totalFundsWei),
-        totalFundsRaw: totalFundsWei.toString(),
+        totalFunds: formatEther(displayTotalFundsWei),
+        totalFundsRaw: displayTotalFundsWei.toString(),
         markeeCount,
         admin,
         minimumPrice: formatEther(minimumPrice),

@@ -145,6 +145,10 @@ export default function WebsiteLeaderboardPage() {
   const topResult        = meta?.[6]?.result as [string[], bigint[]] | undefined
   const topAddresses     = topResult?.[0] ?? []
   const topFunds         = topResult?.[1] ?? []
+  const topFundsTotal    = topFunds.reduce((sum, value) => sum + value, 0n)
+  const displayTotalFunds = totalFunds !== undefined
+    ? (totalFunds > topFundsTotal ? totalFunds : topFundsTotal)
+    : topFundsTotal > 0n ? topFundsTotal : undefined
 
   const displayMessageCount = markeeCount !== undefined
     ? (markeeCount > 0n ? markeeCount - 1n : 0n)
@@ -292,7 +296,7 @@ export default function WebsiteLeaderboardPage() {
               <div className="flex items-center gap-2 text-sm">
                 <Trophy size={14} className="text-[#7C9CFF]" />
                 <span className="text-[#7C9CFF] font-semibold">
-                  {totalFunds !== undefined ? formatFunds(totalFunds) : '—'}
+                  {displayTotalFunds !== undefined ? formatFunds(displayTotalFunds) : '—'}
                 </span>
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>

@@ -176,6 +176,7 @@ export function usePartnerMarkees() {
     const totalFunds = (step1Data?.[i * 3 + 1]?.result as bigint) ?? 0n
     const markeeCount = (step1Data?.[i * 3 + 2]?.result as bigint) ?? 0n
     const topAddr = topAddresses[i]
+    const displayTotalFunds = totalFunds > topFunds0 ? totalFunds : topFunds0
 
     let winningMarkee: Markee | null = null
     if (topAddr && step2Data) {
@@ -192,7 +193,7 @@ export function usePartnerMarkees() {
       step2Index++
     }
 
-    lbResults.set(partner.slug, { winningMarkee, totalFunds, markeeCount })
+    lbResults.set(partner.slug, { winningMarkee, totalFunds: displayTotalFunds, markeeCount })
   })
 
   const partnerData: PartnerData[] = PARTNERS.map(partner => {

@@ -198,8 +198,9 @@ export async function GET(request: Request) {
       const admin        = (metaResults[b + 4]?.result as string) ?? ''
       const topResult    = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
       const topFunds0    = topResult?.[1]?.[0] ?? 0n
+      const displayTotalFunds = totalFunds > topFunds0 ? totalFunds : topFunds0
 
-      totalFundsRaw += totalFunds
+      totalFundsRaw += displayTotalFunds
 
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
@@ -213,8 +214,8 @@ export async function GET(request: Request) {
       return {
         address: addr,
         name,
-        totalFunds: formatEther(totalFunds),
-        totalFundsRaw: totalFunds.toString(),
+        totalFunds: formatEther(displayTotalFunds),
+        totalFundsRaw: displayTotalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
         creator: creators[i] ?? null,

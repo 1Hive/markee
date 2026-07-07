@@ -150,6 +150,10 @@ export default function GithubLeaderboardPage() {
 
   const topAddresses = useMemo(() => topResult?.[0] ?? [], [topResult])
   const topFunds = useMemo(() => topResult?.[1] ?? [], [topResult])
+  const topFundsTotal = useMemo(() => topFunds.reduce((sum, value) => sum + value, 0n), [topFunds])
+  const displayTotalFunds = totalFunds !== undefined
+    ? (totalFunds > topFundsTotal ? totalFunds : topFundsTotal)
+    : topFundsTotal > 0n ? topFundsTotal : undefined
 
   const markeeContracts = useMemo(
     () => topAddresses.flatMap(addr => [
@@ -284,7 +288,7 @@ export default function GithubLeaderboardPage() {
             <div className="flex items-center gap-2 text-sm">
               <Trophy size={14} className="text-[#7C9CFF]" />
               <span className="text-[#7C9CFF] font-semibold">
-                {totalFunds !== undefined ? formatFunds(totalFunds) : ''}
+                {displayTotalFunds !== undefined ? formatFunds(displayTotalFunds) : ''}
               </span>
               <span className="text-[#8A8FBF]">total funded</span>
             </div>
