@@ -404,7 +404,9 @@ export default function MarketplacePage() {
         const active   = lbs.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         const messages = active.reduce((sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)), 0)
         const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
-        setEcoStats({ markees: active.length, messages, usd: ethPrice ? Math.round(totalEth * ethPrice) : 0 })
+        const usd = data.totalPlatformFundsUsd
+          ?? (ethPrice ? Math.round(totalEth * ethPrice) : 0)
+        setEcoStats({ markees: active.length, messages, usd })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
