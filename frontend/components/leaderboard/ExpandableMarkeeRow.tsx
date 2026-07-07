@@ -31,6 +31,7 @@ interface ExpandableMarkeeRowProps {
   leaderboardAddress?: `0x${string}`
   viewCount?: number
   onAddFunds?: () => void
+  actionLabel?: string
   onEditMessage?: () => void
   trackView?: (m: Markee) => void
 }
@@ -178,6 +179,7 @@ export function ExpandableMarkeeRow({
   leaderboardAddress,
   viewCount,
   onAddFunds,
+  actionLabel = '+ add funds',
   onEditMessage,
   trackView,
 }: ExpandableMarkeeRowProps) {
@@ -370,7 +372,7 @@ export function ExpandableMarkeeRow({
               onClick={onAddFunds}
               className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
             >
-              + add funds
+              {actionLabel}
             </button>
           )}
           {isOwner && onEditMessage && (

@@ -9,6 +9,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -307,77 +308,38 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
 }
 
 // ── Dense table row ───────────────────────────────────────────────────────────
-function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void }) {
-  const [hover, setHover] = useState(false)
+function MarketplaceRow({ lb, rank, views, ethPrice, onBuy }: { lb: Leaderboard; rank: number; views: number; ethPrice: number | null; onBuy: () => void }) {
   const totalEth  = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const priceEth  = parseFloat(formatEther(priceToOvertake(lb)))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+  const topMarkeeAddress = lb.topMarkeeAddress as `0x${string}` | null
+
+  if (!topMarkeeAddress) return null
 
   return (
-    <a
-      href={`/markee/${lb.address}`}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
-        gap: 16, padding: '11px 14px', textDecoration: 'none',
-        borderBottom: `1px solid ${BORDER}`,
-        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
-        transition: 'background 120ms', cursor: 'pointer',
+    <ExpandableMarkeeRow
+      markee={{
+        address: topMarkeeAddress,
+        message: lb.topMessage ?? '',
+        name: servedOnLabel(lb),
+        owner: lb.topMarkeeOwner ?? lb.topMessageOwner ?? '0x0000000000000000000000000000000000000000',
+        totalFundsAdded: BigInt(lb.totalFundsRaw || '0'),
       }}
-    >
-      {/* SERVED ON */}
-      <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
-        <ServedLogo lb={lb} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: lb.platform === 'website' ? MONO : 'inherit' }}>
-          {servedOnLabel(lb)}
-        </span>
-      </span>
-
-      {/* TOTAL RAISED */}
-      <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-        {totalLabel}
-      </span>
-
-      {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
-      </div>
-
-      {/* VIEWS */}
-      <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
-        <Eye size={10} style={{ opacity: 0.7 }} />
-        {views > 0 ? formatViews(views) : '—'}
-      </span>
-
-      {/* PRICE TO CHANGE */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
-          style={{
-            width: '100%', textAlign: 'center',
-            background: PINK, color: BG, border: 'none', borderRadius: 7,
-            padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-            cursor: 'pointer', whiteSpace: 'nowrap',
-            boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
-            transition: 'transform 120ms, box-shadow 120ms',
-          }}
-          onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
-          onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
-        >
-          {priceLabel}
-        </button>
-      </div>
-    </a>
+      rank={rank}
+      formatFunds={() => totalLabel}
+      leaderboardAddress={lb.address as `0x${string}`}
+      viewCount={views}
+      onAddFunds={onBuy}
+      actionLabel={priceLabel}
+    />
   )
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const ethPrice = useEthPrice()
+  const isNarrow = useNarrow()
 
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([])
   const [loading, setLoading]           = useState(true)
@@ -594,19 +556,27 @@ export default function MarketplacePage() {
         {/* table */}
         <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
-            <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
-            <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
-          </div>
+          {isNarrow ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, overflowX: 'auto' }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, flexShrink: 0 }}>Sort</span>
+              <SortHead label="Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHead label="Views" col="views" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHead label="Price" col="price" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 100px 130px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Message / Served on</span>
+              <SortHead label="Total raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHead label="Views" col="views" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHead label="Price to change" col="price" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+            </div>
+          )}
 
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
-                {[1, 2, 3, 4, 5].map(j => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr 120px 100px 130px', gap: 16, padding: '14px', borderBottom: `1px solid ${BORDER}` }}>
+                {Array.from({ length: isNarrow ? 1 : 4 }).map((_, j) => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
               </div>
@@ -616,15 +586,18 @@ export default function MarketplacePage() {
               No messages match that search.
             </div>
           ) : (
-            pageRows.map(lb => (
-              <TableRow
-                key={lb.address}
-                lb={lb}
-                views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
-                ethPrice={ethPrice}
-                onBuy={() => setBuyModal(lb)}
-              />
-            ))
+            <div style={{ display: 'grid', gap: 10, padding: 10 }}>
+              {pageRows.map((lb, index) => (
+                <MarketplaceRow
+                  key={lb.address}
+                  lb={lb}
+                  rank={page * PAGE_SIZE + index + 1}
+                  views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
+                  ethPrice={ethPrice}
+                  onBuy={() => setBuyModal(lb)}
+                />
+              ))}
+            </div>
           )}
         </div>
 
