@@ -376,11 +376,14 @@ export default function Home() {
           }
         } catch {}
 
+        const usd = data.totalPlatformFundsUsd
+          ?? (ethPrice ? Math.round(totalEth * ethPrice) : 0)
+
         setEcoStats({
           domains: leaderboards.length,
           markees: active.length,
           messages,
-          usd: ethPrice ? Math.round(totalEth * ethPrice) : 0,
+          usd,
           views: totalViews,
         })
         setEcoStatsLoaded(true)
