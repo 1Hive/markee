@@ -29,11 +29,17 @@ export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(origin) })
 }
 
+// GET /api/views?network=1  → { total: number }  (network-wide total across all markees)
 // GET /api/views?addresses=0x1,0x2,...
 // GET /api/views?address=0x1&messages=msg1||msg2||msg3  (pipe-delimited, per-message counts)
 export async function GET(req: NextRequest) {
   const origin = req.headers.get('origin')
   const { searchParams } = new URL(req.url)
+
+  if (searchParams.get('network') === '1') {
+    const total = await kv.get<number>('views:network:total') ?? 0
+    return NextResponse.json({ total }, { headers: corsHeaders(origin) })
+  }
 
   // Per-message view counts for leaderboard
   const singleAddress = searchParams.get('address')
@@ -119,7 +125,8 @@ export async function POST(req: NextRequest) {
   pipeline.incr(`views:total:${address}`)
   pipeline.incr(`views:msg:${address}:${msgHash}`)
   pipeline.set(dedupeKey, '1', { ex: 3600 })
-  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown]>()
+  pipeline.incr('views:network:total')
+  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number]>()
 
   return NextResponse.json(
     { totalViews, messageViews, counted: true },
