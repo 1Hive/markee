@@ -119,9 +119,16 @@ export async function GET(request: Request) {
       0n,
     )
 
+    const totalPlatformFunds = formatEther(totalFundsWei)
+    const ethPriceUsd = await kv.get<number>('cache:eth-price-usd') ?? null
+    const totalPlatformFundsUsd = ethPriceUsd
+      ? Math.round(parseFloat(totalPlatformFunds) * ethPriceUsd)
+      : null
+
     const payload = {
       leaderboards,
-      totalPlatformFunds: formatEther(totalFundsWei),
+      totalPlatformFunds,
+      totalPlatformFundsUsd,
       counts: {
         website: oiLeaderboards.length,
         github: githubLeaderboards.length,
