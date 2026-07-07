@@ -15,6 +15,8 @@ import { base } from 'viem/chains'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 
+const FAST_TX_GAS_RESERVE = parseEther('0.0002')
+
 // ─── ABI (only the functions this modal calls) ────────────────────────────────
 
 const LEADERBOARD_ABI = [
@@ -187,7 +189,14 @@ export function BuyMessageModal({
   }, [isSuccess])
 
   const amountWei = (() => { try { return parseEther(amount) } catch { return 0n } })()
-  const canAfford = balanceData ? balanceData.value >= amountWei : true
+  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
+    ? balanceData.value - FAST_TX_GAS_RESERVE
+    : 0n
+  const maxSpendableEth = Number(formatEther(spendableBalance))
+  const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001
+    ? maxSpendableEth.toFixed(6)
+    : maxSpendableEth.toFixed(3)
+  const canAfford = isUpdateMessage || !balanceData || balanceData.value >= amountWei + FAST_TX_GAS_RESERVE
 
   const handleSubmit = () => {
     setError(null)
@@ -207,7 +216,7 @@ export function BuyMessageModal({
     if (message.length > maxMessageLength) { setError(`Max ${maxMessageLength} characters.`); return }
     if (amountWei <= 0n) { setError('Enter a valid ETH amount.'); return }
     if (amountWei < minimumAmount) { setError(`Minimum is ${formatEther(minimumAmount)} ETH.`); return }
-    if (!canAfford) { setError('Insufficient ETH balance.'); return }
+    if (!canAfford) { setError(`Insufficient ETH balance after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.`); return }
 
     if (isAddFunds && existingMarkee) {
       writeContract({
@@ -293,9 +302,24 @@ export function BuyMessageModal({
         className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
       />
       {balanceData && (
-        <p className="text-xs text-[#8A8FBF]">
-          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#8A8FBF]">
+          <p>
+            Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+            <span className="ml-1 text-[#8A8FBF]/70">
+              ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)
+            </span>
+          </p>
+          {!isUpdateMessage && (
+            <button
+              type="button"
+              onClick={() => setAmount(maxSpendableFormatted)}
+              disabled={spendableBalance <= 0n || isPending || isConfirming}
+              className="text-[#7C9CFF] hover:text-[#F897FE] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Use max
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
@@ -488,7 +512,7 @@ export function BuyMessageModal({
                 {!isUpdateMessage && !canAfford && (
                   <div className="space-y-2">
                     <p className="text-xs text-[#8A8FBF] text-center">
-                      Your wallet balance is too low for this amount.
+                      Your wallet balance is too low for this amount after reserving gas.
                     </p>
                     <button
                       type="button"

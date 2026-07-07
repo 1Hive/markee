@@ -10,6 +10,8 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import type { Markee } from '@/types'
 
+const FAST_TX_GAS_RESERVE = parseEther('0.0002')
+
 // Strategies where fund events earn Superfluid campaign points.
 // Any other partner strategy is ignored.
 const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
@@ -144,8 +146,7 @@ export function TopDawgModal({
     if (!amount || !balanceData || parseFloat(amount) <= 0) return false
     try {
       const amountWei = parseEther(amount)
-      const estimatedGas = parseEther('0.001')
-      const totalNeeded = amountWei + estimatedGas
+      const totalNeeded = amountWei + FAST_TX_GAS_RESERVE
       return balanceData.value >= totalNeeded
     } catch {
       return false
@@ -156,10 +157,9 @@ export function TopDawgModal({
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
     try {
       const amountWei = parseEther(amount)
-      const estimatedGas = parseEther('0.001')
-      const totalNeeded = amountWei + estimatedGas
+      const totalNeeded = amountWei + FAST_TX_GAS_RESERVE
       if (balanceData.value < totalNeeded) {
-        return `You don't have enough ETH to complete this transaction.`
+        return `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.`
       }
     } catch {
       return 'Invalid amount entered'
@@ -169,6 +169,13 @@ export function TopDawgModal({
 
   const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
   const balanceWarning = getInsufficientBalanceMessage()
+  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
+    ? balanceData.value - FAST_TX_GAS_RESERVE
+    : 0n
+  const maxSpendableEth = Number(formatEther(spendableBalance))
+  const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001
+    ? maxSpendableEth.toFixed(6)
+    : maxSpendableEth.toFixed(3)
 
   // ---------------------------------------------------------------------------
   // Effects
@@ -446,9 +453,22 @@ export function TopDawgModal({
 
       {/* Balance display */}
       {balanceData && (
-        <p className="text-xs text-[#8A8FBF]">
-          Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#8A8FBF]">
+          <p>
+            Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+            <span className="ml-1 text-[#8A8FBF]/70">
+              ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setAmount(maxSpendableFormatted)}
+            disabled={spendableBalance <= 0n || isPending || isConfirming}
+            className="text-[#7C9CFF] hover:text-[#F897FE] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Use max
+          </button>
+        </div>
       )}
     </div>
   )

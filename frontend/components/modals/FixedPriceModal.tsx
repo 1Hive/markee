@@ -9,6 +9,8 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
+const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH
+
 interface FixedPriceModalProps {
   isOpen: boolean
   onClose: () => void
@@ -73,15 +75,13 @@ export function FixedPriceModal({
 
   const canAffordMessage = (): boolean => {
     if (!balanceData || priceWei === 0n) return false
-    const estimatedGas = 1000000000000000n // 0.001 ETH
-    return balanceData.value >= priceWei + estimatedGas
+    return balanceData.value >= priceWei + FAST_TX_GAS_RESERVE
   }
 
   const getInsufficientBalanceMessage = (): string | null => {
     if (!balanceData || priceWei === 0n) return null
-    const estimatedGas = 1000000000000000n
-    if (balanceData.value < priceWei + estimatedGas) {
-      return `You don't have enough ETH to complete this transaction.`
+    if (balanceData.value < priceWei + FAST_TX_GAS_RESERVE) {
+      return `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.`
     }
     return null
   }
@@ -183,6 +183,9 @@ export function FixedPriceModal({
                     <p className="text-xs text-[#B8B6D9]">Your Balance</p>
                     <p className="text-sm font-medium text-[#EDEEFF]">
                       {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+                      <span className="ml-1 text-xs text-[#8A8FBF]">
+                        ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)
+                      </span>
                     </p>
                   </div>
                 )}
