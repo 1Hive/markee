@@ -18,6 +18,7 @@ import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessage
 import { useGithubTraffic } from '@/hooks/useGithubTraffic'
 import { useViews } from '@/hooks/useViews'
 import { NETWORK_PAUSED } from '@/lib/paused'
+import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import type { Markee } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ export default function GithubLeaderboardPage() {
           ) : (
             <div className="space-y-3">
               {markees.map((markee, idx) => (
-                <MarkeeRow
+                <ExpandableMarkeeRow
                   key={markee.address}
                   markee={markee}
                   rank={idx + 1}
@@ -423,67 +424,6 @@ export default function GithubLeaderboardPage() {
           onSuccess={handlePurchaseSuccess}
         />
       )}
-    </div>
-  )
-}
-
-// ─── Markee Row ───────────────────────────────────────────────────────────────
-
-function MarkeeRow({
-  markee, rank, formatFunds, onAddFunds, onEditMessage, viewCount,
-}: {
-  markee: MarkeeSlot
-  rank: number
-  formatFunds: (wei: bigint) => string
-  onAddFunds?: () => void
-  onEditMessage?: () => void
-  viewCount?: number
-}) {
-  const { address } = useAccount()
-  const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
-
-  const rankColors: Record<number, string> = {
-    1: 'text-[#FFD700] border-[#FFD700]/40 bg-[#FFD700]/10',
-    2: 'text-[#C0C0C0] border-[#C0C0C0]/40 bg-[#C0C0C0]/10',
-    3: 'text-[#CD7F32] border-[#CD7F32]/40 bg-[#CD7F32]/10',
-  }
-  const rankStyle = rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/20 bg-[#8A8FBF]/5'
-
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-all px-5 py-4 flex items-start gap-4">
-      <div className={`flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold ${rankStyle}`}>
-        {rank}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[#EDEEFF] font-mono text-sm leading-relaxed line-clamp-2">
-          {markee.message || <span className="opacity-40 italic">No message</span>}
-        </p>
-        <div className="flex items-center gap-3 mt-1.5">
-          {markee.name && <span className="text-[#8A8FBF] text-xs">{markee.name}</span>}
-          {viewCount !== undefined && viewCount > 0 && (
-            <span className="text-[#8A8FBF] text-xs flex items-center gap-1">
-              <Eye size={12} className="opacity-60" />
-              <span>{viewCount.toLocaleString()}</span>
-            </span>
-          )}
-          {isOwner && (
-            <span className="text-xs bg-[#F897FE]/15 border border-[#F897FE]/30 text-[#F897FE] px-2 py-0.5 rounded-full">
-              yours
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex-shrink-0 flex flex-col items-end gap-2">
-        <span className="text-[#F897FE] text-sm font-semibold">{formatFunds(markee.totalFundsAdded)}</span>
-        <button onClick={onAddFunds} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
-          + add funds
-        </button>
-        {isOwner && (
-          <button onClick={onEditMessage} className="text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors">
-            edit message
-          </button>
-        )}
-      </div>
     </div>
   )
 }
