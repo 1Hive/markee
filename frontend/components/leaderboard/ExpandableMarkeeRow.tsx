@@ -28,6 +28,7 @@ interface ExpandableMarkeeRowProps {
   markee: ExpandableMarkeeRowSlot
   rank: number
   formatFunds: (wei: bigint) => string
+  leaderboardAddress?: `0x${string}`
   viewCount?: number
   onAddFunds?: () => void
   onEditMessage?: () => void
@@ -76,6 +77,39 @@ const MESSAGE_CHANGED = parseAbiItem(
 const NAME_CHANGED = parseAbiItem(
   'event NameChanged(string newName, address indexed changedBy)'
 )
+
+type ApiHistoryEvent =
+  | {
+      id: string
+      kind: 'funds'
+      amount: string
+      newTotal: string
+      actor: string
+      timestamp: number
+      blockNumber: string
+      logIndex: number
+      transactionHash: string
+    }
+  | {
+      id: string
+      kind: 'message'
+      message: string
+      actor: string
+      timestamp: number
+      blockNumber: string
+      logIndex: number
+      transactionHash: string
+    }
+  | {
+      id: string
+      kind: 'name'
+      name: string
+      actor: string
+      timestamp: number
+      blockNumber: string
+      logIndex: number
+      transactionHash: string
+    }
 
 function slotToMarkee(slot: ExpandableMarkeeRowSlot): Markee {
   return {
@@ -141,6 +175,7 @@ export function ExpandableMarkeeRow({
   markee,
   rank,
   formatFunds,
+  leaderboardAddress,
   viewCount,
   onAddFunds,
   onEditMessage,
@@ -162,7 +197,8 @@ export function ExpandableMarkeeRow({
   }, [markee.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!expanded || !publicClient || history.length > 0 || isLoadingHistory) return
+    if (!expanded || history.length > 0) return
+    if (!leaderboardAddress && !publicClient) return
 
     let cancelled = false
 
@@ -172,11 +208,48 @@ export function ExpandableMarkeeRow({
 
       try {
         const markeeAddress = markee.address as `0x${string}`
-        const [fundsLogs, messageLogs, nameLogs] = await Promise.all([
+
+        if (leaderboardAddress) {
+          const params = new URLSearchParams({
+            leaderboardAddress,
+            markeeAddress,
+          })
+          const response = await fetch(`/api/markee/history?${params.toString()}`, {
+            cache: 'no-store',
+          })
+
+          if (!response.ok) {
+            throw new Error('Unable to load transaction history')
+          }
+
+          const data = await response.json() as { history?: ApiHistoryEvent[] }
+          const events: TxHistoryEvent[] = (data.history ?? []).map(event => {
+            if (event.kind === 'funds') {
+              return {
+                ...event,
+                amount: BigInt(event.amount),
+                newTotal: BigInt(event.newTotal),
+                blockNumber: BigInt(event.blockNumber),
+              }
+            }
+
+            return {
+              ...event,
+              blockNumber: BigInt(event.blockNumber),
+            }
+          })
+
+          if (!cancelled) setHistory(events)
+          return
+        }
+
+        const historyLogs = await Promise.all([
           publicClient!.getLogs({ address: markeeAddress, event: FUNDS_ADDED, fromBlock: 0n, toBlock: 'latest' }),
           publicClient!.getLogs({ address: markeeAddress, event: MESSAGE_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
           publicClient!.getLogs({ address: markeeAddress, event: NAME_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
         ])
+
+        const [fundsLogs, messageLogs, nameLogs] = historyLogs
 
         const blockNumbers = [...fundsLogs, ...messageLogs, ...nameLogs]
           .map(log => log.blockNumber)
@@ -190,9 +263,9 @@ export function ExpandableMarkeeRow({
           ...fundsLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'funds' as const,
-            amount: (log.args.amount as bigint) ?? 0n,
-            newTotal: (log.args.newTotal as bigint) ?? 0n,
-            actor: (log.args.addedBy as string) ?? '',
+            amount: ((log.args as any).amount as bigint) ?? 0n,
+            newTotal: (((log.args as any).newMarkeeTotal as bigint) ?? ((log.args as any).newTotal as bigint)) ?? 0n,
+            actor: ((log.args as any).addedBy as string) ?? '',
             timestamp: ts(log.blockNumber),
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
@@ -201,8 +274,8 @@ export function ExpandableMarkeeRow({
           ...messageLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'message' as const,
-            message: (log.args.newMessage as string) ?? '',
-            actor: (log.args.changedBy as string) ?? '',
+            message: ((log.args as any).newMessage as string) ?? '',
+            actor: (((log.args as any).updatedBy as string) ?? ((log.args as any).changedBy as string)) ?? '',
             timestamp: ts(log.blockNumber),
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
@@ -211,8 +284,8 @@ export function ExpandableMarkeeRow({
           ...nameLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'name' as const,
-            name: (log.args.newName as string) ?? '',
-            actor: (log.args.changedBy as string) ?? '',
+            name: ((log.args as any).newName as string) ?? '',
+            actor: (((log.args as any).updatedBy as string) ?? ((log.args as any).changedBy as string)) ?? '',
             timestamp: ts(log.blockNumber),
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
@@ -235,7 +308,7 @@ export function ExpandableMarkeeRow({
 
     fetchHistory()
     return () => { cancelled = true }
-  }, [expanded, history.length, isLoadingHistory, markee.address, publicClient])
+  }, [expanded, history.length, leaderboardAddress, markee.address, publicClient])
 
   const rankStyle = useMemo(() => {
     const rankColors: Record<number, string> = {

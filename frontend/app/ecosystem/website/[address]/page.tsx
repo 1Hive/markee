@@ -419,6 +419,7 @@ export default function WebsiteLeaderboardPage() {
                   markee={markee}
                   rank={idx + 1}
                   formatFunds={formatFunds}
+                  leaderboardAddress={leaderboardAddress}
                   trackView={trackView}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                   onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}

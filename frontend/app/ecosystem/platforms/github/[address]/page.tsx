@@ -385,6 +385,7 @@ export default function GithubLeaderboardPage() {
                   markee={markee}
                   rank={idx + 1}
                   formatFunds={formatFunds}
+                  leaderboardAddress={leaderboardAddress}
                   onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
                   onEditMessage={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
