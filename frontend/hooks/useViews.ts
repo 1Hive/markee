@@ -52,6 +52,7 @@ export function useViews(markees: Markee[]) {
 
     const key = markee.address.toLowerCase()
     if (sessionTracked.has(key)) return
+    if (!markee.message) return
     sessionTracked.add(key)
 
     try {

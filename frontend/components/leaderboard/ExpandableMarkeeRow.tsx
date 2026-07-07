@@ -19,7 +19,7 @@ import type { Markee } from '@/types'
 export interface ExpandableMarkeeRowSlot {
   address: string
   message: string
-  name: string
+  name?: string
   owner: string
   totalFundsAdded: bigint
 }

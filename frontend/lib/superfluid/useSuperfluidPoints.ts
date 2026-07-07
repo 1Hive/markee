@@ -42,12 +42,13 @@ async function postTrack(
   account: string,
   amountWei: string,
   txHash: string,
+  leaderboardAddress?: string,
 ): Promise<TrackResult> {
   try {
     const res = await fetch('/api/superfluid/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event, account, amountWei, txHash }),
+      body: JSON.stringify({ event, account, amountWei, txHash, leaderboardAddress }),
     })
     return await res.json()
   } catch (e: any) {
@@ -83,8 +84,8 @@ export function useSuperfluidPoints() {
    * trackBuyMessage(address, amountWei.toString(), receipt.transactionHash)
    */
   const trackBuyMessage = useCallback(
-    (account: string, amountWei: string, txHash: string) =>
-      postTrack('BUY_MESSAGE', account, amountWei, txHash),
+    (account: string, amountWei: string, txHash: string, leaderboardAddress?: string) =>
+      postTrack('BUY_MESSAGE', account, amountWei, txHash, leaderboardAddress),
     []
   )
 
@@ -92,11 +93,11 @@ export function useSuperfluidPoints() {
    * Funds added to an existing message. Pass amountWei as BigInt.toString().
    *
    * @example
-   * trackAddFunds(address, amountWei.toString(), receipt.transactionHash)
+   * trackAddFunds(address, amountWei.toString(), receipt.transactionHash, leaderboardAddress)
    */
   const trackAddFunds = useCallback(
-    (account: string, amountWei: string, txHash: string) =>
-      postTrack('ADD_FUNDS', account, amountWei, txHash),
+    (account: string, amountWei: string, txHash: string, leaderboardAddress?: string) =>
+      postTrack('ADD_FUNDS', account, amountWei, txHash, leaderboardAddress),
     []
   )
 

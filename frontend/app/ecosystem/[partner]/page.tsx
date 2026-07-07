@@ -9,7 +9,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { useReactions } from '@/hooks/useReactions'
 import { useViews } from '@/hooks/useViews'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
@@ -229,12 +229,16 @@ export default function PartnerPage() {
               )}
             </div>
 
-            <button 
-              onClick={handleCreateNew}
-              className="bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-            >
-              Buy a Message
-            </button>
+            {partner.leaderboardAddress && !NETWORK_PAUSED ? (
+              <button
+                onClick={handleCreateNew}
+                className="bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+              >
+                Buy a Message
+              </button>
+            ) : !partner.leaderboardAddress ? (
+              <span className="text-[#8A8FBF] text-sm italic">Purchases coming soon</span>
+            ) : null}
           </div>
 
           {reactionsError && (
@@ -264,12 +268,14 @@ export default function PartnerPage() {
               <div className="bg-[#0A0F3D] rounded-lg p-8 max-w-lg mx-auto border border-[#8A8FBF]/20">
                 <div className="text-6xl mb-4">🪧</div>
                 <p className="text-[#8A8FBF] text-lg mb-4">No messages yet for {partner.name}</p>
-                <button 
-                  onClick={handleCreateNew}
-                  className="bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-                >
-                  Be the First!
-                </button>
+                {partner.leaderboardAddress && !NETWORK_PAUSED && (
+                  <button
+                    onClick={handleCreateNew}
+                    className="bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
+                  >
+                    Be the First!
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -383,7 +389,7 @@ export default function PartnerPage() {
 
       <Footer />
 
-      <TopDawgModal
+      <BuyMessageModal
         isOpen={isModalOpen}
         onClose={handleModalClose}
         userMarkee={selectedMarkee}
@@ -391,7 +397,7 @@ export default function PartnerPage() {
         onSuccess={handleTransactionSuccess}
         strategyAddress={selectedMarkee
           ? selectedMarkee.pricingStrategy as `0x${string}`
-          : (partner.leaderboardAddress ?? (partner.isCooperative ? undefined : partner.strategyAddress as `0x${string}`))}
+          : partner.leaderboardAddress ?? undefined}
         partnerName={partner.isCooperative ? undefined : partner.name}
         partnerSplitPercentage={partner.isCooperative ? undefined : partner.percentToBeneficiary / 100}
         topFundsAdded={markees[0]?.totalFundsAdded}

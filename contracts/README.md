@@ -4,7 +4,7 @@
 See addresses.ts for current smart contract deployments.
 
 ### RevNet Configuration
-- Terminal: `0x2dB6d704058E552DeFE415753465df8dF0361846` (same across all chains)
+- Terminal: `0x130f5Dd2bD8805443Cf41755253D778a75a67f53` (same across all chains)
 - Project IDs:
   - Base: 119
   - Optimism: 63

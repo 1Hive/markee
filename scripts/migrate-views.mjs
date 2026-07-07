@@ -2,29 +2,57 @@
 // scripts/migrate-views.mjs
 //
 // Copies Redis view counts from old Markee contract addresses to new ones.
-// Use this when migrating legacy Markees to v1.1 clones so view history is preserved.
+// Loads pairs automatically from a migration results JSON file.
 //
 // Keys migrated:
-//   views:total:{old}          → views:total:{new}
-//   views:msg:{old}:{msgHash}  → views:msg:{new}:{msgHash}  (all keys for that address)
+//   views:total:{old}          → views:total:{new}  (INCRBY — safe to run multiple times)
+//   views:msg:{old}:{msgHash}  → views:msg:{new}:{msgHash}
 //
 // Usage:
-//   1. Fill in MIGRATIONS below with [oldAddress, newAddress] pairs
-//   2. Dry run (no writes): DRY_RUN=1 KV_URL=rediss://... node scripts/migrate-views.mjs
-//   3. Live run:                        KV_URL=rediss://... node scripts/migrate-views.mjs
+//   1. Dry run (no writes):
+//      DRY_RUN=1 KV_REST_API_URL=... KV_REST_API_TOKEN=... node scripts/migrate-views.mjs
+//   2. Live run:
+//      KV_REST_API_URL=... KV_REST_API_TOKEN=... node scripts/migrate-views.mjs
 //
-// Get KV_URL from: Vercel dashboard → Storage → your KV store → .env.local tab
+// Get KV_REST_API_URL + KV_REST_API_TOKEN from:
+//   Vercel dashboard → Storage → your KV store → .env.local tab
 
-import { kv } from '@vercel/kv'
+import { createClient } from '@vercel/kv'
+import { readFileSync } from 'fs'
+import { createRequire } from 'module'
 
-// ─── Fill in before running ───────────────────────────────────────────────────
+// ─── Load migration pairs ─────────────────────────────────────────────────────
 
-const MIGRATIONS = [
-  ['0x8F670c82a17AA3d1cbEf24813b02DF5398dC9637', '0x8B06b9eFaaffE15F17848D1eC61a4682fC9B2cf8'],
-  ['0x8198Bd516f0b683C216157470a170Fbd1fb70993', '0xC8363B3E28db6296F3A0e3e04Feb31e4952e69Aa'],
-]
+const RESULTS_PATH = process.env.RESULTS_PATH ?? '/tmp/migration-sf-factory-results.json'
 
-// ─────────────────────────────────────────────────────────────────────────────
+let results
+try {
+  results = JSON.parse(readFileSync(RESULTS_PATH, 'utf8'))
+} catch (e) {
+  console.error(`Could not read results file at ${RESULTS_PATH}: ${e.message}`)
+  process.exit(1)
+}
+
+// Build flat list of all old→new markee pairs across all leaderboard migrations
+const MIGRATIONS = results.migrations.flatMap(m =>
+  m.newMarkees.map(pair => [pair.old, pair.new])
+)
+
+// ─── KV client ────────────────────────────────────────────────────────────────
+
+if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+  console.error('Missing KV env vars.')
+  console.error('  KV_REST_API_URL=...  KV_REST_API_TOKEN=...  node scripts/migrate-views.mjs')
+  console.error('Get them from: Vercel dashboard → Storage → KV store → .env.local tab')
+  process.exit(1)
+}
+
+const kv = createClient({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+})
+
+// ─── Migration logic ──────────────────────────────────────────────────────────
 
 const DRY_RUN = process.env.DRY_RUN === '1'
 
@@ -32,57 +60,61 @@ async function migrateOne(oldAddr, newAddr) {
   const old = oldAddr.toLowerCase()
   const neo = newAddr.toLowerCase()
 
-  console.log(`\n${old}\n  → ${neo}${DRY_RUN ? '  [DRY RUN]' : ''}`)
-
   // Total views
   const total = await kv.get(`views:total:${old}`)
-  if (total !== null) {
-    console.log(`  views:total  ${total}`)
-    if (!DRY_RUN) await kv.set(`views:total:${neo}`, total)
-  } else {
-    console.log(`  views:total  (none)`)
+  const totalCount = Number(total ?? 0)
+
+  if (totalCount > 0) {
+    console.log(`  [${old}] views:total +${totalCount} → ${neo}`)
+    if (!DRY_RUN) await kv.incrby(`views:total:${neo}`, totalCount)
   }
 
   // Per-message views — scan all matching keys
   let cursor = 0
-  let count = 0
+  let msgCount = 0
   do {
     const [nextCursor, keys] = await kv.scan(cursor, { match: `views:msg:${old}:*`, count: 100 })
     cursor = nextCursor
     for (const key of keys) {
-      const value = await kv.get(key)
-      const newKey = `views:msg:${neo}:${key.split(':').pop()}`
-      console.log(`  ${key}  →  ${newKey}  (${value})`)
-      if (!DRY_RUN) await kv.set(newKey, value)
-      count++
+      const value = Number(await kv.get(key))
+      if (value > 0) {
+        const hash = key.split(':').pop()
+        const newKey = `views:msg:${neo}:${hash}`
+        console.log(`  [${old}] views:msg:...:${hash} +${value} → ${neo}`)
+        if (!DRY_RUN) await kv.incrby(newKey, value)
+        msgCount++
+      }
     }
   } while (cursor !== 0)
 
-  console.log(`  message view keys: ${count}`)
+  return { totalCount, msgCount }
 }
 
 async function main() {
-  if (MIGRATIONS.length === 0) {
-    console.error('No migrations defined — fill in the MIGRATIONS array at the top of the script.')
-    process.exit(1)
-  }
+  console.log(`migrate-views: ${MIGRATIONS.length} pairs from ${RESULTS_PATH}`)
+  console.log(DRY_RUN ? 'DRY RUN — no writes\n' : 'LIVE — writing to KV\n')
 
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    console.error('Missing KV env vars. Run: vercel env pull .env.local')
-    console.error('Then: source .env.local && node migrate-views.mjs')
-    process.exit(1)
-  }
-
-  console.log(`Running ${MIGRATIONS.length} migration(s)${DRY_RUN ? ' — DRY RUN, no writes' : ''}`)
+  let pairsWithViews = 0
+  let totalViewsMigrated = 0
+  let totalMsgKeysMigrated = 0
 
   for (const [oldAddr, newAddr] of MIGRATIONS) {
-    await migrateOne(oldAddr, newAddr)
+    const { totalCount, msgCount } = await migrateOne(oldAddr, newAddr)
+    if (totalCount > 0 || msgCount > 0) {
+      pairsWithViews++
+      totalViewsMigrated += totalCount
+      totalMsgKeysMigrated += msgCount
+    }
   }
 
-  console.log('\nDone.')
+  console.log(`\nDone.`)
+  console.log(`  Pairs with views: ${pairsWithViews} / ${MIGRATIONS.length}`)
+  console.log(`  Total views migrated: ${totalViewsMigrated}`)
+  console.log(`  Message view keys migrated: ${totalMsgKeysMigrated}`)
+  if (DRY_RUN) console.log(`  (dry run — no writes were made)`)
 }
 
-main().catch((err) => {
+main().catch(err => {
   console.error(err)
   process.exit(1)
 })

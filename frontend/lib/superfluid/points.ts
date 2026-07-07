@@ -8,9 +8,9 @@
 const BASE_URL = 'https://cms.superfluid.pro'
 
 // ─── Points formula ───────────────────────────────────────────────────────────
-// 1 point per 0.0001 ETH (1e14 wei), minimum 1 point per transaction.
+// 1 point per 0.0000001 ETH (1e11 wei) = 10M pts per ETH, minimum 1 point per transaction.
 
-const WEI_PER_POINT = BigInt('100000000000000') // 1e14 wei = 0.0001 ETH
+const WEI_PER_POINT = BigInt('100000000000') // 1e11 wei = 0.0000001 ETH
 
 export function ethToPoints(amountWei: bigint | string): number {
   const wei = typeof amountWei === 'string' ? BigInt(amountWei) : amountWei
