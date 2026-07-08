@@ -8,8 +8,6 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
-import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -308,31 +306,87 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
 }
 
 // ── Dense table row ───────────────────────────────────────────────────────────
-function MarketplaceRow({ lb, rank, views, ethPrice, onBuy }: { lb: Leaderboard; rank: number; views: number; ethPrice: number | null; onBuy: () => void }) {
+function MarketplaceRow({ lb, rank, views, ethPrice, isNarrow }: { lb: Leaderboard; rank: number; views: number; ethPrice: number | null; isNarrow: boolean }) {
   const totalEth  = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const priceEth  = parseFloat(formatEther(priceToOvertake(lb)))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
-  const topMarkeeAddress = lb.topMarkeeAddress as `0x${string}` | null
 
-  if (!topMarkeeAddress) return null
+  const rankColors: Record<number, { text: string; border: string; bg: string }> = {
+    1: { text: '#FFD700', border: 'rgba(255,215,0,0.45)', bg: 'rgba(255,215,0,0.1)' },
+    2: { text: '#C0C0C0', border: 'rgba(192,192,192,0.4)', bg: 'rgba(192,192,192,0.1)' },
+    3: { text: '#CD7F32', border: 'rgba(205,127,50,0.4)', bg: 'rgba(205,127,50,0.1)' },
+  }
+  const rankColor = rankColors[rank] ?? { text: MUTED, border: BORDER, bg: 'rgba(138,143,191,0.05)' }
 
   return (
-    <ExpandableMarkeeRow
-      markee={{
-        address: topMarkeeAddress,
-        message: lb.topMessage ?? '',
-        name: servedOnLabel(lb),
-        owner: lb.topMarkeeOwner ?? lb.topMessageOwner ?? '0x0000000000000000000000000000000000000000',
-        totalFundsAdded: BigInt(lb.totalFundsRaw || '0'),
+    <a
+      href={`/markee/${lb.address}`}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: isNarrow ? '1fr' : '1fr 120px 100px 130px',
+        gap: isNarrow ? 10 : 16,
+        alignItems: 'center',
+        padding: '14px',
+        borderRadius: 8,
+        background: 'rgba(6,10,42,0.35)',
+        border: `1px solid ${BORDER}`,
+        color: 'inherit',
+        textDecoration: 'none',
+        transition: 'border-color 140ms, background 140ms',
       }}
-      rank={rank}
-      formatFunds={() => totalLabel}
-      leaderboardAddress={lb.address as `0x${string}`}
-      viewCount={views}
-      onAddFunds={onBuy}
-      actionLabel={priceLabel}
-    />
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = 'rgba(248,151,254,0.35)'
+        el.style.background = 'rgba(248,151,254,0.05)'
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = BORDER
+        el.style.background = 'rgba(6,10,42,0.35)'
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        <span style={{
+          width: 30, height: 30, borderRadius: 99, flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          color: rankColor.text, background: rankColor.bg, border: `1px solid ${rankColor.border}`,
+          fontFamily: MONO, fontSize: 12, fontWeight: 700,
+        }}>
+          {rank}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 14, lineHeight: 1.45, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {lb.topMessage || 'No message'}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, minWidth: 0 }}>
+            <ServedLogo lb={lb} />
+            <span style={{ color: MUTED, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {servedOnLabel(lb)}
+            </span>
+          </div>
+        </div>
+      </div>
+      {isNarrow ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: MONO, fontSize: 13, color: PINK, fontWeight: 700 }}>{totalLabel} raised</span>
+          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Eye size={12} style={{ opacity: 0.65 }} />
+            {views > 0 ? formatViews(views) : '—'}
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 13, color: BLUE, fontWeight: 600 }}>{priceLabel} to change</span>
+        </div>
+      ) : (
+        <>
+          <span style={{ fontFamily: MONO, fontSize: 13, color: PINK, fontWeight: 700 }}>{totalLabel}</span>
+          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Eye size={12} style={{ opacity: 0.65 }} />
+            {views > 0 ? formatViews(views) : '—'}
+          </span>
+          <span style={{ justifySelf: 'end', fontFamily: MONO, fontSize: 13, color: BLUE, fontWeight: 600 }}>{priceLabel}</span>
+        </>
+      )}
+    </a>
   )
 }
 
@@ -345,8 +399,6 @@ export default function MarketplacePage() {
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
-
-  const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
 
   const [search,  setSearch]   = useState('')
   const [factory, setFactory]  = useState('all')
@@ -594,7 +646,7 @@ export default function MarketplacePage() {
                   rank={page * PAGE_SIZE + index + 1}
                   views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
                   ethPrice={ethPrice}
-                  onBuy={() => setBuyModal(lb)}
+                  isNarrow={isNarrow}
                 />
               ))}
             </div>
@@ -614,17 +666,6 @@ export default function MarketplacePage() {
       </section>
 
       <Footer />
-
-      {buyModal && (
-        <BuyMessageModal
-          isOpen={true}
-          strategyAddress={buyModal.address as `0x${string}`}
-          topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
-          platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
-          onClose={() => setBuyModal(null)}
-          onSuccess={() => setBuyModal(null)}
-        />
-      )}
     </div>
   )
 }
