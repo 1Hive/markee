@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther } from 'viem'
 import { CreditCard } from 'lucide-react'
-import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
@@ -99,10 +99,13 @@ interface FixedPriceModalProps {
 export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
   const { authenticated } = usePrivy()
   const { isConnected, chain, address } = useAccount()
+  const { wallets } = useWallets()
+  const activeAddress = address ?? wallets[0]?.address
+  const hasWallet = !!activeAddress || isConnected
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
+  const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
 
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
@@ -240,7 +243,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             </div>
           </div>
 
-        ) : !isConnected ? (
+        ) : !hasWallet ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
@@ -333,9 +336,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                     <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
                     <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
                   </div>
-                  {authenticated && address && (
+                  {authenticated && activeAddress && (
                     <button
-                      onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
+                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       <CreditCard size={13} />

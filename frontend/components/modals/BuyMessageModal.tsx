@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { CreditCard } from 'lucide-react'
-import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -151,6 +151,9 @@ export function BuyMessageModal({
 }: BuyMessageModalProps) {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
+  const { wallets } = useWallets()
+  const activeAddress = address ?? wallets[0]?.address
+  const hasWallet = !!activeAddress || isConnected
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -165,7 +168,7 @@ export function BuyMessageModal({
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({
-    address,
+    address: activeAddress as `0x${string}` | undefined,
     chainId: CANONICAL_CHAIN.id,
   })
 
@@ -280,15 +283,15 @@ export function BuyMessageModal({
   }, [isSuccess, onClose, isOpen, onSuccess])
 
   useEffect(() => {
-    if (!isSuccess || !receipt || !address || !strategyAddress || activeTab === 'updateMessage') return
+    if (!isSuccess || !receipt || !activeAddress || !strategyAddress || activeTab === 'updateMessage') return
     const normalised = strategyAddress.toLowerCase()
     if (!SUPERFLUID_STRATEGY_ADDRESSES.has(normalised)) return
     const txHash = receipt.transactionHash
     const amountWei = parseEther(amount).toString()
-    if (activeTab === 'addFunds') trackAddFunds(address, amountWei, txHash, strategyAddress).catch(console.error)
-    else trackBuyMessage(address, amountWei, txHash, strategyAddress).catch(console.error)
+    if (activeTab === 'addFunds') trackAddFunds(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
+    else trackBuyMessage(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess, receipt, address])
+  }, [isSuccess, receipt, activeAddress])
 
   useEffect(() => {
     if (!isSuccess || !strategyAddress || activeTab === 'updateMessage' || platformId !== 'github') return
@@ -339,7 +342,7 @@ export function BuyMessageModal({
   if (!isOpen) return null
 
   const canSwitchTabs = !isPending && !isConfirming
-  const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
+  const isOwner = userMarkee && activeAddress && userMarkee.owner.toLowerCase() === activeAddress.toLowerCase()
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
 
   const btnDisabled =
@@ -432,7 +435,7 @@ export function BuyMessageModal({
             </div>
           </div>
 
-        ) : !isConnected ? (
+        ) : !hasWallet ? (
           /* ── Connect wallet ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
@@ -525,7 +528,7 @@ export function BuyMessageModal({
                         {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
                       </div>
                       <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontStyle: 'italic' }}>- {name || (address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '0x...')}</span>
+                        <span style={{ fontStyle: 'italic' }}>- {name || (activeAddress ? `${activeAddress.slice(0, 6)}…${activeAddress.slice(-4)}` : '0x...')}</span>
                         <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
                       </div>
                     </>
@@ -682,9 +685,9 @@ export function BuyMessageModal({
                     <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
                     <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
                   </div>
-                  {authenticated && address && (
+                  {authenticated && activeAddress && (
                     <button
-                      onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount } })}
+                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount } })}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       <CreditCard size={13} />
