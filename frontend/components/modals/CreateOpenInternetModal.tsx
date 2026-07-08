@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const OI_FACTORY_ADDRESS = '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const
 
@@ -74,6 +75,10 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
     onSuccess?.()
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'CreateOpenInternetModal')
+  }, [writeError])
+
   const blockBackdropClose = hasUserEdited && !isPending && !isConfirming && !isSuccess
 
   useEffect(() => {
@@ -98,15 +103,21 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setError('Enter a valid treasury address.')
       return
     }
-    writeContract({
-      address: OI_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, name.trim()],
-    })
+    try {
+      writeContract({
+        address: OI_FACTORY_ADDRESS,
+        abi: FACTORY_ABI,
+        functionName: 'createLeaderboard',
+        args: [beneficiary as `0x${string}`, name.trim()],
+      })
+    } catch (err) {
+      logTransactionError(err, 'CreateOpenInternetModal.createLeaderboard')
+      setError(formatTransactionError(err))
+    }
   }
 
   if (!isOpen) return null
+  const transactionError = error || (writeError ? formatTransactionError(writeError) : null)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -204,10 +215,10 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                   </div>
                 </div>
 
-                {(error || writeError) && (
+                {transactionError && (
                   <div className="flex items-start gap-2 text-red-400 text-sm">
                     <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error ?? writeError?.message}</span>
+                    <span>{transactionError}</span>
                   </div>
                 )}
 

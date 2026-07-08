@@ -9,6 +9,7 @@ import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
@@ -134,6 +135,10 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'FixedPriceModal')
+  }, [writeError])
+
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep
 
@@ -176,12 +181,16 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
         value: priceWei,
         chainId: CANONICAL_CHAIN.id,
       })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'FixedPriceModal.changeMessage')
+      setError(formatTransactionError(err))
+    }
   }
 
   if (!isOpen || !fixedMarkee) return null
 
   const isOverLimit = newMessage.length > maxLen
+  const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
   const btnDisabledReason = !btnDisabled || isSuccess ? null
@@ -369,9 +378,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               )}
 
               {/* Error */}
-              {(error || isError) && (
+              {transactionError && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
-                  {error || writeError?.message}
+                  {transactionError}
                 </p>
               )}
             </div>

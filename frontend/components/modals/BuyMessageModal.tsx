@@ -10,6 +10,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import type { Markee } from '@/types'
 
@@ -305,6 +306,10 @@ export function BuyMessageModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'BuyMessageModal')
+  }, [writeError])
+
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep
 
@@ -336,7 +341,10 @@ export function BuyMessageModal({
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name], value: amountWei, chainId: CANONICAL_CHAIN.id })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'BuyMessageModal.createMarkee')
+      setError(formatTransactionError(err))
+    }
   }
 
   const handleAddFunds = async () => {
@@ -346,7 +354,10 @@ export function BuyMessageModal({
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'addFunds', args: [userMarkee.address as `0x${string}`], value: parseEther(amount), chainId: CANONICAL_CHAIN.id })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'BuyMessageModal.addFunds')
+      setError(formatTransactionError(err))
+    }
   }
 
   const handleUpdateMessage = async () => {
@@ -356,7 +367,10 @@ export function BuyMessageModal({
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'updateMessage', args: [userMarkee.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'BuyMessageModal.updateMessage')
+      setError(formatTransactionError(err))
+    }
   }
 
   if (!isOpen) return null
@@ -374,6 +388,7 @@ export function BuyMessageModal({
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
   const maxLen = Number(maxMessageLength || 223)
+  const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
     txStep === 'signing' ? 'AWAITING SIGNATURE' :
@@ -719,9 +734,9 @@ export function BuyMessageModal({
               )}
 
               {/* Error */}
-              {(error || isError) && (
+              {transactionError && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
-                  {error || writeError?.message}
+                  {transactionError}
                 </p>
               )}
             </div>
