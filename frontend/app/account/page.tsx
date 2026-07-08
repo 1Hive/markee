@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAccount } from 'wagmi'
+import { useWallets } from '@privy-io/react-auth'
 import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
@@ -737,6 +738,9 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
   const { address: walletAddress, isConnected } = useAccount()
+  const { wallets } = useWallets()
+  const activeAddress = walletAddress ?? wallets[0]?.address
+  const hasWallet = !!activeAddress || isConnected
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
@@ -866,12 +870,12 @@ export default function AccountPage() {
   }, [])
 
   useEffect(() => {
-    if (walletAddress) {
-      fetchAll(walletAddress)
-      fetchMyMessages(walletAddress)
-      fetchFundedMessages(walletAddress)
+    if (activeAddress) {
+      fetchAll(activeAddress)
+      fetchMyMessages(activeAddress)
+      fetchFundedMessages(activeAddress)
     }
-  }, [walletAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
+  }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
 
   // Derived board lists
   const allBoards = useMemo(() =>
@@ -930,17 +934,17 @@ export default function AccountPage() {
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My dashboard</h1>
-              {mounted && walletAddress
-                ? <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(walletAddress)}</p>
+              {mounted && activeAddress
+                ? <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(activeAddress)}</p>
                 : <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14 }}>Connect your wallet to continue</p>
               }
             </div>
-            {mounted && !isConnected && (
+            {mounted && !hasWallet && (
               <div style={{ marginLeft: 'auto' }}><ConnectButton /></div>
             )}
           </div>
 
-          {mounted && isConnected && (
+          {mounted && hasWallet && (
             <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} loaded={!isLoading} />
           )}
         </div>
@@ -948,7 +952,7 @@ export default function AccountPage() {
 
       {/* Tabs + content */}
       <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '0 40px 80px' }}>
-        {mounted && isConnected ? (
+        {mounted && hasWallet ? (
           <>
             <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
               <Tabs tab={tab} setTab={setTab} counts={{ markees: allBoards.length, bought: myMessages.length, funded: fundedMessages.length }} />
@@ -1079,7 +1083,7 @@ export default function AccountPage() {
               )}
             </div>
           </>
-        ) : mounted && !isConnected ? (
+        ) : mounted && !hasWallet ? (
           <div style={{ paddingTop: 80, textAlign: 'center' }}>
             <div style={{ background: BG2, borderRadius: 20, padding: '60px 24px', border: `1px solid ${BORDER}`, maxWidth: 440, margin: '0 auto' }}>
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block' }}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
