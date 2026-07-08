@@ -459,7 +459,9 @@ export default function MarketplacePage() {
         const active   = lbs.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         const messages = active.reduce((sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)), 0)
         const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
-        setEcoStats({ markees: active.length, messages, usd: ethPrice ? Math.round(totalEth * ethPrice) : 0 })
+        const usd = data.totalPlatformFundsUsd
+          ?? (ethPrice ? Math.round(totalEth * ethPrice) : 0)
+        setEcoStats({ markees: active.length, messages, usd })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -548,10 +550,14 @@ export default function MarketplacePage() {
     ? (viewsMap.get(featured.topMarkeeAddress.toLowerCase()) ?? 0)
     : 0
 
-  const totalViews = useMemo(
-    () => Array.from(viewsMap.values()).reduce((sum, v) => sum + v, 0),
-    [viewsMap]
-  )
+  const [networkViews, setNetworkViews] = useState(0)
+  useEffect(() => {
+    fetch('/api/views?network=1')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setNetworkViews(data.total ?? 0) })
+      .catch(() => {})
+  }, [])
+  const totalViews = networkViews
 
   const FACTORIES = [
     { key: 'all',        label: 'All' },

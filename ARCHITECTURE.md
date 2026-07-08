@@ -16,7 +16,7 @@ graph TD
     M["Markee\nmessage · name · owner · totalFunds"]
     FS["FixedStrategy\nimplements IPricingStrategy"]
     IPS["«interface» IPricingStrategy\nbenefit% · revNetEnabled\nplatformFeeReceiver · revNetProjectId"]
-    RT["RevNet Terminal\n0x2dB6d704..."]
+    RT["RevNet Terminal\n0x130f5Dd2..."]
 
     Factory -->|"clone + initialize()"| LB
     LB -->|"clone per createMarkee()"| M
@@ -101,7 +101,7 @@ All stored in Vercel KV. Client hooks (`useViews`, `useReactions`) call the API 
 | Balance cache | `balance:markee:{address}:{chainId}` | 5 min TTL — ERC20 `balanceOf` via viem |
 | Moderation flags | `moderation:flagged` (Redis SET) | Admin wallet signature required |
 
-MARKEE ERC20 (all chains): `0xee3027f1e021b09D629922D40436C5DeA3c6cb38`
+MARKEE ERC20 (all chains): `0xF6627cF19317C33B457f77452876e6e297c4942F`
 
 ---
 
@@ -139,10 +139,10 @@ Payment (when revNetEnabled = true — pending RevNet v6 deployment):
 
   User pays ETH → Leaderboard.addFunds()
     ├── 62% → beneficiary wallet  (percentToBeneficiary = 6200)
-    └── 38% → RevNet Terminal 0x2dB6d704...
+    └── 38% → RevNet Terminal 0x130f5Dd2...
                 └── project 119 (Base) → mints MARKEE tokens → distributed to holders/reserves
 
-Currently using an interim legacy Juicebox project at https://juicebox.money/v5/base:152 while Revnets v6 is completed. 
+Currently using an interim legacy Juicebox project at https://juicebox.money/v5/base:7 while Revnets v6 is completed. 
 ```
 
 

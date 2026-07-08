@@ -20,7 +20,7 @@ export const CANONICAL_CHAIN: Chain = FORK_RPC
   : base
 export const CANONICAL_CHAIN_ID = base.id
 // MARKEE token address (same across all chains)
-export const MARKEE_TOKEN = '0xee3027f1e021b09D629922D40436C5DeA3c6cb38' as const
+export const MARKEE_TOKEN = '0xF6627cF19317C33B457f77452876e6e297c4942F' as const
 // Partner Reserve Distributor (Base only)
 export const PARTNER_RESERVE_DISTRIBUTOR = '0x7FD2aF60B309f872a2cDAcCa853A9F7885466577' as const
 // Markee Cooperative multisig — default beneficiary for non-partner strategies
@@ -29,9 +29,17 @@ export const COOPERATIVE_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'
 // RevNet v6 config — JB terminal and project ID on Base
 export const REVNET_V6_CONFIG = {
   [base.id]: {
-    projectId: 152,
-    terminal: '0x2dB6d704058E552DeFE415753465df8dF0361846' as const,
+    projectId: 7,
+    terminal: '0x130f5Dd2bD8805443Cf41755253D778a75a67f53' as const,
   },
+} as const
+
+// V1.3 Leaderboard addresses (Base only) — migrated from v1.2 via migrate-to-v13.sh
+export const V13_LEADERBOARDS = {
+  COOPERATIVE: '0x0590b56430426A38D0fA065b839c10D542E75CCD' as const,
+  GARDENS: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' as const,
+  CLAWCHEMY: '0xdF4769a9593CB8E40d0409dEF2645651412A8A97' as const,
+  SUPERFLUID_MIGRATION: '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as const,
 } as const
 
 // V1.3 LeaderboardFactory contract addresses
