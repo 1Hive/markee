@@ -735,6 +735,14 @@ function FundedTable({ items }: { items: FundedMessage[] }) {
 
 // ── Manage integrations modal ─────────────────────────────────────────────────
 function ManageModal({ lb, onClose, onIntegrate, onVerify, onEdit }: { lb: AnyLeaderboard; onClose: () => void; onIntegrate?: () => void; onVerify?: () => void; onEdit?: () => void }) {
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [onClose])
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(6,10,42,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)', margin: 'auto', background: BG2, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>

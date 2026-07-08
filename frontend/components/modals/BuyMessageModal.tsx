@@ -305,6 +305,24 @@ export function BuyMessageModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 
+  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const blockBackdropClose = hasUserEdited && !txStep
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreateMarkee = async () => {
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
@@ -345,8 +363,6 @@ export function BuyMessageModal({
 
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && activeAddress && userMarkee.owner.toLowerCase() === activeAddress.toLowerCase()
-  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
-  const blockBackdropClose = hasUserEdited && !txStep
 
   const btnDisabled =
     isPending || isConfirming || isSuccess ||

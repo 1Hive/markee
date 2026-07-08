@@ -40,6 +40,21 @@ export function EditWebsiteMetaModal({
     logoUrl !== (initialLogoUrl ?? '')
   )
 
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (isDirty) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, isDirty, onClose])
+
   const handleSave = async () => {
     setError(null)
     setIsSaving(true)

@@ -35,8 +35,24 @@ export function VerifyIntegrationModal({
     setLocalVerifiedUrls(leaderboard.verifiedUrls ?? [])
   }, [isOpen, leaderboard.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!isOpen) return null
   const blockBackdropClose = !!verifyUrl.trim() && !verifying
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
+  if (!isOpen) return null
 
   async function handleVerify() {
     if (!verifyUrl.trim()) return

@@ -74,6 +74,23 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
     onSuccess?.()
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const blockBackdropClose = hasUserEdited && !isPending && !isConfirming && !isSuccess
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
   const handleCreate = () => {
     setError(null)
     if (!name.trim()) { setError('Enter a name for your sign.'); return }
@@ -90,7 +107,6 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   }
 
   if (!isOpen) return null
-  const blockBackdropClose = hasUserEdited && !isPending && !isConfirming && !isSuccess
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

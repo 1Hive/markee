@@ -134,6 +134,24 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
 
+  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const blockBackdropClose = hasUserEdited && !txStep
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
   const canAfford = () => {
     if (!balanceData || priceWei === 0n) return false
     return balanceData.value >= priceWei + FAST_TX_GAS_RESERVE
@@ -164,8 +182,6 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   if (!isOpen || !fixedMarkee) return null
 
   const isOverLimit = newMessage.length > maxLen
-  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
-  const blockBackdropClose = hasUserEdited && !txStep
 
   const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
   const btnDisabledReason = !btnDisabled || isSuccess ? null
