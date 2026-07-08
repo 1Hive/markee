@@ -6,6 +6,7 @@ import { Eye } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 
@@ -306,86 +307,65 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
 }
 
 // ── Dense table row ───────────────────────────────────────────────────────────
-function MarketplaceRow({ lb, rank, views, ethPrice, isNarrow }: { lb: Leaderboard; rank: number; views: number; ethPrice: number | null; isNarrow: boolean }) {
+function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void }) {
+  const [hover, setHover] = useState(false)
   const totalEth  = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const priceEth  = parseFloat(formatEther(priceToOvertake(lb)))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
 
-  const rankColors: Record<number, { text: string; border: string; bg: string }> = {
-    1: { text: '#FFD700', border: 'rgba(255,215,0,0.45)', bg: 'rgba(255,215,0,0.1)' },
-    2: { text: '#C0C0C0', border: 'rgba(192,192,192,0.4)', bg: 'rgba(192,192,192,0.1)' },
-    3: { text: '#CD7F32', border: 'rgba(205,127,50,0.4)', bg: 'rgba(205,127,50,0.1)' },
-  }
-  const rankColor = rankColors[rank] ?? { text: MUTED, border: BORDER, bg: 'rgba(138,143,191,0.05)' }
-
   return (
     <a
       href={`/markee/${lb.address}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid',
-        gridTemplateColumns: isNarrow ? '1fr' : '1fr 120px 100px 130px',
-        gap: isNarrow ? 10 : 16,
-        alignItems: 'center',
-        padding: '14px',
-        borderRadius: 8,
-        background: 'rgba(6,10,42,0.35)',
-        border: `1px solid ${BORDER}`,
-        color: 'inherit',
-        textDecoration: 'none',
-        transition: 'border-color 140ms, background 140ms',
-      }}
-      onMouseEnter={e => {
-        const el = e.currentTarget as HTMLElement
-        el.style.borderColor = 'rgba(248,151,254,0.35)'
-        el.style.background = 'rgba(248,151,254,0.05)'
-      }}
-      onMouseLeave={e => {
-        const el = e.currentTarget as HTMLElement
-        el.style.borderColor = BORDER
-        el.style.background = 'rgba(6,10,42,0.35)'
+        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gap: 16, padding: '11px 14px', textDecoration: 'none',
+        borderBottom: `1px solid ${BORDER}`,
+        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
+        transition: 'background 120ms', cursor: 'pointer',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-        <span style={{
-          width: 30, height: 30, borderRadius: 99, flexShrink: 0,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          color: rankColor.text, background: rankColor.bg, border: `1px solid ${rankColor.border}`,
-          fontFamily: MONO, fontSize: 12, fontWeight: 700,
-        }}>
-          {rank}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
+        <ServedLogo lb={lb} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: lb.platform === 'website' ? MONO : 'inherit' }}>
+          {servedOnLabel(lb)}
         </span>
-        <div style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 14, lineHeight: 1.45, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {lb.topMessage || 'No message'}
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, minWidth: 0 }}>
-            <ServedLogo lb={lb} />
-            <span style={{ color: MUTED, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {servedOnLabel(lb)}
-            </span>
-          </div>
+      </span>
+
+      <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+        {totalLabel}
+      </span>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
       </div>
-      {isNarrow ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: MONO, fontSize: 13, color: PINK, fontWeight: 700 }}>{totalLabel} raised</span>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Eye size={12} style={{ opacity: 0.65 }} />
-            {views > 0 ? formatViews(views) : '—'}
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: 13, color: BLUE, fontWeight: 600 }}>{priceLabel} to change</span>
-        </div>
-      ) : (
-        <>
-          <span style={{ fontFamily: MONO, fontSize: 13, color: PINK, fontWeight: 700 }}>{totalLabel}</span>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Eye size={12} style={{ opacity: 0.65 }} />
-            {views > 0 ? formatViews(views) : '—'}
-          </span>
-          <span style={{ justifySelf: 'end', fontFamily: MONO, fontSize: 13, color: BLUE, fontWeight: 600 }}>{priceLabel}</span>
-        </>
-      )}
+
+      <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Eye size={10} style={{ opacity: 0.7 }} />
+        {views > 0 ? formatViews(views) : '—'}
+      </span>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
+          style={{
+            width: '100%', textAlign: 'center',
+            background: PINK, color: BG, border: 'none', borderRadius: 7,
+            padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+            cursor: 'pointer', whiteSpace: 'nowrap',
+            boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+            transition: 'transform 120ms, box-shadow 120ms',
+          }}
+          onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
+          onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
+        >
+          {priceLabel}
+        </button>
+      </div>
     </a>
   )
 }
@@ -393,12 +373,13 @@ function MarketplaceRow({ lb, rank, views, ethPrice, isNarrow }: { lb: Leaderboa
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const ethPrice = useEthPrice()
-  const isNarrow = useNarrow()
 
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([])
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
+
+  const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
 
   const [search,  setSearch]   = useState('')
   const [factory, setFactory]  = useState('all')
@@ -608,27 +589,19 @@ export default function MarketplacePage() {
         {/* table */}
         <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           {/* column headers */}
-          {isNarrow ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, overflowX: 'auto' }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, flexShrink: 0 }}>Sort</span>
-              <SortHead label="Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortHead label="Views" col="views" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortHead label="Price" col="price" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 100px 130px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Message / Served on</span>
-              <SortHead label="Total raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortHead label="Views" col="views" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortHead label="Price to change" col="price" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
-            </div>
-          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
+            <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
+            <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+          </div>
 
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr 120px 100px 130px', gap: 16, padding: '14px', borderBottom: `1px solid ${BORDER}` }}>
-                {Array.from({ length: isNarrow ? 1 : 4 }).map((_, j) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+                {[1, 2, 3, 4, 5].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
               </div>
@@ -638,18 +611,15 @@ export default function MarketplacePage() {
               No messages match that search.
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: 10, padding: 10 }}>
-              {pageRows.map((lb, index) => (
-                <MarketplaceRow
-                  key={lb.address}
-                  lb={lb}
-                  rank={page * PAGE_SIZE + index + 1}
-                  views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
-                  ethPrice={ethPrice}
-                  isNarrow={isNarrow}
-                />
-              ))}
-            </div>
+            pageRows.map(lb => (
+              <TableRow
+                key={lb.address}
+                lb={lb}
+                views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
+                ethPrice={ethPrice}
+                onBuy={() => setBuyModal(lb)}
+              />
+            ))
           )}
         </div>
 
@@ -666,6 +636,17 @@ export default function MarketplacePage() {
       </section>
 
       <Footer />
+
+      {buyModal && (
+        <BuyMessageModal
+          isOpen={true}
+          strategyAddress={buyModal.address as `0x${string}`}
+          topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
+          platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
+          onClose={() => setBuyModal(null)}
+          onSuccess={() => setBuyModal(null)}
+        />
+      )}
     </div>
   )
 }

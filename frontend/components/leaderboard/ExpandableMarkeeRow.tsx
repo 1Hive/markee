@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAccount, usePublicClient } from 'wagmi'
 import { formatEther, parseAbiItem } from 'viem'
 import {
@@ -30,6 +30,7 @@ interface ExpandableMarkeeRowProps {
   formatFunds: (wei: bigint) => string
   leaderboardAddress?: `0x${string}`
   viewCount?: number
+  featured?: boolean
   onAddFunds?: () => void
   actionLabel?: string
   onEditMessage?: () => void
@@ -78,6 +79,17 @@ const MESSAGE_CHANGED = parseAbiItem(
 const NAME_CHANGED = parseAbiItem(
   'event NameChanged(string newName, address indexed changedBy)'
 )
+
+const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const PINK = '#F897FE'
+const BLUE = '#7C9CFF'
+const BG = '#060A2A'
+const BG2 = '#0A0F3D'
+const TEXT = '#EDEEFF'
+const TEXT2 = '#B8B6D9'
+const MUTED = '#8A8FBF'
+const BORDER = 'rgba(138,143,191,0.2)'
+const LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
 type ApiHistoryEvent =
   | {
@@ -178,8 +190,9 @@ export function ExpandableMarkeeRow({
   formatFunds,
   leaderboardAddress,
   viewCount,
+  featured = false,
   onAddFunds,
-  actionLabel = '+ add funds',
+  actionLabel = 'Add Funds',
   onEditMessage,
   trackView,
 }: ExpandableMarkeeRowProps) {
@@ -312,83 +325,106 @@ export function ExpandableMarkeeRow({
     return () => { cancelled = true }
   }, [expanded, history.length, leaderboardAddress, markee.address, publicClient])
 
-  const rankStyle = useMemo(() => {
-    const rankColors: Record<number, string> = {
-      1: 'text-[#FFD700] border-[#FFD700]/40 bg-[#FFD700]/10',
-      2: 'text-[#C0C0C0] border-[#C0C0C0]/40 bg-[#C0C0C0]/10',
-      3: 'text-[#CD7F32] border-[#CD7F32]/40 bg-[#CD7F32]/10',
-    }
-    return rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/20 bg-[#8A8FBF]/5'
-  }, [rank])
-
   const latestTxHash = history[0]?.transactionHash
+  const displayName = markee.name || formatAddress(markee.owner)
 
   return (
-    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-all overflow-hidden">
-      <div className="px-5 py-4 flex items-start gap-3">
+    <div style={{ borderBottom: `1px solid ${BORDER}`, background: featured ? `${PINK}0A` : 'transparent' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: LB_COLS,
+          gap: 16,
+          padding: '13px 16px',
+          alignItems: 'center',
+          borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent',
+        }}
+      >
         <button
           type="button"
           onClick={() => setExpanded(value => !value)}
-          aria-label={expanded ? 'Collapse transaction history' : 'Expand transaction history'}
+          aria-label={expanded ? `Collapse transaction history for row ${rank}` : `Expand transaction history for row ${rank}`}
           aria-expanded={expanded}
-          className="mt-1 flex-shrink-0 w-7 h-7 rounded-md border border-[#8A8FBF]/20 text-[#8A8FBF] hover:text-[#F897FE] hover:border-[#F897FE]/50 hover:bg-[#F897FE]/10 transition-colors flex items-center justify-center"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            border: `1px solid ${BORDER}`,
+            background: 'transparent',
+            color: MUTED,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <ChevronRight size={15} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+          <ChevronRight size={15} style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 140ms' }} />
         </button>
 
-        <div className={`flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold ${rankStyle}`}>
-          {rank}
-        </div>
+        <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayName}
+        </span>
 
-        <button
-          type="button"
-          onClick={() => setExpanded(value => !value)}
-          className="flex-1 min-w-0 text-left"
-        >
-          <p className="text-[#EDEEFF] font-mono text-sm leading-relaxed line-clamp-2">
+        <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+          {formatFunds(markee.totalFundsAdded)}
+        </span>
+
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {markee.message || <span className="opacity-40 italic">No message</span>}
           </p>
-          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            {markee.name && <span className="text-[#8A8FBF] text-xs">{markee.name}</span>}
-            {viewCount !== undefined && viewCount > 0 && (
-              <span className="text-[#8A8FBF] text-xs flex items-center gap-1">
-                <Eye size={12} className="opacity-60" />
-                <span>{viewCount.toLocaleString()}</span>
-              </span>
-            )}
-            {isOwner && (
-              <span className="text-xs bg-[#F897FE]/15 border border-[#F897FE]/30 text-[#F897FE] px-2 py-0.5 rounded-full">
-                yours
-              </span>
-            )}
-          </div>
-        </button>
+        </div>
 
-        <div className="flex-shrink-0 flex flex-col items-end gap-2">
-          <span className="text-[#F897FE] text-sm font-semibold">{formatFunds(markee.totalFundsAdded)}</span>
-          {onAddFunds && (
-            <button
-              type="button"
-              onClick={onAddFunds}
-              className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
-            >
-              {actionLabel}
-            </button>
-          )}
+        <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Eye size={10} style={{ opacity: 0.7 }} />
+          {viewCount !== undefined && viewCount > 0 ? viewCount.toLocaleString() : '-'}
+        </span>
+
+        <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
           {isOwner && onEditMessage && (
             <button
               type="button"
               onClick={onEditMessage}
-              className="text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
+              style={{
+                background: 'transparent',
+                color: TEXT2,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 7,
+                padding: '8px 13px',
+                fontFamily: MONO,
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: 'pointer',
+              }}
             >
-              edit message
+              Edit
+            </button>
+          )}
+          {onAddFunds && (
+            <button
+              type="button"
+              onClick={onAddFunds}
+              style={{
+                background: PINK,
+                color: BG,
+                border: 'none',
+                borderRadius: 7,
+                padding: '8px 14px',
+                fontFamily: MONO,
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {actionLabel}
             </button>
           )}
         </div>
       </div>
 
       {expanded && (
-        <div className="border-t border-[#8A8FBF]/15 bg-[#060A2A]/55 px-5 py-4">
+        <div style={{ borderTop: `1px solid ${BORDER}`, background: BG, padding: '12px 16px 14px', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent' }}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF]">
               Transaction history

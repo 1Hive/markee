@@ -29,6 +29,7 @@ const TEXT  = '#EDEEFF'
 const TEXT2 = '#B8B6D9'
 const MUTED = '#8A8FBF'
 const BORDER = 'rgba(138,143,191,0.2)'
+const MARKEE_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
 const HERO_GRAD = [
   'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
@@ -1078,7 +1079,7 @@ export default function MarkeeDetailPage() {
   const ethPrice = useEthPrice()
   const { address: connectedAddress } = useAccount()
 
-  const { meta, markees: allMarkees, isLoading } = useLeaderboardDetail(leaderboardAddress)
+  const { meta, markees: allMarkees, isLoading, refetch: refetchLeaderboard } = useLeaderboardDetail(leaderboardAddress)
   const markees = allMarkees.filter(m => m.totalFundsAdded > 0n)
   const ecoEntry = useServedOn(leaderboardAddress)
 
@@ -1140,6 +1141,23 @@ export default function MarkeeDetailPage() {
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
   const openEdit = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setEditOpen(true) }, [])
+  const refreshAfterTransaction = useCallback(() => {
+    void refetchLeaderboard()
+  }, [refetchLeaderboard])
+  const handleBuySuccess = useCallback(() => {
+    refreshAfterTransaction()
+    setBuyOpen(false)
+  }, [refreshAfterTransaction])
+  const handleAddFundsSuccess = useCallback(() => {
+    refreshAfterTransaction()
+    setAddFundsOpen(false)
+    setModalTarget(null)
+  }, [refreshAfterTransaction])
+  const handleEditSuccess = useCallback(() => {
+    refreshAfterTransaction()
+    setEditOpen(false)
+    setModalTarget(null)
+  }, [refreshAfterTransaction])
 
   const handleSync = useCallback(async () => {
     setSyncStatus('loading')
@@ -1338,8 +1356,13 @@ export default function MarkeeDetailPage() {
             <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
               <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
               <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 15 }}>The message with the most funds added takes the top spot.</p>
-              <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: BG2, padding: 10 }}>
-                <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+                <div style={{ minWidth: 760, background: BG2 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: MARKEE_LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
+                    {['', 'Bought by', 'Funds added', 'Current message', 'Views', ''].map((h, i) => (
+                      <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
+                    ))}
+                  </div>
                   {markees.map((m, i) => (
                     <ExpandableMarkeeRow
                       key={m.address}
@@ -1351,6 +1374,7 @@ export default function MarkeeDetailPage() {
                         totalFundsAdded: m.totalFundsAdded,
                       }}
                       rank={i + 1}
+                      featured={i === 0}
                       formatFunds={(wei) => {
                         const fundsEth = parseFloat(formatEther(wei))
                         return ethPrice ? formatUsd(fundsEth * ethPrice) : `${fundsEth.toFixed(3)} ETH`
@@ -1396,7 +1420,7 @@ export default function MarkeeDetailPage() {
         <BuyMessageModal
           isOpen={buyOpen}
           onClose={() => setBuyOpen(false)}
-          onSuccess={() => setBuyOpen(false)}
+          onSuccess={handleBuySuccess}
           initialMode="create"
           strategyAddress={leaderboardAddress as `0x${string}`}
           topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
@@ -1408,7 +1432,7 @@ export default function MarkeeDetailPage() {
         <BuyMessageModal
           isOpen={addFundsOpen}
           onClose={() => { setAddFundsOpen(false); setModalTarget(null) }}
-          onSuccess={() => { setAddFundsOpen(false); setModalTarget(null) }}
+          onSuccess={handleAddFundsSuccess}
           userMarkee={modalTarget as any}
           initialMode="addFunds"
           strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
@@ -1421,7 +1445,7 @@ export default function MarkeeDetailPage() {
         <BuyMessageModal
           isOpen={editOpen}
           onClose={() => { setEditOpen(false); setModalTarget(null) }}
-          onSuccess={() => { setEditOpen(false); setModalTarget(null) }}
+          onSuccess={handleEditSuccess}
           userMarkee={modalTarget as any}
           initialMode="updateMessage"
           strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
