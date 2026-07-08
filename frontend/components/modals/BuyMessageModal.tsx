@@ -155,6 +155,7 @@ export function BuyMessageModal({
   const { wallets } = useWallets()
   const activeAddress = address ?? wallets[0]?.address
   const hasWallet = !!activeAddress || isConnected
+  const hasActiveWalletConnection = isConnected && !!address
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -180,7 +181,8 @@ export function BuyMessageModal({
 
   const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
-  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+  const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
+  const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const { data: minimumPrice } = useReadContract({
     address: strategyAddress, abi: strategyABI, functionName: 'minimumPrice', chainId: CANONICAL_CHAIN.id,
@@ -330,6 +332,7 @@ export function BuyMessageModal({
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreateMarkee = async () => {
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
@@ -348,7 +351,8 @@ export function BuyMessageModal({
   }
 
   const handleAddFunds = async () => {
-    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please connect wallet and ensure you have a Markee'); return }
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
@@ -361,7 +365,8 @@ export function BuyMessageModal({
   }
 
   const handleUpdateMessage = async () => {
-    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please connect wallet and ensure you have a Markee'); return }
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!message.trim()) { setError('Please enter a message'); return }
     if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
     setError(null)
@@ -471,14 +476,14 @@ export function BuyMessageModal({
             </div>
           </div>
 
-        ) : !hasWallet ? (
+        ) : !hasWallet || !hasActiveWalletConnection ? (
           /* ── Connect wallet ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !isCorrectChain ? (
+        ) : isWrongChain ? (
           /* ── Wrong chain ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>

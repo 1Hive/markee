@@ -103,13 +103,15 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const { wallets } = useWallets()
   const activeAddress = address ?? wallets[0]?.address
   const hasWallet = !!activeAddress || isConnected
+  const hasActiveWalletConnection = isConnected && !!address
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
 
-  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+  const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
+  const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -165,8 +167,8 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const balanceWarning = insufficientBalance ? `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.` : null
 
   const handleChangeMessage = async () => {
-    if (!fixedMarkee || !chain) { setError('Please connect your wallet'); return }
-    if (chain.id !== CANONICAL_CHAIN.id) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
+    if (!fixedMarkee || !hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
     if (priceWei === 0n) { setError('Unable to load price'); return }
     if (newMessage.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
@@ -272,13 +274,13 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             </div>
           </div>
 
-        ) : !hasWallet ? (
+        ) : !hasWallet || !hasActiveWalletConnection ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !isCorrectChain ? (
+        ) : isWrongChain ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
             <button
