@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatEther } from 'viem'
 import { useAccount } from 'wagmi'
-import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
+import { Eye, ExternalLink } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -348,22 +348,8 @@ function FeaturedCard({ markee, topViews, ethPrice, onBuy }: {
   )
 }
 
-// ── History panel ─────────────────────────────────────────────────────────────
-function HistoryPanel({ markee }: { markee: LeaderboardMarkee }) {
-  return (
-    <div style={{ gridColumn: '1 / -1', background: BG, borderTop: `1px solid ${BORDER}`, padding: '12px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-      <ExternalLink size={13} style={{ color: MUTED, flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: TEXT2 }}>View full transaction history on</span>
-      <a href={getAddressUrl(CANONICAL_CHAIN_ID, markee.address)} target="_blank" rel="noopener noreferrer"
-        style={{ fontFamily: MONO, fontSize: 13, color: PINK, textDecoration: 'none', borderBottom: `1px dotted ${PINK}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        Basescan {fmtAddr(markee.address)} <ExternalLink size={10} />
-      </a>
-    </div>
-  )
-}
-
 // ── Leaderboard row ───────────────────────────────────────────────────────────
-const LB_COLS = '150px 120px 1fr 70px 200px'
+const LB_COLS = '150px 120px 1fr 70px 160px'
 
 function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onEdit }: {
   markee: LeaderboardMarkee
@@ -374,14 +360,12 @@ function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onE
   onAddFunds: (m: LeaderboardMarkee) => void
   onEdit: (m: LeaderboardMarkee) => void
 }) {
-  const [open, setOpen] = useState(false)
   const fundsEth = parseFloat(formatEther(markee.totalFundsAdded))
   const fundsLabel = ethPrice ? formatUsd(fundsEth * ethPrice) : `${fundsEth.toFixed(3)} ETH`
   const displayWho = markee.name || fmtAddr(markee.owner)
 
   return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', background: featured ? `${PINK}0A` : 'transparent', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent', transition: 'background 120ms' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', background: featured ? `${PINK}0A` : 'transparent', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent', transition: 'background 120ms' }}>
         <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{displayWho}</span>
         <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{fundsLabel}</span>
         <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{markee.message || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message</span>}</span>
@@ -389,12 +373,6 @@ function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onE
           <Eye size={10} style={{ opacity: 0.6 }} /> {views > 0 ? formatViews(views) : '—'}
         </span>
         <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setOpen(v => !v)}
-            style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' as const }}
-          >
-            History <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-          </button>
           {isOwner && (
             <button
               onClick={() => onEdit(markee)}
@@ -410,9 +388,7 @@ function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onE
             Add Funds
           </button>
         </div>
-      </div>
-      {open && <HistoryPanel markee={markee} />}
-    </>
+    </div>
   )
 }
 
