@@ -36,10 +36,6 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
     ? <a href="/" aria-label="Markee home" className="flex-shrink-0"><img src="/markee-logo-purple.png" alt="Markee" className="w-[30px] h-[30px] rounded-[7px] block" /></a>
     : <Link href="/" aria-label="Markee home" className="flex-shrink-0"><img src="/markee-logo-purple.png" alt="Markee" className="w-[30px] h-[30px] rounded-[7px] block" /></Link>
 
-  const AccountLink = useRegularLinks
-    ? <a href="/account" aria-label="Account" className="w-[38px] h-[38px] rounded-full border border-[#8A8FBF]/20 flex items-center justify-center text-[#B8B6D9] flex-shrink-0 transition-colors hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></a>
-    : <Link href="/account" aria-label="Account" className="w-[38px] h-[38px] rounded-full border border-[#8A8FBF]/20 flex items-center justify-center text-[#B8B6D9] flex-shrink-0 transition-colors hover:border-[rgba(248,151,254,0.35)] hover:text-[#EDEEFF]"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></Link>
-
   return (
     <header
       className="sticky top-0 z-50 border-b border-[#8A8FBF]/20"
@@ -61,7 +57,6 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
 
           <div className="flex items-center gap-3">
             <EthBalance />
-            {AccountLink}
             <ConnectButton />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

@@ -1,7 +1,7 @@
 'use client'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { useState } from 'react'
-import { Check, ChevronDown, Copy, LogOut } from 'lucide-react'
+import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const BORDER = 'rgba(138,143,191,0.2)'
@@ -104,6 +104,21 @@ export function ConnectButton() {
               boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
             }}
           >
+            <a
+              href="/account"
+              role="menuitem"
+              onClick={() => setMenuOpen(false)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+                padding: '11px 13px', background: 'transparent', border: 0,
+                color: '#EDEEFF', fontFamily: MONO, fontSize: 12,
+                cursor: 'pointer', textAlign: 'left', textDecoration: 'none',
+                boxSizing: 'border-box',
+              }}
+            >
+              <LayoutDashboard size={15} color="#8A8FBF" />
+              Dashboard
+            </a>
             {displayAddress && (
               <button
                 type="button"
@@ -112,6 +127,7 @@ export function ConnectButton() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 9, width: '100%',
                   padding: '11px 13px', background: 'transparent', border: 0,
+                  borderTop: `1px solid ${BORDER}`,
                   color: '#EDEEFF', fontFamily: MONO, fontSize: 12,
                   cursor: 'pointer', textAlign: 'left',
                 }}
