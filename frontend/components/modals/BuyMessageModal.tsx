@@ -161,6 +161,7 @@ export function BuyMessageModal({
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -259,6 +260,7 @@ export function BuyMessageModal({
     else setActiveTab('create')
     setMessage('')
     setError(null)
+    setHasUserEdited(false)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userMarkee, initialMode, isOpen, reset])
@@ -344,6 +346,7 @@ export function BuyMessageModal({
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && activeAddress && userMarkee.owner.toLowerCase() === activeAddress.toLowerCase()
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const blockBackdropClose = hasUserEdited && !txStep
 
   const btnDisabled =
     isPending || isConfirming || isSuccess ||
@@ -378,7 +381,9 @@ export function BuyMessageModal({
 
   return (
     <div
-      onClick={onClose}
+      onClick={() => {
+        if (!blockBackdropClose) onClose()
+      }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -486,7 +491,7 @@ export function BuyMessageModal({
                   <ModalField label="Set Your Message">
                     <textarea
                       value={message}
-                      onChange={e => setMessage(e.target.value.slice(0, maxLen))}
+                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder="Your message here"
                       rows={2}
                       style={{ ...inputStyle, resize: 'vertical' }}
@@ -498,7 +503,7 @@ export function BuyMessageModal({
                   <ModalField label="Name (optional)">
                     <input
                       value={name}
-                      onChange={e => setName(e.target.value.slice(0, Number(maxNameLength || 32)))}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, Number(maxNameLength || 32))) }}
                       placeholder="anon"
                       style={{ ...inputStyle }}
                       onFocus={e => { e.target.style.borderColor = PINK }}
@@ -546,7 +551,7 @@ export function BuyMessageModal({
                   <ModalField label="New Message">
                     <textarea
                       value={message}
-                      onChange={e => setMessage(e.target.value.slice(0, maxLen))}
+                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder="Enter your new message..."
                       rows={3}
                       style={{ ...inputStyle, resize: 'vertical' }}
@@ -568,7 +573,7 @@ export function BuyMessageModal({
                     <div style={{ display: 'grid', gridTemplateColumns: hasCompetition ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
                       {hasCompetition && takeFirstAmountFormatted && (
                         <button
-                          onClick={() => setAmount(takeFirstAmountFormatted)}
+                          onClick={() => { setHasUserEdited(true); setAmount(takeFirstAmountFormatted) }}
                           disabled={isPending || isConfirming}
                           style={{
                             textAlign: 'left', cursor: 'pointer',
@@ -588,7 +593,7 @@ export function BuyMessageModal({
                       )}
                       {activeTab !== 'addFunds' && (
                         <button
-                          onClick={() => setAmount(minimumAmountFormatted)}
+                          onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted) }}
                           disabled={isPending || isConfirming}
                           style={{
                             textAlign: 'left', cursor: 'pointer',
@@ -623,7 +628,7 @@ export function BuyMessageModal({
                     <input
                       type="number"
                       value={amount}
-                      onChange={e => setAmount(e.target.value)}
+                      onChange={e => { setHasUserEdited(true); setAmount(e.target.value) }}
                       placeholder={minimumAmountFormatted}
                       step="0.0001"
                       style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 56px 14px 16px' }}
@@ -653,7 +658,7 @@ export function BuyMessageModal({
                       {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
                       <button
                         type="button"
-                        onClick={() => setAmount(maxSpendableFormatted)}
+                        onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted) }}
                         disabled={spendableBalance <= 0n || isPending || isConfirming}
                         style={{
                           background: 'transparent', border: 0, padding: 0,

@@ -37,6 +37,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const [beneficiary, setBeneficiary] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [newAddress, setNewAddress] = useState<string | null>(null)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -47,6 +48,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setBeneficiary('')
       setError(null)
       setNewAddress(null)
+      setHasUserEdited(false)
       reset()
     }
   }, [isOpen, reset])
@@ -88,10 +90,16 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   }
 
   if (!isOpen) return null
+  const blockBackdropClose = hasUserEdited && !isPending && !isConfirming && !isSuccess
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => {
+          if (!blockBackdropClose) onClose()
+        }}
+      />
       <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-6 sm:p-8 max-w-md sm:max-w-xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
@@ -144,7 +152,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                     <input
                       type="text"
                       value={name}
-                      onChange={e => setName(e.target.value)}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value) }}
                       placeholder="e.g. My Website"
                       className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
                       disabled={isPending || isConfirming}
@@ -158,7 +166,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                     <input
                       type="text"
                       value={beneficiary}
-                      onChange={e => setBeneficiary(e.target.value)}
+                      onChange={e => { setHasUserEdited(true); setBeneficiary(e.target.value) }}
                       placeholder="0x..."
                       className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
                       disabled={isPending || isConfirming}

@@ -35,6 +35,11 @@ export function EditWebsiteMetaModal({
     }
   }, [isOpen, initialSiteUrl, initialLogoUrl])
 
+  const isDirty = !isSaving && !saved && (
+    siteUrl !== (initialSiteUrl ?? '') ||
+    logoUrl !== (initialLogoUrl ?? '')
+  )
+
   const handleSave = async () => {
     setError(null)
     setIsSaving(true)
@@ -63,7 +68,12 @@ export function EditWebsiteMetaModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => {
+          if (!isDirty) onClose()
+        }}
+      />
       <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-7 max-w-sm w-full shadow-2xl">
         <button
           onClick={onClose}

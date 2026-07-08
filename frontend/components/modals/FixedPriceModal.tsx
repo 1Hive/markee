@@ -112,6 +112,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -124,7 +125,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
 
   useEffect(() => {
-    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); reset() }
+    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); setHasUserEdited(false); reset() }
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
@@ -164,6 +165,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   const isOverLimit = newMessage.length > maxLen
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const blockBackdropClose = hasUserEdited && !txStep
 
   const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
   const btnDisabledReason = !btnDisabled || isSuccess ? null
@@ -186,7 +188,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   return (
     <div
-      onClick={onClose}
+      onClick={() => {
+        if (!blockBackdropClose) onClose()
+      }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -280,7 +284,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                 </div>
                 <textarea
                   value={newMessage}
-                  onChange={e => setNewMessage(e.target.value.slice(0, maxLen))}
+                  onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
                   placeholder="the name's mark. agent mark 🕵️"
                   rows={2}
                   style={{ ...inputStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : BORDER }}
