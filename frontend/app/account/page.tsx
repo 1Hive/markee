@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAccount } from 'wagmi'
 import { useWallets } from '@privy-io/react-auth'
-import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown } from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
@@ -186,20 +186,64 @@ function GlowDot({ size = 8, color }: { size?: number; color: string }) {
   return <span style={{ width: size, height: size, borderRadius: 99, background: color, boxShadow: `0 0 ${size * 1.5}px ${color}`, flexShrink: 0, display: 'inline-block' }} />
 }
 
+function InfoTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        aria-label={text}
+        onClick={() => setOpen(true)}
+        style={{
+          width: 22, height: 22, borderRadius: 99,
+          border: `1px solid ${BORDER}`, background: 'rgba(138,143,191,0.08)',
+          color: MUTED, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'help', padding: 0,
+        }}
+      >
+        <Info size={12} />
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          style={{
+            position: 'absolute', right: 0, bottom: 'calc(100% + 8px)',
+            width: 250, padding: '9px 11px', borderRadius: 8,
+            background: BG2, border: `1px solid ${BORDER}`,
+            boxShadow: '0 12px 34px rgba(0,0,0,0.5)',
+            color: TEXT2, fontSize: 12, lineHeight: 1.45, zIndex: 30,
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function Overview({ raised, active, bought, contributed, loaded }: { raised: bigint; active: number; bought: number; contributed: bigint; loaded: boolean }) {
   const cells = [
-    { n: fmtEth(raised),              label: 'total raised',      color: PINK  },
-    { n: String(active),              label: 'active signs',      color: GREEN },
-    { n: String(bought),              label: 'messages bought',   color: TEXT  },
-    { n: fmtEth(contributed),         label: 'contributed',       color: BLUE  },
+    { n: fmtEth(raised),      label: 'total raised',    color: PINK,  tip: 'Funds raised by Markees you created. This is not ETH you spent buying messages.' },
+    { n: String(active),      label: 'active signs',    color: GREEN, tip: 'Your live Markees with funded messages. Website Markees also need a verified integration to count here.' },
+    { n: String(bought),      label: 'messages bought', color: TEXT,  tip: 'Paid messages you own. Zero-fund placeholder Markees are not counted.' },
+    { n: fmtEth(contributed), label: 'contributed',     color: BLUE,  tip: 'Total ETH you put into messages, including messages you bought and messages you funded.' },
   ]
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
       {loaded ? cells.map((c, i) => (
         <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <GlowDot size={8} color={c.color} />
-            <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: c.color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{c.n}</span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <GlowDot size={8} color={c.color} />
+              <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: c.color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{c.n}</span>
+            </div>
+            <InfoTip text={c.tip} />
           </div>
           <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{c.label}</div>
         </div>
@@ -852,8 +896,9 @@ export default function AccountPage() {
       // Merge, deduplicating by markee address (RPC wins for duplicates)
       const seen = new Set(rpcMessages.map(m => m.address.toLowerCase()))
       const merged = [...rpcMessages, ...subgraphMessages.filter(m => !seen.has(m.address.toLowerCase()))]
-      merged.sort((a, b) => (b.totalFundsAdded > a.totalFundsAdded ? 1 : -1))
-      setMyMessages(merged)
+      const paidMessages = merged.filter(m => m.totalFundsAdded > 0n)
+      paidMessages.sort((a, b) => (b.totalFundsAdded > a.totalFundsAdded ? 1 : -1))
+      setMyMessages(paidMessages)
     } catch { /* non-critical */ }
     finally { setIsLoadingMessages(false) }
   }, [])
@@ -901,7 +946,11 @@ export default function AccountPage() {
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
-  const totalContribWei = useMemo(() => myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n), [myMessages])
+  const totalContribWei = useMemo(() => {
+    const bought = myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n)
+    const funded = fundedMessages.reduce((s, m) => s + BigInt(m.totalContributed), 0n)
+    return bought + funded
+  }, [myMessages, fundedMessages])
 
   // Manage a leaderboard (from active table) — opens the manage modal
   const handleManage = useCallback((lb: AnyLeaderboard) => {
