@@ -25,8 +25,8 @@ import { StreamingLeaderboardFactory } from "../contracts/v1.3/streaming/Streami
 contract DeployStreamingFactory is Script {
     address constant HOST = 0x4C073B3baB6d8826b8C5b229f3cfdC1eC6E47E74;
     address constant ETHX = 0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93;
-    address constant JB_TERMINAL = 0x2dB6d704058E552DeFE415753465df8dF0361846;
-    uint256 constant JB_PROJECT_ID = 152;
+    address constant JB_TERMINAL = 0x130f5Dd2bD8805443Cf41755253D778a75a67f53;
+    uint256 constant JB_PROJECT_ID = 7;
     address constant COOP = 0xAf4401E765dFf079aB6021BBb8d46E53E27613DB;
 
     function run() external returns (StreamingLeaderboardFactory factory) {

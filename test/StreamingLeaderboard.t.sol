@@ -65,7 +65,8 @@ interface ICFAv1Agreement {
         external returns (bytes memory);
 }
 
-/// @notice Base-mainnet fork tests for the Option B streaming strategy. Reads BASE_RPC_URL from env.
+/// @notice Base-mainnet fork tests for the Option B streaming strategy. Reads BASE_RPC_URL from env,
+/// forking at a pinned block (override with FORK_BLOCK).
 /// Run: BASE_RPC_URL=<base-rpc> forge test --match-contract StreamingLeaderboardTest -vvv
 contract StreamingLeaderboardTest is Test {
     // ─── Base (chain 8453) addresses ──────────────────────────────────────────
@@ -73,8 +74,12 @@ contract StreamingLeaderboardTest is Test {
     ISuperToken constant ETHX = ISuperToken(0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93);
     ICFAForwarder constant CFA = ICFAForwarder(0xcfA132E353cB4E398080B9700609bb008eceB125);
     IGDAForwarder constant GDA = IGDAForwarder(0x6DA13Bde224A05a288748d857b9e7DDEffd1dE08);
-    address constant REVNET_TERMINAL = 0x2dB6d704058E552DeFE415753465df8dF0361846;
-    uint256 constant REVNET_PROJECT = 152;
+    address constant REVNET_TERMINAL = 0x130f5Dd2bD8805443Cf41755253D778a75a67f53;
+    uint256 constant REVNET_PROJECT = 7;
+
+    /// Pinned so a RevNet redeploy or ruleset change on live Base cannot turn these tests red.
+    /// Override with FORK_BLOCK=<n> when moving to a newer deployment.
+    uint256 constant DEFAULT_FORK_BLOCK = 48400000;
 
     uint256 constant SECONDS_IN_MONTH = 2628000;
     uint256 constant BUFFER_PERIOD = 14400;
@@ -89,7 +94,7 @@ contract StreamingLeaderboardTest is Test {
     address seedMarkee;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("BASE_RPC_URL"));
+        vm.createSelectFork(vm.envString("BASE_RPC_URL"), vm.envOr("FORK_BLOCK", DEFAULT_FORK_BLOCK));
 
         // Sanity: the SF infra we depend on exists on this fork.
         assertGt(address(ETHX).code.length, 0, "ETHx missing");
