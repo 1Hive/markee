@@ -33,12 +33,6 @@ export const FACTORIES = {
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
 } as const
 
-// StreamingLeaderboardFactory — not yet deployed on Base mainnet (gated on the Superfluid governance
-// setAppRegistrationKey). Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed (or anvil-fork) factory
-// address to light up the streaming listing + create flow; unset/invalid keeps the feature hidden.
-export const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '') as `0x${string}` | ''
-export const STREAMING_ENABLED = /^0x[0-9a-fA-F]{40}$/.test(STREAMING_FACTORY)
-
 // Fixed-price strategy contracts (in use for the fixed-price messages on the home page)
 export const CONTRACTS = {
   [base.id]: {

@@ -8,7 +8,6 @@ import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
-import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -17,13 +16,10 @@ const C = {
   border: 'rgba(138,143,191,0.2)', borderHover: 'rgba(248,151,254,0.4)',
 }
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const
-
-const FACTORIES: Record<PlatformKey, `0x${string}`> = {
-  openinternet: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c',
-  github:       '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2',
-  superfluid:   '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad',
-  streaming:    (STREAMING_FACTORY || ZERO_ADDRESS) as `0x${string}`,
+const FACTORIES = {
+  openinternet: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
+  github:       '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
+  superfluid:   '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
 }
 
 const FACTORY_ABI = [{
@@ -40,7 +36,7 @@ const FACTORY_ABI = [{
   type: 'function',
 }] as const
 
-type PlatformKey = 'openinternet' | 'github' | 'superfluid' | 'streaming'
+type PlatformKey = 'openinternet' | 'github' | 'superfluid'
 
 interface Platform {
   key: PlatformKey
@@ -78,15 +74,6 @@ const PLATFORMS: Platform[] = [
     summary: 'Create a Markee sign for your Superfluid project and earn SUP rewards for every message bought.',
     steps: ['Set up your Markee', 'Deploy Markee', 'Activate'],
   },
-  // Gated on a configured streaming factory (NEXT_PUBLIC_STREAMING_FACTORY); hidden until deployed.
-  ...(STREAMING_ENABLED ? [{
-    key: 'streaming',
-    name: 'Streaming Board',
-    tagline: 'Stream to hold #1',
-    color: C.blue,
-    summary: 'Create a board where backers stream ETH by the second to hold the top message. Highest active rate wins.',
-    steps: ['Set up your board', 'Deploy board', 'Activate'],
-  } satisfies Platform] : []),
 ]
 
 type StepKey = 'choose' | 'connect' | 'setup' | 'review' | 'activate'
@@ -170,7 +157,7 @@ function StepShell({ title, sub, children, onBack, onNext, nextLabel, nextDisabl
 
 // ── ChoosePlatform ──────────────────────────────────────────────────────────
 function ChoosePlatform({ selected, onSelect }: { selected: PlatformKey | null; onSelect: (k: PlatformKey) => void }) {
-  const icons: Record<PlatformKey, string> = { openinternet: 'globe', github: 'github', superfluid: 'zap', streaming: 'zap' }
+  const icons: Record<PlatformKey, string> = { openinternet: 'globe', github: 'github', superfluid: 'zap' }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 8 }}>
       {PLATFORMS.map(p => {
@@ -370,12 +357,6 @@ function WebsiteSetupFields({ values, setValue, platformKey }: {
           <input value={values.projectName ?? ''} onChange={e => setValue('projectName', e.target.value)} placeholder="My Stream" style={fieldBase} />
         </label>
       )}
-      {platformKey === 'streaming' && (
-        <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={labelCss}>Streaming board name</span>
-          <input value={values.boardName ?? ''} onChange={e => setValue('boardName', e.target.value)} placeholder="My Streaming Board" style={fieldBase} />
-        </label>
-      )}
       <label style={{ display: 'block' }}>
         <span style={labelCss}>Beneficiary address</span>
         <input value={values.beneficiary ?? ''} onChange={e => setValue('beneficiary', e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={{ ...fieldBase, fontFamily: mono }} />
@@ -397,7 +378,6 @@ function ReviewSign({ platform, values, selectedRepo, selectedFile, isPending, i
     ...(selectedFile ? [['File', selectedFile] as [string, string]] : []),
     ...(platform.key === 'openinternet' && values.siteName ? [['Name', values.siteName] as [string, string]] : []),
     ...(platform.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, string]] : []),
-    ...(platform.key === 'streaming' && values.boardName ? [['Board name', values.boardName] as [string, string]] : []),
     ['Beneficiary', values.beneficiary ?? '-'],
   ]
 
@@ -454,9 +434,7 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
   const [intModalOpen, setIntModalOpen] = useState(false)
   const addr = leaderboardAddress.toLowerCase()
   const isGithub = platform.key === 'github'
-  const isStreaming = platform.key === 'streaming'
   const isSuperfluid = platform.key === 'superfluid'
-  const skipEmbed = isSuperfluid || isStreaming
 
   const embedCode = isGithub
     ? `<!-- MARKEE:START:${addr} -->\n<!-- MARKEE:END:${addr} -->`
@@ -492,7 +470,7 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
   let n = 1
   return (
     <div>
-      {!skipEmbed && step(n++, isGithub ? 'Add the Markee delimiters to your markdown file' : 'Embed on your site',
+      {!isSuperfluid && step(n++, isGithub ? 'Add the Markee delimiters to your markdown file' : 'Embed on your site',
         <div>
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 4px' }}>
             {isGithub
@@ -517,7 +495,7 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
         leaderboard={{ address: leaderboardAddress, name: name ?? leaderboardAddress }}
       />
 
-      {!skipEmbed && step(n++, 'Verify Integration',
+      {!isSuperfluid && step(n++, 'Verify Integration',
         <div>
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' }}>
             {isGithub ? 'Click once your delimiter is committed.' : 'Click once your embed is live on the site.'}
@@ -539,20 +517,18 @@ function ActivationGuide({ platform, leaderboardAddress, selectedFile, name }: {
         </div>
       )}
 
-      {step(skipEmbed ? 1 : n, 'Activate your Markee',
+      {step(isSuperfluid ? 1 : n, 'Activate your Markee',
         <div>
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' }}>
-            {isStreaming
-              ? 'Add a message and open a stream to claim the #1 spot on your board.'
-              : 'Buy the first message to activate your Markee.'}
+            Buy the first message to activate your Markee.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Link href={isStreaming ? `/ecosystem/platforms/streaming/${leaderboardAddress}` : `/markee/${leaderboardAddress}`} style={{
+            <Link href={`/markee/${leaderboardAddress}`} style={{
               background: C.pink, color: C.bg, borderRadius: 8, padding: '11px 24px',
               fontSize: 14, fontWeight: 700 as const, textDecoration: 'none',
               display: 'inline-flex', alignItems: 'center', gap: 8,
             }}>
-              {isStreaming ? 'Open your board →' : 'View your Markee →'}
+              View your Markee →
             </Link>
           </div>
         </div>
@@ -648,7 +624,6 @@ function CreateWizardInner() {
     if (platform.key === 'openinternet') return !!(values.siteName?.trim() && b)
     if (platform.key === 'github') return !!(selectedRepo && selectedFile && b)
     if (platform.key === 'superfluid') return !!(values.projectName?.trim() && b)
-    if (platform.key === 'streaming') return !!(values.boardName?.trim() && b)
     return false
   }, [platform, values, selectedRepo, selectedFile])
 
@@ -671,8 +646,7 @@ function CreateWizardInner() {
     const name =
       platformKey === 'openinternet' ? (values.siteName?.trim() ?? 'My Website') :
       platformKey === 'github' ? (selectedRepo?.split('/').pop() ?? 'My Repo') :
-      platformKey === 'superfluid' ? (values.projectName?.trim() ?? 'My Project') :
-      (values.boardName?.trim() ?? 'My Board')
+      (values.projectName?.trim() ?? 'My Project')
     resetWrite()
     writeContract({
       address: FACTORIES[platformKey],
