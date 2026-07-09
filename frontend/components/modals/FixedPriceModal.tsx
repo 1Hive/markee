@@ -11,6 +11,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
+import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -23,22 +24,6 @@ const BORDER = 'rgba(138,143,191,0.2)'
 const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
 const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH
-
-// ── MARKEE phases ─────────────────────────────────────────────────────────────
-const PHASES = [
-  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
-  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
-  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
-  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
-]
-function getCurrentPhaseRate() {
-  const now = new Date()
-  for (const p of PHASES) { if (now < p.endDate) return p.rate }
-  return PHASES[PHASES.length - 1].rate
-}
-// 100% of FixedPrice funds go to the Revnet; buyer receives 62% of issued tokens
-function calculateMarkeeTokens(eth: number) { return eth * getCurrentPhaseRate() * 0.62 }
 
 // ── Disabled-button tooltip ───────────────────────────────────────────────────
 function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
@@ -124,7 +109,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceEth = formatEther(priceWei)
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
-  const markeeEarned = Math.round(calculateMarkeeTokens(priceEthNum))
+  const markeeEarned = Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum))
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
 
   useEffect(() => {

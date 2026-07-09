@@ -12,6 +12,7 @@ import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
+import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import type { Markee } from '@/types'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -25,27 +26,6 @@ const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
 const TEXT2  = '#B8B6D9'
 const FAST_TX_GAS_RESERVE = parseEther('0.0002')
-
-// ── MARKEE token phases ───────────────────────────────────────────────────────
-const PHASES = [
-  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
-  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
-  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
-  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
-]
-
-function getCurrentPhaseRate(): number {
-  const now = new Date()
-  for (const phase of PHASES) {
-    if (now < phase.endDate) return phase.rate
-  }
-  return PHASES[PHASES.length - 1].rate
-}
-
-function calculateMarkeeTokens(ethAmount: number): number {
-  return ethAmount * 0.38 * 0.62 * getCurrentPhaseRate() * 0.62
-}
 
 const REV_NET_ENABLED_ABI = [
   { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
@@ -405,7 +385,7 @@ export function BuyMessageModal({
 
   // Amount section (create + addFunds)
   const bidNum = parseFloat(amount || '0')
-  const markeeEarned = calculateMarkeeTokens(bidNum)
+  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(bidNum)
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 

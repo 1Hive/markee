@@ -31,6 +31,9 @@ const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
 )
 
+// Earliest known Markee factory deployment on Base; avoids scanning from genesis.
+const BASE_MARKEE_EVENTS_FROM_BLOCK = 43_452_028n
+
 function getClient() {
   return createPublicClient({
     chain: base,
@@ -113,7 +116,7 @@ export async function GET(request: Request) {
     address: allMarkeeAddresses,
     event: FUNDS_ADDED_EVENT,
     args: { addedBy: owner as `0x${string}` },
-    fromBlock: 0n,
+    fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
     toBlock: 'latest',
   }).catch(() => [])
 
