@@ -4,11 +4,11 @@ node_modules/
 # Vercel
 .vercel
 
-# Foundry build/deploy artifacts (repo-root only — anchored so frontend/lib source is never ignored)
+# Foundry build/deploy artifacts (repo-root only — anchored so frontend/lib source is never ignored).
+# lib/ is deliberately not ignored: Foundry deps live there as tracked submodules (see .gitmodules).
 /out/
 /cache/
 /broadcast/
-/lib/
 /foundry.lock
 
 # Local-only design docs and Claude Code workspace
