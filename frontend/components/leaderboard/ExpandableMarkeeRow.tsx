@@ -12,7 +12,7 @@ import {
   MessageSquare,
   User,
 } from 'lucide-react'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import type { Markee } from '@/types'
 
@@ -212,7 +212,7 @@ export function ExpandableMarkeeRow({
   }, [markee.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!expanded || history.length > 0) return
+    if (!expanded) return
     if (!leaderboardAddress && !publicClient) return
 
     let cancelled = false
@@ -259,9 +259,9 @@ export function ExpandableMarkeeRow({
         }
 
         const historyLogs = await Promise.all([
-          publicClient!.getLogs({ address: markeeAddress, event: FUNDS_ADDED, fromBlock: 0n, toBlock: 'latest' }),
-          publicClient!.getLogs({ address: markeeAddress, event: MESSAGE_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
-          publicClient!.getLogs({ address: markeeAddress, event: NAME_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
+          publicClient!.getLogs({ address: markeeAddress, event: FUNDS_ADDED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
+          publicClient!.getLogs({ address: markeeAddress, event: MESSAGE_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
+          publicClient!.getLogs({ address: markeeAddress, event: NAME_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
         ])
 
         const [fundsLogs, messageLogs, nameLogs] = historyLogs
@@ -323,7 +323,7 @@ export function ExpandableMarkeeRow({
 
     fetchHistory()
     return () => { cancelled = true }
-  }, [expanded, history.length, leaderboardAddress, markee.address, publicClient])
+  }, [expanded, leaderboardAddress, markee.address, markee.message, markee.name, markee.totalFundsAdded, publicClient])
 
   const latestTxHash = history[0]?.transactionHash
   const displayName = markee.name || formatAddress(markee.owner)

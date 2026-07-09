@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,9 +31,6 @@ const MARKEE_ABI = [
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
 )
-
-// Earliest known Markee factory deployment on Base; avoids scanning from genesis.
-const BASE_MARKEE_EVENTS_FROM_BLOCK = 43_452_028n
 
 function getClient() {
   return createPublicClient({

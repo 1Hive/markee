@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
-import { formatEther } from 'viem'
+import { formatEther, parseEther } from 'viem'
 import { CreditCard } from 'lucide-react'
 import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
@@ -23,7 +23,7 @@ const BLUE   = '#7C9CFF'
 const BORDER = 'rgba(138,143,191,0.2)'
 const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
-const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH
+const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 // ── Disabled-button tooltip ───────────────────────────────────────────────────
 function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {

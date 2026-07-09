@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http, isAddress, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,35 +57,35 @@ export async function GET(request: NextRequest) {
         address: leaderboard,
         event: LEADERBOARD_MARKEE_CREATED,
         args: { markeeAddress: markee },
-        fromBlock: 0n,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         toBlock: 'latest',
       }),
       client.getLogs({
         address: leaderboard,
         event: LEADERBOARD_MARKEE_MIGRATED,
         args: { newMarkeeAddress: markee },
-        fromBlock: 0n,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         toBlock: 'latest',
       }),
       client.getLogs({
         address: leaderboard,
         event: LEADERBOARD_FUNDS_ADDED,
         args: { markeeAddress: markee },
-        fromBlock: 0n,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         toBlock: 'latest',
       }),
       client.getLogs({
         address: leaderboard,
         event: LEADERBOARD_MESSAGE_UPDATED,
         args: { markeeAddress: markee },
-        fromBlock: 0n,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         toBlock: 'latest',
       }),
       client.getLogs({
         address: leaderboard,
         event: LEADERBOARD_NAME_UPDATED,
         args: { markeeAddress: markee },
-        fromBlock: 0n,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         toBlock: 'latest',
       }),
     ])
