@@ -70,8 +70,23 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     event DefaultMaxMessageLengthChanged(uint256 oldLength, uint256 newLength);
     event DefaultMaxNameLengthChanged(uint256 oldLength, uint256 newLength);
 
+    // ─── Custom errors (smaller bytecode than require strings) ────────────────
+    error OnlyFactoryAdmin();
+    error EmptyPlatformName();
+    error EmptyPlatformId();
+    error ZeroHost();
+    error ZeroETHx();
+    error ZeroRevNetTerminal();
+    error ZeroRevNetProjectId();
+    error ZeroFactoryAdmin();
+    error EmptyName();
+    error PercentTooHigh();
+    error ZeroMaxMessageLength();
+    error ZeroMaxNameLength();
+    error CloneFailed();
+
     modifier onlyFactoryAdmin() {
-        require(msg.sender == factoryAdmin, "Only factory admin");
+        if (msg.sender != factoryAdmin) revert OnlyFactoryAdmin();
         _;
     }
 
@@ -85,13 +100,13 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         address _platformFeeReceiver,
         address _factoryAdmin
     ) {
-        require(bytes(_platformName).length > 0, "Platform name cannot be empty");
-        require(bytes(_platformId).length > 0, "Platform ID cannot be empty");
-        require(address(_host) != address(0), "Host cannot be zero address");
-        require(address(_ethx) != address(0), "ETHx cannot be zero address");
-        require(_revNetTerminal != address(0), "RevNet terminal cannot be zero address");
-        require(_revNetProjectId > 0, "RevNet project ID cannot be zero");
-        require(_factoryAdmin != address(0), "Factory admin cannot be zero address");
+        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
+        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
+        if (address(_host) == address(0)) revert ZeroHost();
+        if (address(_ethx) == address(0)) revert ZeroETHx();
+        if (_revNetTerminal == address(0)) revert ZeroRevNetTerminal();
+        if (_revNetProjectId == 0) revert ZeroRevNetProjectId();
+        if (_factoryAdmin == address(0)) revert ZeroFactoryAdmin();
 
         HOST = _host;
         ETHX = _ethx;
@@ -119,7 +134,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         external
         returns (address leaderboardAddress, address seedMarkeeAddress)
     {
-        require(bytes(_leaderboardName).length > 0, "Name cannot be empty");
+        if (bytes(_leaderboardName).length == 0) revert EmptyName();
 
         leaderboardAddress = _clone(leaderboardImplementation);
 
@@ -170,19 +185,19 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     function setPercentToBeneficiary(uint256 _newPercent) external onlyFactoryAdmin {
-        require(_newPercent <= 10000, "Cannot exceed 100%");
+        if (_newPercent > 10000) revert PercentTooHigh();
         emit PercentToBeneficiaryChanged(percentToBeneficiary, _newPercent);
         percentToBeneficiary = _newPercent;
     }
 
     function setRevNetTerminal(address _newTerminal) external onlyFactoryAdmin {
-        require(_newTerminal != address(0), "Terminal cannot be zero address");
+        if (_newTerminal == address(0)) revert ZeroRevNetTerminal();
         emit RevNetTerminalChanged(revNetTerminal, _newTerminal);
         revNetTerminal = _newTerminal;
     }
 
     function setRevNetProjectId(uint256 _newProjectId) external onlyFactoryAdmin {
-        require(_newProjectId > 0, "Project ID cannot be zero");
+        if (_newProjectId == 0) revert ZeroRevNetProjectId();
         emit RevNetProjectIdChanged(revNetProjectId, _newProjectId);
         revNetProjectId = _newProjectId;
     }
@@ -193,13 +208,13 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     function setPercentToPlatformFeeReceiver(uint256 _newPercent) external onlyFactoryAdmin {
-        require(_newPercent <= 10000, "Cannot exceed 100%");
+        if (_newPercent > 10000) revert PercentTooHigh();
         emit PercentToPlatformFeeReceiverChanged(percentToPlatformFeeReceiver, _newPercent);
         percentToPlatformFeeReceiver = _newPercent;
     }
 
     function setFactoryAdmin(address _newAdmin) external onlyFactoryAdmin {
-        require(_newAdmin != address(0), "Admin cannot be zero address");
+        if (_newAdmin == address(0)) revert ZeroFactoryAdmin();
         emit FactoryAdminChanged(factoryAdmin, _newAdmin);
         factoryAdmin = _newAdmin;
     }
@@ -210,13 +225,13 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     function setDefaultMaxMessageLength(uint256 _newLength) external onlyFactoryAdmin {
-        require(_newLength > 0, "Must be > 0");
+        if (_newLength == 0) revert ZeroMaxMessageLength();
         emit DefaultMaxMessageLengthChanged(defaultMaxMessageLength, _newLength);
         defaultMaxMessageLength = _newLength;
     }
 
     function setDefaultMaxNameLength(uint256 _newLength) external onlyFactoryAdmin {
-        require(_newLength > 0, "Must be > 0");
+        if (_newLength == 0) revert ZeroMaxNameLength();
         emit DefaultMaxNameLengthChanged(defaultMaxNameLength, _newLength);
         defaultMaxNameLength = _newLength;
     }
@@ -235,6 +250,6 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
             ))
             instance := create(0, 0x09, 0x37)
         }
-        require(instance != address(0), "Clone deployment failed");
+        if (instance == address(0)) revert CloneFailed();
     }
 }
