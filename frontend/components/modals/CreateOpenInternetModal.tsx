@@ -118,7 +118,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
             <button
               onClick={() => {
                 onClose()
-                if (newAddress) router.push(`/ecosystem/website/${newAddress}`)
+                if (newAddress) router.push(`/markee/${newAddress}`)
               }}
               className="w-full bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
             >
