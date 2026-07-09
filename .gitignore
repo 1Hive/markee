@@ -1,12 +1,18 @@
-# Node dependencies (Solidity remapping targets — installed via npm, not committed)
+# Dependencies
 node_modules/
 
-# Foundry build artifacts
-out/
-cache/
-foundry.lock
-broadcast/
+# Vercel
+.vercel
 
-# Claude Code artifacts
-CLAUDE.md
-.claude/
+# Foundry build/deploy artifacts (repo-root only — anchored so frontend/lib source is never ignored).
+# lib/ is deliberately not ignored: Foundry deps live there as tracked submodules (see .gitmodules).
+/out/
+/cache/
+/broadcast/
+/foundry.lock
+
+# Local-only design docs and Claude Code workspace
+/.claude/
+
+# Local-only streaming dev/testnet scripts (kept out of the repo)
+/frontend/scripts/
