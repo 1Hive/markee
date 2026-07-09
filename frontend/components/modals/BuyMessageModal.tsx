@@ -42,7 +42,7 @@ function getCurrentPhaseRate(): number {
 }
 
 function calculateMarkeeTokens(ethAmount: number): number {
-  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
+  return ethAmount * 0.38 * 0.62 * getCurrentPhaseRate() * 0.62
 }
 
 const REV_NET_ENABLED_ABI = [
@@ -355,7 +355,7 @@ export function BuyMessageModal({
 
   // Amount section (create + addFunds)
   const bidNum = parseFloat(amount || '0')
-  const markeeEarned = Math.round(calculateMarkeeTokens(bidNum))
+  const markeeEarned = calculateMarkeeTokens(bidNum)
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 
@@ -476,7 +476,7 @@ export function BuyMessageModal({
                     <textarea
                       value={message}
                       onChange={e => setMessage(e.target.value.slice(0, maxLen))}
-                      placeholder="the name's mark. agent mark 🕵️"
+                      placeholder="Your message here"
                       rows={2}
                       style={{ ...inputStyle, resize: 'vertical' }}
                       onFocus={e => { e.target.style.borderColor = PINK }}
@@ -641,10 +641,10 @@ export function BuyMessageModal({
                   )}
 
                   {/* MARKEE token estimate */}
-                  {revNetEnabled && bidNum > 0 && (
+                  {bidNum > 0 && (
                     <div style={{ marginTop: 14, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
                       <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
-                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString()}</div>
+                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                       <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
                     </div>
                   )}

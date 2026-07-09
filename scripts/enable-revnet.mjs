@@ -26,8 +26,8 @@ import { writeFileSync } from 'fs'
 
 // ─── RevNet v6 config ──────────────────────────────────────────────────────────
 
-const TERMINAL = '0x2dB6d704058E552DeFE415753465df8dF0361846'
-const PROJECT_ID = '152'
+const TERMINAL = '0x130f5Dd2bD8805443Cf41755253D778a75a67f53'
+const PROJECT_ID = '7'
 const PERCENT_TO_BENEFICIARY = '6200' // 62% — 38% goes to RevNet
 const COOP_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'
 const OUTPUT = process.env.OUTPUT ?? '/tmp/enable-revnet-batch.json'

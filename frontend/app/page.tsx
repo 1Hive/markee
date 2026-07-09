@@ -365,24 +365,24 @@ export default function Home() {
           superfluid: { markees: pAcc.superfluid.markees, usd: ethPrice ? Math.round(pAcc.superfluid.eth * ethPrice) : 0 },
         })
 
-        // Fetch total views — keyed by top markee address (where views are actually tracked)
+        // Fetch network-wide total views (all markees, not just top per leaderboard)
         let totalViews = 0
-        const addresses = leaderboards.map(lb => lb.topMarkeeAddress).filter(Boolean) as string[]
-        if (addresses.length > 0) {
-          try {
-            const vRes = await fetch(`/api/views?addresses=${addresses.join(',')}`)
-            if (vRes.ok) {
-              const vData: Record<string, { totalViews: number }> = await vRes.json()
-              totalViews = Object.values(vData).reduce((sum, v) => sum + (v.totalViews ?? 0), 0)
-            }
-          } catch {}
-        }
+        try {
+          const vRes = await fetch('/api/views?network=1')
+          if (vRes.ok) {
+            const vData: { total: number } = await vRes.json()
+            totalViews = vData.total ?? 0
+          }
+        } catch {}
+
+        const usd = data.totalPlatformFundsUsd
+          ?? (ethPrice ? Math.round(totalEth * ethPrice) : 0)
 
         setEcoStats({
           domains: leaderboards.length,
           markees: active.length,
           messages,
-          usd: ethPrice ? Math.round(totalEth * ethPrice) : 0,
+          usd,
           views: totalViews,
         })
         setEcoStatsLoaded(true)

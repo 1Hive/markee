@@ -12,7 +12,7 @@ const C = {
   border: 'rgba(138,143,191,0.2)', borderHover: 'rgba(248,151,254,0.4)',
 }
 
-const GARDENS_URL = 'https://app.gardens.fund/gardens/8453/0xce6b968c8bd130ca08f1fcc97b509a824380d867'
+const GARDENS_URL = 'https://app.gardens.fund/gardens/8453/0x9a378ebed22610e9fbb941fe27323fe00cdeebc6'
 const REVNET_URL = 'https://revnet.app/base/markee'
 const GROWTH_FUND_URL = GARDENS_URL
 
