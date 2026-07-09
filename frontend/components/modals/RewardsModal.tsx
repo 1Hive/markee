@@ -278,7 +278,7 @@ export function RewardsModal({
         <div className="flex-shrink-0 border-t border-[#8A8FBF]/20 px-6 py-4 bg-[#060A2A]/40">
           <p className="text-[#8A8FBF] text-[10px] uppercase tracking-wider mb-2 font-semibold">How to Earn Points</p>
           <div className="flex flex-col gap-1.5 text-xs text-[#8A8FBF]">
-            <span>🪧 Buy a message or add funds to an existing message: 10k pts per ETH</span>
+            <span>🪧 Buy a message or add funds to an existing message: 10M pts per ETH</span>
             <span className="flex items-center gap-1.5">
               🟣 Follow @markee on Farcaster: 1pt
               <a

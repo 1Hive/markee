@@ -10,10 +10,14 @@ export async function GET(request: NextRequest) {
 
   const state = crypto.randomBytes(16).toString('hex')
 
+  // Capture the origin so the callback can redirect back to whichever deployment
+  // initiated the flow (staging, preview, or production).
+  const origin = new URL(request.url).origin
+
   // Store state with returnTo payload — 10-minute TTL
   await kv.set(
     `github:oauth:state:${state}`,
-    JSON.stringify({ returnTo }),
+    JSON.stringify({ returnTo, origin }),
     { ex: 600 }
   )
 

@@ -38,6 +38,10 @@ function reactionsKey(markeeAddress: string) {
   return `reactions:v2:${markeeAddress.toLowerCase()}`
 }
 
+// Set that tracks every markee address that has ever received a reaction.
+// Used by the no-param GET to bulk-load all reactions without a SCAN.
+const REACTIONS_INDEX_KEY = 'reactions:markees'
+
 async function getReactionsForMarkee(markeeAddress: string): Promise<Reaction[]> {
   const hash = await kv.hgetall<Record<string, string>>(reactionsKey(markeeAddress))
   if (!hash) return []
@@ -70,15 +74,31 @@ async function verifyBalance(address: string, chainId: number): Promise<boolean>
   }
 }
 
-// GET /api/reactions?markeeAddress=0x...
+// GET /api/reactions?markeeAddress=0x... (omit param to fetch all)
 export async function GET(request: NextRequest) {
   try {
     const markeeAddress = request.nextUrl.searchParams.get('markeeAddress')
-    if (!markeeAddress) {
+
+    if (markeeAddress) {
+      const reactions = await getReactionsForMarkee(markeeAddress)
+      return NextResponse.json({ reactions })
+    }
+
+    // No markeeAddress — load all reactions via the markee index set
+    const markeeAddresses = await kv.smembers<string[]>(REACTIONS_INDEX_KEY)
+    if (!markeeAddresses || markeeAddresses.length === 0) {
       return NextResponse.json({ reactions: [] })
     }
-    const reactions = await getReactionsForMarkee(markeeAddress)
-    return NextResponse.json({ reactions })
+    const hashes = await Promise.all(
+      markeeAddresses.map(addr => kv.hgetall<Record<string, string>>(reactionsKey(addr)))
+    )
+    const allReactions: Reaction[] = []
+    for (const hash of hashes) {
+      if (hash) {
+        allReactions.push(...Object.values(hash).map(v => JSON.parse(v) as Reaction))
+      }
+    }
+    return NextResponse.json({ reactions: allReactions })
   } catch (error) {
     console.error('[Reactions] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch reactions' }, { status: 500 })
@@ -126,6 +146,8 @@ export async function POST(request: NextRequest) {
     await kv.hset(reactionsKey(markeeAddress), {
       [userAddress.toLowerCase()]: JSON.stringify(reaction),
     })
+    // Track this markee in the index so the no-param GET can find it
+    await kv.sadd(REACTIONS_INDEX_KEY, markeeAddress.toLowerCase())
 
     return NextResponse.json({ success: true, reaction })
   } catch (error) {

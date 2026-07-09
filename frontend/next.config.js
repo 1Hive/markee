@@ -4,7 +4,7 @@ const cspDirectives = {
   'default-src':     ["'self'"],
   // Next.js injects inline scripts; 'unsafe-inline' is required without nonces.
   // 'unsafe-eval' is required by some wallet SDKs (WalletConnect, MetaMask SDK).
-  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com'],
+  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com', 'https://vercel.live'],
   'style-src':       ["'self'", "'unsafe-inline'"],
   // Partner logos come from arbitrary HTTPS sources stored in KV — allow all HTTPS images.
   'img-src':         ["'self'", 'data:', 'blob:', 'https:'],
@@ -25,6 +25,7 @@ const cspDirectives = {
     'https://verify.walletconnect.com',
     'https://verify.walletconnect.org',
     'https://challenges.cloudflare.com',
+    'https://vercel.live',
   ],
   'connect-src': [
     "'self'",
@@ -55,14 +56,28 @@ const cspHeader = Object.entries(cspDirectives)
   .map(([key, vals]) => `${key} ${vals.join(' ')}`)
   .join('; ')
 
+// Embed pages need frame-ancestors: * so third-party sites can iframe them.
+const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['*'] })
+  .map(([key, vals]) => `${key} ${vals.join(' ')}`)
+  .join('; ')
+
 const nextConfig = {
   async headers() {
     return [
+      // /embed/* — allow iframing from any origin, no X-Frame-Options
       {
-        source: '/(.*)',
+        source: '/embed/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: embedCspHeader },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
+      // Everything else — deny framing
+      {
+        source: '/((?!embed(?:/|$)).*)',
         headers: [
           { key: 'Content-Security-Policy', value: cspHeader },
-          // Belt-and-suspenders clickjacking protection
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -73,16 +88,19 @@ const nextConfig = {
 
   async redirects() {
     return [
-      {
-        source: '/ecosystem',
-        destination: '/create-a-markee',
-        permanent: true,
-      },
+      { source: '/ecosystem', destination: '/create-a-markee', permanent: true },
+      { source: '/own-the-network', destination: '/owners', permanent: false },
     ]
   },
 
   webpack: (config) => {
-    config.resolve.fallback = { fs: false, net: false, tls: false, '@farcaster/mini-app-solana': false }
+    config.resolve.fallback = {
+      fs: false,
+      net: false,
+      tls: false,
+      '@farcaster/mini-app-solana': false,
+      '@react-native-async-storage/async-storage': false,
+    }
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
   },

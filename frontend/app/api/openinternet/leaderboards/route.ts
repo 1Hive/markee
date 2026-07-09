@@ -19,8 +19,7 @@ const CACHE_KEY = 'cache:openinternet:leaderboards'
 const CACHE_TTL = 60 // seconds
 
 const OI_FACTORY_ADDRESSES = [
-  '0xb9922E2bdbA79190F0da51Fe362297Ef214eD254', // legacy (Coop, Gardens, Clawchemy + early partners)
-  '0x3f9f7C070f03167C0A90Ee7C2c5863d6F15F7E6D', // new (Honeyswap, NORD, Gitcoin, Mati's, OwnerSync, Hello!)
+  '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c', // v1.3 — all OI leaderboards
 ] as const
 
 const NO_CACHE = {
@@ -65,6 +64,41 @@ const MARKEE_ABI = [
   { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
+
+// ─── Hardcoded partner meta ───────────────────────────────────────────────────
+// These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
+// They live in the legacy OI factory but have no KV meta, so we hardcode
+// verified status here rather than requiring a one-time KV write.
+
+const PARTNER_META: Record<string, {
+  logoUrl: string | null
+  siteUrl: string
+  verifiedUrl: string
+  verifiedUrls: string[]
+  status: 'verified'
+}> = {
+  '0x0590b56430426a38d0fa065b839c10d542e75ccd': { // Markee Cooperative (v1.3)
+    logoUrl: '/markee-logo.png',
+    siteUrl: 'https://markee.xyz',
+    verifiedUrl: 'https://markee.xyz',
+    verifiedUrls: ['https://markee.xyz'],
+    status: 'verified',
+  },
+  '0x2768bc6e90266248bd8bcf5401c36d8049cdf671': { // Gardens (v1.3)
+    logoUrl: '/partners/gardens.png',
+    siteUrl: 'https://app.gardens.fund',
+    verifiedUrl: 'https://app.gardens.fund',
+    verifiedUrls: ['https://app.gardens.fund'],
+    status: 'verified',
+  },
+  '0xdf4769a9593cb8e40d0409def2645651412a8a97': { // Clawchemy (v1.3)
+    logoUrl: '/partners/clawchemy.png',
+    siteUrl: 'https://clawchemy.xyz',
+    verifiedUrl: 'https://clawchemy.xyz',
+    verifiedUrls: ['https://clawchemy.xyz'],
+    status: 'verified',
+  },
+}
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 
@@ -150,14 +184,12 @@ export async function GET(request: Request) {
       return results
     }
 
-    const addressesPerFactory = await Promise.all(
-      OI_FACTORY_ADDRESSES.map(factory =>
-        client.readContract({ address: factory, abi: FACTORY_ABI, functionName: 'getLeaderboards', args: [0n, 1000n] })
-          .then(r => r as `0x${string}`[])
-          .catch(() => [] as `0x${string}`[])
-      )
-    )
-    const addresses = addressesPerFactory.flat()
+    const addresses = await client.readContract({
+      address: OI_FACTORY_ADDRESSES[0],
+      abi: FACTORY_ABI,
+      functionName: 'getLeaderboards',
+      args: [0n, 1000n],
+    }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
@@ -199,10 +231,9 @@ export async function GET(request: Request) {
         : Promise.resolve([]),
     ])
 
-    let totalFundsRaw = 0n
     let markeeCallIndex = 0
 
-    const factoryLeaderboards = addresses.map((addr, i) => {
+    const allLeaderboards = addresses.map((addr, i) => {
       const b = i * 6
       const name          = (metaResults[b]?.result as string) ?? addr
       const totalFunds    = (metaResults[b + 1]?.result as bigint) ?? 0n
@@ -211,8 +242,6 @@ export async function GET(request: Request) {
       const admin         = (metaResults[b + 4]?.result as string) ?? ''
       const topResult     = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
       const topFunds0     = topResult?.[1]?.[0] ?? 0n
-
-      totalFundsRaw += totalFunds
 
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
@@ -224,7 +253,9 @@ export async function GET(request: Request) {
         markeeCallIndex += 3
       }
 
-      const meta = kvMetas[i]
+      const kvMeta = kvMetas[i]
+      const partnerMeta = PARTNER_META[addr.toLowerCase()]
+      const meta = partnerMeta ?? kvMeta
       return {
         address: addr,
         name,
@@ -250,7 +281,19 @@ export async function GET(request: Request) {
       }
     })
 
-    const leaderboards = factoryLeaderboards
+    // Deduplicate: concurrent migration runs may have created identical copies.
+    // Among entries sharing the same (name, admin), keep the first (canonical).
+    const dedupeKey = new Set<string>()
+    const leaderboards = allLeaderboards.filter(l => {
+      const k = `${l.name.toLowerCase().trim()}|${l.admin.toLowerCase()}`
+      if (dedupeKey.has(k)) return false
+      dedupeKey.add(k)
+      return true
+    })
+
+    let totalFundsRaw = 0n
+    for (const l of leaderboards) totalFundsRaw += BigInt(l.totalFundsRaw)
+
     leaderboards.sort((a, b) => {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return diff > 0n ? 1 : diff < 0n ? -1 : 0

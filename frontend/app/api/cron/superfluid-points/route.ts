@@ -10,7 +10,7 @@
  * 1. Legacy TopDawg (0x7A6CE4d457AC1A31513BDEFf924FF942150D293E)
  *    → Subgraph (already indexed, reliable)
  *
- * 2. LeaderboardFactory (0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d)
+ * 2. LeaderboardFactory v1.3 (0xC497187AAa35C26b0008B43C10A6F6300b7eBcad)
  *    → RPC via Alchemy: call getLeaderboards() on factory to get child
  *      strategy addresses, then getLogs for FundsAdded events on each.
  *      Scales automatically as new leaderboards are created.
@@ -25,17 +25,22 @@ import { kv } from '@vercel/kv'
 import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { pushBatch, ethToPoints, type PushEventInput } from '@/lib/superfluid/points'
+import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
+
+const BOOSTED_KEY = 'superfluid:s6:boosted'
+const BOOSTED_MULTIPLIER = 5
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 // ─── Contract addresses ───────────────────────────────────────────────────────
 
-const LEADERBOARD_FACTORY_ADDRESS = '0x45ce642d1dc0638887e3312c95a66fa8fcbae09d'
-// Standalone v1.1 leaderboard holding the 32 migrated TopDawg markees — not in factory
-const SF_MIGRATION_LEADERBOARD = '0xb6ccc63d3fdc2d22e3147c01ab6a006f32dd7580'
+const LEADERBOARD_FACTORY_ADDRESS = '0xc497187aaa35c26b0008b43c10a6f6300b7ebcad'
+// v1.3 Superfluid leaderboard (migrated from v1.2 via migrate-to-v13.sh)
+const SF_MIGRATION_LEADERBOARD = '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79'
 
-const FACTORY_DEPLOY_BLOCK = 43452028n
+const FACTORY_DEPLOY_BLOCK = 46059000n
+// From subgraph.yaml — TopDawgPartnerStrategySuperfluid startBlock
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -45,16 +50,21 @@ const FARCASTER_API_KEY = process.env.FARCASTER_API_KEY
 
 // ─── KV keys ─────────────────────────────────────────────────────────────────
 
-const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'
+// Each address family has its own last-processed block so adding a new source
+// doesn't cause it to silently skip events that happened before the addition.
+const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'        // factory leaderboards
+const KV_SF_MIG_LAST_BLOCK = 'superfluid:cron:sfMigLastBlock'   // SF migration leaderboard
 const KV_FARCASTER_PREFIX = 'superfluid:farcaster:fid:'
 
 const API_BATCH_SIZE = 100
 
-// ─── RPC (LeaderboardFactory children + SF migration leaderboard) ─────────────
+// ─── RPC events ───────────────────────────────────────────────────────────────
 
+// v1.1 leaderboard contracts (factory children + SF migration leaderboard)
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
 )
+
 
 const FACTORY_ABI = [
   {
@@ -86,6 +96,7 @@ async function fetchLeaderboardAddresses(): Promise<string[]> {
 }
 
 interface RpcFundsEvent {
+  leaderboardAddress: string
   addedBy: string
   amount: bigint
   transactionHash: string
@@ -118,6 +129,7 @@ async function fetchRpcEvents(
     all.push(...logs
       .filter(log => log.transactionHash && log.blockNumber !== null)
       .map(log => ({
+        leaderboardAddress: log.address.toLowerCase(),
         addedBy: ((log.args as any).addedBy as string).toLowerCase(),
         amount: (log.args as any).amount as bigint,
         transactionHash: log.transactionHash!,
@@ -246,56 +258,93 @@ export async function GET(req: NextRequest) {
 
   const startTime = Date.now()
   const results = {
-    factory: { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
+    factory:  { leaderboards: 0, fetched: 0, pushed: 0, failed: 0, newHighBlock: 0 },
+    sfMig:    { fetched: 0, pushed: 0, failed: 0 },
     farcaster: { followers: 0, newAwards: 0, failed: 0 },
     durationMs: 0,
   }
 
-  // ── LeaderboardFactory children + SF migration leaderboard via RPC ─────────
-
   if (ALCHEMY_URL) {
+    const client = getRpcClient()
+    const latestBlock = await client.getBlockNumber()
+
+    // Fetch boosted set once for multiplier checks
+    const boostedList = await kv.get<BoostedMarkee[]>(BOOSTED_KEY).catch(() => null)
+    const boostedAddrs = new Set((boostedList ?? []).map(b => b.address.toLowerCase()))
+
+    // ── 1. LeaderboardFactory children (v1.1 FundsAdded event) ────────────────
     try {
-      const leaderboardAddresses = [...await fetchLeaderboardAddresses(), SF_MIGRATION_LEADERBOARD]
+      const leaderboardAddresses = await fetchLeaderboardAddresses()
       results.factory.leaderboards = leaderboardAddresses.length
       console.log(`[cron] Factory: ${leaderboardAddresses.length} leaderboard(s)`)
 
       if (leaderboardAddresses.length > 0) {
-        const client = getRpcClient()
-        const latestBlock = await client.getBlockNumber()
-
         const storedBlock = await kv.get<string>(KV_RPC_LAST_BLOCK)
         const fromBlock = storedBlock ? BigInt(storedBlock) : FACTORY_DEPLOY_BLOCK
-        const toBlock = latestBlock
 
-        console.log(`[cron] Factory: getLogs from ${fromBlock} to ${toBlock}`)
-
-        const events = await fetchRpcEvents(leaderboardAddresses, fromBlock, toBlock)
+        console.log(`[cron] Factory: getLogs ${fromBlock}→${latestBlock}`)
+        const events = await fetchRpcEvents(leaderboardAddresses, fromBlock, latestBlock)
         results.factory.fetched = events.length
-        console.log(`[cron] Factory: found ${events.length} events`)
 
         if (events.length > 0) {
           const pushInputs: PushEventInput[] = events
             .filter(e => !leaderboardAddresses.includes(e.addedBy))
-            .map(e => ({
-              event: 'ADD_FUNDS' as const,
-              account: e.addedBy,
-              points: ethToPoints(e.amount),
-              uniqueId: `${e.transactionHash}-${e.logIndex}`,
-            }))
-
+            .map(e => {
+              const multiplier = boostedAddrs.has(e.leaderboardAddress) ? BOOSTED_MULTIPLIER : 1
+              return {
+                event: 'ADD_FUNDS' as const,
+                account: e.addedBy,
+                points: ethToPoints(e.amount) * multiplier,
+                uniqueId: `${e.transactionHash}-${e.logIndex}`,
+              }
+            })
           const { pushed, failed } = await pushInBatches(pushInputs)
           results.factory.pushed = pushed
           results.factory.failed = failed
         }
 
-        await kv.set(KV_RPC_LAST_BLOCK, toBlock.toString())
-        results.factory.newHighBlock = Number(toBlock.toString())
+        await kv.set(KV_RPC_LAST_BLOCK, latestBlock.toString())
+        results.factory.newHighBlock = Number(latestBlock)
       }
     } catch (e: any) {
       console.error('[cron] Factory RPC error:', e.message)
     }
+
+    // ── 2. SF migration leaderboard (v1.1 FundsAdded, separate block key) ─────
+    // Uses its own block key so it backfills from FACTORY_DEPLOY_BLOCK regardless
+    // of when it was added to the cron — uniqueId dedup prevents double-awards.
+    try {
+      const storedBlock = await kv.get<string>(KV_SF_MIG_LAST_BLOCK)
+      const fromBlock = storedBlock ? BigInt(storedBlock) : FACTORY_DEPLOY_BLOCK
+
+      console.log(`[cron] SF migration: getLogs ${fromBlock}→${latestBlock}`)
+      const events = await fetchRpcEvents([SF_MIGRATION_LEADERBOARD], fromBlock, latestBlock)
+      results.sfMig.fetched = events.length
+
+      if (events.length > 0) {
+        const pushInputs: PushEventInput[] = events
+          .filter(e => e.addedBy !== SF_MIGRATION_LEADERBOARD)
+          .map(e => {
+            const multiplier = boostedAddrs.has(e.leaderboardAddress) ? BOOSTED_MULTIPLIER : 1
+            return {
+              event: 'ADD_FUNDS' as const,
+              account: e.addedBy,
+              points: ethToPoints(e.amount) * multiplier,
+              uniqueId: `${e.transactionHash}-${e.logIndex}`,
+            }
+          })
+        const { pushed, failed } = await pushInBatches(pushInputs)
+        results.sfMig.pushed = pushed
+        results.sfMig.failed = failed
+      }
+
+      await kv.set(KV_SF_MIG_LAST_BLOCK, latestBlock.toString())
+    } catch (e: any) {
+      console.error('[cron] SF migration RPC error:', e.message)
+    }
+
   } else {
-    console.log('[cron] Skipping factory — ALCHEMY_BASE_URL not set')
+    console.log('[cron] Skipping RPC scans — ALCHEMY_BASE_URL not set')
   }
 
   // ── Farcaster follows ─────────────────────────────────────────────────────

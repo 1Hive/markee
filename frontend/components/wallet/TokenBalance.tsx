@@ -1,6 +1,7 @@
 'use client'
 
 import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
+import { usePrivy } from '@privy-io/react-auth'
 import { formatUnits } from 'viem'
 import { MARKEE_TOKEN, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ArrowRightLeft } from 'lucide-react'
@@ -16,6 +17,7 @@ const ERC20_ABI = [
 ] as const
 
 export function TokenBalance() {
+  const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
 
@@ -26,12 +28,12 @@ export function TokenBalance() {
     args: address ? [address] : undefined,
     chainId: CANONICAL_CHAIN.id,
     query: {
-      enabled: !!address && isConnected && chain?.id === CANONICAL_CHAIN.id,
+      enabled: !!address && isConnected && authenticated && chain?.id === CANONICAL_CHAIN.id,
     },
   })
 
-  // Don't show anything if wallet not connected
-  if (!isConnected || !address) {
+  // Gate on both Privy auth and wagmi connection — they can lag relative to each other
+  if (!authenticated || !isConnected || !address) {
     return null
   }
 

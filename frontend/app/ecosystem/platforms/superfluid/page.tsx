@@ -1,831 +1,769 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect } from 'react'
+import { formatEther } from 'viem'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import {
-  ChevronRight, Zap, Trophy, Plus, X, Loader2,
-  CheckCircle2, AlertCircle, RefreshCw, Star, ExternalLink, Eye, User,
-} from 'lucide-react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { ConnectButton } from '@/components/wallet/ConnectButton'
-import Image from 'next/image'
+import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatUsd } from '@/lib/utils'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { RewardsModal } from '@/components/modals/RewardsModal'
-import { TopDawgModal } from '@/components/modals/TopDawgModal'
-import { NETWORK_PAUSED } from '@/lib/paused'
-import { useViews } from '@/hooks/useViews'
-import type { Markee } from '@/types'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const PINK   = '#F897FE'
+const BLUE   = '#7C9CFF'
+const GREEN  = '#1DB227'
+const BG     = '#060A2A'
+const BG2    = '#0A0F3D'
+const TEXT   = '#EDEEFF'
+const TEXT2  = '#B8B6D9'
+const MUTED  = '#8A8FBF'
+const BORDER = 'rgba(138,143,191,0.2)'
 
-const SUPERFLUID_FACTORY_ADDRESS = '0x45Ce642d1Dc0638887e3312c95a66fA8fcbAe09d' as const
-const SF_MIGRATION_LEADERBOARD = '0xb6CCc63d3FdC2D22e3147c01AB6A006f32Dd7580'
-
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: '_beneficiaryAddress', type: 'address' },
-      { name: '_leaderboardName', type: 'string' },
-    ],
-    name: 'createLeaderboard',
-    outputs: [
-      { name: 'leaderboardAddress', type: 'address' },
-      { name: 'seedMarkeeAddress', type: 'address' },
-    ],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-] as const
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface SuperfluidLeaderboard {
   address: string
   name: string
-  totalFunds: string
   totalFundsRaw: string
   markeeCount: number
-  admin: string
-  minimumPrice: string
-  minimumPriceRaw: string
   topFundsAddedRaw: string
   topMessage: string | null
   topMessageOwner: string | null
+  topMarkeeAddress: string | null
+  boosted: boolean
 }
 
-interface FeaturedMessage {
-  message: string
-  owner: string
-  totalFundsAdded: string
-  totalFunds: string
-  markeeCount: number
+interface BoostedLeaderboardEntry {
+  address: string
+  name: string
+  logoUrl?: string
+  projectUrl?: string
+  leaderboard: SuperfluidLeaderboard | null
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function toMarkeeShape(lb: SuperfluidLeaderboard): Markee {
-  return {
-    address: lb.address,
-    message: lb.topMessage ?? '',
-    owner: lb.admin,
-    totalFundsAdded: BigInt(lb.totalFundsRaw ?? '0'),
-    chainId: 8453,
-    pricingStrategy: '',
-  }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatViews(n: number) {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
 }
 
-// ─── Skeletons ────────────────────────────────────────────────────────────────
-
-function SkeletonBar({ className = '' }: { className?: string }) {
-  return <div className={`bg-[#1A1F4D] rounded animate-pulse ${className}`} />
+function priceToChange(lb: SuperfluidLeaderboard): bigint {
+  return BigInt(lb.topFundsAddedRaw || '0') + BigInt('1000000000000000')
 }
 
-function HeroStatsSkeleton() {
+// ── Superfluid lightning SVG ──────────────────────────────────────────────────
+function LightningIcon({ size = 12, color = GREEN }: { size?: number; color?: string }) {
   return (
-    <div className="flex items-center gap-6 mt-10 flex-wrap">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="flex items-center gap-2">
-          <SkeletonBar className="w-3 h-3 rounded-full" />
-          <SkeletonBar className="w-10 h-3.5" />
-          <SkeletonBar className="w-20 h-3.5" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </svg>
+  )
+}
+
+// ── Eye SVG ───────────────────────────────────────────────────────────────────
+function EyeIcon({ size = 10, color = MUTED }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  )
+}
+
+// ── Rocket SVG ────────────────────────────────────────────────────────────────
+function RocketIcon({ size = 12, color = PINK }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
+      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
+      <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/>
+      <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+    </svg>
+  )
+}
+
+// ── Boosted served-on cell ────────────────────────────────────────────────────
+function BoostedServedOnCell({ entry }: { entry: BoostedLeaderboardEntry }) {
+  const [logoError, setLogoError] = useState(false)
+  const boxStyle: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: `1px solid ${BORDER}`,
+    overflow: 'hidden',
+  }
+
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
+      {entry.logoUrl && !logoError ? (
+        <span style={boxStyle}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={entry.logoUrl}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={() => setLogoError(true)}
+          />
+        </span>
+      ) : (
+        <span style={{ ...boxStyle, background: 'rgba(29,178,39,0.14)' }}>
+          <LightningIcon />
+        </span>
+      )}
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+        {entry.name}
+      </span>
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        background: 'rgba(29,178,39,0.12)',
+        border: `1px solid rgba(29,178,39,0.3)`,
+        color: GREEN,
+        fontSize: 9,
+        fontWeight: 700,
+        fontFamily: MONO,
+        padding: '2px 5px',
+        borderRadius: 4,
+        flexShrink: 0,
+        whiteSpace: 'nowrap',
+      }}>
+        5x pts
+      </span>
+    </span>
+  )
+}
+
+// ── Regular served-on cell ────────────────────────────────────────────────────
+function RegularServedOnCell({ lb }: { lb: SuperfluidLeaderboard }) {
+  const boxStyle: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: `1px solid ${BORDER}`,
+    overflow: 'hidden',
+    background: 'rgba(29,178,39,0.14)',
+  }
+
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
+      <span style={boxStyle}>
+        <LightningIcon />
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {lb.name}
+      </span>
+    </span>
+  )
+}
+
+// ── Buy button ────────────────────────────────────────────────────────────────
+function BuyButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onClick() }}
+      style={{
+        width: '100%',
+        textAlign: 'center',
+        background: PINK,
+        color: BG,
+        border: 'none',
+        borderRadius: 7,
+        padding: '8px 10px',
+        fontFamily: MONO,
+        fontWeight: 700,
+        fontSize: 12.5,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+        transition: 'transform 120ms, box-shadow 120ms',
+      }}
+      onMouseEnter={e => {
+        e.stopPropagation()
+        const el = e.currentTarget as HTMLElement
+        el.style.transform = 'translateY(-1px)'
+        el.style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)'
+      }}
+      onMouseLeave={e => {
+        e.stopPropagation()
+        const el = e.currentTarget as HTMLElement
+        el.style.transform = 'none'
+        el.style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)'
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+// ── Boosted table row ─────────────────────────────────────────────────────────
+function BoostedTableRow({
+  entry,
+  viewsMap,
+  ethPrice,
+  onBuy,
+}: {
+  entry: BoostedLeaderboardEntry
+  viewsMap: Map<string, number>
+  ethPrice: number | null
+  onBuy: () => void
+}) {
+  const [hover, setHover] = useState(false)
+  const lb = entry.leaderboard!
+
+  const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
+  const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
+
+  const priceEth = parseFloat(formatEther(priceToChange(lb)))
+  const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+
+  const addrKey = (lb.topMarkeeAddress || lb.address).toLowerCase()
+  const views = viewsMap.get(addrKey) ?? 0
+
+  const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
+
+  return (
+    <a
+      href={`/markee/${lb.address}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gap: 16,
+        padding: '11px 14px',
+        textDecoration: 'none',
+        borderBottom: `1px solid ${BORDER}`,
+        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
+        transition: 'background 120ms',
+        cursor: 'pointer',
+        alignItems: 'center',
+      }}
+    >
+      <BoostedServedOnCell entry={entry} />
+
+      <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+        {totalLabel}
+      </span>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+        </div>
+      </div>
+
+      <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <EyeIcon />
+        {views > 0 ? formatViews(views) : '—'}
+      </span>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        {hasTopFunds
+          ? <BuyButton label={priceLabel} onClick={onBuy} />
+          : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
+        }
+      </div>
+    </a>
+  )
+}
+
+// ── Regular table row ─────────────────────────────────────────────────────────
+function RegularTableRow({
+  lb,
+  viewsMap,
+  ethPrice,
+  onBuy,
+}: {
+  lb: SuperfluidLeaderboard
+  viewsMap: Map<string, number>
+  ethPrice: number | null
+  onBuy: () => void
+}) {
+  const [hover, setHover] = useState(false)
+
+  const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
+  const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
+
+  const priceEth = parseFloat(formatEther(priceToChange(lb)))
+  const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+
+  const addrKey = (lb.topMarkeeAddress || lb.address).toLowerCase()
+  const views = viewsMap.get(addrKey) ?? 0
+
+  const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
+
+  return (
+    <a
+      href={`/markee/${lb.address}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gap: 16,
+        padding: '11px 14px',
+        textDecoration: 'none',
+        borderBottom: `1px solid ${BORDER}`,
+        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
+        transition: 'background 120ms',
+        cursor: 'pointer',
+        alignItems: 'center',
+      }}
+    >
+      <RegularServedOnCell lb={lb} />
+
+      <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+        {totalLabel}
+      </span>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+        </div>
+      </div>
+
+      <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <EyeIcon />
+        {views > 0 ? formatViews(views) : '—'}
+      </span>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        {hasTopFunds
+          ? <BuyButton label={priceLabel} onClick={onBuy} />
+          : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
+        }
+      </div>
+    </a>
+  )
+}
+
+// ── Table column headers ──────────────────────────────────────────────────────
+function TableHeaders() {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '190px 110px 1fr 74px 120px',
+      gap: 16,
+      padding: '11px 14px',
+      borderBottom: `1px solid ${BORDER}`,
+      background: BG,
+      alignItems: 'center',
+    }}>
+      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Served On</span>
+      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Total Raised</span>
+      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current Message</span>
+      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Views</span>
+      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Price to Change</span>
+    </div>
+  )
+}
+
+// ── Skeleton rows ─────────────────────────────────────────────────────────────
+function SkeletonRows({ count = 4 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+          {[1, 2, 3, 4, 5].map(j => (
+            <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+          ))}
         </div>
       ))}
-    </div>
+    </>
   )
 }
 
-function LeaderboardCardSkeleton() {
-  return (
-    <div className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <SkeletonBar className="w-12 h-12 rounded-lg flex-shrink-0" />
-        <div className="flex-1 space-y-2">
-          <SkeletonBar className="w-3/4 h-5" />
-          <SkeletonBar className="w-1/2 h-3" />
-        </div>
-      </div>
-
-      {/* Message box */}
-      <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 min-h-[120px] space-y-2.5 flex flex-col justify-center">
-        <SkeletonBar className="w-full h-3.5" />
-        <SkeletonBar className="w-4/5 h-3.5" />
-        <SkeletonBar className="w-1/3 h-3 ml-auto mt-auto" />
-      </div>
-
-      {/* Footer row */}
-      <div className="flex items-center justify-between mb-4">
-        <SkeletonBar className="w-28 h-3" />
-        <SkeletonBar className="w-16 h-3" />
-      </div>
-
-      {/* Button */}
-      <SkeletonBar className="w-full h-9 rounded-lg" />
-    </div>
-  )
-}
-
-// ─── Page ────────────────────────────────────────────────────────────────────
-
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function SuperfluidPlatformPage() {
-  const { address: walletAddress } = useAccount()
+  const ethPrice = useEthPrice()
   const [leaderboards, setLeaderboards] = useState<SuperfluidLeaderboard[]>([])
+  const [boostedLeaderboards, setBoostedLeaderboards] = useState<BoostedLeaderboardEntry[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
-  const [isLoadingLeaderboards, setIsLoadingLeaderboards] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [rewardsModalOpen, setRewardsModalOpen] = useState(false)
-  const [featuredMessage, setFeaturedMessage] = useState<FeaturedMessage | null>(null)
-  const [featuredModalOpen, setFeaturedModalOpen] = useState(false)
-
-  const fetchLeaderboards = useCallback(async (silent = false, bust = false) => {
-    try {
-      if (!silent) setIsLoadingLeaderboards(true)
-      else setIsRefreshing(true)
-
-      const params = new URLSearchParams({ t: Date.now().toString() })
-      if (bust) params.set('bust', '1')
-      const res = await fetch(`/api/superfluid/leaderboards?${params}`, { cache: 'no-store' })
-      if (res.ok) {
-        const data = await res.json()
-        setLeaderboards(data.leaderboards ?? [])
-        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
-        if (data.featuredMessage) setFeaturedMessage(data.featuredMessage)
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setIsLoadingLeaderboards(false)
-      setIsRefreshing(false)
-    }
-  }, [])
+  const [loading, setLoading] = useState(true)
+  const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
+  const [buyModal, setBuyModal] = useState<{ address: string; topFundsAdded: bigint } | null>(null)
+  const [rewardsOpen, setRewardsOpen] = useState(false)
 
   useEffect(() => {
-    fetchLeaderboards()
-  }, [fetchLeaderboards])
+    fetch(`/api/superfluid/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        setLeaderboards(data.leaderboards ?? [])
+        setBoostedLeaderboards(data.boostedLeaderboards ?? [])
+        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
-  // ── Views ──────────────────────────────────────────────────────────────────
-  const viewableMarkees = useMemo(() => leaderboards.map(toMarkeeShape), [leaderboards])
-  const { views, trackView } = useViews(viewableMarkees)
+  // Batch-fetch views for all top markees (boosted + regular)
+  useEffect(() => {
+    const addrs: string[] = []
 
-  const formatFunds = (eth: string) => {
-    const n = parseFloat(eth)
-    if (n === 0) return '0 ETH'
-    if (n < 0.001) return '< 0.001 ETH'
-    return `${n.toFixed(3)} ETH`
-  }
+    for (const entry of boostedLeaderboards) {
+      const lb = entry.leaderboard
+      if (lb?.topMarkeeAddress) addrs.push(lb.topMarkeeAddress.toLowerCase())
+    }
+    for (const lb of leaderboards) {
+      if (lb.topMarkeeAddress) addrs.push(lb.topMarkeeAddress.toLowerCase())
+    }
 
-  const myLeaderboards = walletAddress
-    ? leaderboards.filter(l =>
-        ((l as any).creator ?? l.admin).toLowerCase() === walletAddress.toLowerCase()
-      )
-    : []
+    const unique = Array.from(new Set(addrs))
+    if (unique.length === 0) return
 
-  // Public listing: only boards where a real purchase has been made
-  const activeLeaderboards = leaderboards.filter(l => BigInt(l.topFundsAddedRaw ?? '0') > 0n)
+    fetch(`/api/views?addresses=${unique.join(',')}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        const m = new Map<string, number>()
+        for (const [addr, v] of Object.entries(data as Record<string, { totalViews: number }>)) {
+          m.set(addr.toLowerCase(), v.totalViews)
+        }
+        setViewsMap(m)
+      })
+      .catch(() => {})
+  }, [leaderboards, boostedLeaderboards])
+
+  const boostedAddressSet = new Set(boostedLeaderboards.map(b => b.address.toLowerCase()))
+
+  const activeBoostedEntries = boostedLeaderboards.filter(
+    entry => entry.leaderboard !== null &&
+      BigInt(entry.leaderboard.topFundsAddedRaw || '0') > 0n && entry.leaderboard.topMessage
+  )
+
+  const regularRows = leaderboards.filter(
+    lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage && !boostedAddressSet.has(lb.address.toLowerCase())
+  )
+
+  // Count active signs across boosted + regular
+  const activeBoostedCount = boostedLeaderboards.filter(
+    b => b.leaderboard && BigInt(b.leaderboard.topFundsAddedRaw || '0') > 0n
+  ).length
+  const activeRegularCount = leaderboards.filter(
+    lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && !boostedAddressSet.has(lb.address.toLowerCase())
+  ).length
+  const activeSignsCount = activeBoostedCount + activeRegularCount
+
+  const totalEth = parseFloat(totalPlatformFunds)
+  const totalLabel = ethPrice
+    ? formatUsd(totalEth * ethPrice)
+    : `${totalEth.toFixed(3)} ETH`
 
   return (
-    <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
+    <div style={{ minHeight: '100vh', background: BG }}>
+      <Header activePage="raise" useRegularLinks />
 
-      {/* Breadcrumbs */}
-      <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 text-sm">
-            <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <span className="text-[#EDEEFF]">Superfluid</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Hero */}
-      <section className="relative py-20 overflow-hidden">
+      {/* ── Hero ── */}
+      <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>
         <HeroBackground />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-[#0A0F3D] border border-[#8A8FBF]/30 overflow-hidden flex-shrink-0">
-                <Image src="/partners/superfluid.png" alt="Superfluid" width={48} height={48} className="object-contain" />
+        <div style={{ maxWidth: 1240, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 40, flexWrap: 'wrap' }}>
+            {/* Left */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, flex: 1, minWidth: 280 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 10,
+                background: BG2,
+                border: `1px solid ${BORDER}`,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+              }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/partners/superfluid.png" alt="Superfluid" width={36} height={36} style={{ objectFit: 'contain' }} />
               </div>
               <div>
-                <div className="flex items-center gap-3 mb-1">
-                  <h1 className="text-3xl font-bold text-[#EDEEFF]">Superfluid</h1>
-                  <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-1 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#1DB227] animate-pulse" />
-                    Season 5 Rewards Active
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                  <h1 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6, lineHeight: 1.1 }}>
+                    Superfluid
+                  </h1>
+                  {/* Animated green pill */}
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'rgba(29,178,39,0.12)',
+                    border: `1px solid rgba(29,178,39,0.35)`,
+                    color: GREEN,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: 99,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    <span style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 99,
+                      background: GREEN,
+                      display: 'inline-block',
+                      animation: 'glowPulse 1.5s ease-in-out infinite',
+                    }} />
+                    Season 6 Rewards Active
                   </span>
                 </div>
-                <p className="text-[#8A8FBF] max-w-xl">
-                  A digital sign for your Superfluid project anyone can pay to edit. Top funds added gets the featured spot in each Markee message.
+                <p style={{ margin: 0, color: TEXT2, fontSize: 15, maxWidth: '60ch', lineHeight: 1.55 }}>
+                  A digital sign for your Superfluid project anyone can pay to edit. Boosted Markees earn 5x SUP points. Fund your favorite ecosystem project and earn!
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            {/* Right CTAs */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
               <button
-                onClick={() => setRewardsModalOpen(true)}
-                className="flex items-center gap-2 bg-[#0A0F3D] text-[#F897FE] border border-[#F897FE]/40 px-5 py-3 rounded-lg font-semibold hover:bg-[#F897FE]/10 transition-colors whitespace-nowrap"
+                onClick={() => setRewardsOpen(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'transparent',
+                  color: PINK,
+                  border: `1px solid rgba(248,151,254,0.4)`,
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
               >
-                <Star size={16} />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+                </svg>
                 View SUP Rewards
               </button>
-              {!NETWORK_PAUSED && (
-                <button
-                  onClick={() => setCreateModalOpen(true)}
-                  className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-                >
-                  <Plus size={18} />
-                  Create a Markee
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Stats */}
-          {isLoadingLeaderboards ? (
-            <HeroStatsSkeleton />
-          ) : (
-            <div className="flex items-center gap-6 mt-10 flex-wrap">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-                <span className="text-[#F897FE] font-semibold">{activeLeaderboards.length}</span>
-                <span className="text-[#8A8FBF]">active signs</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Trophy size={14} className="text-[#7C9CFF]" />
-                <span className="text-[#7C9CFF] font-semibold">{formatFunds(totalPlatformFunds)}</span>
-                <span className="text-[#8A8FBF]">total funded</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt / 0.0001 ETH</span>
-                <span className="text-[#8A8FBF]">funded</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#1DB227] font-semibold">1 pt / follow</span>
-                <span className="text-[#8A8FBF]">on Markee Farcaster</span>
-                <a
-                  href="https://farcaster.xyz/markee"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
-                  aria-label="Follow Markee on Farcaster"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                    <polyline points="15 3 21 3 21 9"/>
-                    <line x1="10" y1="14" x2="21" y2="3"/>
-                  </svg>
-                </a>
-              </div>
-              <button
-                onClick={() => fetchLeaderboards(true, true)}
-                disabled={isRefreshing}
-                className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors text-xs disabled:opacity-40 ml-auto"
-              >
-                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-                {isRefreshing ? 'Refreshing…' : 'Refresh'}
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="py-12 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                step: '1',
-                title: 'Raise Funds for Your Project',
-                body: 'Create a Markee and set a beneficiary to receive funds from all paid messages.',
-              },
-              {
-                step: '2',
-                title: 'Buy Messages from Top Superfluid Projects',
-                body: 'Featured messages get the most impressions and go towards funding your favorite projects.',
-              },
-              {
-                step: '3',
-                title: 'Get Rewarded',
-                body: "Every purchase mints MARKEE tokens for the buyer and earns SUP in Superfluid's Season 5 Rewards.",
-              },
-            ].map(({ step, title, body }) => (
-              <div key={step} className="flex gap-4">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1DB227]/15 border border-[#1DB227]/40 flex items-center justify-center text-[#1DB227] text-sm font-bold">
-                  {step}
-                </div>
-                <div>
-                  <h3 className="text-[#EDEEFF] font-semibold mb-1">{title}</h3>
-                  <p className="text-[#8A8FBF] text-sm">{body}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Message — Legacy TopDawg */}
-      {featuredMessage?.message && (() => {
-        const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-        const topFunds = BigInt(featuredMessage.totalFundsAdded ?? '0')
-        const buyPrice = topFunds + minIncrement
-        const buyPriceFormatted = (Number(buyPrice) / 1e18).toFixed(3)
-        const totalFundsEth = (Number(BigInt(featuredMessage.totalFunds ?? '0')) / 1e18).toFixed(3)
-
-        return (
-          <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
-            <div className="max-w-2xl mx-auto px-4">
-              <a
-                href="https://campaigns.superfluid.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="flex items-center justify-center gap-2 bg-[#060A2A] border border-[#8A8FBF]/20 hover:border-[#F897FE]/60 hover:bg-[#F897FE]/5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-medium px-4 py-2 rounded-t-lg transition-all"
-              >
-                <ExternalLink size={12} />
-                campaigns.superfluid.org
-              </a>
-
-              <div className="rounded-t-none rounded-b-lg overflow-hidden border border-t-0 border-[#F897FE]/20">
-                <div
-                  className="bg-[#060A2A] rounded-t-none rounded-b-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors p-5 cursor-pointer"
-                  onClick={() => window.location.href = 'https://www.markee.xyz/ecosystem/superfluid'}
-                >
-                  <div className="bg-[#0A0F3D] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 flex flex-col min-h-[80px]">
-                    <p className="text-[#EDEEFF] font-mono text-sm break-words flex-1">
-                      {featuredMessage.message}
-                    </p>
-                    {featuredMessage.owner && (
-                      <p className="text-[#8A8FBF] text-xs text-right mt-2">
-                        {featuredMessage.owner.slice(0, 6)}...{featuredMessage.owner.slice(-4)}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs mb-4">
-                    <span className="text-[#7C9CFF] font-medium">
-                      {totalFundsEth} ETH total raised.
-                    </span>
-                    <span className="text-[#8A8FBF]">
-                      {Math.max(0, (featuredMessage.markeeCount ?? 0) - 1)} {(featuredMessage.markeeCount ?? 0) - 1 === 1 ? 'message' : 'messages'}
-                    </span>
-                  </div>
-
-                  {!NETWORK_PAUSED && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={e => { e.stopPropagation(); setFeaturedModalOpen(true) }}
-                        className="w-full sm:w-auto bg-[#F897FE] text-[#060A2A] px-6 py-2 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors text-sm"
-                      >
-                        {buyPriceFormatted} ETH to change
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        )
-      })()}
-
-      {/* My Markees — visible only to the connected admin */}
-      {walletAddress && myLeaderboards.length > 0 && (
-        <section className="py-10 bg-[#0A0F3D] border-y border-[#8A8FBF]/20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3 mb-6">
-              <User size={18} className="text-[#F897FE]" />
-              <h2 className="text-xl font-bold text-[#EDEEFF]">My Markees</h2>
               <Link
-                href="/account"
-                className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors"
-                title="My account"
+                href="/marketplace"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  background: 'transparent',
+                  color: TEXT2,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                }}
               >
-                <ExternalLink size={13} />
+                See All Markees →
               </Link>
-              <span className="text-[#8A8FBF] text-sm">
-                {myLeaderboards.length} {myLeaderboards.length === 1 ? 'sign' : 'signs'} you created
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {myLeaderboards.map(lb => (
-                <MyMarkeeCard key={lb.address} leaderboard={lb} formatFunds={formatFunds} />
-              ))}
             </div>
           </div>
-        </section>
-      )}
 
-      {/* Signs grid */}
-      <section className="py-16 bg-[#060A2A]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {isLoadingLeaderboards ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[1, 2, 3].map(i => (
-                <LeaderboardCardSkeleton key={i} />
-              ))}
+          {/* Stats row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 32, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{activeSignsCount}</span>
+              <span style={{ color: MUTED }}>active signs</span>
             </div>
-          ) : activeLeaderboards.length === 0 ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
-              <Zap size={40} className="text-[#1DB227] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No active signs yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Be the first Superfluid project to buy a message.</p>
-              {!NETWORK_PAUSED && (
-                <button
-                  onClick={() => setCreateModalOpen(true)}
-                  className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-                >
-                  <Plus size={18} />
-                  Create a Markee
-                </button>
-              )}
+            <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                <polyline points="17 6 23 6 23 12"/>
+              </svg>
+              <span style={{ color: BLUE, fontWeight: 700, fontFamily: MONO }}>{totalLabel}</span>
+              <span style={{ color: MUTED }}>total raised</span>
             </div>
-          ) : (
-            <div>
-              <div className="flex items-center gap-3 mb-6">
-                <Trophy size={20} className="text-[#F897FE]" />
-                <h2 className="text-2xl font-bold text-[#EDEEFF]">Active Signs</h2>
-                <span className="text-[#8A8FBF] text-sm">ranked by total funds added</span>
+            <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <span style={{ color: GREEN, fontWeight: 700, fontFamily: MONO }}>10M pts / ETH</span>
+              <span style={{ color: MUTED }}>standard</span>
+            </div>
+            <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <RocketIcon size={13} color={PINK} />
+              <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>50M pts / ETH</span>
+              <span style={{ color: MUTED }}>on Boosted</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Boosted Markees section ── */}
+      <section style={{ padding: '44px 40px', background: BG2, borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <RocketIcon size={16} color={PINK} />
+            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Boosted Markees</span>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: 'rgba(29,178,39,0.12)',
+              border: `1px solid rgba(29,178,39,0.3)`,
+              color: GREEN,
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '3px 8px',
+              borderRadius: 99,
+              fontFamily: MONO,
+            }}>
+              5x pts
+            </span>
+          </div>
+
+          <div style={{ background: BG, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+            <TableHeaders />
+            {loading ? (
+              <SkeletonRows count={4} />
+            ) : activeBoostedEntries.length === 0 ? (
+              <div style={{ padding: '40px 14px', textAlign: 'center', color: MUTED, fontSize: 14 }}>
+                No boosted markees yet this season.
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {activeLeaderboards.map((lb, idx) => (
-                  <LeaderboardCard
-                    key={lb.address}
-                    leaderboard={lb}
-                    rank={idx + 1}
-                    formatFunds={formatFunds}
-                    trackView={trackView}
-                    viewCount={views.get(lb.address.toLowerCase())?.totalViews}
-                  />
-                ))}
+            ) : (
+              activeBoostedEntries.map(entry => (
+                <BoostedTableRow
+                  key={entry.address}
+                  entry={entry}
+                  viewsMap={viewsMap}
+                  ethPrice={ethPrice}
+                  onBuy={() => setBuyModal({
+                    address: entry.leaderboard!.address,
+                    topFundsAdded: BigInt(entry.leaderboard!.topFundsAddedRaw || '0'),
+                  })}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Create CTA between sections ── */}
+      <section style={{ padding: '24px 40px', borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <p style={{ margin: 0, color: TEXT2, fontSize: 14 }}>
+            Want to earn SUP rewards? Create a Markee for your Superfluid project.
+          </p>
+          <Link
+            href="/create-a-markee?platform=superfluid"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: PINK,
+              color: BG,
+              borderRadius: 8,
+              padding: '10px 20px',
+              fontWeight: 700,
+              fontSize: 14,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 18px rgba(248,151,254,0.35)',
+            }}
+          >
+            Create a Superfluid Markee →
+          </Link>
+        </div>
+      </section>
+
+      {/* ── All Markee Signs section ── */}
+      <section style={{ padding: '44px 40px 80px' }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <LightningIcon size={16} color={GREEN} />
+            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All Markee Signs</span>
+          </div>
+
+          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+            <TableHeaders />
+            {loading ? (
+              <SkeletonRows count={4} />
+            ) : regularRows.length === 0 ? (
+              <div style={{ padding: '40px 14px', textAlign: 'center', color: MUTED, fontSize: 14 }}>
+                No community signs yet. Create a Markee for your Superfluid project to appear here.
               </div>
-            </div>
-          )}
+            ) : (
+              regularRows.map(lb => (
+                <RegularTableRow
+                  key={lb.address}
+                  lb={lb}
+                  viewsMap={viewsMap}
+                  ethPrice={ethPrice}
+                  onBuy={() => setBuyModal({ address: lb.address, topFundsAdded: BigInt(lb.topFundsAddedRaw || '0') })}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Raise Funding CTA ── */}
+      <section style={{
+        background: 'linear-gradient(135deg, rgba(124,156,255,0.12), rgba(124,156,255,0.06))',
+        borderTop: `1px solid ${BORDER}`,
+        borderBottom: `1px solid ${BORDER}`,
+        padding: '64px 40px',
+      }}>
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,34px)', fontWeight: 800, color: TEXT, letterSpacing: -0.5, marginBottom: 10 }}>
+            Add a Markee to your Superfluid project
+          </h2>
+          <p style={{ margin: '0 0 28px', color: TEXT2, fontSize: 15, maxWidth: '48ch', lineHeight: 1.55 }}>
+            Create a sign for your project and start earning from every message purchase. Boosted signs earn 5x SUP points.
+          </p>
+          <Link
+            href="/create-a-markee?platform=superfluid"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: PINK,
+              color: BG,
+              borderRadius: 8,
+              padding: '13px 26px',
+              fontWeight: 700,
+              fontSize: 15,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 20px rgba(248,151,254,0.35)',
+            }}
+          >
+            Create a Superfluid Markee →
+          </Link>
         </div>
       </section>
 
       <Footer />
 
-      {createModalOpen && (
-        <CreateMarkeeModal
-          myLeaderboards={myLeaderboards}
-          walletAddress={walletAddress}
-          onClose={() => setCreateModalOpen(false)}
-          onSuccess={() => fetchLeaderboards(false, true)}
+      {buyModal && (
+        <BuyMessageModal
+          isOpen={true}
+          initialMode="create"
+          strategyAddress={buyModal.address as `0x${string}`}
+          topFundsAdded={buyModal.topFundsAdded}
+          platformId="superfluid"
+          onClose={() => setBuyModal(null)}
+          onSuccess={() => setBuyModal(null)}
         />
       )}
 
       <RewardsModal
-        isOpen={rewardsModalOpen}
-        onClose={() => setRewardsModalOpen(false)}
-        title="Season 5 SUP Rewards"
-        description="Earn points by buying messages and adding funds to any Superfluid message."
+        isOpen={rewardsOpen}
+        onClose={() => setRewardsOpen(false)}
+        title="Season 6 SUP Rewards"
+        description="Earn points by buying messages. Boosted Markees earn 5× points."
       />
-
-      <TopDawgModal
-        isOpen={featuredModalOpen}
-        onClose={() => setFeaturedModalOpen(false)}
-        onSuccess={() => { setFeaturedModalOpen(false); fetchLeaderboards(true, true) }}
-        strategyAddress={SF_MIGRATION_LEADERBOARD as `0x${string}`}
-        partnerName="Superfluid"
-        partnerSplitPercentage={62}
-        topFundsAdded={featuredMessage?.totalFundsAdded ? BigInt(featuredMessage.totalFundsAdded) : undefined}
-      />
-    </div>
-  )
-}
-
-// ─── My Markee Card (admin-only compact card) ─────────────────────────────────
-
-function MyMarkeeCard({
-  leaderboard,
-  formatFunds,
-}: {
-  leaderboard: SuperfluidLeaderboard
-  formatFunds: (eth: string) => string
-}) {
-  const router = useRouter()
-  const hasPurchase = BigInt(leaderboard.topFundsAddedRaw ?? '0') > 0n
-
-  return (
-    <div
-      onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
-      className="bg-[#060A2A] rounded-lg border border-[#F897FE]/20 hover:border-[#F897FE]/60 transition-colors cursor-pointer p-4 flex items-center gap-4"
-    >
-      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#0A0F3D] border border-[#8A8FBF]/20 flex-shrink-0">
-        <Zap size={18} className="text-[#1DB227]" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[#EDEEFF] text-sm truncate">{leaderboard.name}</p>
-        <p className="text-[#8A8FBF] text-xs mt-0.5">
-          {formatFunds(leaderboard.totalFunds)} raised · {Math.max(0, leaderboard.markeeCount - 1)} {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
-        </p>
-      </div>
-      {!hasPurchase && (
-        <span className="text-[10px] font-semibold text-[#7C9CFF] bg-[#7C9CFF]/10 border border-[#7C9CFF]/20 px-2 py-0.5 rounded-full flex-shrink-0">
-          Awaiting Activation
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ─── Leaderboard Card ─────────────────────────────────────────────────────────
-
-function LeaderboardCard({
-  leaderboard,
-  rank,
-  formatFunds,
-  trackView,
-  viewCount,
-}: {
-  leaderboard: SuperfluidLeaderboard
-  rank: number
-  formatFunds: (eth: string) => string
-  trackView: (m: Markee) => void
-  viewCount?: number
-}) {
-  const router = useRouter()
-
-  useEffect(() => {
-    if (leaderboard.topMessage) {
-      trackView(toMarkeeShape(leaderboard))
-    }
-  }, [leaderboard.address]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const minIncrement = BigInt('1000000000000000') // 0.001 ETH
-  const minPriceRaw = BigInt(leaderboard.minimumPriceRaw ?? '0')
-  const topFunds = BigInt(leaderboard.topFundsAddedRaw ?? '0')
-  const rawBuyPrice = topFunds + minIncrement
-  const buyPrice = rawBuyPrice > minPriceRaw ? rawBuyPrice : minPriceRaw
-  const buyPriceFormatted = Number(buyPrice) / 1e18
-
-  return (
-    <div
-      onClick={() => router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)}
-      className="bg-[#0A0F3D] p-6 rounded-lg border border-[#8A8FBF]/20 hover:border-[#F897FE] transition-colors cursor-pointer"
-    >
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-[#060A2A] border border-[#8A8FBF]/20 flex-shrink-0">
-          <Zap size={22} className="text-[#1DB227]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-[#EDEEFF] text-lg truncate">{leaderboard.name}</h3>
-          <span className="text-[#8A8FBF] text-xs font-mono">
-            {leaderboard.address.slice(0, 8)}…{leaderboard.address.slice(-6)}
-          </span>
-        </div>
-      </div>
-
-      {leaderboard.topMessage ? (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 hover:border-[#7C9CFF]/50 transition-colors flex flex-col min-h-[120px]">
-          <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2 flex-1">
-            {leaderboard.topMessage}
-          </p>
-          {leaderboard.topMessageOwner && (
-            <p className="text-[#8A8FBF] text-xs text-right mt-auto">
-              - {leaderboard.topMessageOwner}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#060A2A] rounded-lg p-4 mb-4 border border-[#8A8FBF]/20 text-center min-h-[120px] flex flex-col items-center justify-center">
-          <div className="text-4xl mb-2">🪧</div>
-          <p className="text-[#8A8FBF] text-sm">Be the first to buy a message</p>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-xs mb-4">
-        <span className="text-[#7C9CFF] font-medium">
-          {formatFunds(leaderboard.totalFunds)} total raised.
-        </span>
-        <div className="flex items-center gap-3 text-[#8A8FBF]">
-          {viewCount !== undefined && (
-            <span className="flex items-center gap-1">
-              <Eye size={12} className="opacity-60" />
-              <span>{viewCount.toLocaleString()}</span>
-            </span>
-          )}
-          <span>
-            {Math.max(0, leaderboard.markeeCount - 1)}{' '}
-            {leaderboard.markeeCount - 1 === 1 ? 'message' : 'messages'}
-          </span>
-        </div>
-      </div>
-
-      <button
-        onClick={e => {
-          e.stopPropagation()
-          router.push(`/ecosystem/platforms/superfluid/${leaderboard.address}`)
-        }}
-        className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2 rounded-lg font-semibold text-center hover:bg-[#7C9CFF] transition-colors text-sm"
-      >
-        {buyPriceFormatted.toFixed(3)} ETH to change
-      </button>
-    </div>
-  )
-}
-
-// ─── Create Markee Modal ──────────────────────────────────────────────────────
-
-function CreateMarkeeModal({
-  myLeaderboards,
-  walletAddress,
-  onClose,
-  onSuccess,
-}: {
-  myLeaderboards: SuperfluidLeaderboard[]
-  walletAddress?: string
-  onClose: () => void
-  onSuccess: () => void
-}) {
-  const router = useRouter()
-  const { isConnected } = useAccount()
-  const [leaderboardName, setLeaderboardName] = useState('')
-  const [beneficiary, setBeneficiary] = useState('')
-  const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
-
-  useEffect(() => {
-    if (!isSuccess || !receipt) return
-    let foundAddress: string | null = null
-    for (const log of receipt.logs) {
-      if (
-        log.address.toLowerCase() === SUPERFLUID_FACTORY_ADDRESS.toLowerCase() &&
-        log.topics[1]
-      ) {
-        foundAddress = `0x${log.topics[1].slice(26)}`
-        break
-      }
-    }
-    setNewLeaderboardAddress(foundAddress)
-    onSuccess()
-  }, [isSuccess, receipt, onSuccess])
-
-  const handleCreate = () => {
-    setError(null)
-    if (!leaderboardName.trim()) { setError('Enter a name for your sign.'); return }
-    if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
-      setError('Enter a valid Ethereum address.')
-      return
-    }
-    writeContract({
-      address: SUPERFLUID_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, leaderboardName.trim()],
-    })
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-[#8A8FBF] hover:text-[#EDEEFF] transition-colors"
-        >
-          <X size={20} />
-        </button>
-
-        {isSuccess ? (
-          <div className="flex flex-col items-center gap-4 py-4">
-            <CheckCircle2 size={44} className="text-green-400" />
-            <p className="text-[#EDEEFF] font-bold text-xl">Markee created!</p>
-            <p className="text-[#8A8FBF] text-sm text-center">
-              Your sign is live on the Superfluid platform.
-            </p>
-            <div className="flex flex-col gap-3 w-full mt-2">
-              <button
-                onClick={() =>
-                  newLeaderboardAddress &&
-                  router.push(`/ecosystem/platforms/superfluid/${newLeaderboardAddress}`)
-                }
-                className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
-              >
-                View your Markee →
-              </button>
-              <button
-                onClick={onClose}
-                className="text-[#8A8FBF] text-sm hover:text-[#EDEEFF] transition-colors text-center"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[#060A2A] border border-[#8A8FBF]/20">
-                <Zap size={20} className="text-[#1DB227]" />
-              </div>
-              <div>
-                <h2 className="text-[#EDEEFF] font-bold text-lg">Create a Markee</h2>
-                <p className="text-[#8A8FBF] text-xs">Superfluid Season 5</p>
-              </div>
-            </div>
-
-            {myLeaderboards.length > 0 && (
-              <div className="mb-6">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-3">Your Signs</div>
-                <div className="space-y-2">
-                  {myLeaderboards.map(lb => (
-                    <div
-                      key={lb.address}
-                      className="flex items-center justify-between bg-[#060A2A] rounded-lg px-4 py-3 border border-[#8A8FBF]/15"
-                    >
-                      <p className="text-[#EDEEFF] text-sm truncate">{lb.name}</p>
-                      <a
-                        href={`/ecosystem/platforms/superfluid/${lb.address}`}
-                        className="flex-shrink-0 text-xs text-[#F897FE] hover:text-[#7C9CFF] transition-colors ml-4"
-                      >
-                        View →
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {!isConnected ? (
-              <div className="space-y-3">
-                <p className="text-[#8A8FBF] text-sm">Connect your wallet to create a Markee.</p>
-                <ConnectButton />
-              </div>
-            ) : (
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Sign Name <span className="text-[#F897FE]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={leaderboardName}
-                    onChange={e => setLeaderboardName(e.target.value)}
-                    placeholder="e.g. My Superfluid Project"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
-                  />
-                  <p className="text-[#8A8FBF] text-xs mt-1.5">Shown publicly on the platform.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[#8A8FBF] text-xs mb-2 uppercase tracking-wider">
-                    Treasury Address <span className="text-[#F897FE]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiary}
-                    onChange={e => setBeneficiary(e.target.value)}
-                    placeholder="0x…"
-                    className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
-                  />
-                  <p className="text-[#8A8FBF] text-xs mt-1.5">62% of every payment goes here.</p>
-                </div>
-
-                <div className="bg-[#060A2A] rounded-lg p-4 border border-[#8A8FBF]/15 text-sm">
-                  <div className="text-[#8A8FBF] text-xs mb-3 uppercase tracking-wider">Revenue split</div>
-                  <div className="flex justify-between">
-                    <span className="text-[#EDEEFF]">Your treasury</span>
-                    <span className="text-[#F897FE] font-semibold">62%</span>
-                  </div>
-                  <div className="flex justify-between mt-1.5">
-                    <span className="text-[#EDEEFF]">Markee Cooperative</span>
-                    <span className="text-[#7C9CFF] font-semibold">38%</span>
-                  </div>
-                </div>
-
-                {(error || writeError) && (
-                  <div className="flex items-start gap-2 text-red-400 text-sm">
-                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error ?? writeError?.message}</span>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleCreate}
-                  disabled={isPending || isConfirming}
-                  className="w-full flex items-center justify-center gap-2 bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending || isConfirming ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      {isConfirming ? 'Confirming…' : 'Confirm in wallet…'}
-                    </>
-                  ) : (
-                    'Create a Markee'
-                  )}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
     </div>
   )
 }
