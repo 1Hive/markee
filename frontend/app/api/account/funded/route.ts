@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
+import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,17 +55,19 @@ async function chunkedMulticall(
 }
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  const origin = internalOrigin()
   const owner = searchParams.get('owner')?.toLowerCase()
   if (!owner || !/^0x[0-9a-f]{40}$/.test(owner)) {
     return NextResponse.json({ error: 'Invalid owner' }, { status: 400 })
   }
 
   // Fetch all platform leaderboards
+  const headers = internalHeaders()
   const [sfData, ghData, oiData] = await Promise.all([
-    fetch(`${origin}/api/superfluid/leaderboards`).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/github/leaderboards`).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/openinternet/leaderboards`).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/superfluid/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/github/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/openinternet/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
   ])
 
   const leaderboards: Array<{

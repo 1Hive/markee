@@ -13,6 +13,7 @@ import { kv } from '@vercel/kv'
 import { formatEther } from 'viem'
 import { imputeEffectiveRate } from '@/lib/strategy'
 import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,20 +47,17 @@ export async function GET(request: Request) {
       if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
     }
 
-    const origin = new URL(request.url).origin
+    const origin = internalOrigin()
     const bustParam = bust ? '?bust=1' : ''
 
     // Add bypass header so internal fetches work on protected preview deployments
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
-    const internalHeaders: HeadersInit = bypassSecret
-      ? { 'x-vercel-protection-bypass': bypassSecret }
-      : {}
+    const headers = internalHeaders()
 
     // Fetch all three platform APIs in parallel
     const [oiRes, githubRes, sfRes] = await Promise.all([
-      fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
-      fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
-      fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
+      fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store', headers }),
+      fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store', headers }),
+      fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store', headers }),
     ])
 
     const [oiData, githubData, sfData] = await Promise.all([
@@ -71,7 +69,7 @@ export async function GET(request: Request) {
     // Streaming boards (vertical-agnostic) are already tagged with their platform + strategy by the
     // streaming API. Only fetched when the streaming factory is configured.
     const streamData = STREAMING_ENABLED
-      ? await fetch(`${origin}/api/streaming/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders })
+      ? await fetch(`${origin}/api/streaming/leaderboards${bustParam}`, { cache: 'no-store', headers })
           .then(r => r.ok ? r.json() : { leaderboards: [] })
           .catch(() => ({ leaderboards: [] }))
       : { leaderboards: [] }
