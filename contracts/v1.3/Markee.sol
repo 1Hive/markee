@@ -53,6 +53,12 @@ contract Markee {
     event PricingStrategyChanged(address indexed oldStrategy, address indexed newStrategy);
     event OwnerChanged(address indexed oldOwner, address indexed newOwner);
 
+    /// @dev Marks the directly-deployed implementation initialized so no one can claim it;
+    ///      EIP-1167 clones get fresh storage and initialize normally.
+    constructor() {
+        initialized = true;
+    }
+
     // ─── Initializer ──────────────────────────────────────────────────────────
 
     function initialize(

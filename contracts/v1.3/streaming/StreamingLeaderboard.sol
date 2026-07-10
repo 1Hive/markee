@@ -45,11 +45,14 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     uint256 public constant SECONDS_IN_MONTH = 2628000;
     uint256 public constant BASIS_POINTS_DIVISOR = 10000;
     /// @dev Superfluid liquidation (buffer) period on Base: 4h. Refund/forward flow buffers ≈ rate*this.
+    ///      Hardcodes the current governance config: if Superfluid governance ever changes ETHx's
+    ///      liquidation period or minimum deposit, the deposit gate stops matching the real buffers.
+    ///      The failure mode is user-facing reverts (flow creates / claimTop), never a jail.
     uint256 public constant BUFFER_PERIOD = 14400;
     /// @dev Fixed-point scale for the rewards-per-unit settlement accumulator.
-    uint256 public constant PRECISION = 1e18;
+    uint256 private constant PRECISION = 1e18;
     /// @dev Juicebox native-token sentinel (ETH), passed to IJBMultiTerminal.pay (mirrors v1.3 Markee).
-    address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
+    address private constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
 
     /// @notice The only SuperToken this leaderboard accepts (ETHx on Base). Implementation immutable.
     ISuperToken public immutable ETHX;
@@ -158,7 +161,6 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     error MarkeeNotMigrated();
     error ZeroDeposit();
     error DepositTransferFailed();
-    error StillStreaming();
     error NothingToWithdraw();
     error WithdrawTransferFailed();
     error UnknownMarkee();
@@ -197,8 +199,11 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     }
 
     /// @param host_ Superfluid host (Base). @param ethx_ ETHx SuperToken (Base).
+    /// @dev Marks the directly-deployed implementation initialized so no one can claim it as its
+    ///      admin; EIP-1167 clones get fresh storage and initialize normally.
     constructor(ISuperfluid host_, ISuperToken ethx_) CFASuperAppBase(host_) {
         ETHX = ethx_;
+        initialized = true;
     }
 
     // ─── Initializer (factory-called on the clone) ────────────────────────────
@@ -332,8 +337,10 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///         credited to `backer` (who must have approved this contract). The backer is explicit
     ///         rather than msg.sender so the frontend can bundle this into the same payable
     ///         `host.batchCall` as the wrap and createFlow, where the forwarded call's sender is the
-    ///         host. Permissionless is safe: a deposit can only move funds the backer itself approved
-    ///         and always credits the backer's own refundable balance.
+    ///         host. Permissionless is safe: a deposit can only move funds the backer itself approved,
+    ///         always credits the backer's own refundable balance, and any amount beyond the live
+    ///         stream's buffer cover is immediately withdrawable (see withdrawDeposit), so a third
+    ///         party inflating the deposit off a standing allowance cannot lock funds.
     function depositBuffer(address backer, uint256 amount) external nonReentrant {
         if (!(amount > 0)) revert ZeroDeposit();
         if (!(IERC20(address(ETHX)).transferFrom(backer, address(this), amount))) revert DepositTransferFailed();
@@ -341,12 +348,17 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         emit DepositAdded(backer, amount, backerDeposit[backer]);
     }
 
-    /// @notice Reclaim a deposit once the backer has no active stream.
+    /// @notice Reclaim deposit not needed as buffer cover: everything once the backer has no active
+    ///         stream, else the surplus above the live stream's `rate * BUFFER_PERIOD`.
     function withdrawDeposit() external nonReentrant {
-        if (!(backerMarkee[msg.sender] == address(0))) revert StillStreaming();
         uint256 amount = backerDeposit[msg.sender];
+        if (backerMarkee[msg.sender] != address(0)) {
+            uint256 required =
+                uint256(uint96(ETHX.getCFAFlowRate(msg.sender, address(this)))) * BUFFER_PERIOD;
+            amount = amount > required ? amount - required : 0;
+        }
         if (!(amount > 0)) revert NothingToWithdraw();
-        backerDeposit[msg.sender] = 0;
+        backerDeposit[msg.sender] -= amount;
         if (!(IERC20(address(ETHX)).transfer(msg.sender, amount))) revert WithdrawTransferFailed();
         emit DepositWithdrawn(msg.sender, amount);
     }
@@ -616,7 +628,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         newCtx = _applyRankingWithCtx(markee, ctx);
     }
 
-    /// @dev An existing backer changed its rate.
+    /// @dev An existing backer changed its rate. Gated like onFlowCreated: the new rate must clear
+    ///      the minimum monthly rate (no entering at the floor then dropping to dust) and the buffer
+    ///      deposit. Reverting here is safe (only termination callbacks must not revert).
     function onFlowUpdated(
         ISuperToken,
         address sender,
@@ -630,6 +644,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
 
         uint256 newRate = uint256(uint96(flowRate));
         uint256 oldRate = uint256(uint96(previousFlowRate));
+        if (!(newRate * SECONDS_IN_MONTH >= minimumMonthlyRate)) revert BelowMinimumRate();
         if (!(backerDeposit[sender] >= newRate * BUFFER_PERIOD)) revert InsufficientDeposit();
         _accrueTop();
         aggregateRate[markee] = aggregateRate[markee] - oldRate + newRate;
@@ -901,6 +916,10 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     /// @param onlyLower when true (the no-revert termination path), a rate increase is skipped rather
     ///        than applied, raising a distributeFlow needs buffer and could revert → jail. The raise
     ///        is deferred and re-applied on the next organic flow event on that Markee.
+    /// @dev The `refundRate == rate` early return trusts that the tracked rate is still flowing. If a
+    ///      refund distributeFlow were ever liquidated out from under the board (requires the board
+    ///      itself insolvent, which the deposit-surplus invariant rules out), the flow would stay down
+    ///      until the Markee's aggregate next changes. Accepted as defense-in-depth, not a live path.
     function _setRefundWithCtx(address markee, uint256 rate, bool onlyLower, bytes memory ctx)
         internal
         returns (bytes memory newCtx)

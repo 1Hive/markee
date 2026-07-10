@@ -51,6 +51,13 @@ interface IMarkee {
     function owner() external view returns (address);
     function setPricingStrategy(address newStrategy) external;
     function totalFundsAdded() external view returns (uint256);
+    function initialize(
+        address owner_,
+        address pricingStrategy_,
+        string calldata initialMessage,
+        string calldata name_,
+        uint256 historicalFunds
+    ) external;
 }
 
 interface IPermitToken {
@@ -407,7 +414,7 @@ contract StreamingLeaderboardTest is Test {
         uint256 ethxBefore = IERC20(address(ETHX)).balanceOf(address(board));
         address[] memory arr = new address[](1);
         arr[0] = backer;
-        board.settle(arr); // routes through the live Juicebox terminal (project 152) on the fork
+        board.settle(arr); // routes through the live Juicebox terminal (REVNET_PROJECT) on the fork
 
         assertEq(board.claimable(backer), 0, "claimable not cleared");
         uint256 ethxAfter = IERC20(address(ETHX)).balanceOf(address(board));
@@ -1373,6 +1380,183 @@ contract StreamingLeaderboardTest is Test {
             IMarkee(a).totalFundsAdded() + IMarkee(b).totalFundsAdded() + IMarkee(native).totalFundsAdded();
         assertEq(board.totalLeaderboardFunds(), expected, "totalLeaderboardFunds != sum of carried-over totals");
         _notJailed();
+    }
+
+    // ─── Review fixes: min rate on update, surplus withdrawal, fee path, locks ──
+
+    /// @notice The minimum monthly rate gates updates like creates: a backer cannot enter at the
+    ///         floor and then drop to a dust rate while keeping its board presence.
+    function test_updateFlow_belowMinimumRate_reverts() public {
+        address m = _newMarkee("m", "alpha");
+        address backer = _backer("backerA");
+        _open(backer, m, _rate(0.01 ether));
+
+        vm.prank(backer);
+        vm.expectRevert();
+        CFA.updateFlow(ETHX, backer, address(board), _rate(0.0001 ether), "");
+
+        vm.prank(backer);
+        CFA.updateFlow(ETHX, backer, address(board), _rate(0.005 ether), "");
+        assertEq(board.aggregateRate(m), _r(_rate(0.005 ether)), "above-minimum update should apply");
+        _notJailed();
+    }
+
+    /// @notice Deposit beyond the live stream's `rate * BUFFER_PERIOD` cover is withdrawable while
+    ///         streaming, so a third party inflating the deposit off a standing allowance (depositBuffer
+    ///         is permissionless) cannot lock the backer's funds. The required cover stays locked.
+    function test_withdrawDeposit_surplusWhileStreaming() public {
+        address m = _newMarkee("m", "alpha");
+        int96 r = _rate(0.02 ether);
+        address backer = _backer("backerA");
+        _open(backer, m, r); // deposits exactly r * BUFFER_PERIOD
+        uint256 required = uint256(uint96(r)) * BUFFER_PERIOD;
+
+        vm.prank(makeAddr("griefer"));
+        board.depositBuffer(backer, 1 ether); // spends the backer's standing allowance
+
+        uint256 ethxBefore = IERC20(address(ETHX)).balanceOf(backer);
+        vm.prank(backer);
+        board.withdrawDeposit();
+        assertEq(IERC20(address(ETHX)).balanceOf(backer) - ethxBefore, 1 ether, "surplus not withdrawn");
+        assertEq(board.backerDeposit(backer), required, "required buffer cover must stay locked");
+        assertEq(CFA.getFlowrate(ETHX, backer, address(board)), r, "stream must stay live");
+
+        vm.prank(backer);
+        vm.expectRevert(StreamingLeaderboard.NothingToWithdraw.selector);
+        board.withdrawDeposit();
+
+        vm.prank(backer);
+        CFA.deleteFlow(ETHX, backer, address(board), "");
+        vm.prank(backer);
+        board.withdrawDeposit();
+        assertEq(board.backerDeposit(backer), 0, "full deposit must be reclaimable after close");
+        _notJailed();
+    }
+
+    /// @notice A loser backer that never connected its pool gets its refund only as an unclaimed pool
+    ///         balance, so its own account drains and it CAN be liquidated despite the net-zero refund
+    ///         design. The termination callback must lower the refund and stay jail-safe.
+    function test_liquidation_disconnectedLoserBacker_jailSafe() public {
+        address top = _newMarkee("top", "alpha");
+        address loser = _newMarkee("loser", "bravo");
+        _open(_backer("topBacker"), top, _rate(0.1 ether));
+        address connected = _backer("connectedLoser");
+        _open(connected, loser, _rate(0.02 ether));
+
+        int96 r = _rate(0.02 ether);
+        address drained = _backer("drainedLoser");
+        vm.startPrank(drained);
+        board.depositBuffer(drained, uint256(uint96(r)) * BUFFER_PERIOD);
+        CFA.createFlow(ETHX, drained, address(board), r, abi.encode(loser)); // never connects the pool
+        IERC20(address(ETHX)).transfer(address(0xdEaD), IERC20(address(ETHX)).balanceOf(drained));
+        vm.stopPrank();
+        assertEq(board.refundRate(loser), board.aggregateRate(loser), "loser refunded at its aggregate");
+
+        vm.warp(block.timestamp + 6 hours);
+        assertTrue(_critical(drained), "disconnected drained loser should be liquidatable");
+        assertFalse(_critical(connected), "connected loser backer must stay solvent");
+
+        _liquidate(drained);
+
+        _notJailed();
+        assertEq(board.backerMarkee(drained), address(0), "liquidated backer not cleared");
+        assertEq(board.aggregateRate(loser), _r(_rate(0.02 ether)), "aggregate should drop to the survivor");
+        assertEq(board.refundRate(loser), board.aggregateRate(loser), "refund should track the remaining aggregate");
+        assertEq(board.topMarkee(), top, "top must be unaffected");
+    }
+
+    /// @notice With a platform fee receiver configured, settle takes feePct of each backer's RevNet
+    ///         bucket, aggregates it into one pay() to the receiver (PlatformFeeSettled), and pays the
+    ///         remainder per backer; at 10000 bps the whole bucket is fee (buyerAmount == 0 branch).
+    function test_settle_platformFee_viaRevNet() public {
+        address feeReceiver = makeAddr("feeReceiver");
+        vm.prank(admin);
+        factory.setPlatformFeeReceiver(feeReceiver);
+
+        address m = _newMarkee("m", "alpha");
+        address backer = _backer("backerA");
+        _open(backer, m, _rate(0.05 ether));
+        vm.warp(block.timestamp + 20 days);
+
+        uint256 pending = board.pendingSettlement(backer);
+        assertGt(pending, 0, "nothing accrued");
+        uint256 expectedFee = pending * factory.percentToPlatformFeeReceiver() / BPS;
+
+        address[] memory arr = new address[](1);
+        arr[0] = backer;
+        vm.expectEmit(true, false, false, true, address(board));
+        emit StreamingLeaderboard.PlatformFeeSettled(feeReceiver, expectedFee);
+        board.settle(arr);
+        assertEq(board.claimable(backer), 0, "claimable not cleared");
+
+        vm.prank(admin);
+        factory.setPercentToPlatformFeeReceiver(10000);
+        vm.warp(block.timestamp + 10 days);
+        uint256 pending2 = board.pendingSettlement(backer);
+        assertGt(pending2, 0, "nothing accrued for the full-fee round");
+        vm.expectEmit(true, false, false, true, address(board));
+        emit StreamingLeaderboard.PlatformFeeSettled(feeReceiver, pending2);
+        board.settle(arr);
+        assertApproxEqAbs(board.pendingSettlement(backer), 0, 1e9, "not settled at full fee");
+        _notJailed();
+    }
+
+    /// @notice The directly-deployed implementations are locked: no one can initialize them and take
+    ///         their admin/owner slots (clones are unaffected, their storage starts fresh).
+    function test_implementations_cannotBeInitialized() public {
+        StreamingLeaderboard impl = StreamingLeaderboard(payable(factory.leaderboardImplementation()));
+        vm.expectRevert(StreamingLeaderboard.AlreadyInitialized.selector);
+        impl.initialize(admin, beneficiary, "x", address(1), 0, 1, 1, admin);
+
+        address markeeImpl = factory.markeeImplementation();
+        vm.expectRevert("Already initialized");
+        IMarkee(markeeImpl).initialize(admin, address(this), "m", "n", 0);
+    }
+
+    /// @notice Fuzzed lifecycle: two backers at arbitrary rates open on two Markees, time passes, both
+    ///         close in either order. Invariants: the app never jails, aggregates return to zero, and
+    ///         every deposit is fully refundable.
+    /// forge-config: default.fuzz.runs = 12
+    function testFuzz_lifecycle_invariants(uint256 monthly1, uint256 monthly2, bool secondClosesFirst)
+        public
+    {
+        monthly1 = bound(monthly1, 0.002 ether, 5 ether);
+        monthly2 = bound(monthly2, 0.002 ether, 5 ether);
+        address a = _newMarkee("a", "alpha");
+        address b = _newMarkee("b", "bravo");
+        int96 r1 = _rate(monthly1);
+        int96 r2 = _rate(monthly2);
+        address b1 = _backer("fuzzB1");
+        address b2 = _backer("fuzzB2");
+        _open(b1, a, r1);
+        _open(b2, b, r2);
+        assertEq(board.aggregateRate(a), _r(r1), "aggregate A != backer rate");
+        assertEq(board.aggregateRate(b), _r(r2), "aggregate B != backer rate");
+
+        vm.warp(block.timestamp + 3 days);
+
+        address first = secondClosesFirst ? b2 : b1;
+        address second = secondClosesFirst ? b1 : b2;
+        vm.prank(first);
+        CFA.deleteFlow(ETHX, first, address(board), "");
+        _notJailed();
+        vm.prank(second);
+        CFA.deleteFlow(ETHX, second, address(board), "");
+        _notJailed();
+
+        assertEq(board.aggregateRate(a), 0, "aggregate A not cleared");
+        assertEq(board.aggregateRate(b), 0, "aggregate B not cleared");
+
+        address[2] memory who = [b1, b2];
+        int96[2] memory rr = [r1, r2];
+        for (uint256 i = 0; i < 2; i++) {
+            uint256 deposit = board.backerDeposit(who[i]);
+            assertEq(deposit, _r(rr[i]) * BUFFER_PERIOD, "deposit changed unexpectedly");
+            uint256 balBefore = IERC20(address(ETHX)).balanceOf(who[i]);
+            vm.prank(who[i]);
+            board.withdrawDeposit();
+            assertEq(IERC20(address(ETHX)).balanceOf(who[i]) - balBefore, deposit, "deposit not refundable");
+        }
     }
 }
 
