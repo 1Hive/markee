@@ -136,6 +136,7 @@ export function BuyMessageModal({
   const activeAddress = address ?? wallets[0]?.address
   const hasWallet = !!activeAddress || isConnected
   const hasActiveWalletConnection = isConnected && !!address
+  const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -454,6 +455,12 @@ export function BuyMessageModal({
                 {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : `"${message}" is now the #1 Markee. The board is reordering.`)}
               </div>
             </div>
+          </div>
+
+        ) : isWalletConnectionPending ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
         ) : !hasWallet || !hasActiveWalletConnection ? (

@@ -89,6 +89,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const activeAddress = address ?? wallets[0]?.address
   const hasWallet = !!activeAddress || isConnected
   const hasActiveWalletConnection = isConnected && !!address
+  const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
@@ -257,6 +258,12 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                 {txStep === 'success' && `"${newMessage}" is now the featured message.`}
               </div>
             </div>
+          </div>
+
+        ) : isWalletConnectionPending ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
         ) : !hasWallet || !hasActiveWalletConnection ? (

@@ -10,6 +10,7 @@ import {
   Eye,
   Loader2,
   MessageSquare,
+  RefreshCw,
   User,
 } from 'lucide-react'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -70,6 +71,12 @@ type TxHistoryEvent =
       transactionHash: string
     }
 
+type TxHistoryEventWithoutTimestamp = TxHistoryEvent extends infer Event
+  ? Event extends { timestamp: number }
+    ? Omit<Event, 'timestamp'>
+    : never
+  : never
+
 const FUNDS_ADDED = parseAbiItem(
   'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
 )
@@ -90,6 +97,7 @@ const TEXT2 = '#B8B6D9'
 const MUTED = '#8A8FBF'
 const BORDER = 'rgba(138,143,191,0.2)'
 const LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
+const MAX_HISTORY_EVENTS = 50
 
 type ApiHistoryEvent =
   | {
@@ -202,6 +210,7 @@ export function ExpandableMarkeeRow({
   const [history, setHistory] = useState<TxHistoryEvent[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
 
   const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
 
@@ -266,22 +275,13 @@ export function ExpandableMarkeeRow({
 
         const [fundsLogs, messageLogs, nameLogs] = historyLogs
 
-        const blockNumbers = [...fundsLogs, ...messageLogs, ...nameLogs]
-          .map(log => log.blockNumber)
-          .filter((n): n is bigint => n !== null)
-        const uniqueBlocks = [...new Set(blockNumbers.map(String))].map(BigInt)
-        const blocks = await Promise.all(uniqueBlocks.map(blockNumber => publicClient!.getBlock({ blockNumber })))
-        const timestamps = new Map(blocks.map(block => [block.number.toString(), Number(block.timestamp)]))
-        const ts = (blockNumber: bigint | null) => blockNumber ? timestamps.get(blockNumber.toString()) ?? 0 : 0
-
-        const events: TxHistoryEvent[] = [
+        const eventsWithoutTimestamps: TxHistoryEventWithoutTimestamp[] = [
           ...fundsLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'funds' as const,
             amount: ((log.args as any).amount as bigint) ?? 0n,
             newTotal: (((log.args as any).newMarkeeTotal as bigint) ?? ((log.args as any).newTotal as bigint)) ?? 0n,
             actor: ((log.args as any).addedBy as string) ?? '',
-            timestamp: ts(log.blockNumber),
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
             transactionHash: log.transactionHash ?? '',
@@ -291,7 +291,6 @@ export function ExpandableMarkeeRow({
             kind: 'message' as const,
             message: ((log.args as any).newMessage as string) ?? '',
             actor: (((log.args as any).updatedBy as string) ?? ((log.args as any).changedBy as string)) ?? '',
-            timestamp: ts(log.blockNumber),
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
             transactionHash: log.transactionHash ?? '',
@@ -301,7 +300,6 @@ export function ExpandableMarkeeRow({
             kind: 'name' as const,
             name: ((log.args as any).newName as string) ?? '',
             actor: (((log.args as any).updatedBy as string) ?? ((log.args as any).changedBy as string)) ?? '',
-            timestamp: ts(log.blockNumber),
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
             transactionHash: log.transactionHash ?? '',
@@ -309,7 +307,18 @@ export function ExpandableMarkeeRow({
         ].sort((a, b) => {
           if (a.blockNumber === b.blockNumber) return b.logIndex - a.logIndex
           return b.blockNumber > a.blockNumber ? 1 : -1
-        })
+        }).slice(0, MAX_HISTORY_EVENTS)
+
+        const blockNumbers = eventsWithoutTimestamps
+          .map(event => event.blockNumber)
+          .filter(blockNumber => blockNumber !== 0n)
+        const uniqueBlocks = [...new Set(blockNumbers.map(String))].map(BigInt)
+        const blocks = await Promise.all(uniqueBlocks.map(blockNumber => publicClient!.getBlock({ blockNumber })))
+        const timestamps = new Map(blocks.map(block => [block.number.toString(), Number(block.timestamp)]))
+        const events: TxHistoryEvent[] = eventsWithoutTimestamps.map(event => ({
+          ...event,
+          timestamp: timestamps.get(event.blockNumber.toString()) ?? 0,
+        }))
 
         if (!cancelled) setHistory(events)
       } catch (err) {
@@ -323,7 +332,7 @@ export function ExpandableMarkeeRow({
 
     fetchHistory()
     return () => { cancelled = true }
-  }, [expanded, leaderboardAddress, markee.address, markee.message, markee.name, markee.totalFundsAdded, publicClient])
+  }, [expanded, historyRefreshKey, leaderboardAddress, markee.address, publicClient])
 
   const latestTxHash = history[0]?.transactionHash
   const displayName = markee.name || formatAddress(markee.owner)
@@ -429,17 +438,28 @@ export function ExpandableMarkeeRow({
             <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF]">
               Transaction history
             </p>
-            {latestTxHash && (
-              <a
-                href={getTxUrl(CANONICAL_CHAIN_ID, latestTxHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setHistoryRefreshKey(value => value + 1)}
+                disabled={isLoadingHistory}
+                className="inline-flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] disabled:opacity-50 disabled:hover:text-[#8A8FBF] transition-colors"
               >
-                View latest on Basescan
-                <ExternalLink size={10} />
-              </a>
-            )}
+                <RefreshCw size={10} className={isLoadingHistory ? 'animate-spin' : undefined} />
+                Refresh
+              </button>
+              {latestTxHash && (
+                <a
+                  href={getTxUrl(CANONICAL_CHAIN_ID, latestTxHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors"
+                >
+                  View latest on Basescan
+                  <ExternalLink size={10} />
+                </a>
+              )}
+            </div>
           </div>
 
           {isLoadingHistory ? (

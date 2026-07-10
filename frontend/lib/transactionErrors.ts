@@ -48,6 +48,10 @@ function matchesAny(text: string, patterns: string[]): boolean {
   return patterns.some(pattern => lower.includes(pattern))
 }
 
+function isDisplayableMessage(text: string): boolean {
+  return !!text && text.length <= 180 && !matchesAny(text, NOISY_TRANSACTION_PATTERNS)
+}
+
 export function formatTransactionError(error: unknown): string {
   const raw = errorText(error)
   const short = shortText(error)
@@ -57,12 +61,13 @@ export function formatTransactionError(error: unknown): string {
     return 'Transaction rejected'
   }
 
-  if (matchesAny(combined, NOISY_TRANSACTION_PATTERNS)) {
+  if (matchesAny(raw, NOISY_TRANSACTION_PATTERNS)) {
+    if (isDisplayableMessage(short)) return short
     return 'Transaction error'
   }
 
   const candidate = short || raw
-  if (!candidate || candidate.length > 180) return 'Transaction error'
+  if (!isDisplayableMessage(candidate)) return 'Transaction error'
   return candidate
 }
 

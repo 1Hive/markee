@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
 }
+const MAX_HISTORY_EVENTS = 50
 
 const LEADERBOARD_MARKEE_CREATED = parseAbiItem(
   'event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name, uint256 amount)'
@@ -90,21 +91,13 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    const allLogs = [...createdLogs, ...migratedLogs, ...fundsLogs, ...messageLogs, ...nameLogs]
-    const blockNumbers = allLogs.map(log => log.blockNumber).filter((n): n is bigint => n !== null)
-    const uniqueBlocks = [...new Set(blockNumbers.map(String))].map(BigInt)
-    const blocks = await Promise.all(uniqueBlocks.map(blockNumber => client.getBlock({ blockNumber })))
-    const timestamps = new Map(blocks.map(block => [block.number.toString(), Number(block.timestamp)]))
-    const ts = (blockNumber: bigint | null) => blockNumber ? timestamps.get(blockNumber.toString()) ?? 0 : 0
-
-    const history = [
+    const eventsWithoutTimestamps = [
       ...createdLogs.map(log => ({
         id: `${log.transactionHash}-${log.logIndex}`,
         kind: 'funds' as const,
         amount: log.args.amount?.toString() ?? '0',
         newTotal: log.args.amount?.toString() ?? '0',
         actor: log.args.owner ?? '',
-        timestamp: ts(log.blockNumber),
         blockNumber: (log.blockNumber ?? 0n).toString(),
         logIndex: Number(log.logIndex ?? 0),
         transactionHash: log.transactionHash ?? '',
@@ -115,7 +108,6 @@ export async function GET(request: NextRequest) {
         amount: log.args.historicalFunds?.toString() ?? '0',
         newTotal: log.args.historicalFunds?.toString() ?? '0',
         actor: log.args.owner ?? '',
-        timestamp: ts(log.blockNumber),
         blockNumber: (log.blockNumber ?? 0n).toString(),
         logIndex: Number(log.logIndex ?? 0),
         transactionHash: log.transactionHash ?? '',
@@ -126,7 +118,6 @@ export async function GET(request: NextRequest) {
         amount: log.args.amount?.toString() ?? '0',
         newTotal: log.args.newMarkeeTotal?.toString() ?? '0',
         actor: log.args.addedBy ?? '',
-        timestamp: ts(log.blockNumber),
         blockNumber: (log.blockNumber ?? 0n).toString(),
         logIndex: Number(log.logIndex ?? 0),
         transactionHash: log.transactionHash ?? '',
@@ -136,7 +127,6 @@ export async function GET(request: NextRequest) {
         kind: 'message' as const,
         message: log.args.newMessage ?? '',
         actor: log.args.updatedBy ?? '',
-        timestamp: ts(log.blockNumber),
         blockNumber: (log.blockNumber ?? 0n).toString(),
         logIndex: Number(log.logIndex ?? 0),
         transactionHash: log.transactionHash ?? '',
@@ -146,7 +136,6 @@ export async function GET(request: NextRequest) {
         kind: 'name' as const,
         name: log.args.newName ?? '',
         actor: log.args.updatedBy ?? '',
-        timestamp: ts(log.blockNumber),
         blockNumber: (log.blockNumber ?? 0n).toString(),
         logIndex: Number(log.logIndex ?? 0),
         transactionHash: log.transactionHash ?? '',
@@ -154,9 +143,18 @@ export async function GET(request: NextRequest) {
     ].sort((a, b) => {
       if (a.blockNumber === b.blockNumber) return b.logIndex - a.logIndex
       return BigInt(b.blockNumber) > BigInt(a.blockNumber) ? 1 : -1
-    })
+    }).slice(0, MAX_HISTORY_EVENTS)
 
-    return NextResponse.json({ history }, { headers: NO_CACHE })
+    const blockNumbers = eventsWithoutTimestamps.map(event => event.blockNumber).filter(blockNumber => blockNumber !== '0')
+    const uniqueBlocks = [...new Set(blockNumbers)].map(BigInt)
+    const blocks = await Promise.all(uniqueBlocks.map(blockNumber => client.getBlock({ blockNumber })))
+    const timestamps = new Map(blocks.map(block => [block.number.toString(), Number(block.timestamp)]))
+    const history = eventsWithoutTimestamps.map(event => ({
+      ...event,
+      timestamp: timestamps.get(event.blockNumber) ?? 0,
+    }))
+
+    return NextResponse.json({ history, limit: MAX_HISTORY_EVENTS }, { headers: NO_CACHE })
   } catch (error) {
     console.error('[markee-history] failed to load history', error)
     return NextResponse.json(
