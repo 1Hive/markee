@@ -42,8 +42,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     using SuperTokenV1Library for ISuperToken;
 
     string public constant VERSION = "streaming-1.0.0";
-    uint256 public constant SECONDS_IN_MONTH = 2628000;
-    uint256 public constant BASIS_POINTS_DIVISOR = 10000;
+    uint256 private constant SECONDS_IN_MONTH = 2628000;
+    uint256 private constant BASIS_POINTS_DIVISOR = 10000;
     /// @dev Superfluid liquidation (buffer) period on Base: 4h. Refund/forward flow buffers ≈ rate*this.
     ///      Hardcodes the current governance config: if Superfluid governance ever changes ETHx's
     ///      liquidation period or minimum deposit, the deposit gate stops matching the real buffers.
@@ -827,7 +827,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///      `_routeRevNet`. Every backer is settled in isolation: a recipient that reverts (a contract
     ///      rejecting ETH, or a paused/reverting RevNet pay) only re-wraps that backer's amount and
     ///      restores its claimable, so one bad recipient never bricks the batch. The platform fee is
-    ///      aggregated into one pay() to the (trusted, governance-set) fee receiver. Factory config is
+    ///      aggregated into one pay() to the (trusted, governance-set) fee receiver, isolated the same
+    ///      way: a failed fee pay is re-wrapped and credited to the fee receiver's claimable (settled
+    ///      later via settle([feeReceiver])) instead of reverting the whole batch. Factory config is
     ///      read once up front (invariant within this nonReentrant call).
     function _routeRevNetSettlement(address[] calldata backers, uint256[] memory amounts) internal {
         ILeaderboardFactory f = ILeaderboardFactory(factory);
@@ -843,8 +845,11 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
 
         uint256 totalFee = _settleViaRevNet(backers, amounts, terminal, projectId, feePct);
         if (totalFee > 0) {
-            _revNetPay(terminal, projectId, feeReceiver, totalFee);
-            emit PlatformFeeSettled(feeReceiver, totalFee);
+            try this._revNetPaySelf(terminal, projectId, feeReceiver, totalFee) {
+                emit PlatformFeeSettled(feeReceiver, totalFee);
+            } catch {
+                _rewrapAndCredit(feeReceiver, totalFee);
+            }
         }
     }
 
@@ -859,8 +864,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
             if (ok) {
                 emit Settled(backers[i], amt, false);
             } else {
-                ISETH(address(ETHX)).upgradeByETH{value: amt}();
-                claimable[backers[i]] += amt;
+                _rewrapAndCredit(backers[i], amt);
             }
         }
     }
@@ -890,10 +894,16 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
                 totalFee += fee;
                 emit Settled(backers[i], amt, true);
             } catch {
-                ISETH(address(ETHX)).upgradeByETH{value: amt}();
-                claimable[backers[i]] += amt;
+                _rewrapAndCredit(backers[i], amt);
             }
         }
+    }
+
+    /// @dev Failed-pay recovery shared by every settle path: re-wrap the native ETH into ETHx and
+    ///      restore it as the recipient's claimable, so the batch continues and nothing is stranded.
+    function _rewrapAndCredit(address who, uint256 amount) internal {
+        ISETH(address(ETHX)).upgradeByETH{value: amount}();
+        claimable[who] += amount;
     }
 
     /// @dev External self-call wrapper so a single backer's RevNet pay can be try/catch-isolated.

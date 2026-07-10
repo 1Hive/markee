@@ -1501,6 +1501,43 @@ contract StreamingLeaderboardTest is Test {
         _notJailed();
     }
 
+    /// @notice A reverting aggregated platform-fee pay must NOT brick the settle batch: the backers'
+    ///         own pays land, the fee is re-wrapped and credited to the fee receiver's claimable, and
+    ///         it is recoverable via settle([feeReceiver]) once the terminal is healthy again.
+    function test_settle_feePayFailure_doesNotBrickBatch() public {
+        address feeReceiver = makeAddr("feeReceiver");
+        SelectiveRevertTerminal mock = new SelectiveRevertTerminal(feeReceiver);
+        vm.startPrank(admin);
+        factory.setPlatformFeeReceiver(feeReceiver);
+        factory.setRevNetTerminal(address(mock));
+        vm.stopPrank();
+
+        address m = _newMarkee("m", "alpha");
+        address backer = _backer("backerA");
+        _open(backer, m, _rate(0.05 ether));
+        vm.warp(block.timestamp + 20 days);
+
+        uint256 pending = board.pendingSettlement(backer);
+        assertGt(pending, 0, "nothing accrued");
+        uint256 expectedFee = pending * factory.percentToPlatformFeeReceiver() / BPS;
+
+        address[] memory arr = new address[](1);
+        arr[0] = backer;
+        board.settle(arr);
+
+        assertEq(board.claimable(backer), 0, "backer settlement must land despite the fee-pay failure");
+        assertEq(board.claimable(feeReceiver), expectedFee, "failed fee must be credited as claimable");
+        _notJailed();
+
+        // Recovery: point back at the live terminal and settle the fee receiver's credited claim.
+        vm.prank(admin);
+        factory.setRevNetTerminal(REVNET_TERMINAL);
+        arr[0] = feeReceiver;
+        board.settle(arr);
+        assertEq(board.claimable(feeReceiver), 0, "credited fee not recoverable via settle");
+        _notJailed();
+    }
+
     /// @notice The directly-deployed implementations are locked: no one can initialize them and take
     ///         their admin/owner slots (clones are unaffected, their storage starts fresh).
     function test_implementations_cannotBeInitialized() public {
@@ -1564,6 +1601,25 @@ contract StreamingLeaderboardTest is Test {
 contract StubStrategy {
     function repoint(address markee, address newStrategy) external {
         IMarkee(markee).setPricingStrategy(newStrategy);
+    }
+}
+
+/// @dev A Juicebox-terminal stand-in that accepts every pay() except ones for a single blocked
+///      beneficiary, to exercise settle's aggregated platform-fee isolation.
+contract SelectiveRevertTerminal {
+    address public immutable blockedBeneficiary;
+
+    constructor(address blocked) {
+        blockedBeneficiary = blocked;
+    }
+
+    function pay(uint256, address, uint256, address beneficiary, uint256, string calldata, bytes calldata)
+        external
+        payable
+        returns (uint256)
+    {
+        require(beneficiary != blockedBeneficiary, "fee receiver blocked");
+        return 0;
     }
 }
 
