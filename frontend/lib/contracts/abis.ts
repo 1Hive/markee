@@ -893,6 +893,7 @@ export const StreamingLeaderboardABI = [
   { inputs: [{ name: 'markee', type: 'address' }], name: 'aggregateRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: '', type: 'address' }], name: 'backerMarkee', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: '', type: 'address' }], name: 'backerDeposit', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }], name: 'poolOf', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: 'backer', type: 'address' }], name: 'pendingSettlement', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   {
     inputs: [{ name: 'limit', type: 'uint256' }],

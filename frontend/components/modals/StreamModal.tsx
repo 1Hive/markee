@@ -19,6 +19,7 @@ import {
   SUPERFLUID_HOST_ABI,
   CFA_FORWARDER_ABI,
   CFA_AGREEMENT_ID,
+  GDA_AGREEMENT_ID,
   monthlyToRatePerSec,
   ratePerSecToMonthly,
   bufferFor,
@@ -122,6 +123,14 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID], chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
+  const { data: gdaAgreement } = useReadContract({
+    address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID], chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen },
+  })
+  const { data: refundPool } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [markee.address], chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen },
+  })
   const { data: backedMarkee, refetch: refetchBacked } = useReadContract({
     address: board, abi: StreamingLeaderboardABI, functionName: 'backerMarkee', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled },
@@ -141,7 +150,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
 
   const backsThis = !!backedMarkee && backedMarkee.toLowerCase() === markee.address.toLowerCase()
   const backsOther = !!backedMarkee && backedMarkee !== '0x0000000000000000000000000000000000000000' && !backsThis
-  const readsReady = !!cfaAgreement && allowance !== undefined && !!publicClient
+  const poolReady = !!refundPool && refundPool !== '0x0000000000000000000000000000000000000000'
+  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && !!publicClient
 
   const minMonthlyEth = minMonthlyWei ? formatEther(minMonthlyWei) : '0'
 
@@ -180,7 +190,7 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
   async function handleOpenStream() {
     setError(null)
     if (!address) return
-    if (!cfaAgreement) {
+    if (!cfaAgreement || !gdaAgreement || !poolReady) {
       setError('Still loading chain data. Try again in a moment.')
       return
     }
@@ -226,6 +236,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
         ratePerSec: calc.ratePerSec,
         buffer: calc.buffer,
         cfaAgreement: cfaAgreement as Address,
+        gdaAgreement: gdaAgreement as Address,
+        pool: refundPool as Address,
       })
 
       const batchHash = await writeContractAsync({

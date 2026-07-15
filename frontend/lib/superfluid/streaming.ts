@@ -27,6 +27,11 @@ export const CFA_AGREEMENT_ID = keccak256(
   toBytes('org.superfluid-finance.agreements.ConstantFlowAgreement.v1'),
 )
 
+// GeneralDistributionAgreementV1 class, the op-201 target for the refund-pool connect.
+export const GDA_AGREEMENT_ID = keccak256(
+  toBytes('org.superfluid-finance.agreements.GeneralDistributionAgreement.v1'),
+)
+
 // ── Rate helpers ────────────────────────────────────────────────────────────
 
 export function monthlyToRatePerSec(weiPerMonth: bigint): bigint {
@@ -84,6 +89,19 @@ const CFA_CREATE_FLOW_ABI = [
   },
 ] as const
 
+const GDA_CONNECT_POOL_ABI = [
+  {
+    type: 'function',
+    name: 'connectPool',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'pool', type: 'address' },
+      { name: 'ctx', type: 'bytes' },
+    ],
+    outputs: [{ name: '', type: 'bytes' }],
+  },
+] as const
+
 export interface Operation {
   operationType: number
   target: Address
@@ -98,12 +116,18 @@ export interface OpenStreamParams {
   ratePerSec: bigint
   buffer: bigint
   cfaAgreement: Address
+  gdaAgreement: Address
+  pool: Address
 }
 
-// Returns the 3 ops for host.batchCall, in the order the strategy requires: the value-bearing wrap
+// Returns the 4 ops for host.batchCall, in the order the strategy requires: the value-bearing wrap
 // first (it drains the host balance so the later value-0 forwards don't revert), then the buffer
 // deposit credited to the explicit backer (pulled via the backer's prior ERC20 approve), then the
-// markee-tagged createFlow (op 201 preserves the backer as the flow sender).
+// markee-tagged createFlow (op 201 preserves the backer as the flow sender), then connectPool on the
+// markee's GDA refund pool. The connect is mandatory, not cosmetic: a disconnected backer's wallet
+// drains at the full stream rate while the refund accrues unclaimed in the pool, so they could be
+// liquidated even while being refunded. It must be op 201 straight to the GDA class (a 301 via
+// GDAv1Forwarder would connect SimpleForwarder instead), and it no-ops if already connected.
 export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
   const wrap: Operation = {
     operationType: OP_SIMPLE_FORWARD_CALL,
@@ -130,7 +154,19 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
     data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [callData, userData]),
   }
 
-  return [wrap, deposit, flow]
+  const connectData = encodeFunctionData({
+    abi: GDA_CONNECT_POOL_ABI,
+    functionName: 'connectPool',
+    args: [p.pool, '0x'],
+  })
+
+  const connect: Operation = {
+    operationType: OP_CALL_AGREEMENT,
+    target: p.gdaAgreement,
+    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [connectData, '0x']),
+  }
+
+  return [wrap, deposit, flow, connect]
 }
 
 // Native ETH to send with the batch: the buffer (pulled back into the board as the SuperApp deposit)
