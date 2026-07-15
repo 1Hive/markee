@@ -1,7 +1,7 @@
 'use client'
 
 import { useReadContracts } from 'wagmi'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 
@@ -29,7 +29,7 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
   const enabled = !!leaderboardAddress && leaderboardAddress.length === 42
 
   // Step 1: leaderboard metadata
-  const { data: metaData, isLoading: metaLoading, error: metaError } = useReadContracts({
+  const { data: metaData, isLoading: metaLoading, error: metaError, refetch: refetchMeta } = useReadContracts({
     contracts: [
       { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName',        chainId: CANONICAL_CHAIN_ID },
       { address: addr, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds',  chainId: CANONICAL_CHAIN_ID },
@@ -42,7 +42,7 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
   })
 
   // Step 2: ordered markee list
-  const { data: topData, isLoading: topLoading } = useReadContracts({
+  const { data: topData, isLoading: topLoading, refetch: refetchTop } = useReadContracts({
     contracts: [{
       address: addr, abi: LeaderboardV11ABI, functionName: 'getTopMarkees',
       args: [100n], chainId: CANONICAL_CHAIN_ID,
@@ -61,7 +61,7 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
     { address: a as `0x${string}`, abi: MarkeeABI, functionName: 'pricingStrategy'as const, chainId: CANONICAL_CHAIN_ID },
   ]), [topAddresses.join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: markeeData, isLoading: markeesLoading } = useReadContracts({
+  const { data: markeeData, isLoading: markeesLoading, refetch: refetchMarkees } = useReadContracts({
     contracts: markeeContracts,
     query: { enabled: topAddresses.length > 0 },
   })
@@ -91,10 +91,19 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
     })
   }, [topAddresses.join(','), markeeData, topFunds.join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const refetch = useCallback(async () => {
+    await Promise.all([
+      refetchMeta(),
+      refetchTop(),
+      refetchMarkees(),
+    ])
+  }, [refetchMeta, refetchTop, refetchMarkees])
+
   return {
     meta,
     markees,
     isLoading: metaLoading || topLoading || markeesLoading,
     error: metaError ?? null,
+    refetch,
   }
 }

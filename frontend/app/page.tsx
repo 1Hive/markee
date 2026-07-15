@@ -18,6 +18,8 @@ import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px'
+const MARKETPLACE_TEASER_ROW_HEIGHT = 36
 
 function extractDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -479,16 +481,19 @@ export default function Home() {
 
           {/* Column headers */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
+            display: 'grid', gridTemplateColumns: MARKETPLACE_TEASER_COLS,
             gap: 16, alignItems: 'center', padding: '0 14px 10px',
             fontFamily: MONO, fontSize: 10, letterSpacing: 1,
-            color: '#8A8FBF', textTransform: 'uppercase',
+            color: '#8A8FBF', textTransform: 'uppercase', lineHeight: 1,
           }}>
-            <span>Served on</span>
-            <span>Total raised</span>
-            <span>Current message</span>
-            <span>Views</span>
-            <span style={{ textAlign: 'right' }}>Price to change</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: 22 }}>
+              <span aria-hidden style={{ width: 22, flexShrink: 0 }} />
+              Served on
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Total raised</span>
+            <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Current message</span>
+            <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Views</span>
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: 22, textAlign: 'right' }}>Price to change</span>
           </div>
 
           {/* Partner rows */}
@@ -496,7 +501,7 @@ export default function Home() {
             {top5EcoLoading
               ? [1, 2, 3, 4, 5].map(i => (
                   <div key={i} style={{
-                    display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
+                    display: 'grid', gridTemplateColumns: MARKETPLACE_TEASER_COLS,
                     gap: 16, padding: '11px 14px',
                     borderBottom: '1px solid rgba(138,143,191,0.2)',
                   }}>
@@ -529,8 +534,8 @@ export default function Home() {
                       href={`/markee/${lb.address}`}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '190px 110px 1fr 74px 120px',
-                        gap: 16, padding: '11px 14px',
+                        gridTemplateColumns: MARKETPLACE_TEASER_COLS,
+                        gap: 16, alignItems: 'center', padding: '11px 14px',
                         borderBottom: '1px solid rgba(138,143,191,0.2)',
                         textDecoration: 'none',
                         cursor: 'pointer',
@@ -540,7 +545,7 @@ export default function Home() {
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
                       {/* Served on */}
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: '#B8B6D9', minWidth: 0 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, fontSize: 12, lineHeight: 1, color: '#B8B6D9', minWidth: 0 }}>
                         {lb.platform === 'github' ? (
                           <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(237,238,255,0.08)' }}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="#B8B6D9"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
@@ -561,16 +566,17 @@ export default function Home() {
 
                       {/* Total raised */}
                       <span style={{
-                        fontSize: 12.5, color: '#7C9CFF',
+                        display: 'flex', alignItems: 'center', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT,
+                        fontSize: 12.5, lineHeight: 1, color: '#7C9CFF',
                         fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600,
                       }}>
                         {totalUsd != null ? `$${totalUsd.toLocaleString()}` : `${totalEth.toFixed(3)} ETH`}
                       </span>
 
                       {/* Current message */}
-                      <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
                         <div style={{
-                          fontFamily: MONO, fontSize: 13, color: '#EDEEFF',
+                          fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF',
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
                           {lb.topMessage || '—'}
@@ -578,13 +584,13 @@ export default function Home() {
                       </div>
 
                       {/* Views */}
-                      <span style={{ fontSize: 11, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
+                      <span style={{ minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, fontSize: 11, lineHeight: 1, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
                         <Eye size={10} style={{ opacity: 0.7 }} />
                         {(() => { const v = partnerViews.get((lb.topMarkeeAddress ?? '').toLowerCase()); return v ? formatViews(v) : '—' })()}
                       </span>
 
                       {/* Price to change */}
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
                         {priceToOvertakeEth != null ? (
                           <button
                             onClick={(e) => {

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { formatUnits } from 'viem'
 import { base } from 'wagmi/chains'
 import { MARKEE_TOKEN, PARTNER_RESERVE_DISTRIBUTOR } from '@/lib/contracts/addresses'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const DISTRIBUTOR_ABI = [
   {
@@ -50,6 +51,7 @@ interface PartnerReserveDistributorProps {
 export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistributorProps) {
   const { isConnected } = useAccount()
   const [showPreview, setShowPreview] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
 
   // Create a map of strategy addresses to partner names
   const strategyToName = partners.reduce((acc, partner) => {
@@ -86,17 +88,27 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
   })
 
   // Refetch balance after successful distribution
-  if (isSuccess) {
-    refetchBalance()
-  }
+  useEffect(() => {
+    if (isSuccess) refetchBalance()
+  }, [isSuccess, refetchBalance])
+
+  useEffect(() => {
+    if (error) logTransactionError(error, 'PartnerReserveDistributor')
+  }, [error])
 
   const handleDistribute = () => {
-    writeContract({
-      address: PARTNER_RESERVE_DISTRIBUTOR,
-      abi: DISTRIBUTOR_ABI,
-      functionName: 'distribute',
-      chainId: base.id,
-    })
+    setLocalError(null)
+    try {
+      writeContract({
+        address: PARTNER_RESERVE_DISTRIBUTOR,
+        abi: DISTRIBUTOR_ABI,
+        functionName: 'distribute',
+        chainId: base.id,
+      })
+    } catch (err) {
+      logTransactionError(err, 'PartnerReserveDistributor.distribute')
+      setLocalError(formatTransactionError(err))
+    }
   }
 
   const balanceFormatted = balance ? formatUnits(balance, 18) : '0'
@@ -216,9 +228,9 @@ export function PartnerReserveDistributor({ partners = [] }: PartnerReserveDistr
       )}
 
       {/* Error Message */}
-      {error && (
+      {(localError || error) && (
         <div className="mt-6 p-4 bg-[#FF8E8E]/20 border border-[#FF8E8E] rounded-lg">
-          <p className="text-[#FF8E8E] text-sm text-center">{error.message}</p>
+          <p className="text-[#FF8E8E] text-sm text-center">{localError || formatTransactionError(error)}</p>
         </div>
       )}
     </div>

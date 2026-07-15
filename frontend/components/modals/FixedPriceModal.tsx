@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
-import { formatEther } from 'viem'
+import { formatEther, parseEther } from 'viem'
 import { CreditCard } from 'lucide-react'
-import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
+import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -21,22 +23,7 @@ const BLUE   = '#7C9CFF'
 const BORDER = 'rgba(138,143,191,0.2)'
 const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
-
-// ── MARKEE phases ─────────────────────────────────────────────────────────────
-const PHASES = [
-  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
-  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
-  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
-  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
-]
-function getCurrentPhaseRate() {
-  const now = new Date()
-  for (const p of PHASES) { if (now < p.endDate) return p.rate }
-  return PHASES[PHASES.length - 1].rate
-}
-// 100% of FixedPrice funds go to the Revnet; buyer receives 62% of issued tokens
-function calculateMarkeeTokens(eth: number) { return eth * getCurrentPhaseRate() * 0.62 }
+const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 // ── Disabled-button tooltip ───────────────────────────────────────────────────
 function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
@@ -98,16 +85,23 @@ interface FixedPriceModalProps {
 export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
   const { authenticated } = usePrivy()
   const { isConnected, chain, address } = useAccount()
+  const { wallets } = useWallets()
+  const activeAddress = address ?? wallets[0]?.address
+  const hasWallet = !!activeAddress || isConnected
+  const hasActiveWalletConnection = isConnected && !!address
+  const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
+  const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
 
-  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+  const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
+  const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -116,11 +110,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceEth = formatEther(priceWei)
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
-  const markeeEarned = Math.round(calculateMarkeeTokens(priceEthNum))
+  const markeeEarned = Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum))
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
 
   useEffect(() => {
-    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); reset() }
+    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); setHasUserEdited(false); reset() }
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
@@ -129,16 +123,38 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'FixedPriceModal')
+  }, [writeError])
+
+  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const blockBackdropClose = hasUserEdited && !txStep
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
   const canAfford = () => {
     if (!balanceData || priceWei === 0n) return false
-    return balanceData.value >= priceWei + 1000000000000000n
+    return balanceData.value >= priceWei + FAST_TX_GAS_RESERVE
   }
   const insufficientBalance = priceWei > 0n && !canAfford()
-  const balanceWarning = insufficientBalance ? "You don't have enough ETH to complete this transaction." : null
+  const balanceWarning = insufficientBalance ? `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.` : null
 
   const handleChangeMessage = async () => {
-    if (!fixedMarkee || !chain) { setError('Please connect your wallet'); return }
-    if (chain.id !== CANONICAL_CHAIN.id) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
+    if (!fixedMarkee || !hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
     if (priceWei === 0n) { setError('Unable to load price'); return }
     if (newMessage.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
@@ -153,13 +169,16 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
         value: priceWei,
         chainId: CANONICAL_CHAIN.id,
       })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'FixedPriceModal.changeMessage')
+      setError(formatTransactionError(err))
+    }
   }
 
   if (!isOpen || !fixedMarkee) return null
 
   const isOverLimit = newMessage.length > maxLen
-  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
   const btnDisabledReason = !btnDisabled || isSuccess ? null
@@ -182,7 +201,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   return (
     <div
-      onClick={onClose}
+      onClick={() => {
+        if (!blockBackdropClose) onClose()
+      }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -239,13 +260,19 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             </div>
           </div>
 
-        ) : !isConnected ? (
+        ) : isWalletConnectionPending ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
+          </div>
+
+        ) : !hasWallet || !hasActiveWalletConnection ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !isCorrectChain ? (
+        ) : isWrongChain ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
             <button
@@ -276,7 +303,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                 </div>
                 <textarea
                   value={newMessage}
-                  onChange={e => setNewMessage(e.target.value.slice(0, maxLen))}
+                  onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
                   placeholder="the name's mark. agent mark 🕵️"
                   rows={2}
                   style={{ ...inputStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : BORDER }}
@@ -305,8 +332,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   {priceUsd && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(priceUsd)}</div>}
                   <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Fixed price to set the featured message</div>
                   {balanceData && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}`, fontSize: 12, color: MUTED, display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span>Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</span>
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}`, fontSize: 12, color: MUTED, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>
+                        Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+                        <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)</span>
+                      </span>
                       {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
                     </div>
                   )}
@@ -329,9 +359,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                     <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
                     <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
                   </div>
-                  {authenticated && address && (
+                  {authenticated && activeAddress && (
                     <button
-                      onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
+                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       <CreditCard size={13} />
@@ -342,9 +372,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               )}
 
               {/* Error */}
-              {(error || isError) && (
+              {transactionError && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
-                  {error || writeError?.message}
+                  {transactionError}
                 </p>
               )}
             </div>

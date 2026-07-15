@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { CreditCard } from 'lucide-react'
-import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
+import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import type { Markee } from '@/types'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -23,27 +25,7 @@ const BORDER = 'rgba(138,143,191,0.2)'
 const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
 const TEXT2  = '#B8B6D9'
-
-// ── MARKEE token phases ───────────────────────────────────────────────────────
-const PHASES = [
-  { rate: 100000, endDate: new Date('2026-03-21T00:00:00Z') },
-  { rate: 50000,  endDate: new Date('2026-06-21T00:00:00Z') },
-  { rate: 25000,  endDate: new Date('2026-09-21T00:00:00Z') },
-  { rate: 12500,  endDate: new Date('2026-12-21T00:00:00Z') },
-  { rate: 6250,   endDate: new Date('2027-03-21T00:00:00Z') },
-]
-
-function getCurrentPhaseRate(): number {
-  const now = new Date()
-  for (const phase of PHASES) {
-    if (now < phase.endDate) return phase.rate
-  }
-  return PHASES[PHASES.length - 1].rate
-}
-
-function calculateMarkeeTokens(ethAmount: number): number {
-  return ethAmount * 0.38 * 0.62 * getCurrentPhaseRate() * 0.62
-}
+const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 const REV_NET_ENABLED_ABI = [
   { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
@@ -150,6 +132,11 @@ export function BuyMessageModal({
 }: BuyMessageModalProps) {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
+  const { wallets } = useWallets()
+  const activeAddress = address ?? wallets[0]?.address
+  const hasWallet = !!activeAddress || isConnected
+  const hasActiveWalletConnection = isConnected && !!address
+  const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -157,6 +144,7 @@ export function BuyMessageModal({
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -164,7 +152,7 @@ export function BuyMessageModal({
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({
-    address,
+    address: activeAddress as `0x${string}` | undefined,
     chainId: CANONICAL_CHAIN.id,
   })
 
@@ -174,7 +162,8 @@ export function BuyMessageModal({
 
   const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
-  const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
+  const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
+  const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const { data: minimumPrice } = useReadContract({
     address: strategyAddress, abi: strategyABI, functionName: 'minimumPrice', chainId: CANONICAL_CHAIN.id,
@@ -223,15 +212,15 @@ export function BuyMessageModal({
   const canAffordTransaction = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return false
     try {
-      return balanceData.value >= parseEther(amount) + parseEther('0.001')
+      return balanceData.value >= parseEther(amount) + FAST_TX_GAS_RESERVE
     } catch { return false }
   }
 
   const getInsufficientBalanceMessage = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
     try {
-      if (balanceData.value < parseEther(amount) + parseEther('0.001')) {
-        return "You don't have enough ETH to complete this transaction."
+      if (balanceData.value < parseEther(amount) + FAST_TX_GAS_RESERVE) {
+        return `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.`
       }
     } catch { return 'Invalid amount entered' }
     return null
@@ -239,6 +228,13 @@ export function BuyMessageModal({
 
   const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
   const balanceWarning = getInsufficientBalanceMessage()
+  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
+    ? balanceData.value - FAST_TX_GAS_RESERVE
+    : 0n
+  const maxSpendableEth = Number(formatEther(spendableBalance))
+  const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001
+    ? maxSpendableEth.toFixed(6)
+    : maxSpendableEth.toFixed(3)
 
   // ── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -248,6 +244,7 @@ export function BuyMessageModal({
     else setActiveTab('create')
     setMessage('')
     setError(null)
+    setHasUserEdited(false)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userMarkee, initialMode, isOpen, reset])
@@ -272,15 +269,15 @@ export function BuyMessageModal({
   }, [isSuccess, onClose, isOpen, onSuccess])
 
   useEffect(() => {
-    if (!isSuccess || !receipt || !address || !strategyAddress || activeTab === 'updateMessage') return
+    if (!isSuccess || !receipt || !activeAddress || !strategyAddress || activeTab === 'updateMessage') return
     const normalised = strategyAddress.toLowerCase()
     if (!SUPERFLUID_STRATEGY_ADDRESSES.has(normalised)) return
     const txHash = receipt.transactionHash
     const amountWei = parseEther(amount).toString()
-    if (activeTab === 'addFunds') trackAddFunds(address, amountWei, txHash, strategyAddress).catch(console.error)
-    else trackBuyMessage(address, amountWei, txHash, strategyAddress).catch(console.error)
+    if (activeTab === 'addFunds') trackAddFunds(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
+    else trackBuyMessage(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess, receipt, address])
+  }, [isSuccess, receipt, activeAddress])
 
   useEffect(() => {
     if (!isSuccess || !strategyAddress || activeTab === 'updateMessage' || platformId !== 'github') return
@@ -292,8 +289,31 @@ export function BuyMessageModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'BuyMessageModal')
+  }, [writeError])
+
+  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const blockBackdropClose = hasUserEdited && !txStep
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreateMarkee = async () => {
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
@@ -305,34 +325,44 @@ export function BuyMessageModal({
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name], value: amountWei, chainId: CANONICAL_CHAIN.id })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'BuyMessageModal.createMarkee')
+      setError(formatTransactionError(err))
+    }
   }
 
   const handleAddFunds = async () => {
-    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please connect wallet and ensure you have a Markee'); return }
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'addFunds', args: [userMarkee.address as `0x${string}`], value: parseEther(amount), chainId: CANONICAL_CHAIN.id })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'BuyMessageModal.addFunds')
+      setError(formatTransactionError(err))
+    }
   }
 
   const handleUpdateMessage = async () => {
-    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please connect wallet and ensure you have a Markee'); return }
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!message.trim()) { setError('Please enter a message'); return }
     if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'updateMessage', args: [userMarkee.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
-    } catch (err: any) { setError(err.message || 'Transaction failed') }
+    } catch (err) {
+      logTransactionError(err, 'BuyMessageModal.updateMessage')
+      setError(formatTransactionError(err))
+    }
   }
 
   if (!isOpen) return null
 
   const canSwitchTabs = !isPending && !isConfirming
-  const isOwner = userMarkee && address && userMarkee.owner.toLowerCase() === address.toLowerCase()
-  const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
+  const isOwner = userMarkee && activeAddress && userMarkee.owner.toLowerCase() === activeAddress.toLowerCase()
 
   const btnDisabled =
     isPending || isConfirming || isSuccess ||
@@ -344,6 +374,7 @@ export function BuyMessageModal({
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
   const maxLen = Number(maxMessageLength || 223)
+  const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
     txStep === 'signing' ? 'AWAITING SIGNATURE' :
@@ -355,7 +386,7 @@ export function BuyMessageModal({
 
   // Amount section (create + addFunds)
   const bidNum = parseFloat(amount || '0')
-  const markeeEarned = calculateMarkeeTokens(bidNum)
+  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(bidNum)
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 
@@ -367,7 +398,9 @@ export function BuyMessageModal({
 
   return (
     <div
-      onClick={onClose}
+      onClick={() => {
+        if (!blockBackdropClose) onClose()
+      }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -424,14 +457,20 @@ export function BuyMessageModal({
             </div>
           </div>
 
-        ) : !isConnected ? (
+        ) : isWalletConnectionPending ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
+          </div>
+
+        ) : !hasWallet || !hasActiveWalletConnection ? (
           /* ── Connect wallet ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !isCorrectChain ? (
+        ) : isWrongChain ? (
           /* ── Wrong chain ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
@@ -475,7 +514,7 @@ export function BuyMessageModal({
                   <ModalField label="Set Your Message">
                     <textarea
                       value={message}
-                      onChange={e => setMessage(e.target.value.slice(0, maxLen))}
+                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder="Your message here"
                       rows={2}
                       style={{ ...inputStyle, resize: 'vertical' }}
@@ -487,7 +526,7 @@ export function BuyMessageModal({
                   <ModalField label="Name (optional)">
                     <input
                       value={name}
-                      onChange={e => setName(e.target.value.slice(0, Number(maxNameLength || 32)))}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, Number(maxNameLength || 32))) }}
                       placeholder="anon"
                       style={{ ...inputStyle }}
                       onFocus={e => { e.target.style.borderColor = PINK }}
@@ -517,7 +556,7 @@ export function BuyMessageModal({
                         {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
                       </div>
                       <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontStyle: 'italic' }}>- {name || (address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '0x...')}</span>
+                        <span style={{ fontStyle: 'italic' }}>- {name || (activeAddress ? `${activeAddress.slice(0, 6)}…${activeAddress.slice(-4)}` : '0x...')}</span>
                         <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
                       </div>
                     </>
@@ -535,7 +574,7 @@ export function BuyMessageModal({
                   <ModalField label="New Message">
                     <textarea
                       value={message}
-                      onChange={e => setMessage(e.target.value.slice(0, maxLen))}
+                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder="Enter your new message..."
                       rows={3}
                       style={{ ...inputStyle, resize: 'vertical' }}
@@ -557,7 +596,7 @@ export function BuyMessageModal({
                     <div style={{ display: 'grid', gridTemplateColumns: hasCompetition ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
                       {hasCompetition && takeFirstAmountFormatted && (
                         <button
-                          onClick={() => setAmount(takeFirstAmountFormatted)}
+                          onClick={() => { setHasUserEdited(true); setAmount(takeFirstAmountFormatted) }}
                           disabled={isPending || isConfirming}
                           style={{
                             textAlign: 'left', cursor: 'pointer',
@@ -577,7 +616,7 @@ export function BuyMessageModal({
                       )}
                       {activeTab !== 'addFunds' && (
                         <button
-                          onClick={() => setAmount(minimumAmountFormatted)}
+                          onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted) }}
                           disabled={isPending || isConfirming}
                           style={{
                             textAlign: 'left', cursor: 'pointer',
@@ -612,7 +651,7 @@ export function BuyMessageModal({
                     <input
                       type="number"
                       value={amount}
-                      onChange={e => setAmount(e.target.value)}
+                      onChange={e => { setHasUserEdited(true); setAmount(e.target.value) }}
                       placeholder={minimumAmountFormatted}
                       step="0.0001"
                       style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 56px 14px 16px' }}
@@ -634,9 +673,25 @@ export function BuyMessageModal({
 
                   {/* Balance */}
                   {balanceData && (
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span>Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH</span>
+                    <div style={{ fontSize: 12, color: MUTED, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                      <span>
+                        Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+                        <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)</span>
+                      </span>
                       {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
+                      <button
+                        type="button"
+                        onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted) }}
+                        disabled={spendableBalance <= 0n || isPending || isConfirming}
+                        style={{
+                          background: 'transparent', border: 0, padding: 0,
+                          color: BLUE, fontFamily: MONO, fontSize: 12,
+                          cursor: spendableBalance > 0n ? 'pointer' : 'not-allowed',
+                          opacity: spendableBalance > 0n ? 1 : 0.45,
+                        }}
+                      >
+                        Use max
+                      </button>
                     </div>
                   )}
 
@@ -658,9 +713,9 @@ export function BuyMessageModal({
                     <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
                     <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
                   </div>
-                  {authenticated && address && (
+                  {authenticated && activeAddress && (
                     <button
-                      onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount } })}
+                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount } })}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       <CreditCard size={13} />
@@ -671,9 +726,9 @@ export function BuyMessageModal({
               )}
 
               {/* Error */}
-              {(error || isError) && (
+              {transactionError && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
-                  {error || writeError?.message}
+                  {transactionError}
                 </p>
               )}
             </div>

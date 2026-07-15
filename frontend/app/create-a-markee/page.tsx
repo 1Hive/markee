@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -605,6 +606,10 @@ function CreateWizardInner() {
     setStep(s => s + 1)
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'CreateMarkeeWizard')
+  }, [writeError])
+
   const setValue = (k: string, v: string) => setValuesRaw(prev => ({ ...prev, [k]: v }))
 
   const platform = platformKey ? PLATFORMS.find(p => p.key === platformKey)! : null
@@ -648,12 +653,17 @@ function CreateWizardInner() {
       platformKey === 'github' ? (selectedRepo?.split('/').pop() ?? 'My Repo') :
       (values.projectName?.trim() ?? 'My Project')
     resetWrite()
-    writeContract({
-      address: FACTORIES[platformKey],
-      abi: FACTORY_ABI,
-      functionName: 'createLeaderboard',
-      args: [bene as `0x${string}`, name],
-    })
+    try {
+      writeContract({
+        address: FACTORIES[platformKey],
+        abi: FACTORY_ABI,
+        functionName: 'createLeaderboard',
+        args: [bene as `0x${string}`, name],
+      })
+    } catch (err) {
+      logTransactionError(err, 'CreateMarkeeWizard.createLeaderboard')
+      setTxError(formatTransactionError(err))
+    }
   }
 
   const busy = isPending || isConfirming
@@ -720,7 +730,7 @@ function CreateWizardInner() {
             platform={platform} values={values}
             selectedRepo={selectedRepo} selectedFile={selectedFile}
             isPending={isPending} isConfirming={isConfirming}
-            error={txError ?? (writeError ? (writeError as Error).message : null)}
+            error={txError ?? (writeError ? formatTransactionError(writeError) : null)}
             isConnected={isConnected}
           />
         </StepShell>

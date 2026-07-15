@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
     address: allMarkeeAddresses,
     event: FUNDS_ADDED_EVENT,
     args: { addedBy: owner as `0x${string}` },
-    fromBlock: 0n,
+    fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
     toBlock: 'latest',
   }).catch(() => [])
 

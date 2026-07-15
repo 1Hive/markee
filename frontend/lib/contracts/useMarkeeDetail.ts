@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePublicClient } from 'wagmi'
 import { parseAbiItem } from 'viem'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MarkeeABI, LeaderboardV11ABI } from '@/lib/contracts/abis'
 import type { Markee, FundsAdded, MessageUpdate, NameUpdate } from '@/types'
 
@@ -66,9 +66,9 @@ export function useMarkeeDetail(markeeAddress: string | undefined) {
               { address: addr, abi: MarkeeABI, functionName: 'totalFundsAdded' },
             ],
           }),
-          client!.getLogs({ address: addr, event: FUNDS_ADDED, fromBlock: 0n, toBlock: 'latest' }),
-          client!.getLogs({ address: addr, event: MESSAGE_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
-          client!.getLogs({ address: addr, event: NAME_CHANGED, fromBlock: 0n, toBlock: 'latest' }),
+          client!.getLogs({ address: addr, event: FUNDS_ADDED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
+          client!.getLogs({ address: addr, event: MESSAGE_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
+          client!.getLogs({ address: addr, event: NAME_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
         ])
 
         const message = (multicallResults[0]?.result as string) ?? ''

@@ -4,9 +4,9 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ChevronRight, Zap, Trophy, Plus, Copy, Check, Eye,
+  ChevronRight, Zap, Trophy, Plus, Copy, Check,
 } from 'lucide-react'
-import { useReadContracts, useAccount } from 'wagmi'
+import { useReadContracts } from 'wagmi'
 import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -14,6 +14,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
 import { useViews } from '@/hooks/useViews'
 import { NETWORK_PAUSED } from '@/lib/paused'
+import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import type { Markee } from '@/types'
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
@@ -300,6 +301,10 @@ export default function SuperfluidLeaderboardPage() {
 
   const topAddresses = topResult?.[0] ?? []
   const topFunds = topResult?.[1] ?? []
+  const topFundsTotal = topFunds.reduce((sum, value) => sum + value, 0n)
+  const displayTotalFunds = totalFunds !== undefined
+    ? (totalFunds > topFundsTotal ? totalFunds : topFundsTotal)
+    : topFundsTotal > 0n ? topFundsTotal : undefined
 
   const displayMessageCount = markeeCount !== undefined
     ? (markeeCount > 0n ? markeeCount - 1n : 0n)
@@ -435,7 +440,7 @@ export default function SuperfluidLeaderboardPage() {
               <div className="flex items-center gap-2 text-sm">
                 <Trophy size={14} className="text-[#7C9CFF]" />
                 <span className="text-[#7C9CFF] font-semibold">
-                  {totalFunds !== undefined ? formatFunds(totalFunds) : '—'}
+                  {displayTotalFunds !== undefined ? formatFunds(displayTotalFunds) : '—'}
                 </span>
                 <span className="text-[#8A8FBF]">total funded</span>
               </div>
@@ -531,11 +536,12 @@ export default function SuperfluidLeaderboardPage() {
           ) : (
             <div className="space-y-3">
               {markees.map((markee, idx) => (
-                <MarkeeRow
+                <ExpandableMarkeeRow
                   key={markee.address}
                   markee={markee}
                   rank={idx + 1}
                   formatFunds={formatFunds}
+                  leaderboardAddress={leaderboardAddress}
                   trackView={trackView}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                   onAddFunds={NETWORK_PAUSED || isLegacyContract ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
@@ -561,80 +567,6 @@ export default function SuperfluidLeaderboardPage() {
           onSuccess={refetch}
         />
       )}
-    </div>
-  )
-}
-
-// ─── Markee Row ───────────────────────────────────────────────────────────────
-
-function MarkeeRow({
-  markee,
-  rank,
-  formatFunds,
-  trackView,
-  viewCount,
-  onAddFunds,
-  onEditMessage,
-}: {
-  markee: MarkeeSlot
-  rank: number
-  formatFunds: (wei: bigint) => string
-  trackView: (m: Markee) => void
-  viewCount?: number
-  onAddFunds?: () => void
-  onEditMessage?: () => void
-}) {
-  const { address } = useAccount()
-  const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
-
-  useEffect(() => {
-    if (markee.message) {
-      trackView(slotToMarkee(markee))
-    }
-  }, [markee.address]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const rankColors: Record<number, string> = {
-    1: 'text-[#FFD700] border-[#FFD700]/40 bg-[#FFD700]/10',
-    2: 'text-[#C0C0C0] border-[#C0C0C0]/40 bg-[#C0C0C0]/10',
-    3: 'text-[#CD7F32] border-[#CD7F32]/40 bg-[#CD7F32]/10',
-  }
-  const rankStyle = rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/20 bg-[#8A8FBF]/5'
-
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-all px-5 py-4 flex items-start gap-4">
-      <div className={`flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold ${rankStyle}`}>
-        {rank}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[#EDEEFF] font-mono text-sm leading-relaxed line-clamp-2">
-          {markee.message || <span className="opacity-40 italic">No message</span>}
-        </p>
-        <div className="flex items-center gap-3 mt-1.5">
-          {markee.name && <span className="text-[#8A8FBF] text-xs">{markee.name}</span>}
-          {isOwner && (
-            <span className="text-xs bg-[#F897FE]/15 border border-[#F897FE]/30 text-[#F897FE] px-2 py-0.5 rounded-full">
-              yours
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex-shrink-0 flex flex-col items-end gap-2">
-        {viewCount !== undefined && (
-          <span className="text-[#8A8FBF] text-xs flex items-center gap-1">
-            <Eye size={12} className="opacity-60" />
-            <span>{viewCount.toLocaleString()}</span>
-          </span>
-        )}
-        <span className="text-[#F897FE] text-sm font-semibold">{formatFunds(markee.totalFundsAdded)}</span>
-        <button onClick={onAddFunds} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
-          + add funds
-        </button>
-        {isOwner && (
-          <button onClick={onEditMessage} className="text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors">
-            edit message
-          </button>
-        )}
-      </div>
     </div>
   )
 }

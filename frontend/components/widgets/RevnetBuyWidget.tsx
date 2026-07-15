@@ -6,6 +6,7 @@ import { base } from 'viem/chains'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
+import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const PINK   = '#F897FE'
@@ -14,39 +15,6 @@ const BORDER = 'rgba(138,143,191,0.2)'
 
 // Juicebox v4 uses this sentinel address for native ETH
 const ETH_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-
-// Buyer receives 62% of issued tokens; 38% goes to the community reserve
-const BUYER_SHARE = 0.62
-
-// Issuance schedule — mirrors owners/page.tsx buildPhases()
-const SEASON_MS      = 91.31 * 24 * 60 * 60 * 1000
-const SCHEDULE_START = new Date('2025-12-21T00:00:00Z')
-
-function buildPhases(): { rate: number; end: Date }[] {
-  const rules = [
-    { cut: 0.5, seasons: 4 },
-    { cut: 0.2, seasons: 8 },
-    { cut: 0.1, seasons: 6 },
-  ]
-  const out: { rate: number; end: Date }[] = []
-  let rate = 100_000, idx = 0
-  for (const r of rules) {
-    for (let i = 0; i < r.seasons; i++) {
-      out.push({ rate: Math.round(rate), end: new Date(SCHEDULE_START.getTime() + (idx + 1) * SEASON_MS) })
-      rate *= (1 - r.cut)
-      idx++
-    }
-  }
-  return out
-}
-
-const PHASES = buildPhases()
-
-function currentGrossRate(): number {
-  const now = Date.now()
-  for (const p of PHASES) if (now < p.end.getTime()) return p.rate
-  return PHASES[PHASES.length - 1].rate
-}
 
 const JB_TERMINAL_PAY_ABI = [
   {
@@ -85,8 +53,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   })
 
   const eth        = parseFloat(amount) || 0
-  const grossRate  = currentGrossRate()
-  const receive    = Math.round(eth * grossRate * BUYER_SHARE)
+  const receive    = Math.round(estimateDirectRevnetMarkeeTokens(eth))
   const cfg        = REVNET_V6_CONFIG[base.id]
 
   const handleBuy = () => {

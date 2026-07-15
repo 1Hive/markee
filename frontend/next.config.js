@@ -56,8 +56,8 @@ const cspHeader = Object.entries(cspDirectives)
   .map(([key, vals]) => `${key} ${vals.join(' ')}`)
   .join('; ')
 
-// Embed pages need frame-ancestors: * so third-party sites can iframe them.
-const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['*'] })
+// Embed pages can be framed by HTTPS third-party sites.
+const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['https:'] })
   .map(([key, vals]) => `${key} ${vals.join(' ')}`)
   .join('; ')
 
