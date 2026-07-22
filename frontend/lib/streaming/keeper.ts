@@ -4,12 +4,14 @@ import {
   type Address,
   type Hex,
 } from 'viem'
+import { getLogsChunked, resolveScanFromBlock } from './logScan'
 
 // Minimal structural client shapes so any viem PublicClient/WalletClient is accepted without
 // fighting viem's strict transport/chain generics (which createPublicClient bakes in).
 type KeeperPublicClient = {
   readContract(args: unknown): Promise<unknown>
   getLogs(args: unknown): Promise<unknown[]>
+  getBlockNumber(): Promise<bigint>
   waitForTransactionReceipt(args: unknown): Promise<{ status: 'success' | 'reverted' | string }>
 }
 type KeeperWalletClient = {
@@ -51,7 +53,7 @@ export interface RunKeeperParams {
   account?: Address
   factory: Address
   settle?: boolean       // also flush RevNet settlement (default true)
-  fromBlock?: bigint     // BackerUpdated log-scan start for settle (default 0n)
+  fromBlock?: bigint     // BackerUpdated log-scan start (default: resolveScanFromBlock)
   settleChunk?: number   // backers per settle tx (default 50)
   log?: (msg: string) => void
 }
@@ -64,14 +66,19 @@ function shortErr(e: unknown): string {
 const ZERO = '0x0000000000000000000000000000000000000000'
 
 // Active backers on a board, deduped from BackerUpdated logs (emitted on every stream open/update).
-async function enumerateBackers(client: KeeperPublicClient, board: Address, fromBlock: bigint): Promise<Address[]> {
-  const logs = await client.getLogs({ address: board, event: BACKER_UPDATED, fromBlock, toBlock: 'latest' })
+async function enumerateBackers(
+  client: KeeperPublicClient,
+  board: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<{ backers: Address[]; failedChunks: number }> {
+  const { logs, failedChunks } = await getLogsChunked(client, { address: board, event: BACKER_UPDATED }, fromBlock, toBlock)
   const set = new Set<Address>()
   for (const l of logs) {
     const backer = (l as { args?: { backer?: Address } }).args?.backer
     if (backer && backer !== ZERO) set.add(getAddress(backer))
   }
-  return [...set]
+  return { backers: [...set], failedChunks }
 }
 
 // Heals every streaming board the factory knows about:
@@ -85,20 +92,36 @@ export async function runKeeper(p: RunKeeperParams): Promise<KeeperReport> {
   const chunkSize = p.settleChunk ?? 50
   const actions: KeeperAction[] = []
 
-  const boards = (await p.publicClient.readContract({
-    address: p.factory,
-    abi: [FACTORY_GET_LEADERBOARDS],
-    functionName: 'getLeaderboards',
-    args: [0n, 200n],
-  })) as Address[]
-  log(`factory ${p.factory}: ${boards.length} board(s)`)
+  const [boards, latestBlock] = await Promise.all([
+    fetchAllBoards(p.publicClient, p.factory),
+    p.publicClient.getBlockNumber(),
+  ])
+  const fromBlock = p.fromBlock ?? resolveScanFromBlock(latestBlock)
+  log(`factory ${p.factory}: ${boards.length} board(s), scanning ${fromBlock}..${latestBlock}`)
 
   for (const board of boards) {
     await healTop(p, board, actions, log)
-    if (settleEnabled) await flushSettlement(p, board, chunkSize, actions, log)
+    if (settleEnabled) await flushSettlement(p, board, { fromBlock, latestBlock }, chunkSize, actions, log)
   }
 
   return { boards: boards.length, actions }
+}
+
+const BOARD_PAGE = 200n
+const READ_BATCH = 25
+
+async function fetchAllBoards(client: KeeperPublicClient, factory: Address): Promise<Address[]> {
+  const all: Address[] = []
+  for (let offset = 0n; ; offset += BOARD_PAGE) {
+    const page = (await client.readContract({
+      address: factory,
+      abi: [FACTORY_GET_LEADERBOARDS],
+      functionName: 'getLeaderboards',
+      args: [offset, BOARD_PAGE],
+    })) as Address[]
+    all.push(...page)
+    if (page.length < Number(BOARD_PAGE)) return all
+  }
 }
 
 async function healTop(p: RunKeeperParams, board: Address, actions: KeeperAction[], log: (m: string) => void) {
@@ -131,15 +154,26 @@ async function healTop(p: RunKeeperParams, board: Address, actions: KeeperAction
   }
 }
 
-async function flushSettlement(p: RunKeeperParams, board: Address, chunkSize: number, actions: KeeperAction[], log: (m: string) => void) {
+async function flushSettlement(
+  p: RunKeeperParams,
+  board: Address,
+  scan: { fromBlock: bigint; latestBlock: bigint },
+  chunkSize: number,
+  actions: KeeperAction[],
+  log: (m: string) => void,
+) {
   try {
-    const backers = await enumerateBackers(p.publicClient, board, p.fromBlock ?? 0n)
+    const { backers, failedChunks } = await enumerateBackers(p.publicClient, board, scan.fromBlock, scan.latestBlock)
+    if (failedChunks > 0) log(`${failedChunks} log chunk(s) failed on ${board}; backer set may be incomplete`)
     const owed: Address[] = []
-    for (const backer of backers) {
-      const amount = (await p.publicClient.readContract({
-        address: board, abi: [BOARD_PENDING_SETTLEMENT], functionName: 'pendingSettlement', args: [backer],
-      })) as bigint
-      if (amount > 0n) owed.push(backer)
+    for (let i = 0; i < backers.length; i += READ_BATCH) {
+      const batch = backers.slice(i, i + READ_BATCH)
+      const amounts = await Promise.all(batch.map(backer =>
+        p.publicClient.readContract({
+          address: board, abi: [BOARD_PENDING_SETTLEMENT], functionName: 'pendingSettlement', args: [backer],
+        }) as Promise<bigint>,
+      ))
+      amounts.forEach((amount, j) => { if (amount > 0n) owed.push(batch[j]) })
     }
     if (owed.length === 0) return
 
