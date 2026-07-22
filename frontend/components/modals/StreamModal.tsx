@@ -27,6 +27,7 @@ import {
   buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 
@@ -254,7 +255,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
       if (!openRef.current) return
       setApproving(false)
       setSubmitting(false)
-      setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.')
+      logTransactionError(e, 'StreamModal.openStream')
+      setError(formatTransactionError(e))
     }
   }
 
@@ -271,7 +273,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
       })
       setTxHash(hash)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.')
+      logTransactionError(e, 'StreamModal.stopStream')
+      setError(formatTransactionError(e))
     }
   }
 
@@ -288,7 +291,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
       })
       setTxHash(hash)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.')
+      logTransactionError(e, 'StreamModal.withdrawDeposit')
+      setError(formatTransactionError(e))
     }
   }
 

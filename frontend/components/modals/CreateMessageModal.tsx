@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { decodeEventLog, type Address } from 'viem'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 
@@ -47,7 +48,7 @@ export function CreateMessageModal({
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const { writeContract, data: hash, isPending, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   useEffect(() => {
@@ -67,20 +68,30 @@ export function CreateMessageModal({
     setError('Created, but could not read the new message address. Refresh the leaderboard.')
   }, [isSuccess, receipt, board, onCreated])
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'CreateMessageModal')
+  }, [writeError])
+
   const submit = () => {
     setError(null)
     if (!message.trim()) { setError('Enter a message.'); return }
     reset()
-    writeContract({
-      address: board,
-      abi: StreamingLeaderboardABI,
-      functionName: 'createMarkee',
-      args: [message, name],
-      chainId: CANONICAL_CHAIN.id,
-    })
+    try {
+      writeContract({
+        address: board,
+        abi: StreamingLeaderboardABI,
+        functionName: 'createMarkee',
+        args: [message, name],
+        chainId: CANONICAL_CHAIN.id,
+      })
+    } catch (err) {
+      logTransactionError(err, 'CreateMessageModal.createMarkee')
+      setError(formatTransactionError(err))
+    }
   }
 
   const busy = isPending || isConfirming || isSuccess
+  const transactionError = error || (writeError ? formatTransactionError(writeError) : null)
 
   return (
     <div
@@ -134,7 +145,7 @@ export function CreateMessageModal({
               </div>
             </>
           )}
-          {error && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{error}</div>}
+          {transactionError && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{transactionError}</div>}
         </div>
       </div>
     </div>
