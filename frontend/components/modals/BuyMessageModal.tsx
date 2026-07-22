@@ -42,20 +42,16 @@ function getCurrentPhaseRate(): number {
 }
 
 function calculateMarkeeTokens(ethAmount: number): number {
-  return ethAmount * 0.38 * getCurrentPhaseRate() * 0.62
+  return ethAmount * 0.38 * 0.62 * getCurrentPhaseRate() * 0.62
 }
 
 const REV_NET_ENABLED_ABI = [
   { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
 ] as const
 
-const ADMIN_ABI = [
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+const BENEFICIARY_ABI = [
+  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
-
-const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
-  '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79',
-])
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type MarkeeSlot = { address: string; owner: string; message: string; name?: string; totalFundsAdded: bigint }
@@ -189,8 +185,8 @@ export function BuyMessageModal({
     address: strategyAddress, abi: REV_NET_ENABLED_ABI, functionName: 'revNetEnabled', chainId: CANONICAL_CHAIN.id,
   })
   const revNetEnabled = revNetEnabledData ?? false
-  const { data: adminAddress } = useReadContract({
-    address: strategyAddress, abi: ADMIN_ABI, functionName: 'admin', chainId: CANONICAL_CHAIN.id,
+  const { data: beneficiaryAddress } = useReadContract({
+    address: strategyAddress, abi: BENEFICIARY_ABI, functionName: 'beneficiaryAddress', chainId: CANONICAL_CHAIN.id,
   })
 
   // ── Preset amount calculations ──────────────────────────────────────────────
@@ -273,8 +269,7 @@ export function BuyMessageModal({
 
   useEffect(() => {
     if (!isSuccess || !receipt || !address || !strategyAddress || activeTab === 'updateMessage') return
-    const normalised = strategyAddress.toLowerCase()
-    if (!SUPERFLUID_STRATEGY_ADDRESSES.has(normalised)) return
+    if (platformId !== 'superfluid') return
     const txHash = receipt.transactionHash
     const amountWei = parseEther(amount).toString()
     if (activeTab === 'addFunds') trackAddFunds(address, amountWei, txHash, strategyAddress).catch(console.error)
@@ -355,7 +350,7 @@ export function BuyMessageModal({
 
   // Amount section (create + addFunds)
   const bidNum = parseFloat(amount || '0')
-  const markeeEarned = Math.round(calculateMarkeeTokens(bidNum))
+  const markeeEarned = calculateMarkeeTokens(bidNum)
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 
@@ -414,12 +409,12 @@ export function BuyMessageModal({
               <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
                 {txStep === 'signing' && 'Waiting for wallet...'}
                 {txStep === 'pending' && 'Transaction pending on Base'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : '🎉 You just took #1')}
+                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : (!hasCompetition || selFeatured) ? '🎉 You just took #1' : '✓ Message submitted')}
               </div>
               <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
                 {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
                 {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : `"${message}" is now the #1 Markee. The board is reordering.`)}
+                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : (!hasCompetition || selFeatured) ? `"${message}" is now the #1 Markee. The board is reordering.` : `"${message}" has been added to the leaderboard.`)}
               </div>
             </div>
           </div>
@@ -476,7 +471,7 @@ export function BuyMessageModal({
                     <textarea
                       value={message}
                       onChange={e => setMessage(e.target.value.slice(0, maxLen))}
-                      placeholder="the name's mark. agent mark 🕵️"
+                      placeholder="Your message here"
                       rows={2}
                       style={{ ...inputStyle, resize: 'vertical' }}
                       onFocus={e => { e.target.style.borderColor = PINK }}
@@ -644,7 +639,7 @@ export function BuyMessageModal({
                   {revNetEnabled && bidNum > 0 && (
                     <div style={{ marginTop: 14, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
                       <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
-                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString()}</div>
+                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                       <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
                     </div>
                   )}
@@ -692,8 +687,8 @@ export function BuyMessageModal({
                   ? 'Only the message owner can update their message.'
                   : partnerName
                   ? <>62% to <span style={{ color: TEXT2 }}>{partnerName}</span> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : adminAddress
-                  ? <>62% to <a href={`https://basescan.org/address/${adminAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{adminAddress.slice(0, 6)}…{adminAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                  : beneficiaryAddress
+                  ? <>62% to <a href={`https://basescan.org/address/${beneficiaryAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{beneficiaryAddress.slice(0, 6)}…{beneficiaryAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
                   : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
               </div>
               <BtnTooltip reason={btnDisabledReason}>
