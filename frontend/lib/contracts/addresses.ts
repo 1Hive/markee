@@ -4,6 +4,8 @@ import type { Chain } from 'viem'
 // All Markees are deployed on Base (canonical chain)
 export const CANONICAL_CHAIN: Chain = base
 export const CANONICAL_CHAIN_ID = base.id
+// Earliest known Markee factory deployment on Base; avoids scanning logs from genesis.
+export const BASE_MARKEE_EVENTS_FROM_BLOCK = 43_452_028n
 // MARKEE token address (same across all chains)
 export const MARKEE_TOKEN = '0xF6627cF19317C33B457f77452876e6e297c4942F' as const
 // Partner Reserve Distributor (Base only)

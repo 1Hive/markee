@@ -4,11 +4,12 @@ import { useParams } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatEther } from 'viem'
 import { useAccount, useReadContract } from 'wagmi'
-import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
+import { Eye, ExternalLink } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl } from '@/lib/explorer'
@@ -29,6 +30,7 @@ const TEXT  = '#EDEEFF'
 const TEXT2 = '#B8B6D9'
 const MUTED = '#8A8FBF'
 const BORDER = 'rgba(138,143,191,0.2)'
+const MARKEE_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
 const HERO_GRAD = [
   'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
@@ -346,74 +348,6 @@ function FeaturedCard({ markee, topViews, ethPrice, onBuy }: {
         </button>
       </ModeratedContent>
     </div>
-  )
-}
-
-// ── History panel ─────────────────────────────────────────────────────────────
-function HistoryPanel({ markee }: { markee: LeaderboardMarkee }) {
-  return (
-    <div style={{ gridColumn: '1 / -1', background: BG, borderTop: `1px solid ${BORDER}`, padding: '12px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-      <ExternalLink size={13} style={{ color: MUTED, flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: TEXT2 }}>View full transaction history on</span>
-      <a href={getAddressUrl(CANONICAL_CHAIN_ID, markee.address)} target="_blank" rel="noopener noreferrer"
-        style={{ fontFamily: MONO, fontSize: 13, color: PINK, textDecoration: 'none', borderBottom: `1px dotted ${PINK}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        Basescan {fmtAddr(markee.address)} <ExternalLink size={10} />
-      </a>
-    </div>
-  )
-}
-
-// ── Leaderboard row ───────────────────────────────────────────────────────────
-const LB_COLS = '150px 120px 1fr 70px 200px'
-
-function LeaderRow({ markee, views, ethPrice, featured, isOwner, onAddFunds, onEdit }: {
-  markee: LeaderboardMarkee
-  views: number
-  ethPrice: number | null
-  featured: boolean
-  isOwner: boolean
-  onAddFunds: (m: LeaderboardMarkee) => void
-  onEdit: (m: LeaderboardMarkee) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const fundsEth = parseFloat(formatEther(markee.totalFundsAdded))
-  const fundsLabel = ethPrice ? formatUsd(fundsEth * ethPrice) : `${fundsEth.toFixed(3)} ETH`
-  const displayWho = markee.name || fmtAddr(markee.owner)
-
-  return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', background: featured ? `${PINK}0A` : 'transparent', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent', transition: 'background 120ms' }}>
-        <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{displayWho}</span>
-        <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{fundsLabel}</span>
-        <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{markee.message || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message</span>}</span>
-        <span style={{ fontSize: 12, color: MUTED, fontFamily: MONO, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Eye size={10} style={{ opacity: 0.6 }} /> {views > 0 ? formatViews(views) : '—'}
-        </span>
-        <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setOpen(v => !v)}
-            style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' as const }}
-          >
-            History <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-          </button>
-          {isOwner && (
-            <button
-              onClick={() => onEdit(markee)}
-              style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}44`, borderRadius: 7, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}
-            >
-              Edit
-            </button>
-          )}
-          <button
-            onClick={() => onAddFunds(markee)}
-            style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}
-          >
-            Add Funds
-          </button>
-        </div>
-      </div>
-      {open && <HistoryPanel markee={markee} />}
-    </>
   )
 }
 
@@ -1121,10 +1055,15 @@ function Skeleton() {
       <section style={{ padding: '8px 40px 20px' }}>
         <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
           <div style={{ height: 30, width: 200, background: 'rgba(138,143,191,0.1)', borderRadius: 4, marginBottom: 20 }} />
-          <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: BG2, padding: 10 }}>
             {[...Array(6)].map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                {[...Array(5)].map((_, j) => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 150px', gap: 14, alignItems: 'center', padding: '14px', border: `1px solid ${BORDER}`, borderRadius: 8, marginBottom: i === 5 ? 0 : 10 }}>
+                <div style={{ width: 30, height: 30, background: 'rgba(138,143,191,0.08)', borderRadius: 99 }} />
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ height: 16, width: '70%', background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+                  <div style={{ height: 12, width: '38%', background: 'rgba(138,143,191,0.06)', borderRadius: 4 }} />
+                </div>
+                <div style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
               </div>
             ))}
           </div>
@@ -1139,7 +1078,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const ethPrice = useEthPrice()
   const { address: connectedAddress } = useAccount()
 
-  const { meta, markees: allMarkees, isLoading } = useLeaderboardDetail(leaderboardAddress)
+  const { meta, markees: allMarkees, isLoading, refetch: refetchLeaderboard } = useLeaderboardDetail(leaderboardAddress)
   const markees = allMarkees.filter(m => m.totalFundsAdded > 0n)
   const ecoEntry = useServedOn(leaderboardAddress)
 
@@ -1201,6 +1140,23 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
   const openEdit = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setEditOpen(true) }, [])
+  const refreshAfterTransaction = useCallback(() => {
+    void refetchLeaderboard()
+  }, [refetchLeaderboard])
+  const handleBuySuccess = useCallback(() => {
+    refreshAfterTransaction()
+    setBuyOpen(false)
+  }, [refreshAfterTransaction])
+  const handleAddFundsSuccess = useCallback(() => {
+    refreshAfterTransaction()
+    setAddFundsOpen(false)
+    setModalTarget(null)
+  }, [refreshAfterTransaction])
+  const handleEditSuccess = useCallback(() => {
+    refreshAfterTransaction()
+    setEditOpen(false)
+    setModalTarget(null)
+  }, [refreshAfterTransaction])
 
   const handleSync = useCallback(async () => {
     setSyncStatus('loading')
@@ -1400,23 +1356,33 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
               <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
               <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 15 }}>The message with the most funds added takes the top spot.</p>
               <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-                <div style={{ minWidth: 720, background: BG2 }}>
-                  {/* column headers */}
-                  <div style={{ display: 'grid', gridTemplateColumns: LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
-                    {['Bought by', 'Funds added', 'Current message', 'Views', ''].map((h, i) => (
+                <div style={{ minWidth: 760, background: BG2 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: MARKEE_LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
+                    {['', 'Bought by', 'Funds added', 'Current message', 'Views', ''].map((h, i) => (
                       <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
                     ))}
                   </div>
                   {markees.map((m, i) => (
-                    <LeaderRow
+                    <ExpandableMarkeeRow
                       key={m.address}
-                      markee={m}
-                      views={viewsMap.get(m.address.toLowerCase()) ?? 0}
-                      ethPrice={ethPrice}
+                      markee={{
+                        address: m.address,
+                        message: m.message,
+                        name: m.name || fmtAddr(m.owner),
+                        owner: m.owner,
+                        totalFundsAdded: m.totalFundsAdded,
+                      }}
+                      rank={i + 1}
                       featured={i === 0}
-                      isOwner={!!connectedAddress && m.owner.toLowerCase() === connectedAddress.toLowerCase()}
-                      onAddFunds={openAddFunds}
-                      onEdit={openEdit}
+                      formatFunds={(wei) => {
+                        const fundsEth = parseFloat(formatEther(wei))
+                        return ethPrice ? formatUsd(fundsEth * ethPrice) : `${fundsEth.toFixed(3)} ETH`
+                      }}
+                      leaderboardAddress={leaderboardAddress as `0x${string}`}
+                      viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
+                      onAddFunds={() => openAddFunds(m)}
+                      actionLabel="Add Funds"
+                      onEditMessage={!!connectedAddress && m.owner.toLowerCase() === connectedAddress.toLowerCase() ? () => openEdit(m) : undefined}
                     />
                   ))}
                 </div>
@@ -1453,7 +1419,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
         <BuyMessageModal
           isOpen={buyOpen}
           onClose={() => setBuyOpen(false)}
-          onSuccess={() => setBuyOpen(false)}
+          onSuccess={handleBuySuccess}
           initialMode="create"
           strategyAddress={leaderboardAddress as `0x${string}`}
           topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
@@ -1465,7 +1431,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
         <BuyMessageModal
           isOpen={addFundsOpen}
           onClose={() => { setAddFundsOpen(false); setModalTarget(null) }}
-          onSuccess={() => { setAddFundsOpen(false); setModalTarget(null) }}
+          onSuccess={handleAddFundsSuccess}
           userMarkee={modalTarget as any}
           initialMode="addFunds"
           strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
@@ -1478,7 +1444,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
         <BuyMessageModal
           isOpen={editOpen}
           onClose={() => { setEditOpen(false); setModalTarget(null) }}
-          onSuccess={() => { setEditOpen(false); setModalTarget(null) }}
+          onSuccess={handleEditSuccess}
           userMarkee={modalTarget as any}
           initialMode="updateMessage"
           strategyAddress={modalTarget.pricingStrategy as `0x${string}`}

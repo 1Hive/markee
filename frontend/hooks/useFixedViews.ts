@@ -43,12 +43,12 @@ export function useFixedViews(fixedMarkees: FixedMarkee[]) {
 
   // Track a single fixed markee view (increments server-side, deduped per IP/hour)
   const trackView = useCallback(async (fixedMarkee: FixedMarkee) => {
+    const message = fixedMarkee.message || fixedMarkee.name
+    if (!message) return
+
     const key = fixedMarkee.strategyAddress.toLowerCase()
     if (sessionTracked.has(key)) return
     sessionTracked.add(key)
-
-    const message = fixedMarkee.message || fixedMarkee.name
-    if (!message) return
 
     try {
       const res = await fetch('/api/views', {

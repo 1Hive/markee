@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
+import { MARKEE_TOKEN_PHASES } from '@/lib/tokenPhases'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -16,37 +17,15 @@ const GARDENS_URL = 'https://app.gardens.fund/gardens/8453/0x9a378ebed22610e9fbb
 const REVNET_URL = 'https://revnet.app/base/markee'
 const GROWTH_FUND_URL = GARDENS_URL
 
-// ── Issuance schedule ─────────────────────────────────────────────────────────
-const SEASON_MS = 91.31 * 24 * 60 * 60 * 1000
-const SCHEDULE_START = new Date('2025-12-21T00:00:00Z')
-
-function buildPhases() {
-  const rules = [
-    { stage: 1, cut: 0.5, seasons: 4 },
-    { stage: 2, cut: 0.2, seasons: 8 },
-    { stage: 3, cut: 0.1, seasons: 6 },
-  ]
-  const out: { idx: number; stage: number; rate: number; start: Date; end: Date }[] = []
-  let rate = 100000, idx = 0
-  rules.forEach(r => {
-    for (let i = 0; i < r.seasons; i++) {
-      out.push({ idx, stage: r.stage, rate: Math.round(rate), start: new Date(SCHEDULE_START.getTime() + idx * SEASON_MS), end: new Date(SCHEDULE_START.getTime() + (idx + 1) * SEASON_MS) })
-      rate = rate * (1 - r.cut)
-      idx++
-    }
-  })
-  return out
-}
-const PHASES = buildPhases()
 function currentPhaseIdx() {
   const now = Date.now()
-  for (let i = 0; i < PHASES.length; i++) if (now < PHASES[i].end.getTime()) return i
-  return PHASES.length - 1
+  for (let i = 0; i < MARKEE_TOKEN_PHASES.length; i++) if (now < MARKEE_TOKEN_PHASES[i].end.getTime()) return i
+  return MARKEE_TOKEN_PHASES.length - 1
 }
 
 // ── Countdown ─────────────────────────────────────────────────────────────────
 function BigCountdown() {
-  const phase = PHASES[currentPhaseIdx()]
+  const phase = MARKEE_TOKEN_PHASES[currentPhaseIdx()]
   const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0 })
   useEffect(() => {
     const tick = () => {
@@ -74,7 +53,7 @@ function BigCountdown() {
 // ── Phases card ───────────────────────────────────────────────────────────────
 function PhasesViz() {
   const cur = currentPhaseIdx()
-  const shown = PHASES.slice(0, 5)
+  const shown = MARKEE_TOKEN_PHASES.slice(0, 5)
   const fmtDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
   return (
     <div style={{ background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 16, padding: 26 }}>

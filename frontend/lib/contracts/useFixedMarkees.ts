@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useReadContracts } from 'wagmi'
 import { CONTRACTS, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { FixedPriceStrategyABI, MarkeeABI } from '@/lib/contracts/abis'
@@ -21,41 +21,47 @@ export function useFixedMarkees() {
   const [markees, setMarkees] = useState<FixedMarkee[]>([])
   const [markeeAddresses, setMarkeeAddresses] = useState<(string | null)[]>([])
 
-  const fixedStrategies = CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || []
+  const fixedStrategies = useMemo(
+    () => CONTRACTS[CANONICAL_CHAIN_ID]?.fixedPriceStrategies || [],
+    []
+  )
 
   // Step 1: Read from FixedPriceStrategy contracts (5 fields each)
-  const strategyContracts = fixedStrategies.flatMap((strategy) => [
-    {
-      address: strategy.address,
-      abi: FixedPriceStrategyABI,
-      functionName: 'markeeAddress' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: strategy.address,
-      abi: FixedPriceStrategyABI,
-      functionName: 'price' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: strategy.address,
-      abi: FixedPriceStrategyABI,
-      functionName: 'owner' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: strategy.address,
-      abi: FixedPriceStrategyABI,
-      functionName: 'maxMessageLength' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: strategy.address,
-      abi: FixedPriceStrategyABI,
-      functionName: 'revNetEnabled' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-  ])
+  const strategyContracts = useMemo(
+    () => fixedStrategies.flatMap((strategy) => [
+      {
+        address: strategy.address,
+        abi: FixedPriceStrategyABI,
+        functionName: 'markeeAddress' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+      {
+        address: strategy.address,
+        abi: FixedPriceStrategyABI,
+        functionName: 'price' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+      {
+        address: strategy.address,
+        abi: FixedPriceStrategyABI,
+        functionName: 'owner' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+      {
+        address: strategy.address,
+        abi: FixedPriceStrategyABI,
+        functionName: 'maxMessageLength' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+      {
+        address: strategy.address,
+        abi: FixedPriceStrategyABI,
+        functionName: 'revNetEnabled' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+    ]),
+    [fixedStrategies]
+  )
 
   const {
     data: strategyData,
@@ -80,22 +86,28 @@ export function useFixedMarkees() {
   }, [strategyData, fixedStrategies])
 
   // Step 2: Read message + name from each Markee contract
-  const validAddresses = markeeAddresses.filter((addr): addr is string => !!addr)
+  const validAddresses = useMemo(
+    () => markeeAddresses.filter((addr): addr is string => !!addr),
+    [markeeAddresses]
+  )
 
-  const markeeContracts = validAddresses.flatMap((address) => [
-    {
-      address: address as `0x${string}`,
-      abi: MarkeeABI,
-      functionName: 'message' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-    {
-      address: address as `0x${string}`,
-      abi: MarkeeABI,
-      functionName: 'name' as const,
-      chainId: CANONICAL_CHAIN_ID,
-    },
-  ])
+  const markeeContracts = useMemo(
+    () => validAddresses.flatMap((address) => [
+      {
+        address: address as `0x${string}`,
+        abi: MarkeeABI,
+        functionName: 'message' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+      {
+        address: address as `0x${string}`,
+        abi: MarkeeABI,
+        functionName: 'name' as const,
+        chainId: CANONICAL_CHAIN_ID,
+      },
+    ]),
+    [validAddresses]
+  )
 
   const {
     data: markeeData,

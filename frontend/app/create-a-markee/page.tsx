@@ -10,6 +10,7 @@ import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { STRATEGIES, type Strategy, type Vertical } from '@/lib/strategy'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -704,6 +705,10 @@ function CreateWizardInner() {
     setStep(s => s + 1)
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'CreateMarkeeWizard')
+  }, [writeError])
+
   const setValue = (k: string, v: string) => setValuesRaw(prev => ({ ...prev, [k]: v }))
 
   const vInfo = vertical ? VERTICALS.find(v => v.key === vertical)! : null
@@ -753,13 +758,18 @@ function CreateWizardInner() {
       vertical === 'github' ? (selectedRepo?.split('/').pop() ?? 'My Repo') :
       (values.projectName?.trim() || 'My Project')
     resetWrite()
-    writeContract({
-      address: FACTORIES[strategy][vertical],
-      abi: FACTORY_ABI,
-      functionName: 'createLeaderboard',
-      args: [bene as `0x${string}`, name],
-      chainId: CANONICAL_CHAIN.id,
-    })
+    try {
+      writeContract({
+        address: FACTORIES[strategy][vertical],
+        abi: FACTORY_ABI,
+        functionName: 'createLeaderboard',
+        args: [bene as `0x${string}`, name],
+        chainId: CANONICAL_CHAIN.id,
+      })
+    } catch (err) {
+      logTransactionError(err, 'CreateMarkeeWizard.createLeaderboard')
+      setTxError(formatTransactionError(err))
+    }
   }
 
   const busy = isPending || isConfirming
@@ -838,7 +848,7 @@ function CreateWizardInner() {
             vertical={vInfo} strategy={strategy} values={values}
             selectedRepo={selectedRepo} selectedFile={selectedFile}
             isPending={isPending} isConfirming={isConfirming}
-            error={txError ?? (writeError ? (writeError as Error).message : null)}
+            error={txError ?? (writeError ? formatTransactionError(writeError) : null)}
             isConnected={isConnected}
           />
         </StepShell>

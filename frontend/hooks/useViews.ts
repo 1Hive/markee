@@ -48,9 +48,10 @@ export function useViews(markees: Markee[]) {
 
   // Increment view for a single markee (called per-card on mount)
   const trackView = useCallback(async (markee: Markee) => {
+    if (!markee.message) return
+
     const key = markee.address.toLowerCase()
     if (sessionTracked.has(key)) return
-    if (!markee.message) return
     sessionTracked.add(key)
 
     try {

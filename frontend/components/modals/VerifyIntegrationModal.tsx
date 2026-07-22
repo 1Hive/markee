@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, CheckCircle2, AlertCircle, Loader2, ExternalLink, Globe2 } from 'lucide-react'
 
 interface VerifyIntegrationModalProps {
@@ -26,6 +26,31 @@ export function VerifyIntegrationModal({
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [localVerifiedUrls, setLocalVerifiedUrls] = useState<string[]>(leaderboard.verifiedUrls ?? [])
+
+  useEffect(() => {
+    if (!isOpen) return
+    setVerifyUrl('')
+    setVerifyError(null)
+    setVerifying(false)
+    setLocalVerifiedUrls(leaderboard.verifiedUrls ?? [])
+  }, [isOpen, leaderboard.address]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const blockBackdropClose = !!verifyUrl.trim() && !verifying
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
 
   if (!isOpen) return null
 
@@ -57,7 +82,12 @@ export function VerifyIntegrationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => {
+          if (!blockBackdropClose) onClose()
+        }}
+      />
       <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-7 max-w-lg w-full shadow-2xl">
         <button
           onClick={onClose}

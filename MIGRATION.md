@@ -65,7 +65,7 @@ No pending work.
 
 ## RevNet v6 activation checklist
 
-**Terminal:** `0x130f5Dd2bD8805443Cf41755253D778a75a67f53`  
+**Terminal:** `0x130f5Dd2bD8805443Cf41755253D778a75a67f53`
 **Project ID:** `7` (Base)
 
 Run these `onlyAdmin` calls on **every active v1.1 Leaderboard**:
