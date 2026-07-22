@@ -2,22 +2,7 @@
 import { base } from 'wagmi/chains'
 import type { Chain } from 'viem'
 // All Markees are deployed on Base (canonical chain)
-//
-// FORK-TESTING ONLY — REMOVE BEFORE MAINNET. When NEXT_PUBLIC_BASE_RPC_URL points at a Base fork, we
-// override the chain's rpcUrls so Privy embedded wallets broadcast writes through the fork (Privy reads
-// chain.rpcUrls, not the wagmi transport). Same chainId (8453), so the ETHx permit domain is unchanged.
-// External wallets still use their own RPC and are NOT fork-safe. Delete this override + the env var for prod.
-const FORK_RPC = process.env.NEXT_PUBLIC_BASE_RPC_URL
-export const CANONICAL_CHAIN: Chain = FORK_RPC
-  ? {
-      ...base,
-      rpcUrls: {
-        ...base.rpcUrls,
-        default: { http: [FORK_RPC] },
-        privyWalletOverride: { http: [FORK_RPC] },
-      },
-    }
-  : base
+export const CANONICAL_CHAIN: Chain = base
 export const CANONICAL_CHAIN_ID = base.id
 // MARKEE token address (same across all chains)
 export const MARKEE_TOKEN = '0xF6627cF19317C33B457f77452876e6e297c4942F' as const
@@ -49,9 +34,9 @@ export const FACTORIES = {
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
 } as const
 
-// StreamingLeaderboardFactory — not yet deployed on Base mainnet (gated on the Superfluid governance
-// setAppRegistrationKey). Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed (or anvil-fork) factory
-// address to light up the streaming listing + create flow; unset/invalid keeps the feature hidden.
+// StreamingLeaderboardFactory — deployment is gated on the Superfluid governance setAppRegistrationKey.
+// Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed factory address to light up the streaming listing +
+// create flow; unset/invalid keeps the feature hidden.
 export const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '') as `0x${string}` | ''
 export const STREAMING_ENABLED = /^0x[0-9a-fA-F]{40}$/.test(STREAMING_FACTORY)
 

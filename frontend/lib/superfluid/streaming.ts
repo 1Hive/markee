@@ -11,7 +11,7 @@ import {
 export const SECONDS_IN_MONTH = 2628000n
 export const BUFFER_PERIOD = 14400n // Base Superfluid liquidation (buffer) period: 4h.
 
-// Base Superfluid protocol addresses (confirmed against the fork tests' setUp).
+// Base Superfluid protocol addresses.
 export const STREAMING_BASE = {
   host: '0x4C073B3baB6d8826b8C5b229f3cfdC1eC6E47E74',
   ethx: '0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93',
