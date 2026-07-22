@@ -7,6 +7,12 @@ export interface BoardTotals {
   raisedRate: bigint
 }
 
+// What one backer has put into a board, net of what the GDA refund pool has paid back to them.
+export interface BackerPosition {
+  contributed: bigint
+  rate: bigint
+}
+
 interface SnapshotRow {
   id: string
   updatedAtTimestamp: string
@@ -40,6 +46,48 @@ const POOL_QUERY = `query BoardPools($admins: [String!]!, $token: String!, $skip
     adjustmentFlowRate
     totalAmountFlowedDistributedUntilUpdatedAt
     totalAmountInstantlyDistributedUntilUpdatedAt
+  }
+}`
+
+interface BackerStreamRow {
+  receiver: { id: string }
+  updatedAtTimestamp: string
+  currentFlowRate: string
+  streamedUntilUpdatedAt: string
+}
+
+interface BackerMemberRow {
+  units: string
+  totalAmountReceivedUntilUpdatedAt: string
+  syncedPerUnitSettledValue: string
+  pool: {
+    admin: { id: string }
+    updatedAtTimestamp: string
+    perUnitSettledValue: string
+    perUnitFlowRate: string
+  }
+}
+
+const BACKER_STREAM_QUERY = `query BackerStreams($sender: String!, $token: String!, $receivers: [String!]!) {
+  streams(where: { sender: $sender, token: $token, receiver_in: $receivers }, first: ${PAGE}) {
+    receiver { id }
+    updatedAtTimestamp
+    currentFlowRate
+    streamedUntilUpdatedAt
+  }
+}`
+
+const BACKER_REFUND_QUERY = `query BackerRefunds($account: String!, $token: String!, $admins: [String!]!) {
+  poolMembers(where: { account: $account, pool_: { admin_in: $admins, token: $token } }, first: ${PAGE}) {
+    units
+    totalAmountReceivedUntilUpdatedAt
+    syncedPerUnitSettledValue
+    pool {
+      admin { id }
+      updatedAtTimestamp
+      perUnitSettledValue
+      perUnitFlowRate
+    }
   }
 }`
 
@@ -103,6 +151,67 @@ export async function fetchBoardTotals(
         entry.raisedRate = entry.raisedRate > refundRate ? entry.raisedRate - refundRate : 0n
       }
       if (pools.length < PAGE) break
+    }
+  }
+  return out
+}
+
+// Per-board contribution for a single backer, keyed by board address. Mirrors fetchBoardTotals:
+// gross ETHx streamed in, minus what the board's GDA refund pool has streamed back to this backer
+// (apportioned by their share of the pool's units, since the pool pays every member pro rata).
+export async function fetchBackerPositions(
+  backer: string,
+  boards: readonly string[],
+  token: string,
+  atTimestamp: bigint,
+): Promise<Map<string, BackerPosition>> {
+  const out = new Map<string, BackerPosition>()
+  if (boards.length === 0) return out
+  const tokenId = token.toLowerCase()
+  const sender = backer.toLowerCase()
+  const addrs = boards.map(b => b.toLowerCase())
+
+  for (let i = 0; i < addrs.length; i += ADDR_BATCH) {
+    const batch = addrs.slice(i, i + ADDR_BATCH)
+
+    const { streams } = await query<{ streams: BackerStreamRow[] }>(
+      BACKER_STREAM_QUERY, { sender, token: tokenId, receivers: batch },
+    )
+    for (const row of streams) {
+      const board = row.receiver.id.toLowerCase()
+      const rate = BigInt(row.currentFlowRate)
+      const streamed = carryForward(BigInt(row.streamedUntilUpdatedAt), rate, BigInt(row.updatedAtTimestamp), atTimestamp)
+      const entry = out.get(board)
+      // A board can hold several Stream entities for one sender: each close/reopen starts a new one.
+      if (entry) {
+        entry.contributed += streamed
+        entry.rate += rate
+      } else {
+        out.set(board, { contributed: streamed, rate })
+      }
+    }
+
+    if (out.size === 0) continue
+
+    const { poolMembers } = await query<{ poolMembers: BackerMemberRow[] }>(
+      BACKER_REFUND_QUERY, { account: sender, token: tokenId, admins: batch },
+    )
+    for (const member of poolMembers) {
+      const entry = out.get(member.pool.admin.id.toLowerCase())
+      if (!entry) continue
+      const units = BigInt(member.units)
+      // GDA member accounting: the amount settled to the member is only current as of their own last
+      // sync, so top it up with the pool's per-unit settled value accrued since (which covers rate
+      // changes in that window), then carry forward at the current per-unit rate from the pool's last
+      // update. perUnitFlowRate already nets off the pool's adjustment flow.
+      const settled = BigInt(member.pool.perUnitSettledValue) - BigInt(member.syncedPerUnitSettledValue)
+      const memberRate = units * BigInt(member.pool.perUnitFlowRate)
+      const refunded = carryForward(
+        BigInt(member.totalAmountReceivedUntilUpdatedAt) + units * settled,
+        memberRate, BigInt(member.pool.updatedAtTimestamp), atTimestamp,
+      )
+      entry.contributed = entry.contributed > refunded ? entry.contributed - refunded : 0n
+      entry.rate = entry.rate > memberRate ? entry.rate - memberRate : 0n
     }
   }
   return out
