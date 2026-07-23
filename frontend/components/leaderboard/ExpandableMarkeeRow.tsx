@@ -77,8 +77,8 @@ type TxHistoryEventWithoutTimestamp = TxHistoryEvent extends infer Event
     : never
   : never
 
-const FUNDS_ADDED = parseAbiItem(
-  'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
+const PAYMENT_RECEIVED = parseAbiItem(
+  'event PaymentReceived(uint256 totalAmount, uint256 beneficiaryAmount, uint256 revNetBuyerAmount, uint256 revNetFeeReceiverAmount, address indexed tokenRecipient, uint256 newTotalFundsAdded)'
 )
 const MESSAGE_CHANGED = parseAbiItem(
   'event MessageChanged(string newMessage, address indexed changedBy)'
@@ -268,7 +268,7 @@ export function ExpandableMarkeeRow({
         }
 
         const historyLogs = await Promise.all([
-          publicClient!.getLogs({ address: markeeAddress, event: FUNDS_ADDED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
+          publicClient!.getLogs({ address: markeeAddress, event: PAYMENT_RECEIVED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
           publicClient!.getLogs({ address: markeeAddress, event: MESSAGE_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
           publicClient!.getLogs({ address: markeeAddress, event: NAME_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
         ])
@@ -279,9 +279,9 @@ export function ExpandableMarkeeRow({
           ...fundsLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'funds' as const,
-            amount: ((log.args as any).amount as bigint) ?? 0n,
-            newTotal: (((log.args as any).newMarkeeTotal as bigint) ?? ((log.args as any).newTotal as bigint)) ?? 0n,
-            actor: ((log.args as any).addedBy as string) ?? '',
+            amount: log.args.totalAmount ?? 0n,
+            newTotal: log.args.newTotalFundsAdded ?? 0n,
+            actor: log.args.tokenRecipient ?? '',
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
             transactionHash: log.transactionHash ?? '',
@@ -289,8 +289,8 @@ export function ExpandableMarkeeRow({
           ...messageLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'message' as const,
-            message: ((log.args as any).newMessage as string) ?? '',
-            actor: (((log.args as any).updatedBy as string) ?? ((log.args as any).changedBy as string)) ?? '',
+            message: log.args.newMessage ?? '',
+            actor: log.args.changedBy ?? '',
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
             transactionHash: log.transactionHash ?? '',
@@ -298,8 +298,8 @@ export function ExpandableMarkeeRow({
           ...nameLogs.map(log => ({
             id: `${log.transactionHash}-${log.logIndex}`,
             kind: 'name' as const,
-            name: ((log.args as any).newName as string) ?? '',
-            actor: (((log.args as any).updatedBy as string) ?? ((log.args as any).changedBy as string)) ?? '',
+            name: log.args.newName ?? '',
+            actor: log.args.changedBy ?? '',
             blockNumber: log.blockNumber ?? 0n,
             logIndex: Number(log.logIndex ?? 0),
             transactionHash: log.transactionHash ?? '',

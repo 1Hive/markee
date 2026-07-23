@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useAccount } from 'wagmi'
-import { useWallets } from '@privy-io/react-auth'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
@@ -789,10 +788,7 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
-  const { address: walletAddress, isConnected } = useAccount()
-  const { wallets } = useWallets()
-  const activeAddress = walletAddress ?? wallets[0]?.address
-  const hasWallet = !!activeAddress || isConnected
+  const { activeAddress, hasWallet } = useActiveWallet()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
