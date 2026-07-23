@@ -1179,7 +1179,7 @@ export default function AccountPage() {
           leaderboardAddress={editingBoard.address}
           initialSiteUrl={editingBoard.siteUrl}
           initialLogoUrl={editingBoard.logoUrl}
-          onSuccess={() => { setEditingBoard(null); if (walletAddress) fetchAll(walletAddress) }}
+          onSuccess={() => { setEditingBoard(null); if (activeAddress) fetchAll(activeAddress) }}
         />
       )}
 
@@ -1197,7 +1197,7 @@ export default function AccountPage() {
           isOpen={!!verifyBoard}
           onClose={() => setVerifyBoard(null)}
           leaderboard={{ address: verifyBoard.address, name: verifyBoard.name, verifiedUrls: verifyBoard.verifiedUrls }}
-          onVerified={() => { if (walletAddress) fetchAll(walletAddress) }}
+          onVerified={() => { if (activeAddress) fetchAll(activeAddress) }}
           onOpenIntegration={() => { setVerifyBoard(null); setIntegrationBoard(verifyBoard) }}
         />
       )}
