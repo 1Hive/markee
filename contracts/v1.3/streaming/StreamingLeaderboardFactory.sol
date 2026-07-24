@@ -46,6 +46,9 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     address public factoryAdmin;
 
     // ─── Registry ─────────────────────────────────────────────────────────────
+    /// @dev 31 keeps each tag within Solidity's single-slot short-string layout.
+    uint256 public constant MAX_PLATFORM_TAG_LENGTH = 31;
+
     struct Platform {
         string name;
         string id;
@@ -82,6 +85,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     error NotFactoryLeaderboard();
     error EmptyPlatformName();
     error EmptyPlatformId();
+    error PlatformTagTooLong();
     error ZeroHost();
     error ZeroETHx();
     error ZeroRevNetTerminal();
@@ -142,8 +146,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         string calldata _platformId
     ) external returns (address leaderboardAddress, address seedMarkeeAddress) {
         if (bytes(_leaderboardName).length == 0) revert EmptyName();
-        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
-        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
+        _validatePlatformTags(_platformName, _platformId);
 
         leaderboardAddress = _clone(leaderboardImplementation);
 
@@ -197,8 +200,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         onlyFactoryAdmin
     {
         if (!isFactoryLeaderboard[_leaderboard]) revert NotFactoryLeaderboard();
-        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
-        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
+        _validatePlatformTags(_platformName, _platformId);
         boardPlatform[_leaderboard] = Platform({ name: _platformName, id: _platformId });
         emit LeaderboardPlatformAssigned(_leaderboard, _platformName, _platformId);
     }
@@ -265,6 +267,15 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         if (_newLength == 0) revert ZeroMaxNameLength();
         emit DefaultMaxNameLengthChanged(defaultMaxNameLength, _newLength);
         defaultMaxNameLength = _newLength;
+    }
+
+    function _validatePlatformTags(string calldata _platformName, string calldata _platformId) internal pure {
+        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
+        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
+        if (bytes(_platformName).length > MAX_PLATFORM_TAG_LENGTH || bytes(_platformId).length > MAX_PLATFORM_TAG_LENGTH)
+        {
+            revert PlatformTagTooLong();
+        }
     }
 
     // ─── EIP-1167 minimal proxy ───────────────────────────────────────────────

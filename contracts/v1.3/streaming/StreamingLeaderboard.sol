@@ -830,7 +830,10 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///      aggregated into one pay() to the (trusted, governance-set) fee receiver, isolated the same
     ///      way: a failed fee pay is re-wrapped and credited to the fee receiver's claimable (settled
     ///      later via settle([feeReceiver])) instead of reverting the whole batch. Factory config is
-    ///      read once up front (invariant within this nonReentrant call).
+    ///      read once up front (invariant within this nonReentrant call). Note settle([feeReceiver])
+    ///      applies the fee split to the fee receiver's own claimable (fee-on-fee); this is neutral
+    ///      only because the buyer pay and the aggregated fee pay name the same recipient, and must be
+    ///      revisited if the fee receiver is ever decoupled from the RevNet token recipient.
     function _routeRevNetSettlement(address[] calldata backers, uint256[] memory amounts) internal {
         ILeaderboardFactory f = ILeaderboardFactory(factory);
         if (!f.revNetEnabled()) {

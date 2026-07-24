@@ -1274,6 +1274,10 @@ contract StreamingLeaderboardTest is Test {
 
         vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformId.selector);
         factory.createLeaderboard(beneficiary, "X", "GitHub", "");
+
+        string memory tooLong = string(new bytes(32));
+        vm.expectRevert(StreamingLeaderboardFactory.PlatformTagTooLong.selector);
+        factory.createLeaderboard(beneficiary, "X", tooLong, "github");
     }
 
     /// @notice The factory admin can correct a board's platform tags; non-admins, unknown boards,
@@ -1295,6 +1299,8 @@ contract StreamingLeaderboardTest is Test {
         factory.setBoardPlatform(address(board), "", "x");
         vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformId.selector);
         factory.setBoardPlatform(address(board), "X", "");
+        vm.expectRevert(StreamingLeaderboardFactory.PlatformTagTooLong.selector);
+        factory.setBoardPlatform(address(board), "X", string(new bytes(32)));
         vm.stopPrank();
     }
 
