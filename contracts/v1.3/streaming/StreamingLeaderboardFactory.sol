@@ -10,7 +10,7 @@ import { ILeaderboardFactory } from "../Interfaces.sol";
 
 /// @title StreamingLeaderboardFactory (Option B)
 /// @notice Single factory for the streaming pricing strategy, serving every platform: each board is
-///         tagged with its platform at creation (boardPlatformName/boardPlatformId). Mirrors v1.3
+///         tagged with its platform at creation (boardPlatform: name + id). Mirrors v1.3
 ///         LeaderboardFactory (deploys both implementations in its constructor, holds factory-level
 ///         RevNet/fee config read by every clone at settle-time), and additionally acts as the SuperApp
 ///         registrar: it registers each cloned StreamingLeaderboard with the Superfluid host so
@@ -46,10 +46,13 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     address public factoryAdmin;
 
     // ─── Registry ─────────────────────────────────────────────────────────────
+    struct Platform {
+        string name;
+        string id;
+    }
+
     address[] public leaderboards;
-    mapping(address => bool) public isFactoryLeaderboard;
-    mapping(address => string) public boardPlatformId;
-    mapping(address => string) public boardPlatformName;
+    mapping(address => Platform) public boardPlatform;
 
     // ─── Events ───────────────────────────────────────────────────────────────
     event LeaderboardCreated(
@@ -126,8 +129,8 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     // ─── Leaderboard creation ─────────────────────────────────────────────────
 
     /// @notice Creates a board tagged with an explicit platform, recorded on-chain
-    ///         (boardPlatformName/boardPlatformId + LeaderboardPlatformAssigned) as a free-form grouping
-    ///         tag. Curation of which boards belong to a platform is handled off-chain.
+    ///         (boardPlatform + LeaderboardPlatformAssigned) as a free-form grouping tag.
+    ///         Curation of which boards belong to a platform is handled off-chain.
     function createLeaderboard(
         address _beneficiaryAddress,
         string calldata _leaderboardName,
@@ -156,9 +159,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         HOST.registerApp(ISuperApp(leaderboardAddress), configWord);
 
         leaderboards.push(leaderboardAddress);
-        isFactoryLeaderboard[leaderboardAddress] = true;
-        boardPlatformName[leaderboardAddress] = _platformName;
-        boardPlatformId[leaderboardAddress] = _platformId;
+        boardPlatform[leaderboardAddress] = Platform({ name: _platformName, id: _platformId });
 
         emit LeaderboardCreated(
             leaderboardAddress, msg.sender, _beneficiaryAddress, _leaderboardName, seedMarkeeAddress
@@ -167,6 +168,12 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     // ─── Registry queries ─────────────────────────────────────────────────────
+
+    /// @dev createLeaderboard rejects empty platform names, so every registered board has a non-empty
+    ///      boardPlatform entry; membership is derived from it instead of a dedicated flag.
+    function isFactoryLeaderboard(address leaderboard) external view returns (bool) {
+        return bytes(boardPlatform[leaderboard].name).length != 0;
+    }
 
     function leaderboardCount() external view returns (uint256) {
         return leaderboards.length;

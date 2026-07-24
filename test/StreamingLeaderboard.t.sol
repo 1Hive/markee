@@ -1260,12 +1260,14 @@ contract StreamingLeaderboardTest is Test {
 
     /// @notice createLeaderboard records the board's platform on-chain, and empty platform fields revert.
     function test_createLeaderboard_platformTagging() public {
-        assertEq(factory.boardPlatformId(address(board)), "openinternet");
-        assertEq(factory.boardPlatformName(address(board)), "Open Internet");
+        (string memory platformName, string memory platformId) = factory.boardPlatform(address(board));
+        assertEq(platformId, "openinternet");
+        assertEq(platformName, "Open Internet");
 
         (address gh,) = factory.createLeaderboard(beneficiary, "Repo Board", "GitHub", "github");
-        assertEq(factory.boardPlatformId(gh), "github");
-        assertEq(factory.boardPlatformName(gh), "GitHub");
+        (platformName, platformId) = factory.boardPlatform(gh);
+        assertEq(platformId, "github");
+        assertEq(platformName, "GitHub");
 
         vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformName.selector);
         factory.createLeaderboard(beneficiary, "X", "", "github");
