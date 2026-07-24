@@ -53,6 +53,8 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
     address[] public leaderboards;
     mapping(address => bool) public isFactoryLeaderboard;
+    /// @dev The auto-getter returns an unnamed (name, id) tuple; indexers should prefer the
+    ///      LeaderboardPlatformAssigned event, whose fields are named. Latest event wins.
     mapping(address => Platform) public boardPlatform;
 
     // ─── Events ───────────────────────────────────────────────────────────────
@@ -77,6 +79,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
     // ─── Custom errors (smaller bytecode than require strings) ────────────────
     error OnlyFactoryAdmin();
+    error NotFactoryLeaderboard();
     error EmptyPlatformName();
     error EmptyPlatformId();
     error ZeroHost();
@@ -187,11 +190,29 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
     // ─── Factory admin setters ────────────────────────────────────────────────
 
+    /// @notice Corrects a board's platform tags after creation (typo fix, platform rebrand).
+    ///         Re-emits LeaderboardPlatformAssigned; indexers treat the latest event as current.
+    function setBoardPlatform(address _leaderboard, string calldata _platformName, string calldata _platformId)
+        external
+        onlyFactoryAdmin
+    {
+        if (!isFactoryLeaderboard[_leaderboard]) revert NotFactoryLeaderboard();
+        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
+        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
+        boardPlatform[_leaderboard] = Platform({ name: _platformName, id: _platformId });
+        emit LeaderboardPlatformAssigned(_leaderboard, _platformName, _platformId);
+    }
+
     function setRevNetEnabled(bool _enabled) external onlyFactoryAdmin {
         emit RevNetEnabledChanged(revNetEnabled, _enabled);
         revNetEnabled = _enabled;
     }
 
+    /// @notice Share of the top inflow (bps) streamed live to each board's beneficiary. Independent of
+    ///         percentToPlatformFeeReceiver: the two are NOT complementary shares of one pot. This
+    ///         percent leaves first as a live stream; whatever the board retains accrues to backers,
+    ///         and the platform fee is later taken out of THAT at settle time. At 10000 the board
+    ///         retains nothing, so backers accrue nothing and the platform fee is moot.
     function setPercentToBeneficiary(uint256 _newPercent) external onlyFactoryAdmin {
         if (_newPercent > 10000) revert PercentTooHigh();
         emit PercentToBeneficiaryChanged(percentToBeneficiary, _newPercent);
@@ -215,6 +236,8 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         platformFeeReceiver = _newReceiver;
     }
 
+    /// @notice Platform fee (bps) taken from each RETAINED amount at settle time, i.e. a share of what
+    ///         is left after the beneficiary stream, not of total inflow. See setPercentToBeneficiary.
     function setPercentToPlatformFeeReceiver(uint256 _newPercent) external onlyFactoryAdmin {
         if (_newPercent > 10000) revert PercentTooHigh();
         emit PercentToPlatformFeeReceiverChanged(percentToPlatformFeeReceiver, _newPercent);

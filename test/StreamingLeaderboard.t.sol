@@ -1276,6 +1276,28 @@ contract StreamingLeaderboardTest is Test {
         factory.createLeaderboard(beneficiary, "X", "GitHub", "");
     }
 
+    /// @notice The factory admin can correct a board's platform tags; non-admins, unknown boards,
+    ///         and empty fields revert.
+    function test_setBoardPlatform() public {
+        vm.prank(admin);
+        factory.setBoardPlatform(address(board), "OpenInternet", "open-internet");
+        (string memory platformName, string memory platformId) = factory.boardPlatform(address(board));
+        assertEq(platformName, "OpenInternet");
+        assertEq(platformId, "open-internet");
+
+        vm.expectRevert(StreamingLeaderboardFactory.OnlyFactoryAdmin.selector);
+        factory.setBoardPlatform(address(board), "X", "x");
+
+        vm.startPrank(admin);
+        vm.expectRevert(StreamingLeaderboardFactory.NotFactoryLeaderboard.selector);
+        factory.setBoardPlatform(makeAddr("notABoard"), "X", "x");
+        vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformName.selector);
+        factory.setBoardPlatform(address(board), "", "x");
+        vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformId.selector);
+        factory.setBoardPlatform(address(board), "X", "");
+        vm.stopPrank();
+    }
+
     /// @notice The Markee owner can reassign free-edit ownership through the board; non-owners cannot.
     function test_transferMarkeeOwnership() public {
         address m = _newMarkee("m", "alpha");
