@@ -52,6 +52,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     address[] public leaderboards;
+    mapping(address => bool) public isFactoryLeaderboard;
     mapping(address => Platform) public boardPlatform;
 
     // ─── Events ───────────────────────────────────────────────────────────────
@@ -159,6 +160,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         HOST.registerApp(ISuperApp(leaderboardAddress), configWord);
 
         leaderboards.push(leaderboardAddress);
+        isFactoryLeaderboard[leaderboardAddress] = true;
         boardPlatform[leaderboardAddress] = Platform({ name: _platformName, id: _platformId });
 
         emit LeaderboardCreated(
@@ -168,12 +170,6 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     // ─── Registry queries ─────────────────────────────────────────────────────
-
-    /// @dev createLeaderboard rejects empty platform names, so every registered board has a non-empty
-    ///      boardPlatform entry; membership is derived from it instead of a dedicated flag.
-    function isFactoryLeaderboard(address leaderboard) external view returns (bool) {
-        return bytes(boardPlatform[leaderboard].name).length != 0;
-    }
 
     function leaderboardCount() external view returns (uint256) {
         return leaderboards.length;
