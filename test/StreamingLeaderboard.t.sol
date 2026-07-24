@@ -110,7 +110,7 @@ contract StreamingLeaderboardTest is Test {
         assertGt(address(GDA).code.length, 0, "GDA forwarder missing");
 
         factory = new StreamingLeaderboardFactory(
-            "Streaming", "streaming", ISuperfluid(HOST), ETHX, REVNET_TERMINAL, REVNET_PROJECT, address(0), admin
+            ISuperfluid(HOST), ETHX, REVNET_TERMINAL, REVNET_PROJECT, address(0), admin
         );
 
         // Authorize the factory to register SuperApps on the permissioned Base host (governance action;
@@ -121,7 +121,7 @@ contract StreamingLeaderboardTest is Test {
         vm.prank(govOwner);
         IGov(gov).setAppRegistrationKey(host, address(factory), "k1", type(uint256).max);
 
-        (address b, address s) = factory.createLeaderboard(beneficiary, "Test Board");
+        (address b, address s) = factory.createLeaderboard(beneficiary, "Test Board", "Open Internet", "openinternet");
         board = StreamingLeaderboard(payable(b));
         seedMarkee = s;
     }
@@ -1232,7 +1232,7 @@ contract StreamingLeaderboardTest is Test {
     function test_zeroBeneficiary_creditsBackersFully() public {
         vm.prank(admin);
         factory.setRevNetEnabled(false);
-        (address b2,) = factory.createLeaderboard(address(0), "No Beneficiary");
+        (address b2,) = factory.createLeaderboard(address(0), "No Beneficiary", "Open Internet", "openinternet");
         StreamingLeaderboard nb = StreamingLeaderboard(payable(b2));
 
         address creator = makeAddr("nbCreator");
@@ -1256,6 +1256,22 @@ contract StreamingLeaderboardTest is Test {
         nb.settle(arr);
         assertApproxEqAbs(backer.balance - balBefore, pending, 1e12, "backer not paid ~full");
         assertFalse(_critical(address(nb)), "no-beneficiary board went insolvent on settle");
+    }
+
+    /// @notice createLeaderboard records the board's platform on-chain, and empty platform fields revert.
+    function test_createLeaderboard_platformTagging() public {
+        assertEq(factory.boardPlatformId(address(board)), "openinternet");
+        assertEq(factory.boardPlatformName(address(board)), "Open Internet");
+
+        (address gh,) = factory.createLeaderboard(beneficiary, "Repo Board", "GitHub", "github");
+        assertEq(factory.boardPlatformId(gh), "github");
+        assertEq(factory.boardPlatformName(gh), "GitHub");
+
+        vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformName.selector);
+        factory.createLeaderboard(beneficiary, "X", "", "github");
+
+        vm.expectRevert(StreamingLeaderboardFactory.EmptyPlatformId.selector);
+        factory.createLeaderboard(beneficiary, "X", "GitHub", "");
     }
 
     /// @notice The Markee owner can reassign free-edit ownership through the board; non-owners cannot.

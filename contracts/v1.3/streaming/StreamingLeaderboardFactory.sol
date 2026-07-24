@@ -9,10 +9,12 @@ import { Markee } from "../Markee.sol";
 import { ILeaderboardFactory } from "../Interfaces.sol";
 
 /// @title StreamingLeaderboardFactory (Option B)
-/// @notice Platform-level factory for the streaming pricing strategy. Mirrors v1.3 LeaderboardFactory
-///         (deploys both implementations in its constructor, holds factory-level RevNet/fee config read
-///         by every clone at settle-time), and additionally acts as the SuperApp registrar: it
-///         registers each cloned StreamingLeaderboard with the Superfluid host so callbacks fire.
+/// @notice Single factory for the streaming pricing strategy, serving every platform: each board is
+///         tagged with its platform at creation (boardPlatformName/boardPlatformId). Mirrors v1.3
+///         LeaderboardFactory (deploys both implementations in its constructor, holds factory-level
+///         RevNet/fee config read by every clone at settle-time), and additionally acts as the SuperApp
+///         registrar: it registers each cloned StreamingLeaderboard with the Superfluid host so
+///         callbacks fire.
 ///
 /// @dev On the permissioned Base host, the host gates registerApp() by the *caller* (this factory).
 ///      Superfluid governance authorizes this factory once via
@@ -27,10 +29,6 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     // ─── Implementations (deployed in constructor) ────────────────────────────
     address public immutable leaderboardImplementation;
     address public immutable markeeImplementation;
-
-    // ─── Platform config ──────────────────────────────────────────────────────
-    string public platformName;
-    string public platformId;
 
     // ─── RevNet + fee config, factory admin (Coop multisig) only ─────────────
     address public override revNetTerminal;
@@ -50,6 +48,8 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     // ─── Registry ─────────────────────────────────────────────────────────────
     address[] public leaderboards;
     mapping(address => bool) public isFactoryLeaderboard;
+    mapping(address => string) public boardPlatformId;
+    mapping(address => string) public boardPlatformName;
 
     // ─── Events ───────────────────────────────────────────────────────────────
     event LeaderboardCreated(
@@ -59,6 +59,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         string name,
         address seedMarkeeAddress
     );
+    event LeaderboardPlatformAssigned(address indexed leaderboardAddress, string platformName, string platformId);
     event FactoryAdminChanged(address indexed oldAdmin, address indexed newAdmin);
     event RevNetEnabledChanged(bool oldEnabled, bool newEnabled);
     event PercentToBeneficiaryChanged(uint256 oldPercent, uint256 newPercent);
@@ -91,8 +92,6 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     }
 
     constructor(
-        string memory _platformName,
-        string memory _platformId,
         ISuperfluid _host,
         ISuperToken _ethx,
         address _revNetTerminal,
@@ -100,8 +99,6 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         address _platformFeeReceiver,
         address _factoryAdmin
     ) {
-        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
-        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
         if (address(_host) == address(0)) revert ZeroHost();
         if (address(_ethx) == address(0)) revert ZeroETHx();
         if (_revNetTerminal == address(0)) revert ZeroRevNetTerminal();
@@ -114,8 +111,6 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         leaderboardImplementation = address(new StreamingLeaderboard(_host, _ethx));
         markeeImplementation = address(new Markee());
 
-        platformName = _platformName;
-        platformId = _platformId;
         revNetTerminal = _revNetTerminal;
         revNetProjectId = _revNetProjectId;
         revNetEnabled = true;
@@ -130,11 +125,18 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
     // ─── Leaderboard creation ─────────────────────────────────────────────────
 
-    function createLeaderboard(address _beneficiaryAddress, string calldata _leaderboardName)
-        external
-        returns (address leaderboardAddress, address seedMarkeeAddress)
-    {
+    /// @notice Creates a board tagged with an explicit platform, recorded on-chain
+    ///         (boardPlatformName/boardPlatformId + LeaderboardPlatformAssigned) as a free-form grouping
+    ///         tag. Curation of which boards belong to a platform is handled off-chain.
+    function createLeaderboard(
+        address _beneficiaryAddress,
+        string calldata _leaderboardName,
+        string calldata _platformName,
+        string calldata _platformId
+    ) external returns (address leaderboardAddress, address seedMarkeeAddress) {
         if (bytes(_leaderboardName).length == 0) revert EmptyName();
+        if (bytes(_platformName).length == 0) revert EmptyPlatformName();
+        if (bytes(_platformId).length == 0) revert EmptyPlatformId();
 
         leaderboardAddress = _clone(leaderboardImplementation);
 
@@ -155,10 +157,13 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
         leaderboards.push(leaderboardAddress);
         isFactoryLeaderboard[leaderboardAddress] = true;
+        boardPlatformName[leaderboardAddress] = _platformName;
+        boardPlatformId[leaderboardAddress] = _platformId;
 
         emit LeaderboardCreated(
             leaderboardAddress, msg.sender, _beneficiaryAddress, _leaderboardName, seedMarkeeAddress
         );
+        emit LeaderboardPlatformAssigned(leaderboardAddress, _platformName, _platformId);
     }
 
     // ─── Registry queries ─────────────────────────────────────────────────────
