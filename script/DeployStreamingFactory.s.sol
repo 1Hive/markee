@@ -6,10 +6,13 @@ import { console2 } from "forge-std/console2.sol";
 import { ISuperfluid, ISuperToken } from
     "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
-import { StreamingLeaderboardFactory } from "../contracts/v1.3/streaming/StreamingLeaderboardFactory.sol";
+import { StreamingLeaderboardFactory } from "../contracts/streaming/StreamingLeaderboardFactory.sol";
+import { StreamingLeaderboard } from "../contracts/v1.3/streaming/StreamingLeaderboard.sol";
+import { Markee } from "../contracts/v1.3/Markee.sol";
 
-/// @notice Deploys the StreamingLeaderboardFactory (its constructor deploys the StreamingLeaderboard +
-///         Markee implementations).
+/// @notice Deploys the v1.3 StreamingLeaderboard and Markee implementations, then the factory that
+///         holds them. The factory takes both as constructor arguments and never deploys them itself,
+///         so later board versions ship through factory.setImplementations rather than a redeploy.
 ///
 /// A single factory serves every platform: createLeaderboard takes a platformName/platformId per board.
 /// Fees are uniform across platforms and stay factory-level.
@@ -28,9 +31,13 @@ contract DeployStreamingFactory is Script {
 
     function run() external returns (StreamingLeaderboardFactory factory) {
         vm.startBroadcast();
+        address markeeImplementation = address(new Markee());
+        address leaderboardImplementation = address(new StreamingLeaderboard(ISuperfluid(HOST), ISuperToken(ETHX)));
         factory = new StreamingLeaderboardFactory(
             ISuperfluid(HOST),
             ISuperToken(ETHX),
+            leaderboardImplementation,
+            markeeImplementation,
             JB_TERMINAL,
             JB_PROJECT_ID,
             COOP, // platformFeeReceiver

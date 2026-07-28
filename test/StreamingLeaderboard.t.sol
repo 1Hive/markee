@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import { Test } from "forge-std/Test.sol";
+import { Vm } from "forge-std/Vm.sol";
 import { ISuperfluid, ISuperToken } from
     "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 import { ISuperApp } from
@@ -13,8 +14,9 @@ import { ISuperfluidPool } from
 import { ISETH } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { StreamingLeaderboardFactory } from "../contracts/v1.3/streaming/StreamingLeaderboardFactory.sol";
+import { StreamingLeaderboardFactory } from "../contracts/streaming/StreamingLeaderboardFactory.sol";
 import { StreamingLeaderboard } from "../contracts/v1.3/streaming/StreamingLeaderboard.sol";
+import { Markee } from "../contracts/v1.3/Markee.sol";
 import { LeaderboardFactory } from "../contracts/v1.3/LeaderboardFactory.sol";
 import { Leaderboard } from "../contracts/v1.3/Leaderboard.sol";
 
@@ -96,6 +98,8 @@ contract StreamingLeaderboardTest is Test {
 
     StreamingLeaderboardFactory factory;
     StreamingLeaderboard board;
+    address boardImplementation;
+    address markeeImplementation;
     address admin = makeAddr("admin");
     address beneficiary = makeAddr("beneficiary");
     address seedMarkee;
@@ -109,9 +113,11 @@ contract StreamingLeaderboardTest is Test {
         assertGt(address(CFA).code.length, 0, "CFA forwarder missing");
         assertGt(address(GDA).code.length, 0, "GDA forwarder missing");
 
-        factory = new StreamingLeaderboardFactory(
-            ISuperfluid(HOST), ETHX, REVNET_TERMINAL, REVNET_PROJECT, address(0), admin
-        );
+        boardImplementation = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        markeeImplementation = address(new Markee());
+        factory = _deployFactory(boardImplementation, markeeImplementation);
+        assertEq(factory.leaderboardImplementation(), boardImplementation, "board impl not stored");
+        assertEq(factory.markeeImplementation(), markeeImplementation, "markee impl not stored");
 
         // Authorize the factory to register SuperApps on the permissioned Base host (governance action;
         // in production the SF multisig does this once). Legacy default registration key is "k1".
@@ -127,6 +133,15 @@ contract StreamingLeaderboardTest is Test {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    function _deployFactory(address boardImpl, address markeeImpl)
+        internal
+        returns (StreamingLeaderboardFactory)
+    {
+        return new StreamingLeaderboardFactory(
+            ISuperfluid(HOST), ETHX, boardImpl, markeeImpl, REVNET_TERMINAL, REVNET_PROJECT, address(0), admin
+        );
+    }
 
     function _rate(uint256 monthlyWei) internal pure returns (int96) {
         return int96(int256(monthlyWei / SECONDS_IN_MONTH));
@@ -162,7 +177,32 @@ contract StreamingLeaderboardTest is Test {
     }
 
     function _notJailed() internal view {
-        assertFalse(ISuperfluid(HOST).isAppJailed(ISuperApp(address(board))), "app jailed");
+        _notJailed(address(board));
+    }
+
+    function _notJailed(address app) internal view {
+        assertFalse(ISuperfluid(HOST).isAppJailed(ISuperApp(app)), "app jailed");
+    }
+
+    /// @dev Counts the factory's two implementation events since the last vm.recordLogs().
+    function _countImplementationEvents() internal returns (uint256 boardEvents, uint256 markeeEvents) {
+        bytes32 boardTopic = keccak256("LeaderboardImplementationChanged(address,address)");
+        bytes32 markeeTopic = keccak256("MarkeeImplementationChanged(address,address)");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter != address(factory) || logs[i].topics.length == 0) continue;
+            if (logs[i].topics[0] == boardTopic) boardEvents++;
+            else if (logs[i].topics[0] == markeeTopic) markeeEvents++;
+        }
+    }
+
+    /// @dev Reads the implementation out of an EIP-1167 proxy: 10-byte prefix, then the address.
+    function _implOf(address proxy) internal view returns (address impl) {
+        bytes memory code = proxy.code;
+        assertEq(code.length, 45, "not an EIP-1167 clone");
+        assembly {
+            impl := shr(96, mload(add(code, 0x2a)))
+        }
     }
 
     function _beneficiaryFlow() internal view returns (int96) {
@@ -1304,6 +1344,176 @@ contract StreamingLeaderboardTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice The constructor runs the same implementation checks as the setter. A board carries HOST
+    ///         and ETHX as bytecode immutables every clone inherits, so a factory deployed against a
+    ///         mismatched implementation would look healthy and then reject every stream, after it has
+    ///         already consumed its one-time Superfluid registration grant.
+    function test_constructor_validatesImplementations() public {
+        address codeless = address(uint160(uint256(keccak256("ctor-codeless-probe"))));
+        assertEq(codeless.code.length, 0, "probe address unexpectedly has code");
+        address wrongHost = address(new BoardImplStub(address(0xdead), address(ETHX)));
+        address wrongToken = address(new BoardImplStub(HOST, address(0xbeef)));
+        address unlockedMarkee = address(new UnlockedMarkeeStub());
+
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationNotContract.selector);
+        _deployFactory(codeless, markeeImplementation);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationNotContract.selector);
+        _deployFactory(boardImplementation, codeless);
+
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationHostMismatch.selector);
+        _deployFactory(wrongHost, markeeImplementation);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationTokenMismatch.selector);
+        _deployFactory(wrongToken, markeeImplementation);
+        vm.expectRevert(StreamingLeaderboardFactory.MarkeeImplementationNotLocked.selector);
+        _deployFactory(boardImplementation, unlockedMarkee);
+    }
+
+    /// @notice The constructor emits both implementation events from address(0), so an indexer replaying
+    ///         them can attribute boards created before the first admin swap to the right implementation.
+    function test_constructor_emitsGenesisImplementationEvents() public {
+        vm.expectEmit(true, true, false, false);
+        emit StreamingLeaderboardFactory.LeaderboardImplementationChanged(address(0), boardImplementation);
+        vm.expectEmit(true, true, false, false);
+        emit StreamingLeaderboardFactory.MarkeeImplementationChanged(address(0), markeeImplementation);
+        _deployFactory(boardImplementation, markeeImplementation);
+    }
+
+    /// @notice The setter shares the constructor's checks, so an admin swap cannot install a board wired
+    ///         to a different host or SuperToken either, and leaves both slots untouched when it reverts.
+    function test_setImplementations_rejectsMismatchedWiring() public {
+        address oldBoardImpl = factory.leaderboardImplementation();
+        address oldMarkeeImpl = factory.markeeImplementation();
+        address wrongHost = address(new BoardImplStub(address(0xdead), address(ETHX)));
+        address wrongToken = address(new BoardImplStub(HOST, address(0xbeef)));
+        address unlockedMarkee = address(new UnlockedMarkeeStub());
+
+        vm.startPrank(admin);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationHostMismatch.selector);
+        factory.setImplementations(wrongHost, oldMarkeeImpl);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationTokenMismatch.selector);
+        factory.setImplementations(wrongToken, oldMarkeeImpl);
+        vm.expectRevert(StreamingLeaderboardFactory.MarkeeImplementationNotLocked.selector);
+        factory.setImplementations(oldBoardImpl, unlockedMarkee);
+        vm.stopPrank();
+
+        assertEq(factory.leaderboardImplementation(), oldBoardImpl, "board impl moved on a reverted call");
+        assertEq(factory.markeeImplementation(), oldMarkeeImpl, "markee impl moved on a reverted call");
+    }
+
+    /// @notice A large limit means "the rest" and must return the tail, not panic on offset + limit.
+    function test_getLeaderboards_largeLimitAtOffset() public {
+        factory.createLeaderboard(beneficiary, "Board Two", "Open Internet", "openinternet");
+        assertEq(factory.leaderboardCount(), 2, "expected two boards");
+
+        address[] memory tail = factory.getLeaderboards(1, type(uint256).max);
+        assertEq(tail.length, 1, "tail not returned");
+        assertEq(tail[0], factory.leaderboards(1), "wrong board in tail");
+        assertEq(factory.getLeaderboards(2, type(uint256).max).length, 0, "past-the-end not empty");
+
+        address[] memory boardMarkees = board.getMarkees(0, type(uint256).max);
+        assertEq(boardMarkees.length, board.markeeCount(), "board pagination truncated");
+    }
+
+    /// @notice The pair setter retargets FUTURE clones only. Existing boards and Markees stay on the
+    ///         implementation baked into their EIP-1167 bytecode.
+    function test_setImplementations_bothSides() public {
+        address oldBoardImpl = factory.leaderboardImplementation();
+        address oldMarkeeImpl = factory.markeeImplementation();
+        assertEq(_implOf(address(board)), oldBoardImpl, "seed board not on old impl");
+
+        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        address newMarkeeImpl = address(new Markee());
+        address codeless = address(uint160(uint256(keccak256("markee-codeless-probe"))));
+        assertEq(codeless.code.length, 0, "probe address unexpectedly has code");
+
+        vm.expectRevert(StreamingLeaderboardFactory.OnlyFactoryAdmin.selector);
+        factory.setImplementations(newBoardImpl, newMarkeeImpl);
+
+        vm.startPrank(admin);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationNotContract.selector);
+        factory.setImplementations(codeless, newMarkeeImpl);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationNotContract.selector);
+        factory.setImplementations(address(0), newMarkeeImpl);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationNotContract.selector);
+        factory.setImplementations(newBoardImpl, codeless);
+        vm.expectRevert(StreamingLeaderboardFactory.ImplementationNotContract.selector);
+        factory.setImplementations(newBoardImpl, address(0));
+        assertEq(factory.leaderboardImplementation(), oldBoardImpl, "board impl moved on a reverted call");
+        assertEq(factory.markeeImplementation(), oldMarkeeImpl, "markee impl moved on a reverted call");
+
+        vm.expectEmit(true, true, false, false, address(factory));
+        emit StreamingLeaderboardFactory.LeaderboardImplementationChanged(oldBoardImpl, newBoardImpl);
+        vm.expectEmit(true, true, false, false, address(factory));
+        emit StreamingLeaderboardFactory.MarkeeImplementationChanged(oldMarkeeImpl, newMarkeeImpl);
+        factory.setImplementations(newBoardImpl, newMarkeeImpl);
+        vm.stopPrank();
+
+        assertEq(factory.leaderboardImplementation(), newBoardImpl, "board impl not updated");
+        assertEq(factory.markeeImplementation(), newMarkeeImpl, "markee impl not updated");
+
+        (address b2, address s2) =
+            factory.createLeaderboard(beneficiary, "Board Two", "Open Internet", "openinternet");
+        assertEq(_implOf(b2), newBoardImpl, "new board not on new impl");
+        assertEq(_implOf(s2), newMarkeeImpl, "new seed markee not on new impl");
+        assertTrue(ISuperfluid(HOST).isApp(ISuperApp(b2)), "new board not registered as app");
+        _notJailed(b2);
+
+        assertEq(_implOf(address(board)), oldBoardImpl, "existing board was retargeted");
+        assertEq(_implOf(seedMarkee), oldMarkeeImpl, "existing markee was retargeted");
+        _notJailed();
+    }
+
+    /// @notice Moving only the board side: pass the Markee side's current value. The Markee slot is left
+    ///         untouched and emits nothing.
+    function test_setImplementations_boardOnly() public {
+        address oldMarkeeImpl = factory.markeeImplementation();
+        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+
+        vm.recordLogs();
+        vm.prank(admin);
+        factory.setImplementations(newBoardImpl, oldMarkeeImpl);
+        (uint256 boardEvents, uint256 markeeEvents) = _countImplementationEvents();
+        assertEq(boardEvents, 1, "board event not emitted once");
+        assertEq(markeeEvents, 0, "markee event emitted for an unchanged slot");
+
+        assertEq(factory.leaderboardImplementation(), newBoardImpl, "board impl not updated");
+        assertEq(factory.markeeImplementation(), oldMarkeeImpl, "markee impl moved");
+
+        (address b2, address s2) =
+            factory.createLeaderboard(beneficiary, "Board Two", "Open Internet", "openinternet");
+        assertEq(_implOf(b2), newBoardImpl, "new board not on new impl");
+        assertEq(_implOf(s2), oldMarkeeImpl, "new seed markee should still be the old impl");
+        _notJailed(b2);
+    }
+
+    /// @notice Moving only the Markee side. Pinning is per BOARD, not per Markee: a board created before
+    ///         the swap keeps minting the old Markee implementation for the rest of its life.
+    function test_setImplementations_markeeOnly() public {
+        address oldBoardImpl = factory.leaderboardImplementation();
+        address oldMarkeeImpl = factory.markeeImplementation();
+        address newMarkeeImpl = address(new Markee());
+
+        vm.recordLogs();
+        vm.prank(admin);
+        factory.setImplementations(oldBoardImpl, newMarkeeImpl);
+        (uint256 boardEvents, uint256 markeeEvents) = _countImplementationEvents();
+        assertEq(boardEvents, 0, "board event emitted for an unchanged slot");
+        assertEq(markeeEvents, 1, "markee event not emitted once");
+
+        assertEq(factory.leaderboardImplementation(), oldBoardImpl, "board impl moved");
+        assertEq(factory.markeeImplementation(), newMarkeeImpl, "markee impl not updated");
+
+        assertEq(board.markeeImplementation(), oldMarkeeImpl, "existing board snapshot moved");
+        assertEq(_implOf(_newMarkee("after swap", "post")), oldMarkeeImpl, "existing board minted the new impl");
+
+        (address b2, address s2) =
+            factory.createLeaderboard(beneficiary, "Board Two", "Open Internet", "openinternet");
+        assertEq(_implOf(b2), oldBoardImpl, "new board should still be the old impl");
+        assertEq(_implOf(s2), newMarkeeImpl, "new board did not pick up the new markee impl");
+        _notJailed(b2);
+    }
+
+
     /// @notice The Markee owner can reassign free-edit ownership through the board; non-owners cannot.
     function test_transferMarkeeOwnership() public {
         address m = _newMarkee("m", "alpha");
@@ -1667,6 +1877,28 @@ contract SelectiveRevertTerminal {
         require(beneficiary != blockedBeneficiary, "fee receiver blocked");
         return 0;
     }
+}
+
+/// @dev A board implementation exposing only the Superfluid wiring the factory validates, so a
+///      host/token mismatch is testable: a real StreamingLeaderboard cannot be built against a fake
+///      host, its CFASuperAppBase constructor calls into the host for the GDA agreement class.
+contract BoardImplStub {
+    address public immutable HOST;
+    address immutable acceptedToken;
+
+    constructor(address host_, address acceptedToken_) {
+        HOST = host_;
+        acceptedToken = acceptedToken_;
+    }
+
+    function isAcceptedSuperToken(address token) external view returns (bool) {
+        return token == acceptedToken;
+    }
+}
+
+/// @dev A Markee implementation that never locked itself in its constructor.
+contract UnlockedMarkeeStub {
+    bool public initialized;
 }
 
 /// @dev A backer contract that rejects ETH on receive, to exercise settle's per-backer isolation.

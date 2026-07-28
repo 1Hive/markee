@@ -16,6 +16,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { Markee } from "../Markee.sol";
 import { IPricingStrategy, ILeaderboardFactory, IJBMultiTerminal } from "../Interfaces.sol";
+import { IStreamingLeaderboard } from "../../streaming/interfaces/IStreamingLeaderboard.sol";
 
 /// @title StreamingLeaderboard (Option B, GDA-refund escrow)
 /// @notice A SuperApp pricing strategy where backers stream a monthly ETHx rate into this contract
@@ -38,7 +39,11 @@ import { IPricingStrategy, ILeaderboardFactory, IJBMultiTerminal } from "../Inte
 ///      clone cannot self-register (its constructor never runs), the factory registers each clone as
 ///      a SuperApp via host.registerApp() after cloning. HOST and ETHX are implementation immutables,
 ///      shared correctly by every clone (read from the implementation's runtime bytecode).
-contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
+///
+/// @dev `is IStreamingLeaderboard` is what makes this board installable on the factory: that interface
+///      is the frozen surface the factory calls, and the factory is never redeployed, so a version that
+///      drifts from it must fail to compile rather than fail at the first createLeaderboard.
+contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLeaderboard {
     using SuperTokenV1Library for ISuperToken;
 
     string public constant VERSION = "streaming-1.0.0";
@@ -77,11 +82,11 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     /// @notice GDA refund pool per Markee (members = backers, units = flowRate).
     mapping(address => ISuperfluidPool) public poolOf;
     /// @notice Sum of all backers' flow rates for a Markee (wei/sec) == total pool units == bid.
-    mapping(address => uint256) public aggregateRate;
+    mapping(address => uint256) public override aggregateRate;
     /// @notice Current refund distributeFlow rate to a Markee's pool (0 for the #1 Markee).
     mapping(address => uint256) public refundRate;
 
-    address public topMarkee;
+    address public override topMarkee;
     uint256 public topRate;
 
     // ─── Per-backer state (CFA allows one flow per sender→receiver, so one Markee per backer) ──
@@ -217,7 +222,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
         uint256 _maxMessageLength,
         uint256 _maxNameLength,
         address _seedOwner
-    ) external returns (address seedMarkeeAddress) {
+    ) external override returns (address seedMarkeeAddress) {
         if (!(!initialized)) revert AlreadyInitialized();
         if (!(_admin != address(0))) revert ZeroAdmin();
         if (!(_markeeImplementation != address(0))) revert ZeroMarkeeImpl();
@@ -369,7 +374,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///         incentivized rival, the frontend, or a cron. Promotions need no poke (they flip in the
     ///         inflow callback); this only heals the decay direction, where the incumbent's drop fires
     ///         no callback for the rising rival.
-    function claimTop(address challenger) external nonReentrant {
+    function claimTop(address challenger) external override nonReentrant {
         if (!(isMarkeeOnLeaderboard[challenger])) revert UnknownMarkee();
         if (!(challenger != topMarkee)) revert AlreadyTop();
         if (!(_effRate(challenger) > _topThreshold())) revert NotHigherThanTop();
@@ -394,7 +399,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
     ///      taken from the RevNet bucket, here aggregated into one pay() to the fee receiver, and
     ///      the remainder is paid per backer as their RevNet contribution. Active (still-streaming)
     ///      backers are first brought current via the accumulator without disturbing their units.
-    function settle(address[] calldata backers) external nonReentrant {
+    function settle(address[] calldata backers) external override nonReentrant {
         _accrueTop();
 
         uint256 n = backers.length;
@@ -417,7 +422,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
 
     /// @notice Live (unsettled) ETHx owed to a backer, including accrual up to the current block.
     /// @dev View helper for the frontend / tests, does not mutate state.
-    function pendingSettlement(address backer) external view returns (uint256) {
+    function pendingSettlement(address backer) external view override returns (uint256) {
         uint256 owed = claimable[backer];
         address m = backerMarkee[backer];
         if (m == address(0)) return owed;
@@ -522,8 +527,14 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy {
 
     function getMarkees(uint256 offset, uint256 limit) external view returns (address[] memory result) {
         if (offset >= markees.length) return new address[](0);
-        uint256 end = offset + limit;
-        if (end > markees.length) end = markees.length;
+        uint256 end;
+        // Clamp before adding, so a limit meaning "the rest" returns the tail instead of panicking on
+        // offset + limit. Unchecked is safe: offset < length above, and the sum is only formed when
+        // limit keeps it below length.
+        unchecked {
+            uint256 remaining = markees.length - offset;
+            end = limit < remaining ? offset + limit : markees.length;
+        }
         result = new address[](end - offset);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = markees[i];

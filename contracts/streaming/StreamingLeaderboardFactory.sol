@@ -4,17 +4,21 @@ pragma solidity ^0.8.23;
 import { ISuperfluid, ISuperToken, ISuperApp } from
     "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
-import { StreamingLeaderboard } from "./StreamingLeaderboard.sol";
-import { Markee } from "../Markee.sol";
-import { ILeaderboardFactory } from "../Interfaces.sol";
+import { IStreamingLeaderboard, ISuperAppWiring, IMarkeeImplementation } from
+    "./interfaces/IStreamingLeaderboard.sol";
+import { ILeaderboardFactory } from "./interfaces/ILeaderboardFactory.sol";
 
 /// @title StreamingLeaderboardFactory (Option B)
 /// @notice Single factory for the streaming pricing strategy, serving every platform: each board is
-///         tagged with its platform at creation (boardPlatform: name + id). Mirrors v1.3
-///         LeaderboardFactory (deploys both implementations in its constructor, holds factory-level
-///         RevNet/fee config read by every clone at settle-time), and additionally acts as the SuperApp
-///         registrar: it registers each cloned StreamingLeaderboard with the Superfluid host so
-///         callbacks fire.
+///         tagged with its platform at creation (boardPlatform: name + id). Holds the factory-level
+///         RevNet/fee config every clone reads at settle-time, and acts as the SuperApp registrar: it
+///         registers each cloned StreamingLeaderboard with the Superfluid host so callbacks fire.
+/// @dev This contract outlives board and Markee versions: it takes both implementations as addresses
+///      and compiles against interfaces alone, so a new board version ships through setImplementations
+///      instead of a new factory. A board version it accepts must satisfy IStreamingLeaderboard (that
+///      exact 8-argument initialize) and expose ISuperAppWiring wired to this same host and SuperToken,
+///      which the constructor and setImplementations both check. It never calls a Markee, it only hands
+///      markeeImplementation to each board at initialize.
 ///
 /// @dev On the permissioned Base host, the host gates registerApp() by the *caller* (this factory).
 ///      Superfluid governance authorizes this factory once via
@@ -26,9 +30,9 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     ISuperfluid public immutable HOST;
     ISuperToken public immutable ETHX;
 
-    // ─── Implementations (deployed in constructor) ────────────────────────────
-    address public immutable leaderboardImplementation;
-    address public immutable markeeImplementation;
+    // ─── Implementations (supplied at construction, swappable by the admin) ───
+    address public leaderboardImplementation;
+    address public markeeImplementation;
 
     // ─── RevNet + fee config, factory admin (Coop multisig) only ─────────────
     address public override revNetTerminal;
@@ -69,6 +73,8 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         address seedMarkeeAddress
     );
     event LeaderboardPlatformAssigned(address indexed leaderboardAddress, string platformName, string platformId);
+    event LeaderboardImplementationChanged(address indexed oldImplementation, address indexed newImplementation);
+    event MarkeeImplementationChanged(address indexed oldImplementation, address indexed newImplementation);
     event FactoryAdminChanged(address indexed oldAdmin, address indexed newAdmin);
     event RevNetEnabledChanged(bool oldEnabled, bool newEnabled);
     event PercentToBeneficiaryChanged(uint256 oldPercent, uint256 newPercent);
@@ -91,6 +97,10 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     error ZeroRevNetTerminal();
     error ZeroRevNetProjectId();
     error ZeroFactoryAdmin();
+    error ImplementationNotContract();
+    error ImplementationHostMismatch();
+    error ImplementationTokenMismatch();
+    error MarkeeImplementationNotLocked();
     error EmptyName();
     error PercentTooHigh();
     error ZeroMaxMessageLength();
@@ -105,6 +115,8 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
     constructor(
         ISuperfluid _host,
         ISuperToken _ethx,
+        address _leaderboardImplementation,
+        address _markeeImplementation,
         address _revNetTerminal,
         uint256 _revNetProjectId,
         address _platformFeeReceiver,
@@ -119,8 +131,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         HOST = _host;
         ETHX = _ethx;
 
-        leaderboardImplementation = address(new StreamingLeaderboard(_host, _ethx));
-        markeeImplementation = address(new Markee());
+        _setImplementations(_leaderboardImplementation, _markeeImplementation);
 
         revNetTerminal = _revNetTerminal;
         revNetProjectId = _revNetProjectId;
@@ -150,7 +161,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
         leaderboardAddress = _clone(leaderboardImplementation);
 
-        seedMarkeeAddress = StreamingLeaderboard(payable(leaderboardAddress)).initialize(
+        seedMarkeeAddress = IStreamingLeaderboard(leaderboardAddress).initialize(
             msg.sender,
             _beneficiaryAddress,
             _leaderboardName,
@@ -162,7 +173,7 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         );
 
         // Register the clone as a SuperApp so CFA callbacks fire (created/updated/deleted).
-        uint256 configWord = StreamingLeaderboard(payable(leaderboardAddress)).getConfigWord(true, true, true);
+        uint256 configWord = ISuperAppWiring(leaderboardAddress).getConfigWord(true, true, true);
         HOST.registerApp(ISuperApp(leaderboardAddress), configWord);
 
         leaderboards.push(leaderboardAddress);
@@ -183,8 +194,14 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
 
     function getLeaderboards(uint256 offset, uint256 limit) external view returns (address[] memory result) {
         if (offset >= leaderboards.length) return new address[](0);
-        uint256 end = offset + limit;
-        if (end > leaderboards.length) end = leaderboards.length;
+        uint256 end;
+        // Clamp before adding, so a limit meaning "the rest" returns the tail instead of panicking on
+        // offset + limit. Unchecked is safe: offset < length above, and the sum is only formed when
+        // limit keeps it below length.
+        unchecked {
+            uint256 remaining = leaderboards.length - offset;
+            end = limit < remaining ? offset + limit : leaderboards.length;
+        }
         result = new address[](end - offset);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = leaderboards[i];
@@ -250,6 +267,51 @@ contract StreamingLeaderboardFactory is ILeaderboardFactory {
         if (_newAdmin == address(0)) revert ZeroFactoryAdmin();
         emit FactoryAdminChanged(factoryAdmin, _newAdmin);
         factoryAdmin = _newAdmin;
+    }
+
+    /// @notice Swaps the two clone targets as a pair, and is the only way either can change. Pass the
+    ///         other side's current value to move just one. createLeaderboard is permissionless, so
+    ///         separate setters would leave a window in which anyone could mint a board pairing a new
+    ///         board implementation with an old Markee one, frozen that way for the board's whole life.
+    /// @dev Both swaps reach only boards created after this call. Existing boards are EIP-1167 proxies
+    ///      with their implementation baked into their bytecode, and each board additionally copies
+    ///      markeeImplementation into its own storage at initialize and mints every Markee from that copy,
+    ///      so a board created before this call keeps minting the old Markee for its entire life. The
+    ///      factory's Superfluid registration authorizes this address rather than the code it registers,
+    ///      so a swapped implementation becomes a SuperApp with no further governance review.
+    function setImplementations(address _newLeaderboardImplementation, address _newMarkeeImplementation)
+        external
+        onlyFactoryAdmin
+    {
+        _setImplementations(_newLeaderboardImplementation, _newMarkeeImplementation);
+    }
+
+    /// @dev A board implementation carries HOST and ETHX as bytecode immutables every EIP-1167 clone
+    ///      inherits, so reading both back off it is the only link between the implementation and this
+    ///      factory: one built against a different host or SuperToken passes a code-length check and
+    ///      then fails inside the callback on the first backer's stream, with every board already
+    ///      created beyond repair. The Markee implementation, which the factory itself never calls, is
+    ///      probed for the locked flag every clonable Markee sets in its constructor.
+    /// @dev Runs from the constructor too, so the event log carries a genesis entry from address(0)
+    ///      and an indexer can attribute every board to the implementation it was cloned from.
+    function _setImplementations(address _newLeaderboardImplementation, address _newMarkeeImplementation) internal {
+        if (_newLeaderboardImplementation.code.length == 0) revert ImplementationNotContract();
+        if (_newMarkeeImplementation.code.length == 0) revert ImplementationNotContract();
+
+        if (ISuperAppWiring(_newLeaderboardImplementation).HOST() != HOST) revert ImplementationHostMismatch();
+        if (!ISuperAppWiring(_newLeaderboardImplementation).isAcceptedSuperToken(ETHX)) {
+            revert ImplementationTokenMismatch();
+        }
+        if (!IMarkeeImplementation(_newMarkeeImplementation).initialized()) revert MarkeeImplementationNotLocked();
+
+        if (_newLeaderboardImplementation != leaderboardImplementation) {
+            emit LeaderboardImplementationChanged(leaderboardImplementation, _newLeaderboardImplementation);
+            leaderboardImplementation = _newLeaderboardImplementation;
+        }
+        if (_newMarkeeImplementation != markeeImplementation) {
+            emit MarkeeImplementationChanged(markeeImplementation, _newMarkeeImplementation);
+            markeeImplementation = _newMarkeeImplementation;
+        }
     }
 
     function setDefaultMinimumMonthlyRate(uint256 _newRate) external onlyFactoryAdmin {
