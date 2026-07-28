@@ -859,7 +859,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
 
         uint256 totalFee = _settleViaRevNet(backers, amounts, terminal, projectId, feePct);
         if (totalFee > 0) {
-            try this._revNetPaySelf(terminal, projectId, feeReceiver, totalFee) {
+            try this.revNetPaySelf(terminal, projectId, feeReceiver, totalFee) {
                 emit PlatformFeeSettled(feeReceiver, totalFee);
             } catch {
                 _rewrapAndCredit(feeReceiver, totalFee);
@@ -904,7 +904,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
                 emit Settled(backers[i], amt, true);
                 continue;
             }
-            try this._revNetPaySelf(terminal, projectId, backers[i], buyerAmount) {
+            try this.revNetPaySelf(terminal, projectId, backers[i], buyerAmount) {
                 totalFee += fee;
                 emit Settled(backers[i], amt, true);
             } catch {
@@ -922,7 +922,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
 
     /// @dev External self-call wrapper so a single backer's RevNet pay can be try/catch-isolated.
     ///      Only callable by this contract (from `_routeRevNetSettlement`).
-    function _revNetPaySelf(address terminal, uint256 projectId, address recipient, uint256 amount)
+    function revNetPaySelf(address terminal, uint256 projectId, address recipient, uint256 amount)
         external
     {
         if (msg.sender != address(this)) revert OnlySelf();
