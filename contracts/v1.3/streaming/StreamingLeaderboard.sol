@@ -192,12 +192,12 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     uint256 private _reentrancyLock;
 
     modifier onlyAdmin() {
-        if (!(msg.sender == admin)) revert OnlyAdmin();
+        if (msg.sender != admin) revert OnlyAdmin();
         _;
     }
 
     modifier nonReentrant() {
-        if (!(_reentrancyLock != 2)) revert Reentrant();
+        if (_reentrancyLock == 2) revert Reentrant();
         _reentrancyLock = 2;
         _;
         _reentrancyLock = 1;
@@ -223,13 +223,13 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         uint256 _maxNameLength,
         address _seedOwner
     ) external override returns (address seedMarkeeAddress) {
-        if (!(!initialized)) revert AlreadyInitialized();
-        if (!(_admin != address(0))) revert ZeroAdmin();
-        if (!(_markeeImplementation != address(0))) revert ZeroMarkeeImpl();
-        if (!(bytes(_leaderboardName).length > 0)) revert EmptyName();
-        if (!(_maxMessageLength > 0)) revert ZeroMaxMessageLength();
-        if (!(_maxNameLength > 0)) revert ZeroMaxNameLength();
-        if (!(_seedOwner != address(0))) revert ZeroSeedOwner();
+        if (initialized) revert AlreadyInitialized();
+        if (_admin == address(0)) revert ZeroAdmin();
+        if (_markeeImplementation == address(0)) revert ZeroMarkeeImpl();
+        if (bytes(_leaderboardName).length == 0) revert EmptyName();
+        if (_maxMessageLength == 0) revert ZeroMaxMessageLength();
+        if (_maxNameLength == 0) revert ZeroMaxNameLength();
+        if (_seedOwner == address(0)) revert ZeroSeedOwner();
         initialized = true;
         factory = msg.sender;
         admin = _admin;
@@ -277,9 +277,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         external
         returns (address markeeAddress)
     {
-        if (!(initialized)) revert NotInitialized();
-        if (!(bytes(_message).length <= maxMessageLength)) revert MessageTooLong();
-        if (!(bytes(_name).length <= maxNameLength)) revert NameTooLong();
+        if (!initialized) revert NotInitialized();
+        if (bytes(_message).length > maxMessageLength) revert MessageTooLong();
+        if (bytes(_name).length > maxNameLength) revert NameTooLong();
         markeeAddress = _clone(markeeImplementation);
         Markee(markeeAddress).initialize(msg.sender, address(this), _message, _name, 0);
         _registerMarkee(markeeAddress);
@@ -296,7 +296,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         for (uint256 i = 0; i < _markees.length; i++) {
             address m = _markees[i];
             if (m != address(0) && !isMarkeeOnLeaderboard[m]) {
-                if (!(Markee(m).pricingStrategy() == address(this))) revert MarkeeNotMigrated();
+                if (Markee(m).pricingStrategy() != address(this)) revert MarkeeNotMigrated();
                 _registerMarkee(m);
                 _captureLegacyFloor(m);
                 _seedTopIfHigher(m);
@@ -347,8 +347,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///         stream's buffer cover is immediately withdrawable (see withdrawDeposit), so a third
     ///         party inflating the deposit off a standing allowance cannot lock funds.
     function depositBuffer(address backer, uint256 amount) external nonReentrant {
-        if (!(amount > 0)) revert ZeroDeposit();
-        if (!(IERC20(address(ETHX)).transferFrom(backer, address(this), amount))) revert DepositTransferFailed();
+        if (amount == 0) revert ZeroDeposit();
+        if (!IERC20(address(ETHX)).transferFrom(backer, address(this), amount)) revert DepositTransferFailed();
         backerDeposit[backer] += amount;
         emit DepositAdded(backer, amount, backerDeposit[backer]);
     }
@@ -362,9 +362,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
                 uint256(uint96(ETHX.getCFAFlowRate(msg.sender, address(this)))) * BUFFER_PERIOD;
             amount = amount > required ? amount - required : 0;
         }
-        if (!(amount > 0)) revert NothingToWithdraw();
+        if (amount == 0) revert NothingToWithdraw();
         backerDeposit[msg.sender] -= amount;
-        if (!(IERC20(address(ETHX)).transfer(msg.sender, amount))) revert WithdrawTransferFailed();
+        if (!IERC20(address(ETHX)).transfer(msg.sender, amount)) revert WithdrawTransferFailed();
         emit DepositWithdrawn(msg.sender, amount);
     }
 
@@ -375,9 +375,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///         inflow callback); this only heals the decay direction, where the incumbent's drop fires
     ///         no callback for the rising rival.
     function claimTop(address challenger) external override nonReentrant {
-        if (!(isMarkeeOnLeaderboard[challenger])) revert UnknownMarkee();
-        if (!(challenger != topMarkee)) revert AlreadyTop();
-        if (!(_effRate(challenger) > _topThreshold())) revert NotHigherThanTop();
+        if (!isMarkeeOnLeaderboard[challenger]) revert UnknownMarkee();
+        if (challenger == topMarkee) revert AlreadyTop();
+        if (_effRate(challenger) <= _topThreshold()) revert NotHigherThanTop();
         _accrueTop();
         address oldTop = topMarkee;
         _setTop(challenger);
@@ -446,8 +446,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///         own streams lazily (O(1) each). An off-board Markee can only wind down: onFlowUpdated
     ///         refuses to re-promote it, and its per-Markee state is cleared once the last backer leaves.
     function migratePricingStrategy(address _markee, address _newStrategy) external onlyAdmin {
-        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
-        if (!(_newStrategy != address(0))) revert ZeroStrategy();
+        if (!isMarkeeOnLeaderboard[_markee]) revert MarkeeNotOnLeaderboard();
+        if (_newStrategy == address(0)) revert ZeroStrategy();
         _accrueTop();
         _vacateTopIf(_markee);
         _setRefund(_markee, aggregateRate[_markee]);
@@ -459,31 +459,31 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     /// @notice Transfer a Markee's free-edit ownership. Only the current owner may call; the board is
     ///         the Markee's pricingStrategy, so without this wrapper the owner could never reassign.
     function transferMarkeeOwnership(address _markee, address _newOwner) external {
-        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
-        if (!(msg.sender == Markee(_markee).owner())) revert OnlyMarkeeOwner();
-        if (!(_newOwner != address(0))) revert ZeroNewOwner();
+        if (!isMarkeeOnLeaderboard[_markee]) revert MarkeeNotOnLeaderboard();
+        if (msg.sender != Markee(_markee).owner()) revert OnlyMarkeeOwner();
+        if (_newOwner == address(0)) revert ZeroNewOwner();
         Markee(_markee).transferOwnership(_newOwner);
         emit MarkeeOwnershipTransferred(_markee, msg.sender, _newOwner);
     }
 
     function updateMessage(address _markee, string calldata _newMessage) external {
-        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
-        if (!(msg.sender == Markee(_markee).owner())) revert OnlyMarkeeOwner();
-        if (!(bytes(_newMessage).length <= maxMessageLength)) revert MessageTooLong();
+        if (!isMarkeeOnLeaderboard[_markee]) revert MarkeeNotOnLeaderboard();
+        if (msg.sender != Markee(_markee).owner()) revert OnlyMarkeeOwner();
+        if (bytes(_newMessage).length > maxMessageLength) revert MessageTooLong();
         Markee(_markee).setMessage(_newMessage);
         emit MessageUpdated(_markee, msg.sender, _newMessage);
     }
 
     function updateName(address _markee, string calldata _newName) external {
-        if (!(isMarkeeOnLeaderboard[_markee])) revert MarkeeNotOnLeaderboard();
-        if (!(msg.sender == Markee(_markee).owner())) revert OnlyMarkeeOwner();
-        if (!(bytes(_newName).length <= maxNameLength)) revert NameTooLong();
+        if (!isMarkeeOnLeaderboard[_markee]) revert MarkeeNotOnLeaderboard();
+        if (msg.sender != Markee(_markee).owner()) revert OnlyMarkeeOwner();
+        if (bytes(_newName).length > maxNameLength) revert NameTooLong();
         Markee(_markee).setName(_newName);
         emit NameUpdated(_markee, msg.sender, _newName);
     }
 
     function setAdmin(address _newAdmin) external onlyAdmin {
-        if (!(_newAdmin != address(0))) revert ZeroAdmin();
+        if (_newAdmin == address(0)) revert ZeroAdmin();
         emit AdminChanged(admin, _newAdmin);
         admin = _newAdmin;
     }
@@ -625,10 +625,10 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         returns (bytes memory newCtx)
     {
         address markee = abi.decode(HOST.decodeCtx(ctx).userData, (address));
-        if (!(isMarkeeOnLeaderboard[markee])) revert UnknownMarkee();
+        if (!isMarkeeOnLeaderboard[markee]) revert UnknownMarkee();
         uint256 rate = uint256(uint96(flowRate));
-        if (!(rate * SECONDS_IN_MONTH >= minimumMonthlyRate)) revert BelowMinimumRate();
-        if (!(backerDeposit[sender] >= rate * BUFFER_PERIOD)) revert InsufficientDeposit();
+        if (rate * SECONDS_IN_MONTH < minimumMonthlyRate) revert BelowMinimumRate();
+        if (backerDeposit[sender] < rate * BUFFER_PERIOD) revert InsufficientDeposit();
         _accrueTop();
         backerMarkee[sender] = markee;
         aggregateRate[markee] += rate;
@@ -655,8 +655,8 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
 
         uint256 newRate = uint256(uint96(flowRate));
         uint256 oldRate = uint256(uint96(previousFlowRate));
-        if (!(newRate * SECONDS_IN_MONTH >= minimumMonthlyRate)) revert BelowMinimumRate();
-        if (!(backerDeposit[sender] >= newRate * BUFFER_PERIOD)) revert InsufficientDeposit();
+        if (newRate * SECONDS_IN_MONTH < minimumMonthlyRate) revert BelowMinimumRate();
+        if (backerDeposit[sender] < newRate * BUFFER_PERIOD) revert InsufficientDeposit();
         _accrueTop();
         aggregateRate[markee] = aggregateRate[markee] - oldRate + newRate;
         poolOf[markee].updateMemberUnits(sender, uint128(newRate));
@@ -925,7 +925,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     function _revNetPaySelf(address terminal, uint256 projectId, address recipient, uint256 amount)
         external
     {
-        if (!(msg.sender == address(this))) revert OnlySelf();
+        if (msg.sender != address(this)) revert OnlySelf();
         _revNetPay(terminal, projectId, recipient, amount);
     }
 
@@ -1016,7 +1016,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     }
 
     function _registerMarkee(address markeeAddress) internal {
-        if (!(address(poolOf[markeeAddress]) == address(0))) revert MarkeeWindingDown();
+        if (address(poolOf[markeeAddress]) != address(0)) revert MarkeeWindingDown();
         markeeIndex[markeeAddress] = markees.length;
         markees.push(markeeAddress);
         isMarkeeOnLeaderboard[markeeAddress] = true;
@@ -1028,7 +1028,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     }
 
     function _unregisterMarkee(address markeeAddress) internal {
-        if (!(isMarkeeOnLeaderboard[markeeAddress])) revert NotInRegistry();
+        if (!isMarkeeOnLeaderboard[markeeAddress]) revert NotInRegistry();
         uint256 index = markeeIndex[markeeAddress];
         address last = markees[markees.length - 1];
         markees[index] = last;
@@ -1039,7 +1039,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     }
 
     function _toInt96(uint256 x) internal pure returns (int96) {
-        if (!(x <= uint256(uint96(type(int96).max)))) revert RateOverflow();
+        if (x > uint256(uint96(type(int96).max))) revert RateOverflow();
         return int96(uint96(x));
     }
 
@@ -1055,6 +1055,6 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
             ))
             instance := create(0, 0x09, 0x37)
         }
-        if (!(instance != address(0))) revert CloneFailed();
+        if (instance == address(0)) revert CloneFailed();
     }
 }
