@@ -20,11 +20,14 @@ import {
   CFA_FORWARDER_ABI,
   CFA_AGREEMENT_ID,
   GDA_AGREEMENT_ID,
+  ETHX_WRAP_ABI,
   monthlyToRatePerSec,
   ratePerSecToMonthly,
   bufferFor,
+  runwaySeconds,
   openStreamValue,
   buildOpenStreamOps,
+  buildUpdateStreamOps,
 } from '@/lib/superfluid/streaming'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -99,9 +102,11 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
 
   const [monthly, setMonthly] = useState('')
   const [fundMonths, setFundMonths] = useState('1')
+  const [newMonthly, setNewMonthly] = useState('')
+  const [topUp, setTopUp] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
-  const [action, setAction] = useState<'open' | 'stop' | 'withdraw' | 'claim'>('open')
+  const [action, setAction] = useState<'open' | 'stop' | 'withdraw' | 'claim' | 'update' | 'topup'>('open')
 
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN.id })
   // The approve transaction is awaited inline, so only the action's final hash lands here and
@@ -151,6 +156,12 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     address: ETHX, abi: erc20Abi, functionName: 'allowance', args: address ? [address, board] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled },
   })
+  // SuperToken balanceOf is the available balance (already net of the locked CFA buffer), so this is
+  // exactly what the stream has left to drain before Superfluid liquidates it.
+  const { data: ethxBalance, refetch: refetchEthx } = useReadContract({
+    address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled },
+  })
 
   const pending = usePendingMarkee(isOpen ? board : undefined, enabled ? address : undefined)
   const { refetch: refetchPending } = pending
@@ -180,20 +191,47 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
 
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
 
+  // ── Derived state for a stream that is already running ──────────────────────
+  const live = useMemo(() => {
+    const rate = currentRate && currentRate > 0n ? currentRate : 0n
+    const balance = ethxBalance ?? 0n
+    const runwayDays = rate > 0n ? Number(runwaySeconds(balance, rate)) / 86400 : 0
+    let nextMonthlyWei = 0n
+    try { nextMonthlyWei = newMonthly ? parseEther(newMonthly) : 0n } catch { /* invalid input */ }
+    const nextRate = monthlyToRatePerSec(nextMonthlyWei)
+    const required = bufferFor(nextRate)
+    const held = deposit ?? 0n
+    // The board refuses an update whose new rate outruns the buffer it holds for this backer.
+    const depositTopUp = required > held ? required - held : 0n
+    let topUpWei = 0n
+    try { topUpWei = topUp ? parseEther(topUp) : 0n } catch { /* invalid input */ }
+    return { rate, runwayDays, nextRate, depositTopUp, topUpWei, changed: nextRate > 0n && nextRate !== rate }
+  }, [currentRate, ethxBalance, newMonthly, deposit, topUp])
+
+  const lowRunway = live.rate > 0n && live.runwayDays < 7
+
   // ── Reset / close-on-success ────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) {
-      setMonthly(''); setFundMonths('1'); setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
+      setMonthly(''); setFundMonths('1'); setNewMonthly(''); setTopUp('')
+      setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
 
+  // Start the rate field at what the backer streams today, so the input reads as an edit.
+  useEffect(() => {
+    if (isOpen && !newMonthly && currentRate && currentRate > 0n) {
+      setNewMonthly(formatEther(ratePerSecToMonthly(currentRate)))
+    }
+  }, [isOpen, currentRate]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (isSuccess && isOpen) {
-      refetchBacked(); refetchDeposit(); refetchRate(); refetchAllowance(); refetchBalance(); refetchPending()
+      refetchBacked(); refetchDeposit(); refetchRate(); refetchAllowance(); refetchBalance(); refetchEthx(); refetchPending()
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance, refetchPending])
+  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance, refetchEthx, refetchPending])
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   async function handleOpenStream() {
@@ -282,6 +320,90 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
       setTxHash(hash)
     } catch (e: unknown) {
       logTransactionError(e, 'StreamModal.stopStream')
+      setError(formatTransactionError(e))
+    }
+  }
+
+  async function handleUpdateRate() {
+    setError(null)
+    if (!address || !publicClient) return
+    if (!cfaAgreement) { setError('Still loading chain data. Try again in a moment.'); return }
+    if (live.nextRate <= 0n) { setError('Enter a monthly rate.'); return }
+    if (live.nextRate === live.rate) { setError('That is already your rate.'); return }
+    if (minMonthlyWei && ratePerSecToMonthly(live.nextRate) < minMonthlyWei) {
+      setError(`Minimum is ${minMonthlyEth} ETH / month.`); return
+    }
+    if (balanceData && balanceData.value < live.depositTopUp) {
+      setError('Not enough ETH for the larger buffer this rate needs.'); return
+    }
+
+    try {
+      setAction('update')
+      setSubmitting(true)
+
+      if (live.depositTopUp > 0n && (allowance ?? 0n) < live.depositTopUp) {
+        setApproving(true)
+        const approveHash = await writeContractAsync({
+          address: ETHX,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [board, live.depositTopUp],
+          chainId: CANONICAL_CHAIN.id,
+        })
+        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        if (approveReceipt.status !== 'success') throw new Error('The approval transaction reverted.')
+        await refetchAllowance()
+        if (!openRef.current) return
+        setApproving(false)
+      }
+
+      // The wrap covers the deposit the board pulls, so raising the rate never eats the runway the
+      // stream is already funded with.
+      const ops = buildUpdateStreamOps({
+        ethx: ETHX,
+        board,
+        backer: address,
+        ratePerSec: live.nextRate,
+        depositTopUp: live.depositTopUp,
+        wrapValue: live.depositTopUp,
+        cfaAgreement: cfaAgreement as Address,
+      })
+
+      const hash = await writeContractAsync({
+        address: HOST,
+        abi: SUPERFLUID_HOST_ABI,
+        functionName: 'batchCall',
+        args: [ops],
+        value: live.depositTopUp,
+        chainId: CANONICAL_CHAIN.id,
+      })
+      if (!openRef.current) return
+      setTxHash(hash)
+    } catch (e: unknown) {
+      if (!openRef.current) return
+      setApproving(false)
+      setSubmitting(false)
+      logTransactionError(e, 'StreamModal.updateRate')
+      setError(formatTransactionError(e))
+    }
+  }
+
+  async function handleTopUp() {
+    setError(null)
+    if (live.topUpWei <= 0n) { setError('Enter an amount to add.'); return }
+    if (balanceData && balanceData.value < live.topUpWei) { setError('Not enough ETH in your wallet.'); return }
+    try {
+      setAction('topup')
+      const hash = await writeContractAsync({
+        address: ETHX,
+        abi: ETHX_WRAP_ABI,
+        functionName: 'upgradeByETH',
+        value: live.topUpWei,
+        chainId: CANONICAL_CHAIN.id,
+      })
+      setTxHash(hash)
+    } catch (e: unknown) {
+      logTransactionError(e, 'StreamModal.topUp')
       setError(formatTransactionError(e))
     }
   }
@@ -379,6 +501,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                   ? (action === 'stop' ? '✓ Stream stopped'
                     : action === 'withdraw' ? '✓ Deposit withdrawn'
                     : action === 'claim' ? '✓ MARKEE claimed'
+                    : action === 'update' ? '✓ Rate updated'
+                    : action === 'topup' ? '✓ Balance topped up'
                     : '🎉 Stream live')
                   : approving ? 'Approving the deposit' : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
               </div>
@@ -390,7 +514,11 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                         ? 'Your refundable buffer deposit is back in your wallet.'
                         : action === 'claim'
                           ? 'Your streamed ETH went through the RevNet and the MARKEE it minted is in your wallet.'
-                          : 'Your stream is backing this Markee. The board ranks by streamed rate.')
+                          : action === 'update'
+                            ? 'Your stream now runs at the new rate.'
+                            : action === 'topup'
+                              ? 'Your ETHx balance is topped up, so the stream runs longer before it needs funding again.'
+                              : 'Your stream is backing this Markee. The board ranks by streamed rate.')
                   : approving
                     ? 'A small approval lets the board hold your refundable buffer. The stream opens next.'
                     : 'Usually under 2 seconds on Base.'}
@@ -447,8 +575,48 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
               <>
                 <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Row label="Your stream" value={`${currentMonthlyEth} ETH / mo`} />
+                  <Row label="ETHx balance" value={`${Number(formatEther(ethxBalance ?? 0n)).toFixed(6)} ETHx`} />
+                  <Row label="Runway" value={live.rate > 0n ? `~${live.runwayDays.toFixed(1)} days` : '—'} bold={lowRunway} />
                   <Row label="Buffer on deposit" value={`${deposit ? formatEther(deposit) : '0'} ETHx`} />
                 </div>
+
+                {lowRunway && (
+                  <div style={{ fontFamily: MONO, fontSize: 11, color: PINK, lineHeight: 1.5 }}>
+                    Your ETHx runs out in ~{live.runwayDays.toFixed(1)} days. When it does, Superfluid liquidates the stream and keeps your buffer, so top up to keep it running.
+                  </div>
+                )}
+
+                <ModalField label={`Monthly rate (min ${minMonthlyEth} ETH)`}>
+                  <input
+                    inputMode="decimal"
+                    value={newMonthly}
+                    onChange={e => setNewMonthly(e.target.value.replace(/[^0-9.]/g, ''))}
+                    placeholder={currentMonthlyEth}
+                    style={inputStyle}
+                  />
+                  {live.depositTopUp > 0n && (
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6 }}>
+                      Raising the rate needs {formatEther(live.depositTopUp)} ETH more on deposit, taken with this transaction and refundable when you stop.
+                    </div>
+                  )}
+                </ModalField>
+                <button onClick={handleUpdateRate} disabled={busy || !live.changed} style={btnStyle(true, busy || !live.changed)}>
+                  Update rate
+                </button>
+
+                <ModalField label="Top up ETHx (ETH)">
+                  <input
+                    inputMode="decimal"
+                    value={topUp}
+                    onChange={e => setTopUp(e.target.value.replace(/[^0-9.]/g, ''))}
+                    placeholder="0.05"
+                    style={inputStyle}
+                  />
+                </ModalField>
+                <button onClick={handleTopUp} disabled={busy || live.topUpWei === 0n} style={btnStyle(false, busy || live.topUpWei === 0n)}>
+                  Top up
+                </button>
+
                 <button onClick={handleStopStream} disabled={busy} style={btnStyle(false, busy)}>Stop stream</button>
                 <button
                   onClick={handleWithdrawDeposit}

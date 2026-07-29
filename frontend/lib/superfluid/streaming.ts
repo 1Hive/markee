@@ -89,6 +89,21 @@ const CFA_CREATE_FLOW_ABI = [
   },
 ] as const
 
+const CFA_UPDATE_FLOW_ABI = [
+  {
+    type: 'function',
+    name: 'updateFlow',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'receiver', type: 'address' },
+      { name: 'flowRate', type: 'int96' },
+      { name: 'ctx', type: 'bytes' },
+    ],
+    outputs: [{ name: '', type: 'bytes' }],
+  },
+] as const
+
 const GDA_CONNECT_POOL_ABI = [
   {
     type: 'function',
@@ -175,6 +190,56 @@ export function openStreamValue(buffer: bigint, prefund: bigint): bigint {
   return buffer + prefund
 }
 
+export interface UpdateStreamParams {
+  ethx: Address
+  board: Address
+  backer: Address
+  ratePerSec: bigint
+  // Extra buffer the board must hold for the new rate (0 when the existing deposit already covers it).
+  depositTopUp: bigint
+  // Native ETH wrapped in the same batch: the deposit top-up plus any added runway.
+  wrapValue: bigint
+  cfaAgreement: Address
+}
+
+// Rate change on a live stream. onFlowUpdated takes the Markee from backerMarkee[sender], so unlike
+// the open batch this one carries no userData, and the pool connect is already in place. The board
+// rejects the update unless backerDeposit covers newRate * BUFFER_PERIOD, so the deposit top-up has
+// to land in the same batch, before the flow op.
+export function buildUpdateStreamOps(p: UpdateStreamParams): Operation[] {
+  const ops: Operation[] = []
+
+  if (p.wrapValue > 0n) {
+    ops.push({
+      operationType: OP_SIMPLE_FORWARD_CALL,
+      target: p.ethx,
+      data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
+    })
+  }
+
+  if (p.depositTopUp > 0n) {
+    ops.push({
+      operationType: OP_SIMPLE_FORWARD_CALL,
+      target: p.board,
+      data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.depositTopUp] }),
+    })
+  }
+
+  const callData = encodeFunctionData({
+    abi: CFA_UPDATE_FLOW_ABI,
+    functionName: 'updateFlow',
+    args: [p.ethx, p.board, p.ratePerSec, '0x'],
+  })
+
+  ops.push({
+    operationType: OP_CALL_AGREEMENT,
+    target: p.cfaAgreement,
+    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [callData, '0x']),
+  })
+
+  return ops
+}
+
 // ── Protocol ABIs the modal calls directly ─────────────────────────────────
 
 export const SUPERFLUID_HOST_ABI = [
@@ -229,6 +294,12 @@ export const CFA_FORWARDER_ABI = [
     ],
     outputs: [{ name: '', type: 'int96' }],
   },
+] as const
+
+// ETHx is a SETH wrapper: upgradeByETH() turns the sent ETH into the caller's own ETHx, which is what
+// funds a live stream (the CFA drains this balance, not the wallet's native ETH).
+export const ETHX_WRAP_ABI = [
+  { type: 'function', name: 'upgradeByETH', stateMutability: 'payable', inputs: [], outputs: [] },
 ] as const
 
 // The per-Markee GDA refund pool: units are the backer's share of that Markee's aggregate rate, which
