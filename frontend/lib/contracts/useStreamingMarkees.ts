@@ -14,6 +14,11 @@ export interface StreamingMarkee {
   name: string
   owner: string
   rate: bigint
+  // What the rate is made of: live streams versus the decaying grandfather floor a migrated lump-sum
+  // Markee keeps. The board ranks on max(streamRate, legacyFloor), so a Markee whose floor is the
+  // larger of the two holds its spot on funds that were paid once and are decaying to nothing.
+  streamRate: bigint
+  legacyFloor: bigint
 }
 
 export interface StreamingBoardMeta {
@@ -25,6 +30,8 @@ export interface StreamingBoardMeta {
   totalLegacyFunds?: bigint
   markeeCount?: bigint
 }
+
+const CALLS_PER_MARKEE = 5
 
 const META_FUNCTIONS = [
   'leaderboardName',
@@ -75,12 +82,16 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
   const topRates = useMemo(() => topResult?.[1] ?? [], [topResult])
 
   const markeeContracts = useMemo(
-    () => topAddresses.flatMap(addr => [
-      { address: addr, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
-      { address: addr, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
-      { address: addr, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
-    ]),
-    [topAddresses]
+    () => (board
+      ? topAddresses.flatMap(addr => [
+          { address: addr, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
+          { address: addr, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
+          { address: addr, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
+          { address: board, abi: StreamingLeaderboardABI, functionName: 'aggregateRate' as const, args: [addr] as const, chainId: CANONICAL_CHAIN_ID },
+          { address: board, abi: StreamingLeaderboardABI, functionName: 'currentLegacyFloor' as const, args: [addr] as const, chainId: CANONICAL_CHAIN_ID },
+        ])
+      : []),
+    [board, topAddresses]
   )
 
   const { data: markeeData, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContracts({
@@ -92,10 +103,12 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
     topAddresses
       .map((address, i) => ({
         address,
-        message: (markeeData?.[i * 3]?.result as string) ?? '',
-        name: (markeeData?.[i * 3 + 1]?.result as string) ?? '',
-        owner: (markeeData?.[i * 3 + 2]?.result as string) ?? '',
+        message: (markeeData?.[i * CALLS_PER_MARKEE]?.result as string) ?? '',
+        name: (markeeData?.[i * CALLS_PER_MARKEE + 1]?.result as string) ?? '',
+        owner: (markeeData?.[i * CALLS_PER_MARKEE + 2]?.result as string) ?? '',
         rate: topRates[i] ?? 0n,
+        streamRate: (markeeData?.[i * CALLS_PER_MARKEE + 3]?.result as bigint) ?? 0n,
+        legacyFloor: (markeeData?.[i * CALLS_PER_MARKEE + 4]?.result as bigint) ?? 0n,
       }))
       .filter(m => m.rate > 0n),
     [topAddresses, topRates, markeeData]

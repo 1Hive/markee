@@ -3,14 +3,17 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ChevronRight, Zap, Trophy, Plus, Copy, Check, Eye } from 'lucide-react'
-import { formatEther, type Address } from 'viem'
-import { useAccount } from 'wagmi'
+import { formatEther, parseEther, type Address, type Hex } from 'viem'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
 import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
-import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
+import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
+import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -62,6 +65,7 @@ function MarkeeRowSkeleton() {
 
 export function StreamingBoardDetail({ board }: { board: Address }) {
   const { meta, markees, isLoading, refetch } = useStreamingMarkees(board)
+  const { address } = useAccount()
 
   const boardTotal = useStreamingBoardTotal(board)
   const ethPrice = useEthPrice()
@@ -109,6 +113,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const backMarkee = (m: StreamingMarkee) =>
     setTarget({ address: m.address, message: m.message, name: m.name })
+
+  const isBoardAdmin = !!address && !!meta.admin && address.toLowerCase() === meta.admin.toLowerCase()
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -301,6 +307,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         </div>
       </section>
 
+      {isBoardAdmin && <BoardAdminPanel board={board} meta={meta} onUpdated={refetch} />}
+
       <Footer />
 
       {target && (
@@ -325,6 +333,122 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         />
       )}
     </div>
+  )
+}
+
+// ── Board settings (admin only) ────────────────────────────────────────────────
+
+function BoardAdminPanel({ board, meta, onUpdated }: {
+  board: Address
+  meta: StreamingBoardMeta
+  onUpdated: () => void
+}) {
+  const [minMonthly, setMinMonthly] = useState('')
+  const [beneficiary, setBeneficiary] = useState('')
+  const [newAdmin, setNewAdmin] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
+
+  const { writeContractAsync, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
+  const busy = isPending || isConfirming
+
+  useEffect(() => {
+    if (!isSuccess) return
+    setMinMonthly(''); setBeneficiary(''); setNewAdmin(''); setTxHash(undefined)
+    onUpdated()
+  }, [isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submitMinimum() {
+    setError(null)
+    let wei: bigint
+    try { wei = parseEther(minMonthly) } catch { setError('Enter a valid amount in ETH.'); return }
+    try {
+      setTxHash(await writeContractAsync({
+        address: board, abi: StreamingLeaderboardABI, functionName: 'setMinimumMonthlyRate', args: [wei], chainId: CANONICAL_CHAIN_ID,
+      }))
+    } catch (e: unknown) {
+      logTransactionError(e, 'BoardAdminPanel.setMinimumMonthlyRate')
+      setError(formatTransactionError(e))
+    }
+  }
+
+  // A zero beneficiary is legal on-chain: it credits backers the full top rate instead of streaming a
+  // share out, so it is a real choice rather than an unset field, and the input asks for it explicitly.
+  async function submitBeneficiary() {
+    setError(null)
+    const v = beneficiary.trim()
+    if (!/^0x[0-9a-fA-F]{40}$/.test(v)) { setError('Enter a valid address.'); return }
+    try {
+      setTxHash(await writeContractAsync({
+        address: board, abi: StreamingLeaderboardABI, functionName: 'setBeneficiaryAddress', args: [v as Address], chainId: CANONICAL_CHAIN_ID,
+      }))
+    } catch (e: unknown) {
+      logTransactionError(e, 'BoardAdminPanel.setBeneficiaryAddress')
+      setError(formatTransactionError(e))
+    }
+  }
+
+  async function submitAdmin() {
+    setError(null)
+    const v = newAdmin.trim()
+    if (!/^0x[0-9a-fA-F]{40}$/.test(v)) { setError('Enter a valid address.'); return }
+    if (/^0x0{40}$/.test(v)) { setError('The board rejects a zero admin.'); return }
+    try {
+      setTxHash(await writeContractAsync({
+        address: board, abi: StreamingLeaderboardABI, functionName: 'setAdmin', args: [v as Address], chainId: CANONICAL_CHAIN_ID,
+      }))
+    } catch (e: unknown) {
+      logTransactionError(e, 'BoardAdminPanel.setAdmin')
+      setError(formatTransactionError(e))
+    }
+  }
+
+  const field = 'w-full bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-3 py-2.5 text-[#EDEEFF] text-sm outline-none focus:border-[#F897FE]/40'
+  const label = 'block text-[10px] uppercase tracking-wider text-[#8A8FBF] mb-2'
+  const action = 'px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+
+  return (
+    <section className="py-10 border-t border-[#8A8FBF]/20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-[#EDEEFF] font-semibold mb-1">Board settings</h2>
+        <p className="text-[#8A8FBF] text-sm mb-6">Only you, the board admin, see this.</p>
+
+        <div className="grid gap-5 md:grid-cols-3">
+          <div>
+            <span className={label}>
+              Minimum monthly rate
+              {meta.minimumMonthlyRate !== undefined && ` (now ${formatEther(meta.minimumMonthlyRate)} ETH)`}
+            </span>
+            <div className="flex gap-2">
+              <input value={minMonthly} onChange={e => setMinMonthly(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.001" className={field} />
+              <button onClick={submitMinimum} disabled={busy || !minMonthly} className={`${action} bg-[#F897FE] text-[#060A2A] hover:bg-[#7C9CFF]`}>Set</button>
+            </div>
+          </div>
+
+          <div>
+            <span className={label}>Beneficiary{meta.beneficiary && ` (${meta.beneficiary.slice(0, 6)}…${meta.beneficiary.slice(-4)})`}</span>
+            <div className="flex gap-2">
+              <input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} placeholder="0x…" className={`${field} font-mono`} />
+              <button onClick={submitBeneficiary} disabled={busy || !beneficiary} className={`${action} bg-[#F897FE] text-[#060A2A] hover:bg-[#7C9CFF]`}>Set</button>
+            </div>
+            <p className="text-[10px] text-[#8A8FBF] mt-2 leading-relaxed">Moves the live outflow: the old stream closes and the new beneficiary starts receiving at the same rate.</p>
+          </div>
+
+          <div>
+            <span className={label}>Transfer admin</span>
+            <div className="flex gap-2">
+              <input value={newAdmin} onChange={e => setNewAdmin(e.target.value)} placeholder="0x…" className={`${field} font-mono`} />
+              <button onClick={submitAdmin} disabled={busy || !newAdmin} className={`${action} border border-[#8A8FBF]/30 text-[#EDEEFF] hover:border-[#F897FE]/40`}>Transfer</button>
+            </div>
+            <p className="text-[10px] text-[#8A8FBF] mt-2 leading-relaxed">One way: after this, only the new address can change these settings.</p>
+          </div>
+        </div>
+
+        {error && <p className="text-[#F897FE] text-sm mt-4">{error}</p>}
+        {busy && <p className="text-[#8A8FBF] text-sm mt-4">Confirming on Base…</p>}
+      </div>
+    </section>
   )
 }
 
@@ -369,6 +493,14 @@ function MarkeeRow({
       </div>
       <div className="flex-shrink-0 flex flex-col items-end gap-2">
         <span className="text-[#F897FE] text-sm font-semibold">{formatRate(markee.rate)}</span>
+        {markee.legacyFloor > markee.streamRate && (
+          <span
+            title="This Markee was funded with a lump sum before the board streamed. That sum counts as a rate that decays to zero, so the price to overtake it keeps falling."
+            className="text-[10px] text-[#8A8FBF] border border-[#8A8FBF]/25 bg-[#8A8FBF]/5 px-2 py-0.5 rounded-full whitespace-nowrap"
+          >
+            grandfathered · decaying
+          </span>
+        )}
         {onBack && (
           <button onClick={onBack} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
             stream to back

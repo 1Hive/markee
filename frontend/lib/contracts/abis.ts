@@ -929,4 +929,7 @@ export const StreamingLeaderboardABI = [
   { inputs: [], name: 'withdrawDeposit', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: 'challenger', type: 'address' }], name: 'claimTop', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: 'backers', type: 'address[]' }], name: 'settle', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newRate', type: 'uint256' }], name: 'setMinimumMonthlyRate', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newBeneficiary', type: 'address' }], name: 'setBeneficiaryAddress', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newAdmin', type: 'address' }], name: 'setAdmin', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const
