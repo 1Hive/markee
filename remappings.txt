@@ -1,0 +1,4 @@
+forge-std/=lib/forge-std/src/
+@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
+@openzeppelin-v5/contracts/=node_modules/@openzeppelin/contracts/
+@superfluid-finance/ethereum-contracts/=node_modules/@superfluid-finance/ethereum-contracts/
