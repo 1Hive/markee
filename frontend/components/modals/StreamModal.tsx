@@ -29,6 +29,9 @@ import {
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { usePendingMarkee } from '@/hooks/usePendingMarkee'
+import useFlowingAmount from '@/hooks/useFlowingAmount'
+import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { formatUsd } from '@/lib/utils'
 
 // ── Design tokens (shared with the other modals) ───────────────────────────────
@@ -98,7 +101,7 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
   const [fundMonths, setFundMonths] = useState('1')
   const [error, setError] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
-  const [action, setAction] = useState<'open' | 'stop' | 'withdraw'>('open')
+  const [action, setAction] = useState<'open' | 'stop' | 'withdraw' | 'claim'>('open')
 
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN.id })
   // The approve transaction is awaited inline, so only the action's final hash lands here and
@@ -149,6 +152,11 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     query: { enabled },
   })
 
+  const pending = usePendingMarkee(isOpen ? board : undefined, enabled ? address : undefined)
+  const { refetch: refetchPending } = pending
+  const pendingEthWei = useFlowingAmount(pending.pendingWei, pending.snapshotAt, pending.ratePerSec)
+  const earnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(pendingEthWei)), pending.feeBps)
+
   const backsThis = !!backedMarkee && backedMarkee.toLowerCase() === markee.address.toLowerCase()
   const backsOther = !!backedMarkee && backedMarkee !== '0x0000000000000000000000000000000000000000' && !backsThis
   const poolReady = !!refundPool && refundPool !== '0x0000000000000000000000000000000000000000'
@@ -181,11 +189,11 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
 
   useEffect(() => {
     if (isSuccess && isOpen) {
-      refetchBacked(); refetchDeposit(); refetchRate(); refetchAllowance(); refetchBalance()
+      refetchBacked(); refetchDeposit(); refetchRate(); refetchAllowance(); refetchBalance(); refetchPending()
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance])
+  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance, refetchPending])
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   async function handleOpenStream() {
@@ -278,6 +286,25 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     }
   }
 
+  async function handleClaim() {
+    setError(null)
+    setAction('claim')
+    if (!address) return
+    try {
+      const hash = await writeContractAsync({
+        address: board,
+        abi: StreamingLeaderboardABI,
+        functionName: 'settle',
+        args: [[address]],
+        chainId: CANONICAL_CHAIN.id,
+      })
+      setTxHash(hash)
+    } catch (e: unknown) {
+      logTransactionError(e, 'StreamModal.claim')
+      setError(formatTransactionError(e))
+    }
+  }
+
   async function handleWithdrawDeposit() {
     setError(null)
     setAction('withdraw')
@@ -349,7 +376,10 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
             <div>
               <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
                 {isSuccess
-                  ? (action === 'stop' ? '✓ Stream stopped' : action === 'withdraw' ? '✓ Deposit withdrawn' : '🎉 Stream live')
+                  ? (action === 'stop' ? '✓ Stream stopped'
+                    : action === 'withdraw' ? '✓ Deposit withdrawn'
+                    : action === 'claim' ? '✓ MARKEE claimed'
+                    : '🎉 Stream live')
                   : approving ? 'Approving the deposit' : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
               </div>
               <div style={{ color: MUTED, fontSize: 13, maxWidth: 320, lineHeight: 1.5 }}>
@@ -358,7 +388,9 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                       ? 'Your stream is closed. Your deposit is now refundable.'
                       : action === 'withdraw'
                         ? 'Your refundable buffer deposit is back in your wallet.'
-                        : 'Your stream is backing this Markee. The board ranks by streamed rate.')
+                        : action === 'claim'
+                          ? 'Your streamed ETH went through the RevNet and the MARKEE it minted is in your wallet.'
+                          : 'Your stream is backing this Markee. The board ranks by streamed rate.')
                   : approving
                     ? 'A small approval lets the board hold your refundable buffer. The stream opens next.'
                     : 'Usually under 2 seconds on Base.'}
@@ -382,6 +414,32 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
             {markee.name && (
               <div style={{ fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
                 Backing <span style={{ color: PINK }}>{markee.name}</span>
+              </div>
+            )}
+
+            {(pendingEthWei > 0n || pending.accruing) && (
+              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  {pending.mintsMarkee ? 'MARKEE earned (est.)' : 'ETH to claim'}
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 26, color: PINK, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                  {pending.mintsMarkee
+                    ? earnedMarkee.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : Number(formatEther(pendingEthWei)).toFixed(6)}
+                </div>
+                {pending.mintsMarkee && (
+                  <Row label="From streamed" value={`${Number(formatEther(pendingEthWei)).toFixed(6)} ETH`} />
+                )}
+                {pending.mintsMarkee && pending.settledBalance > 0n && (
+                  <Row label="In your wallet" value={`${Number(formatEther(pending.settledBalance)).toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE`} />
+                )}
+                <button onClick={handleClaim} disabled={busy || pendingEthWei === 0n} style={btnStyle(true, busy || pendingEthWei === 0n)}>
+                  {pending.mintsMarkee ? 'Claim MARKEE' : 'Claim ETH'}
+                </button>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, lineHeight: 1.5 }}>
+                  {pending.mintsMarkee && 'An estimate: the mint rate falls at each RevNet stage, so claiming later mints less than the number shown now. '}
+                  {!pending.accruing && pendingEthWei > 0n && 'Your position stopped accruing, this balance is final.'}
+                </div>
               </div>
             )}
 

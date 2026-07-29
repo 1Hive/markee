@@ -231,3 +231,14 @@ export const CFA_FORWARDER_ABI = [
   },
 ] as const
 
+// The per-Markee GDA refund pool: units are the backer's share of that Markee's aggregate rate, which
+// is also the split the board settles the retained top rate on.
+export const SUPERFLUID_POOL_ABI = [
+  {
+    type: 'function',
+    name: 'getUnits',
+    stateMutability: 'view',
+    inputs: [{ name: 'member', type: 'address' }],
+    outputs: [{ name: '', type: 'uint128' }],
+  },
+] as const
