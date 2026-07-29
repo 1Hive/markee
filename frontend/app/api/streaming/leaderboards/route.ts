@@ -2,8 +2,8 @@
 //
 // Enumerates streaming-priced boards (one vertical-agnostic StreamingLeaderboardFactory) and returns
 // them normalized to the same row shape as the fixed-price vertical APIs, tagged strategy: 'streaming'.
-// totalFundsRaw is what the board raised (subgraph inflow net of GDA refunds); effectiveRateRaw is the
-// current top wei/sec for the $/mo label.
+// totalFundsRaw is what the board raised (subgraph inflow net of GDA refunds, plus lump sums carried
+// over by a migrated board); effectiveRateRaw is the current top wei/sec for the $/mo label.
 // Inert (returns []) until NEXT_PUBLIC_STREAMING_FACTORY is configured.
 
 import { NextResponse } from 'next/server'
@@ -123,8 +123,13 @@ export async function GET(request: Request) {
       const b = i * CALLS_PER_BOARD
       const name        = (metaResults[b]?.result as string) ?? addr
       const totals      = totalsByBoard.get(addr.toLowerCase())
-      const raised      = totals?.raised ?? 0n
+      const streamed    = totals?.raised ?? 0n
       const raisedRate  = totals?.raisedRate ?? 0n
+      // Lump sums a migrated board carries over: totalLeaderboardFunds sums each Markee's
+      // totalFundsAdded, which the streaming board only ever reads, so it never overlaps the streamed
+      // inflow. Without it a board migrated in place reads as having raised nothing.
+      const legacy      = (metaResults[b + 1]?.result as bigint) ?? 0n
+      const raised      = streamed + legacy
 
       const markeeCount = (metaResults[b + 2]?.result as bigint) ?? 0n
       const beneficiary = (metaResults[b + 3]?.result as string) ?? ''
@@ -148,7 +153,8 @@ export async function GET(request: Request) {
         name,
         platform: VERTICAL_PLATFORM[vertical],
         strategy: 'streaming' as const,
-        // Inflow minus GDA refunds: non-#1 backers get refunded, so gross would overstate the raise.
+        // Streamed inflow minus GDA refunds (non-#1 backers get refunded, so gross would overstate it),
+        // plus any lump sums the board carried over from a migration.
         totalFunds: formatEther(raised),
         totalFundsRaw: raised.toString(),
         // Measured at `streamedAt`; the client ticks forward at this rate.
