@@ -11,6 +11,10 @@ node_modules/
 /broadcast/
 /foundry.lock
 
+.env
+.env.local
+.env.*.local
+
 # Local-only design docs and Claude Code workspace
 /.claude/
 

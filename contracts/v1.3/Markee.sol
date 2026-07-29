@@ -53,6 +53,12 @@ contract Markee {
     event PricingStrategyChanged(address indexed oldStrategy, address indexed newStrategy);
     event OwnerChanged(address indexed oldOwner, address indexed newOwner);
 
+    /// @dev Marks the directly-deployed implementation initialized so no one can claim it;
+    ///      EIP-1167 clones get fresh storage and initialize normally.
+    constructor() {
+        initialized = true;
+    }
+
     // ─── Initializer ──────────────────────────────────────────────────────────
 
     function initialize(
@@ -156,13 +162,13 @@ contract Markee {
     function setMessage(string calldata _message) external {
         require(msg.sender == pricingStrategy, "Only pricing strategy can set message");
         message = _message;
-        emit MessageChanged(_message, tx.origin);
+        emit MessageChanged(_message, msg.sender);
     }
 
     function setName(string calldata _name) external {
         require(msg.sender == pricingStrategy, "Only pricing strategy can set name");
         name = _name;
-        emit NameChanged(_name, tx.origin);
+        emit NameChanged(_name, msg.sender);
     }
 
     // ─── Strategy & ownership ─────────────────────────────────────────────────

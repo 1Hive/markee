@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { CreditCard } from 'lucide-react'
-import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
+import { useFundWallet } from '@privy-io/react-auth'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -31,13 +32,9 @@ const REV_NET_ENABLED_ABI = [
   { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
 ] as const
 
-const ADMIN_ABI = [
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+const BENEFICIARY_ABI = [
+  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
-
-const SUPERFLUID_STRATEGY_ADDRESSES = new Set([
-  '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79',
-])
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type MarkeeSlot = { address: string; owner: string; message: string; name?: string; totalFundsAdded: bigint }
@@ -130,13 +127,8 @@ export function BuyMessageModal({
   topFundsAdded,
   platformId,
 }: BuyMessageModalProps) {
-  const { authenticated } = usePrivy()
-  const { address, isConnected, chain } = useAccount()
-  const { wallets } = useWallets()
-  const activeAddress = address ?? wallets[0]?.address
-  const hasWallet = !!activeAddress || isConnected
-  const hasActiveWalletConnection = isConnected && !!address
-  const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
+  const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
+  const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
@@ -178,8 +170,8 @@ export function BuyMessageModal({
     address: strategyAddress, abi: REV_NET_ENABLED_ABI, functionName: 'revNetEnabled', chainId: CANONICAL_CHAIN.id,
   })
   const revNetEnabled = revNetEnabledData ?? false
-  const { data: adminAddress } = useReadContract({
-    address: strategyAddress, abi: ADMIN_ABI, functionName: 'admin', chainId: CANONICAL_CHAIN.id,
+  const { data: beneficiaryAddress } = useReadContract({
+    address: strategyAddress, abi: BENEFICIARY_ABI, functionName: 'beneficiaryAddress', chainId: CANONICAL_CHAIN.id,
   })
 
   // ── Preset amount calculations ──────────────────────────────────────────────
@@ -270,8 +262,7 @@ export function BuyMessageModal({
 
   useEffect(() => {
     if (!isSuccess || !receipt || !activeAddress || !strategyAddress || activeTab === 'updateMessage') return
-    const normalised = strategyAddress.toLowerCase()
-    if (!SUPERFLUID_STRATEGY_ADDRESSES.has(normalised)) return
+    if (platformId !== 'superfluid') return
     const txHash = receipt.transactionHash
     const amountWei = parseEther(amount).toString()
     if (activeTab === 'addFunds') trackAddFunds(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
@@ -447,12 +438,12 @@ export function BuyMessageModal({
               <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
                 {txStep === 'signing' && 'Waiting for wallet...'}
                 {txStep === 'pending' && 'Transaction pending on Base'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : '🎉 You just took #1')}
+                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : (!hasCompetition || selFeatured) ? '🎉 You just took #1' : '✓ Message submitted')}
               </div>
               <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
                 {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
                 {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : `"${message}" is now the #1 Markee. The board is reordering.`)}
+                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : (!hasCompetition || selFeatured) ? `"${message}" is now the #1 Markee. The board is reordering.` : `"${message}" has been added to the leaderboard.`)}
               </div>
             </div>
           </div>
@@ -747,8 +738,8 @@ export function BuyMessageModal({
                   ? 'Only the message owner can update their message.'
                   : partnerName
                   ? <>62% to <span style={{ color: TEXT2 }}>{partnerName}</span> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : adminAddress
-                  ? <>62% to <a href={`https://basescan.org/address/${adminAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{adminAddress.slice(0, 6)}…{adminAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                  : beneficiaryAddress
+                  ? <>62% to <a href={`https://basescan.org/address/${beneficiaryAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{beneficiaryAddress.slice(0, 6)}…{beneficiaryAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
                   : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
               </div>
               <BtnTooltip reason={btnDisabledReason}>

@@ -8,6 +8,8 @@ export type MarkeeTokenPhase = {
 
 export const REVNET_BUYER_TOKEN_SHARE = 0.62
 export const LEADERBOARD_REVNET_SHARE = 0.38
+// Of the RevNet ETH, 38% goes to the Coop platform fee receiver; 62% is the buyer's actual RevNet payment.
+export const REVNET_BUYER_ETH_SHARE = 0.62
 
 const SEASON_MS = 91.31 * 24 * 60 * 60 * 1000
 const SCHEDULE_START = new Date('2025-12-21T00:00:00Z')
@@ -58,5 +60,5 @@ export function estimateDirectRevnetMarkeeTokens(ethAmount: number, now = Date.n
 }
 
 export function estimateLeaderboardPurchaseMarkeeTokens(ethAmount: number, now = Date.now()): number {
-  return ethAmount * LEADERBOARD_REVNET_SHARE * getCurrentGrossMarkeeRate(now) * REVNET_BUYER_TOKEN_SHARE
+  return ethAmount * LEADERBOARD_REVNET_SHARE * REVNET_BUYER_ETH_SHARE * getCurrentGrossMarkeeRate(now) * REVNET_BUYER_TOKEN_SHARE
 }

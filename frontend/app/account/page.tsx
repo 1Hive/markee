@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useAccount } from 'wagmi'
-import { useWallets } from '@privy-io/react-auth'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
@@ -800,10 +799,7 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
-  const { address: walletAddress, isConnected } = useAccount()
-  const { wallets } = useWallets()
-  const activeAddress = walletAddress ?? wallets[0]?.address
-  const hasWallet = !!activeAddress || isConnected
+  const { activeAddress, hasWallet } = useActiveWallet()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
@@ -1212,7 +1208,7 @@ export default function AccountPage() {
           leaderboardAddress={editingBoard.address}
           initialSiteUrl={editingBoard.siteUrl}
           initialLogoUrl={editingBoard.logoUrl}
-          onSuccess={() => { setEditingBoard(null); if (walletAddress) fetchAll(walletAddress) }}
+          onSuccess={() => { setEditingBoard(null); if (activeAddress) fetchAll(activeAddress) }}
         />
       )}
 
@@ -1230,7 +1226,7 @@ export default function AccountPage() {
           isOpen={!!verifyBoard}
           onClose={() => setVerifyBoard(null)}
           leaderboard={{ address: verifyBoard.address, name: verifyBoard.name, verifiedUrls: verifyBoard.verifiedUrls }}
-          onVerified={() => { if (walletAddress) fetchAll(walletAddress) }}
+          onVerified={() => { if (activeAddress) fetchAll(activeAddress) }}
           onOpenIntegration={() => { setVerifyBoard(null); setIntegrationBoard(verifyBoard) }}
         />
       )}

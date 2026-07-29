@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
 import { CreditCard } from 'lucide-react'
-import { usePrivy, useFundWallet, useWallets } from '@privy-io/react-auth'
+import { useFundWallet } from '@privy-io/react-auth'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
@@ -83,13 +84,8 @@ interface FixedPriceModalProps {
 }
 
 export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
-  const { authenticated } = usePrivy()
-  const { isConnected, chain, address } = useAccount()
-  const { wallets } = useWallets()
-  const activeAddress = address ?? wallets[0]?.address
-  const hasWallet = !!activeAddress || isConnected
-  const hasActiveWalletConnection = isConnected && !!address
-  const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
+  const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
+  const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
