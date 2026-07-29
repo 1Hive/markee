@@ -6,6 +6,41 @@
 export type Strategy = 'fixed' | 'streaming'
 export type Vertical = 'openinternet' | 'github' | 'superfluid'
 
+// The `platform` value the vertical listings filter on, and the platform name a streaming board is
+// tagged with on-chain at creation (StreamingLeaderboardFactory.boardPlatform).
+export const VERTICAL_PLATFORM: Record<Vertical, string> = {
+  openinternet: 'website',
+  github: 'github',
+  superfluid: 'superfluid',
+}
+
+const PLATFORM_VERTICAL: Record<string, Vertical> = {
+  website: 'openinternet',
+  github: 'github',
+  superfluid: 'superfluid',
+}
+
+export function verticalFromPlatform(platform: string | undefined | null): Vertical | null {
+  if (!platform) return null
+  return PLATFORM_VERTICAL[platform.toLowerCase()] ?? null
+}
+
+// The factory keeps each platform tag in a single storage slot, so 31 bytes is the on-chain cap and a
+// longer placement id is truncated rather than reverting the creation.
+export const MAX_PLATFORM_TAG_BYTES = 31
+
+export function toPlatformTag(value: string, fallback: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+  const bytes = new TextEncoder().encode(trimmed)
+  if (bytes.length <= MAX_PLATFORM_TAG_BYTES) return trimmed
+  const truncated = new TextDecoder()
+    .decode(bytes.slice(0, MAX_PLATFORM_TAG_BYTES))
+    .replace(/\uFFFD+$/, '')
+    .trim()
+  return truncated || fallback
+}
+
 export interface StrategyMeta {
   key: Strategy
   label: string

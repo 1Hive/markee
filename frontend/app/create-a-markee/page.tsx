@@ -9,7 +9,7 @@ import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
-import { STRATEGIES, type Strategy, type Vertical } from '@/lib/strategy'
+import { STRATEGIES, VERTICAL_PLATFORM, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const C = {
@@ -21,8 +21,8 @@ const C = {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const
 
-// (strategy x vertical) -> factory. Fixed price has a factory per vertical; streaming is
-// vertical-agnostic (one factory, vertical stored as board metadata), so all verticals map to it.
+// (strategy x vertical) -> factory. Fixed price has a factory per vertical; streaming has one factory
+// serving every vertical (the placement is a per-board platform tag), so all verticals map to it.
 const STREAMING_FACTORY_ADDR = (STREAMING_FACTORY || ZERO_ADDRESS) as `0x${string}`
 const FACTORIES: Record<Strategy, Record<Vertical, `0x${string}`>> = {
   fixed: {
@@ -41,6 +41,23 @@ const FACTORY_ABI = [{
   inputs: [
     { name: '_beneficiaryAddress', type: 'address' },
     { name: '_leaderboardName', type: 'string' },
+  ],
+  name: 'createLeaderboard',
+  outputs: [
+    { name: 'leaderboardAddress', type: 'address' },
+    { name: 'seedMarkeeAddress', type: 'address' },
+  ],
+  stateMutability: 'nonpayable',
+  type: 'function',
+}] as const
+
+// The streaming factory serves every vertical, so it takes the placement as on-chain platform tags.
+const STREAMING_FACTORY_ABI = [{
+  inputs: [
+    { name: '_beneficiaryAddress', type: 'address' },
+    { name: '_leaderboardName', type: 'string' },
+    { name: '_platformName', type: 'string' },
+    { name: '_platformId', type: 'string' },
   ],
   name: 'createLeaderboard',
   outputs: [
@@ -694,8 +711,8 @@ function CreateWizardInner() {
         body: JSON.stringify({ leaderboardAddress: found, repoFullName: selectedRepo, filePath: selectedFile }),
       }).catch(() => {})
     }
-    // Streaming boards are vertical-agnostic on-chain; tag the placement off-chain so it surfaces on
-    // the right vertical listing.
+    // The placement is already tagged on-chain at creation; the off-chain record carries the board name
+    // and keeps the listing working for boards created before tags existed.
     if (strategy === 'streaming') {
       fetch('/api/streaming/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -759,13 +776,27 @@ function CreateWizardInner() {
       (values.projectName?.trim() || 'My Project')
     resetWrite()
     try {
-      writeContract({
-        address: FACTORIES[strategy][vertical],
-        abi: FACTORY_ABI,
-        functionName: 'createLeaderboard',
-        args: [bene as `0x${string}`, name],
-        chainId: CANONICAL_CHAIN.id,
-      })
+      if (strategy === 'streaming') {
+        const platformId = toPlatformTag(
+          vertical === 'github' ? (selectedRepo ?? name) : name,
+          VERTICAL_PLATFORM[vertical],
+        )
+        writeContract({
+          address: FACTORIES[strategy][vertical],
+          abi: STREAMING_FACTORY_ABI,
+          functionName: 'createLeaderboard',
+          args: [bene as `0x${string}`, name, VERTICAL_PLATFORM[vertical], platformId],
+          chainId: CANONICAL_CHAIN.id,
+        })
+      } else {
+        writeContract({
+          address: FACTORIES[strategy][vertical],
+          abi: FACTORY_ABI,
+          functionName: 'createLeaderboard',
+          args: [bene as `0x${string}`, name],
+          chainId: CANONICAL_CHAIN.id,
+        })
+      }
     } catch (err) {
       logTransactionError(err, 'CreateMarkeeWizard.createLeaderboard')
       setTxError(formatTransactionError(err))

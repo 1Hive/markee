@@ -42,6 +42,16 @@ Three factory instances on Base, same underlying contract, different platform co
 
 **Partner Platform Pattern:** A platform (like Superfluid) has its own Leaderboardfactory, where its users can create their own Leaderboard strategies to integrate based on their use case. LeaderboardFactory contracts are owned by the Markee Cooperative's multisig `0xAf4401E765dFf079aB6021BBb8d46E53E27613DB`
 
+## StreamingLeaderboardFactory
+
+The streaming pricing strategy has one factory for every platform: each board is tagged at creation with its platform (name + id), so the placement is on-chain rather than a factory per platform.
+
+| Factory | Address (Base) | Use Case |
+|---------|---------------|----------|
+| Streaming | `0x37f420fdE5c98e611EB7cb9b74ef579D84697039` | Backers stream ETH by the second; the highest active rate holds #1 |
+
+The factory registers each board it clones as a Superfluid SuperApp, which the permissioned Base host gates on the factory address: Superfluid governance authorizes it once via `gov.setAppRegistrationKey(host, factory, "k1", farFutureTs)`.
+
 ---
 
 ## API Layer

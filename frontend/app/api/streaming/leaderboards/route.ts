@@ -14,8 +14,8 @@ import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { getStreamingBoardMeta } from '@/lib/streaming/boardMeta'
 import { fetchBoardTotals } from '@/lib/streaming/subgraph'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
-import type { Vertical } from '@/lib/strategy'
-import { LeaderboardFactoryABI, StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
+import { VERTICAL_PLATFORM, verticalFromPlatform, type Vertical } from '@/lib/strategy'
+import { StreamingLeaderboardFactoryABI, StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,13 +25,6 @@ const CACHE_TTL = 60 // seconds
 const LAST_GOOD_KEY = 'cache:streaming:leaderboards:lastgood'
 const LAST_GOOD_TTL = 7 * 24 * 60 * 60
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
-
-// Placement -> the `platform` value the vertical listings use. Untagged boards fall back to website.
-const VERTICAL_TO_PLATFORM: Record<Vertical, string> = {
-  openinternet: 'website',
-  github: 'github',
-  superfluid: 'superfluid',
-}
 
 function getClient() {
   // The streaming factory lives on whatever chain NEXT_PUBLIC_STREAMING_FACTORY was deployed to,
@@ -63,7 +56,7 @@ export async function GET(request: Request) {
 
     const addresses = await client.readContract({
       address: factory,
-      abi: LeaderboardFactoryABI,
+      abi: StreamingLeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }) as `0x${string}`[]
@@ -110,10 +103,17 @@ export async function GET(request: Request) {
         { address: addr, abi: MarkeeABI, functionName: 'name' as const },
       ] : []
     )
-    const [markeeResults, metas, totalsByBoard] = await Promise.all([
+    // The placement each board was created for: on-chain platform tag first, off-chain record for the
+    // boards created before the factory carried tags.
+    const platformCalls = addresses.map(addr => ({
+      address: factory, abi: StreamingLeaderboardFactoryABI, functionName: 'boardPlatform' as const, args: [addr],
+    }))
+
+    const [markeeResults, platformResults, metas, totalsByBoard] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
+      chunkedMulticall(platformCalls as Parameters<typeof client.multicall>[0]['contracts']),
       Promise.all(addresses.map(a => getStreamingBoardMeta(a))),
       fetchBoardTotals(addresses, ETHX, BigInt(streamedAt)),
     ])
@@ -140,12 +140,13 @@ export async function GET(request: Request) {
         markeeCallIndex += 2
       }
 
-      const vertical = metas[i]?.vertical ?? 'openinternet'
+      const taggedPlatform = (platformResults[i]?.result as [string, string] | undefined)?.[0]
+      const vertical: Vertical = verticalFromPlatform(taggedPlatform) ?? metas[i]?.vertical ?? 'openinternet'
 
       return {
         address: addr,
         name,
-        platform: VERTICAL_TO_PLATFORM[vertical],
+        platform: VERTICAL_PLATFORM[vertical],
         strategy: 'streaming' as const,
         // Inflow minus GDA refunds: non-#1 backers get refunded, so gross would overstate the raise.
         totalFunds: formatEther(raised),

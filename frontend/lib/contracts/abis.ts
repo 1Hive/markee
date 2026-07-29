@@ -868,6 +868,22 @@ export const LeaderboardFactoryABI = [
   },
 ] as const
 
+// StreamingLeaderboardFactory: one factory for every vertical, so each board carries its placement as
+// a platform tag (name = the listing platform, id = the placement it was created for).
+export const StreamingLeaderboardFactoryABI = [
+  ...LeaderboardFactoryABI,
+  {
+    inputs: [{ name: '', type: 'address' }],
+    name: 'boardPlatform',
+    outputs: [
+      { name: 'name', type: 'string' },
+      { name: 'id', type: 'string' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
 // Legacy exports for backward compatibility during migration
 export const InvestorStrategyABI = TopDawgStrategyABI
 export const FixedStrategyABI = FixedPriceStrategyABI
