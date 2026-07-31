@@ -84,9 +84,10 @@ async function handle(req: NextRequest) {
     })
     return NextResponse.json({ ok: true, dryRun, ...report })
   } catch (e) {
-    const detail = e instanceof Error ? e.message.split('\n')[0] : String(e)
-    console.error('[streaming-keeper] run failed:', detail)
-    return NextResponse.json({ error: detail }, { status: 500 })
+    // Full detail goes to the function logs only: viem errors embed the RPC URL (API key included)
+    // and revert data, which don't belong in a response that dashboards may capture.
+    console.error('[streaming-keeper] run failed:', e)
+    return NextResponse.json({ error: 'keeper run failed, see function logs' }, { status: 500 })
   } finally {
     if (!dryRun) await kv.del(LOCK_KEY)
   }

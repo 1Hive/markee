@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { decodeEventLog, type Address } from 'viem'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -51,8 +51,14 @@ export function CreateMessageModal({
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
+  const handledReceipt = useRef<string | null>(null)
+
   useEffect(() => {
     if (!isSuccess || !receipt) return
+    // Once per receipt: onCreated arrives as an inline arrow from both call sites, so its identity
+    // changes every parent render and the effect re-runs while the modal is still mounted.
+    if (handledReceipt.current === receipt.transactionHash) return
+    handledReceipt.current = receipt.transactionHash
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== board.toLowerCase()) continue
       try {
