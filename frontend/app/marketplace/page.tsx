@@ -212,11 +212,12 @@ function ServedLogo({ lb }: { lb: Leaderboard }) {
 }
 
 // ── Sortable column header ─────────────────────────────────────────────────────
-function SortHead({ label, col, sortKey, sortDir, onSort, align = 'left' }: { label: string; col: string; sortKey: string; sortDir: string; onSort: (col: string) => void; align?: 'left' | 'right' }) {
+function SortHead({ label, col, sortKey, sortDir, onSort, align = 'left', title }: { label: string; col: string; sortKey: string; sortDir: string; onSort: (col: string) => void; align?: 'left' | 'right'; title?: string }) {
   const active = sortKey === col
   return (
     <button
       onClick={() => onSort(col)}
+      title={title}
       style={{
         background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
         display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -646,7 +647,7 @@ export default function MarketplacePage() {
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
             <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" />
+            <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" title="Fixed boards: one-time price. Streaming boards: monthly rate to hold the top." />
           </div>
 
           {/* rows */}

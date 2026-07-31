@@ -92,18 +92,19 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   // Track a view for the board's top message, mirroring the fixed reader. The POST both increments
   // (production only, gated server-side) and returns the current total for display.
+  const topAddress = markees[0]?.address
+  const topMessage = markees[0]?.message
   useEffect(() => {
-    const top = markees[0]
-    if (!top?.address || !top?.message) return
+    if (!topAddress || !topMessage) return
     fetch('/api/views', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: top.address, message: top.message }),
+      body: JSON.stringify({ address: topAddress, message: topMessage }),
     })
       .then(r => (r.ok ? r.json() : null))
       .then(data => { if (typeof data?.totalViews === 'number') setTopViews(data.totalViews) })
       .catch(() => {})
-  }, [markees[0]?.address, !!markees[0]?.message]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [topAddress, topMessage])
 
   const copyAddress = () => {
     navigator.clipboard.writeText(board)

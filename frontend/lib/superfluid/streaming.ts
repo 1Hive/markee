@@ -7,8 +7,11 @@ import {
   type Hex,
 } from 'viem'
 
-// Mirrors StreamingLeaderboard.sol constants.
-export const SECONDS_IN_MONTH = 2628000n
+import { SECONDS_IN_MONTH } from '@/lib/strategy'
+
+// Mirrors StreamingLeaderboard.sol constants. SECONDS_IN_MONTH lives in lib/strategy (the shared
+// ranking module) and is re-exported here so streaming callers keep their import path.
+export { SECONDS_IN_MONTH }
 export const BUFFER_PERIOD = 14400n // Base Superfluid liquidation (buffer) period: 4h.
 
 // Base Superfluid protocol addresses.
