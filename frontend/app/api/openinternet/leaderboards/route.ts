@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,42 +29,6 @@ const NO_CACHE = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
-
-// ─── ABIs ─────────────────────────────────────────────────────────────────────
-
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: 'offset', type: 'uint256' },
-      { name: 'limit', type: 'uint256' },
-    ],
-    name: 'getLeaderboards',
-    outputs: [{ name: 'result', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const LEADERBOARD_ABI = [
-  { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  {
-    inputs: [{ name: 'limit', type: 'uint256' }],
-    name: 'getTopMarkees',
-    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const MARKEE_ABI = [
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-] as const
 
 // ─── Hardcoded partner meta ───────────────────────────────────────────────────
 // These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
@@ -186,19 +151,19 @@ export async function GET(request: Request) {
 
     const addresses = await client.readContract({
       address: OI_FACTORY_ADDRESSES[0],
-      abi: FACTORY_ABI,
+      abi: LeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'admin' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'minimumPrice' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'admin' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] },
     ])
 
     const metaResults = metaCalls.length > 0
@@ -213,9 +178,9 @@ export async function GET(request: Request) {
 
     const markeeCalls = topMarkeeAddresses.flatMap(addr =>
       addr ? [
-        { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
-        { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
-        { address: addr, abi: MARKEE_ABI, functionName: 'owner' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'message' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'name' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'owner' as const },
       ] : []
     )
 

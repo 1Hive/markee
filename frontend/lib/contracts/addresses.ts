@@ -1,7 +1,8 @@
 // Contract addresses and configuration for Markee
 import { base } from 'wagmi/chains'
+import type { Chain } from 'viem'
 // All Markees are deployed on Base (canonical chain)
-export const CANONICAL_CHAIN = base
+export const CANONICAL_CHAIN: Chain = base
 export const CANONICAL_CHAIN_ID = base.id
 // Earliest known Markee factory deployment on Base; avoids scanning logs from genesis.
 export const BASE_MARKEE_EVENTS_FROM_BLOCK = 43_452_028n
@@ -34,6 +35,12 @@ export const FACTORIES = {
   OPEN_INTERNET: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
 } as const
+
+// StreamingLeaderboardFactory — deployment is gated on the Superfluid governance setAppRegistrationKey.
+// Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed factory address to light up the streaming listing +
+// create flow; unset/invalid keeps the feature hidden.
+export const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '') as `0x${string}` | ''
+export const STREAMING_ENABLED = /^0x[0-9a-fA-F]{40}$/.test(STREAMING_FACTORY)
 
 // Fixed-price strategy contracts (in use for the fixed-price messages on the home page)
 export const CONTRACTS = {

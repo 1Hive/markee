@@ -10,12 +10,12 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useFixedMarkees } from '@/lib/contracts/useFixedMarkees'
 import { useFixedViews } from '@/hooks/useFixedViews'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { StrategyBadge } from '@/components/StrategyBadge'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px'
@@ -340,8 +340,8 @@ export default function Home() {
         if (!data) return
         const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
-        // Top 5 by totalFundsRaw across all platforms (API already sorts descending); exclude gamed leaderboards
-        setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.totalFundsRaw ?? '0') > 0n).slice(0, 5))
+        // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude gamed
+        setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))
         setTop5EcoLoading(false)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
@@ -511,6 +511,7 @@ export default function Home() {
                   </div>
                 ))
               : top5Eco.map((lb) => {
+                  const isStreaming = lb.strategy === 'streaming'
                   const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw ?? '0')))
                   const totalUsd = ethPrice ? Math.round(totalEth * ethPrice) : null
                   const topFundsAdded = BigInt(lb.topFundsAddedRaw ?? '0')
@@ -574,9 +575,10 @@ export default function Home() {
                       </span>
 
                       {/* Current message */}
-                      <div style={{ display: 'flex', alignItems: 'center', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
+                        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
                         <div style={{
-                          fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF',
+                          fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
                           {lb.topMessage || '—'}
@@ -591,7 +593,16 @@ export default function Home() {
 
                       {/* Price to change */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
-                        {priceToOvertakeEth != null ? (
+                        {isStreaming ? (
+                          <span style={{
+                            background: 'transparent', color: '#F897FE', border: '1px solid #F897FE',
+                            borderRadius: 7, padding: '8px 10px',
+                            fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+                            whiteSpace: 'nowrap', width: '100%', textAlign: 'center',
+                          }}>
+                            Stream →
+                          </span>
+                        ) : priceToOvertakeEth != null ? (
                           <button
                             onClick={(e) => {
                               e.preventDefault()

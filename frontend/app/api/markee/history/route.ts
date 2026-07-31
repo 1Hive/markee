@@ -27,10 +27,12 @@ const LEADERBOARD_NAME_UPDATED = parseAbiItem(
 )
 
 function getClient() {
+  // Prefer the RPC the rest of the app reads from, so this server-side scan sees the same chain
+  // the client-side hooks do; fall back to Alchemy/default.
   return createPublicClient({
     chain: base,
     transport: http(
-      process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org',
+      process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
       { fetchOptions: { cache: 'no-store' } },
     ),
   })

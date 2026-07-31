@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const OI_FACTORY_ADDRESS = '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const
@@ -32,7 +33,8 @@ interface CreateOpenInternetModalProps {
 }
 
 export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOpenInternetModalProps) {
-  const { isConnected } = useAccount()
+  const { isConnected, chain } = useAccount()
+  const { switchChain } = useSwitchChain()
   const router = useRouter()
   const [name, setName] = useState('')
   const [beneficiary, setBeneficiary] = useState('')
@@ -103,12 +105,18 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setError('Enter a valid treasury address.')
       return
     }
+    if (chain?.id !== CANONICAL_CHAIN.id) {
+      setError(`Wrong network. Switch your wallet to ${CANONICAL_CHAIN.name}, then try again.`)
+      switchChain?.({ chainId: CANONICAL_CHAIN.id })
+      return
+    }
     try {
       writeContract({
         address: OI_FACTORY_ADDRESS,
         abi: FACTORY_ABI,
         functionName: 'createLeaderboard',
         args: [beneficiary as `0x${string}`, name.trim()],
+        chainId: CANONICAL_CHAIN.id,
       })
     } catch (err) {
       logTransactionError(err, 'CreateOpenInternetModal.createLeaderboard')
@@ -145,7 +153,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
             <button
               onClick={() => {
                 onClose()
-                if (newAddress) router.push(`/ecosystem/website/${newAddress}`)
+                if (newAddress) router.push(`/markee/${newAddress}`)
               }}
               className="w-full bg-[#F897FE] text-[#060A2A] font-semibold px-6 py-3 rounded-lg hover:bg-[#7C9CFF] transition-colors"
             >

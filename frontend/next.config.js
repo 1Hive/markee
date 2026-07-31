@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 
+// Allow the RPC endpoint the app is actually configured to use, so reconfiguring
+// NEXT_PUBLIC_BASE_RPC_URL is not silently blocked by connect-src.
+function originOf(url) {
+  try { return new URL(url).origin } catch { return null }
+}
+const baseRpcOrigin = originOf(process.env.NEXT_PUBLIC_BASE_RPC_URL || '')
+
 const cspDirectives = {
   'default-src':     ["'self'"],
   // Next.js injects inline scripts; 'unsafe-inline' is required without nonces.
@@ -41,6 +48,8 @@ const cspDirectives = {
     // Base RPC (Alchemy + public fallback)
     'https://*.g.alchemy.com',
     'https://mainnet.base.org',
+    // The configured base RPC origin (whatever NEXT_PUBLIC_BASE_RPC_URL points at).
+    ...(baseRpcOrigin ? [baseRpcOrigin] : []),
     // Farcaster / Neynar (used by Privy Farcaster login + app API calls)
     'https://api.neynar.com',
     'https://api.farcaster.xyz',

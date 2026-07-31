@@ -11,6 +11,9 @@
 import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { formatEther } from 'viem'
+import { imputeEffectiveRate } from '@/lib/strategy'
+import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,20 +47,17 @@ export async function GET(request: Request) {
       if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
     }
 
-    const origin = new URL(request.url).origin
+    const origin = internalOrigin()
     const bustParam = bust ? '?bust=1' : ''
 
     // Add bypass header so internal fetches work on protected preview deployments
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
-    const internalHeaders: HeadersInit = bypassSecret
-      ? { 'x-vercel-protection-bypass': bypassSecret }
-      : {}
+    const headers = internalHeaders()
 
     // Fetch all three platform APIs in parallel
     const [oiRes, githubRes, sfRes] = await Promise.all([
-      fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
-      fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
-      fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store', headers: internalHeaders }),
+      fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store', headers }),
+      fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store', headers }),
+      fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store', headers }),
     ])
 
     const [oiData, githubData, sfData] = await Promise.all([
@@ -65,6 +65,14 @@ export async function GET(request: Request) {
       githubRes.ok ? githubRes.json() : { leaderboards: [] },
       sfRes.ok ? sfRes.json() : { leaderboards: [] },
     ])
+
+    // Streaming boards (vertical-agnostic) are already tagged with their platform + strategy by the
+    // streaming API. Only fetched when the streaming factory is configured.
+    const streamData = STREAMING_ENABLED
+      ? await fetch(`${origin}/api/streaming/leaderboards${bustParam}`, { cache: 'no-store', headers })
+          .then(r => r.ok ? r.json() : { leaderboards: [] })
+          .catch(() => ({ leaderboards: [] }))
+      : { leaderboards: [] }
 
     // Tag each with platform identifier
     const oiLeaderboards = (oiData.leaderboards ?? []).map((l: any) => ({
@@ -102,14 +110,26 @@ export async function GET(request: Request) {
       }
     })
 
-    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards]
-      .map((l: any) => ({ ...l, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }))
+    const streamLeaderboards = (streamData.leaderboards ?? [])
 
-    // Sort descending by total funds
+    // Every row carries a strategy (fixed-price unless the streaming API tagged it) and an
+    // effectiveRateRaw (wei/sec) yardstick: streaming reads it on-chain, fixed-price imputes it from
+    // cumulative funds so both strategies rank on one axis.
+    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards, ...streamLeaderboards]
+      .map((l: any) => {
+        const strategy = l.strategy === 'streaming' ? 'streaming' : 'fixed'
+        const effectiveRateRaw = strategy === 'streaming'
+          ? (l.effectiveRateRaw ?? '0')
+          : imputeEffectiveRate(BigInt(l.totalFundsRaw ?? '0')).toString()
+        return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }
+      })
+
+    // Sort descending by cumulative funds — fixed boards' lump-sum total, streaming boards' total
+    // streamed-in (getLogs). One cumulative-$ axis across strategies.
     leaderboards.sort((a: any, b: any) => {
-      const aWei = BigInt(a.totalFundsRaw ?? '0')
-      const bWei = BigInt(b.totalFundsRaw ?? '0')
-      return bWei > aWei ? 1 : bWei < aWei ? -1 : 0
+      const aTotal = BigInt(a.totalFundsRaw ?? '0')
+      const bTotal = BigInt(b.totalFundsRaw ?? '0')
+      return bTotal > aTotal ? 1 : bTotal < aTotal ? -1 : 0
     })
 
     // Compute aggregate total across all platforms, excluding gamed leaderboards

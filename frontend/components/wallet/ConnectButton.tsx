@@ -1,5 +1,6 @@
 'use client'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { useAccount } from 'wagmi'
 import { useState } from 'react'
 import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
 
@@ -18,6 +19,7 @@ function GlowDot() {
 export function ConnectButton() {
   const { authenticated, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
+  const { address } = useAccount()
   const [menuOpen, setMenuOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -38,7 +40,7 @@ export function ConnectButton() {
     )
   }
 
-  const displayAddress = wallets[0]?.address
+  const displayAddress = address ?? wallets[0]?.address
   const displayName = displayAddress
     ? `${displayAddress.slice(0, 6)}…${displayAddress.slice(-4)}`
     : user?.email?.address ?? 'Account'

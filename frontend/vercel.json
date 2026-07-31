@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/superfluid-points",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/streaming-keeper",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

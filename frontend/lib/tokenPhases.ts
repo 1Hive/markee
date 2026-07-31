@@ -62,3 +62,11 @@ export function estimateDirectRevnetMarkeeTokens(ethAmount: number, now = Date.n
 export function estimateLeaderboardPurchaseMarkeeTokens(ethAmount: number, now = Date.now()): number {
   return ethAmount * LEADERBOARD_REVNET_SHARE * REVNET_BUYER_ETH_SHARE * getCurrentGrossMarkeeRate(now) * REVNET_BUYER_TOKEN_SHARE
 }
+
+// A streaming backer's settlement: `pendingSettlement` is already the retained rate (the beneficiary
+// share streams straight out), and settle() pays it to the RevNet net of the platform fee with the
+// backer as token recipient.
+export function estimateStreamingSettlementMarkeeTokens(retainedEth: number, feeBps: number, now = Date.now()): number {
+  const netEth = retainedEth * (1 - feeBps / 10_000)
+  return netEth * getCurrentGrossMarkeeRate(now) * REVNET_BUYER_TOKEN_SHARE
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { formatEther } from 'viem'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -10,6 +10,9 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { RewardsModal } from '@/components/modals/RewardsModal'
+import { StrategyBadge } from '@/components/StrategyBadge'
+import { useStreamingRows } from '@/hooks/useStreamingRows'
+import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -34,6 +37,14 @@ interface SuperfluidLeaderboard {
   topMessageOwner: string | null
   topMarkeeAddress: string | null
   boosted: boolean
+  strategy?: Strategy
+  effectiveRateRaw?: string
+}
+
+function rowEffectiveRate(lb: SuperfluidLeaderboard): bigint {
+  return lb.strategy === 'streaming'
+    ? BigInt(lb.effectiveRateRaw || '0')
+    : imputeEffectiveRate(BigInt(lb.totalFundsRaw || '0'))
 }
 
 interface BoostedLeaderboardEntry {
@@ -231,6 +242,7 @@ function BoostedTableRow({
   const addrKey = (lb.topMarkeeAddress || lb.address).toLowerCase()
   const views = viewsMap.get(addrKey) ?? 0
 
+  const isStreaming = lb.strategy === 'streaming'
   const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
   return (
@@ -257,8 +269,9 @@ function BoostedTableRow({
         {totalLabel}
       </span>
 
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
       </div>
@@ -269,7 +282,9 @@ function BoostedTableRow({
       </span>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {hasTopFunds
+        {isStreaming
+          ? <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>Stream →</span>
+          : hasTopFunds
           ? <BuyButton label={priceLabel} onClick={onBuy} />
           : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
         }
@@ -301,6 +316,7 @@ function RegularTableRow({
   const addrKey = (lb.topMarkeeAddress || lb.address).toLowerCase()
   const views = viewsMap.get(addrKey) ?? 0
 
+  const isStreaming = lb.strategy === 'streaming'
   const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
   return (
@@ -327,8 +343,9 @@ function RegularTableRow({
         {totalLabel}
       </span>
 
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
       </div>
@@ -339,7 +356,9 @@ function RegularTableRow({
       </span>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {hasTopFunds
+        {isStreaming
+          ? <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>Stream →</span>
+          : hasTopFunds
           ? <BuyButton label={priceLabel} onClick={onBuy} />
           : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
         }
@@ -408,6 +427,12 @@ export default function SuperfluidPlatformPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const streaming = useStreamingRows('superfluid')
+  const streamRows: SuperfluidLeaderboard[] = useMemo(
+    () => streaming.map(row => ({ ...row, boosted: false })),
+    [streaming],
+  )
+
   // Batch-fetch views for all top markees (boosted + regular)
   useEffect(() => {
     const addrs: string[] = []
@@ -443,9 +468,14 @@ export default function SuperfluidPlatformPage() {
       BigInt(entry.leaderboard.topFundsAddedRaw || '0') > 0n && entry.leaderboard.topMessage
   )
 
-  const regularRows = leaderboards.filter(
-    lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage && !boostedAddressSet.has(lb.address.toLowerCase())
-  )
+  // Fixed-price + streaming rank together on effectiveRate (imputed for fixed, on-chain for streaming).
+  const regularRows = [...leaderboards, ...streamRows]
+    .filter(lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage && !boostedAddressSet.has(lb.address.toLowerCase()))
+    .sort((a, b) => {
+      const ar = rowEffectiveRate(a)
+      const br = rowEffectiveRate(b)
+      return br > ar ? 1 : br < ar ? -1 : 0
+    })
 
   // Count active signs across boosted + regular
   const activeBoostedCount = boostedLeaderboards.filter(
