@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAccount, usePublicClient } from 'wagmi'
-import { formatEther, parseAbiItem } from 'viem'
+import { useAccount } from 'wagmi'
+import { formatEther } from 'viem'
 import {
   ChevronRight,
   Coins,
@@ -13,7 +13,7 @@ import {
   RefreshCw,
   User,
 } from 'lucide-react'
-import { BASE_MARKEE_EVENTS_FROM_BLOCK, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import type { Markee } from '@/types'
 
@@ -29,7 +29,7 @@ interface ExpandableMarkeeRowProps {
   markee: ExpandableMarkeeRowSlot
   rank: number
   formatFunds: (wei: bigint) => string
-  leaderboardAddress?: `0x${string}`
+  leaderboardAddress: `0x${string}`
   viewCount?: number
   featured?: boolean
   onAddFunds?: () => void
@@ -71,22 +71,6 @@ type TxHistoryEvent =
       transactionHash: string
     }
 
-type TxHistoryEventWithoutTimestamp = TxHistoryEvent extends infer Event
-  ? Event extends { timestamp: number }
-    ? Omit<Event, 'timestamp'>
-    : never
-  : never
-
-const PAYMENT_RECEIVED = parseAbiItem(
-  'event PaymentReceived(uint256 totalAmount, uint256 beneficiaryAmount, uint256 revNetBuyerAmount, uint256 revNetFeeReceiverAmount, address indexed tokenRecipient, uint256 newTotalFundsAdded)'
-)
-const MESSAGE_CHANGED = parseAbiItem(
-  'event MessageChanged(string newMessage, address indexed changedBy)'
-)
-const NAME_CHANGED = parseAbiItem(
-  'event NameChanged(string newName, address indexed changedBy)'
-)
-
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const PINK = '#F897FE'
 const BLUE = '#7C9CFF'
@@ -97,7 +81,6 @@ const TEXT2 = '#B8B6D9'
 const MUTED = '#8A8FBF'
 const BORDER = 'rgba(138,143,191,0.2)'
 const LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
-const MAX_HISTORY_EVENTS = 50
 
 type ApiHistoryEvent =
   | {
@@ -205,7 +188,6 @@ export function ExpandableMarkeeRow({
   trackView,
 }: ExpandableMarkeeRowProps) {
   const { address } = useAccount()
-  const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN_ID })
   const [expanded, setExpanded] = useState(false)
   const [history, setHistory] = useState<TxHistoryEvent[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -222,7 +204,7 @@ export function ExpandableMarkeeRow({
 
   useEffect(() => {
     if (!expanded) return
-    if (!leaderboardAddress && !publicClient) return
+    if (!leaderboardAddress) return
 
     let cancelled = false
 
@@ -231,94 +213,34 @@ export function ExpandableMarkeeRow({
       setHistoryError(null)
 
       try {
-        const markeeAddress = markee.address as `0x${string}`
+        const params = new URLSearchParams({
+          leaderboardAddress,
+          markeeAddress: markee.address as `0x${string}`,
+        })
+        const response = await fetch(`/api/markee/history?${params.toString()}`, {
+          cache: 'no-store',
+        })
 
-        if (leaderboardAddress) {
-          const params = new URLSearchParams({
-            leaderboardAddress,
-            markeeAddress,
-          })
-          const response = await fetch(`/api/markee/history?${params.toString()}`, {
-            cache: 'no-store',
-          })
-
-          if (!response.ok) {
-            throw new Error('Unable to load transaction history')
-          }
-
-          const data = await response.json() as { history?: ApiHistoryEvent[] }
-          const events: TxHistoryEvent[] = (data.history ?? []).map(event => {
-            if (event.kind === 'funds') {
-              return {
-                ...event,
-                amount: BigInt(event.amount),
-                newTotal: BigInt(event.newTotal),
-                blockNumber: BigInt(event.blockNumber),
-              }
-            }
-
-            return {
-              ...event,
-              blockNumber: BigInt(event.blockNumber),
-            }
-          })
-
-          if (!cancelled) setHistory(events)
-          return
+        if (!response.ok) {
+          throw new Error('Unable to load transaction history')
         }
 
-        const historyLogs = await Promise.all([
-          publicClient!.getLogs({ address: markeeAddress, event: PAYMENT_RECEIVED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
-          publicClient!.getLogs({ address: markeeAddress, event: MESSAGE_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
-          publicClient!.getLogs({ address: markeeAddress, event: NAME_CHANGED, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }),
-        ])
+        const data = await response.json() as { history?: ApiHistoryEvent[] }
+        const events: TxHistoryEvent[] = (data.history ?? []).map(event => {
+          if (event.kind === 'funds') {
+            return {
+              ...event,
+              amount: BigInt(event.amount),
+              newTotal: BigInt(event.newTotal),
+              blockNumber: BigInt(event.blockNumber),
+            }
+          }
 
-        const [fundsLogs, messageLogs, nameLogs] = historyLogs
-
-        const eventsWithoutTimestamps: TxHistoryEventWithoutTimestamp[] = [
-          ...fundsLogs.map(log => ({
-            id: `${log.transactionHash}-${log.logIndex}`,
-            kind: 'funds' as const,
-            amount: log.args.totalAmount ?? 0n,
-            newTotal: log.args.newTotalFundsAdded ?? 0n,
-            actor: log.args.tokenRecipient ?? '',
-            blockNumber: log.blockNumber ?? 0n,
-            logIndex: Number(log.logIndex ?? 0),
-            transactionHash: log.transactionHash ?? '',
-          })),
-          ...messageLogs.map(log => ({
-            id: `${log.transactionHash}-${log.logIndex}`,
-            kind: 'message' as const,
-            message: log.args.newMessage ?? '',
-            actor: log.args.changedBy ?? '',
-            blockNumber: log.blockNumber ?? 0n,
-            logIndex: Number(log.logIndex ?? 0),
-            transactionHash: log.transactionHash ?? '',
-          })),
-          ...nameLogs.map(log => ({
-            id: `${log.transactionHash}-${log.logIndex}`,
-            kind: 'name' as const,
-            name: log.args.newName ?? '',
-            actor: log.args.changedBy ?? '',
-            blockNumber: log.blockNumber ?? 0n,
-            logIndex: Number(log.logIndex ?? 0),
-            transactionHash: log.transactionHash ?? '',
-          })),
-        ].sort((a, b) => {
-          if (a.blockNumber === b.blockNumber) return b.logIndex - a.logIndex
-          return b.blockNumber > a.blockNumber ? 1 : -1
-        }).slice(0, MAX_HISTORY_EVENTS)
-
-        const blockNumbers = eventsWithoutTimestamps
-          .map(event => event.blockNumber)
-          .filter(blockNumber => blockNumber !== 0n)
-        const uniqueBlocks = [...new Set(blockNumbers.map(String))].map(BigInt)
-        const blocks = await Promise.all(uniqueBlocks.map(blockNumber => publicClient!.getBlock({ blockNumber })))
-        const timestamps = new Map(blocks.map(block => [block.number.toString(), Number(block.timestamp)]))
-        const events: TxHistoryEvent[] = eventsWithoutTimestamps.map(event => ({
-          ...event,
-          timestamp: timestamps.get(event.blockNumber.toString()) ?? 0,
-        }))
+          return {
+            ...event,
+            blockNumber: BigInt(event.blockNumber),
+          }
+        })
 
         if (!cancelled) setHistory(events)
       } catch (err) {
@@ -332,7 +254,7 @@ export function ExpandableMarkeeRow({
 
     fetchHistory()
     return () => { cancelled = true }
-  }, [expanded, historyRefreshKey, leaderboardAddress, markee.address, publicClient])
+  }, [expanded, historyRefreshKey, leaderboardAddress, markee.address])
 
   const latestTxHash = history[0]?.transactionHash
   const displayName = markee.name || formatAddress(markee.owner)
