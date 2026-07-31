@@ -503,8 +503,11 @@ export default function MarketplacePage() {
         return (av - bv) * dir
       }
       if (sortKey === 'price') {
-        const ap = priceToOvertake(a)
-        const bp = priceToOvertake(b)
+        // Sort each row by the number its price button actually shows: streaming rows a monthly
+        // cost (rate * month), fixed rows a lump sum. Cross-strategy order compares those
+        // displayed magnitudes, ETH-per-month against ETH, which is as honest as this column gets.
+        const ap = a.strategy === 'streaming' ? effRateOf(a) * SECONDS_IN_MONTH : priceToOvertake(a)
+        const bp = b.strategy === 'streaming' ? effRateOf(b) * SECONDS_IN_MONTH : priceToOvertake(b)
         return (ap > bp ? 1 : ap < bp ? -1 : 0) * dir
       }
       // default (raised) — rank by cumulative funds: fixed boards' lump-sum total, streaming boards'

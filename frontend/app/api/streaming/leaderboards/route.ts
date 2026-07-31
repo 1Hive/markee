@@ -31,11 +31,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
   }
 
+  const params = new URL(request.url).searchParams
+  // ?address= narrows the response to one board so a board page does not download the whole
+  // listing; the full payload is still what gets computed and cached.
+  const only = params.get('address')?.toLowerCase() ?? null
+  const respond = (payload: { leaderboards: unknown[] } & Record<string, unknown>) =>
+    NextResponse.json(
+      only
+        ? { ...payload, leaderboards: payload.leaderboards.filter(l =>
+            (l as { address?: string }).address?.toLowerCase() === only) }
+        : payload,
+      { headers: NO_CACHE },
+    )
+
   try {
-    const bust = new URL(request.url).searchParams.get('bust') === '1'
+    const bust = params.get('bust') === '1'
     if (!bust) {
-      const cached = await kv.get<object>(CACHE_KEY)
-      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+      const cached = await kv.get<{ leaderboards: unknown[] }>(CACHE_KEY)
+      if (cached) return respond(cached)
     }
 
     const client = createStreamingClient()
@@ -51,7 +64,7 @@ export async function GET(request: Request) {
     if (addresses.length === 0) {
       const empty = { leaderboards: [] }
       await kv.set(CACHE_KEY, empty, { ex: CACHE_TTL })
-      return NextResponse.json(empty, { headers: NO_CACHE })
+      return respond(empty)
     }
 
     const latestBlock = await client.getBlockNumber()
@@ -90,6 +103,17 @@ export async function GET(request: Request) {
         { address: addr, abi: MarkeeABI, functionName: 'name' as const },
       ] : []
     )
+    const MARKEE_CALLS_PER_BOARD = 2
+    // Each board's offset into markeeResults, derived from which boards contributed calls, so the
+    // mapping below cannot drift if the call shape changes.
+    const markeeResultBase: number[] = []
+    {
+      let next = 0
+      for (const addr of topMarkeeAddresses) {
+        markeeResultBase.push(next)
+        if (addr) next += MARKEE_CALLS_PER_BOARD
+      }
+    }
     // The placement each board was created for: on-chain platform tag first, off-chain record for the
     // boards created before the factory carried tags.
     const platformCalls = addresses.map(addr => ({
@@ -105,7 +129,6 @@ export async function GET(request: Request) {
       fetchBoardTotals(addresses, ETHX, BigInt(streamedAt)),
     ])
 
-    let markeeCallIndex = 0
     const leaderboards = addresses.map((addr, i) => {
       const b = i * CALLS_PER_BOARD
       const name        = (metaResults[b]?.result as string) ?? addr
@@ -127,9 +150,9 @@ export async function GET(request: Request) {
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
       if (topMarkeeAddresses[i]) {
-        topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
-        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
-        markeeCallIndex += 2
+        const m = markeeResultBase[i]
+        topMessage      = (markeeResults[m]?.result as string) || null
+        topMessageOwner = (markeeResults[m + 1]?.result as string) || null
       }
 
       const taggedPlatform = (platformResults[i]?.result as [string, string] | undefined)?.[0]
@@ -166,11 +189,11 @@ export async function GET(request: Request) {
       kv.set(CACHE_KEY, payload, { ex: CACHE_TTL }),
       kv.set(LAST_GOOD_KEY, payload, { ex: LAST_GOOD_TTL }),
     ])
-    return NextResponse.json(payload, { headers: NO_CACHE })
+    return respond(payload)
   } catch (err) {
     console.error('[streaming/leaderboards] error:', err)
     const lastGood = await kv.get<{ leaderboards: unknown[] }>(LAST_GOOD_KEY).catch(() => null)
-    if (lastGood) return NextResponse.json({ ...lastGood, stale: true }, { headers: NO_CACHE })
+    if (lastGood) return respond({ ...lastGood, stale: true })
     return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
   }
 }

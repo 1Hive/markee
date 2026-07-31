@@ -5,7 +5,7 @@ import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
-import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
+import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
 
@@ -22,13 +22,6 @@ const LEADERBOARD_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-] as const
-
-const MARKEE_ABI = [
-  { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
 ] as const
 
 // Emitted by individual markee contracts when anyone adds funds
@@ -150,7 +143,7 @@ async function fixedFunded(
     client,
     fundedAddrs.map(addr => ({
       address: addr as `0x${string}`,
-      abi: MARKEE_ABI,
+      abi: MarkeeABI,
       functionName: 'owner' as const,
     })),
   )
@@ -166,9 +159,9 @@ async function fixedFunded(
   const detailResults = await chunkedMulticall(
     client,
     externalAddrs.flatMap(addr => [
-      { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
-      { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
-      { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'totalFundsAdded' as const },
+      { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const },
+      { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'name' as const },
+      { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const },
     ]),
   )
 
@@ -235,10 +228,10 @@ async function streamingFunded(
     chunkedMulticall(
       client,
       backed.flatMap(b => [
-        { address: b.markee as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
-        { address: b.markee as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
-        { address: b.markee as `0x${string}`, abi: MARKEE_ABI, functionName: 'owner' as const },
-        { address: b.markee as `0x${string}`, abi: MARKEE_ABI, functionName: 'totalFundsAdded' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'name' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const },
       ]),
     ),
     fetchBackerPositions(

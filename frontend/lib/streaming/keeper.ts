@@ -10,6 +10,7 @@ import { getLogsChunked, resolveScanFromBlock } from './logScan'
 // fighting viem's strict transport/chain generics (which createPublicClient bakes in).
 type KeeperPublicClient = {
   readContract(args: unknown): Promise<unknown>
+  multicall(args: unknown): Promise<unknown[]>
   getLogs(args: unknown): Promise<unknown[]>
   getBlockNumber(): Promise<bigint>
   waitForTransactionReceipt(args: unknown): Promise<{ status: 'success' | 'reverted' | string }>
@@ -168,11 +169,14 @@ async function flushSettlement(
     const owed: Address[] = []
     for (let i = 0; i < backers.length; i += READ_BATCH) {
       const batch = backers.slice(i, i + READ_BATCH)
-      const amounts = await Promise.all(batch.map(backer =>
-        p.publicClient.readContract({
+      // One multicall round-trip per batch; allowFailure: false keeps the throw-on-any-failure
+      // semantics the per-call Promise.all had.
+      const amounts = await p.publicClient.multicall({
+        allowFailure: false,
+        contracts: batch.map(backer => ({
           address: board, abi: [BOARD_PENDING_SETTLEMENT], functionName: 'pendingSettlement', args: [backer],
-        }) as Promise<bigint>,
-      ))
+        })),
+      }) as bigint[]
       amounts.forEach((amount, j) => { if (amount > 0n) owed.push(batch[j]) })
     }
     if (owed.length === 0) return

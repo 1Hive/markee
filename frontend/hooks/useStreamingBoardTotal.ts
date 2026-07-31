@@ -20,7 +20,7 @@ export function useStreamingBoardTotal(board?: Address): StreamingBoardTotal | n
 
     const load = async () => {
       try {
-        const res = await fetch('/api/streaming/leaderboards')
+        const res = await fetch(`/api/streaming/leaderboards?address=${board}`)
         if (!res.ok) return
         const data = await res.json()
         const row = (data.leaderboards ?? []).find(

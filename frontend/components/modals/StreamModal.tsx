@@ -215,15 +215,20 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     if (!isOpen) {
       setMonthly(''); setFundMonths('1'); setNewMonthly(''); setTopUp('')
       setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
+      rateSeeded.current = false
     }
   }, [isOpen, reset])
 
-  // Start the rate field at what the backer streams today, so the input reads as an edit.
+  // Start the rate field at what the backer streams today, so the input reads as an edit. Seeded
+  // once per open (not on emptiness): a field the backer cleared must stay cleared when the
+  // currentRate read refetches.
+  const rateSeeded = useRef(false)
   useEffect(() => {
-    if (isOpen && !newMonthly && currentRate && currentRate > 0n) {
+    if (isOpen && !rateSeeded.current && currentRate && currentRate > 0n) {
+      rateSeeded.current = true
       setNewMonthly(formatEther(ratePerSecToMonthly(currentRate)))
     }
-  }, [isOpen, currentRate]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, currentRate])
 
   useEffect(() => {
     if (isSuccess && isOpen) {
