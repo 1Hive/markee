@@ -5,26 +5,34 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GH_PAT }}
 
-      - name: Configure git
+      - name: Configure Git
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Try merge main into dev
+      - name: Fetch branches
+        run: |
+          git fetch origin main dev
+
+      - name: Try merging main into dev
         id: merge
         run: |
-          git checkout dev
+          git checkout -B dev origin/dev
+
           if git merge origin/main --no-ff --no-edit; then
             echo "conflict=false" >> "$GITHUB_OUTPUT"
           else
@@ -32,32 +40,41 @@ jobs:
               git merge --abort
               echo "conflict=true" >> "$GITHUB_OUTPUT"
             else
+              echo "Merge failed for a reason other than conflicts."
               exit 1
             fi
           fi
 
-      - name: Push if merge succeeded
-        if: steps.merge.outputs.conflict != 'true'
+      - name: Push merged dev branch
+        if: steps.merge.outputs.conflict == 'false'
         run: |
-          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }} dev
+          git push origin dev
 
-      - name: Create PR branch (on conflict)
+      - name: Create conflict branch
         if: steps.merge.outputs.conflict == 'true'
-        id: pr_branch
+        id: conflict_branch
+        env:
+          BRANCH_NAME: sync/main-to-dev-${{ github.run_id }}
         run: |
-          BRANCH="sync/main-to-dev-${{ github.run_id }}"
-          git checkout -b "$BRANCH" origin/main
-          git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }} "$BRANCH"
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          git checkout -B "$BRANCH_NAME" origin/main
+          git push origin "$BRANCH_NAME"
 
-      - name: Create Pull Request
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
         if: steps.merge.outputs.conflict == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GH_PAT }}
-          branch: ${{ steps.pr_branch.outputs.branch }}
-          base: dev
-          title: "⚠️ Merge main → dev (conflicts detected)"
-          body: |
-            Automatic sync failed due to merge conflicts.
-            Please resolve manually.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.conflict_branch.outputs.branch }}
+        run: |
+          gh pr create \
+            --head "$BRANCH_NAME" \
+            --base dev \
+            --title "⚠️ Merge main → dev (conflicts detected)" \
+            --body-file - <<'EOF'
+          Automatic synchronization of `main` into `dev` failed because merge conflicts were detected.
+
+          Please resolve the conflicts manually and merge this pull request.
+
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
