@@ -418,6 +418,23 @@ export default function Home() {
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="home" useRegularLinks />
 
+      <div
+        role="status"
+        style={{
+          padding: '14px 24px',
+          background: '#F897FE',
+          color: '#060A2A',
+          fontFamily: MONO,
+          fontSize: 14,
+          fontWeight: 800,
+          letterSpacing: 0.5,
+          textAlign: 'center',
+          textTransform: 'uppercase',
+        }}
+      >
+        🚨 Staging troll alert: the dev branch escaped containment 🚨
+      </div>
+
       {/* ── Hero: 3 reader signs ──────────────────────────────────────────── */}
       <section
         className="relative overflow-hidden"
