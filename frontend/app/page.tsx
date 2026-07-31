@@ -432,7 +432,7 @@ export default function Home() {
           textTransform: 'uppercase',
         }}
       >
-        🚨 Staging troll alert: the dev branch escaped containment 🚨
+        🚨 Staging troll alert, round two: the dev branch escaped containment 🚨
       </div>
 
       {/* ── Hero: 3 reader signs ──────────────────────────────────────────── */}
