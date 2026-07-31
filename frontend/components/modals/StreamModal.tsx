@@ -676,7 +676,11 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                 )}
 
                 {insufficientBalance ? (
-                  <button onClick={() => authenticated && address ? fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } }) : undefined} style={btnStyle(true)}>
+                  <button
+                    onClick={() => authenticated && address ? fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } }) : undefined}
+                    disabled={!authenticated || !address}
+                    style={btnStyle(true, !authenticated || !address)}
+                  >
                     Add funds
                   </button>
                 ) : (

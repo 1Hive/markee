@@ -67,8 +67,7 @@ export async function GET(request: Request) {
       return respond(empty)
     }
 
-    const latestBlock = await client.getBlockNumber()
-    const streamedAt = Number((await client.getBlock({ blockNumber: latestBlock })).timestamp)
+    const streamedAt = Number((await client.getBlock()).timestamp)
     const ETHX = STREAMING_BASE.ethx as `0x${string}`
 
     const CHUNK_SIZE = 50
