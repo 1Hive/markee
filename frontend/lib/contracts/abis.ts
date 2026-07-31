@@ -882,6 +882,13 @@ export const StreamingLeaderboardFactoryABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [{ name: '', type: 'address' }],
+    name: 'isFactoryLeaderboard',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const
 
 // Legacy exports for backward compatibility during migration

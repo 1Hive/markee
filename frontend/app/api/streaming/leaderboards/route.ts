@@ -7,10 +7,10 @@
 // Inert (returns []) until NEXT_PUBLIC_STREAMING_FACTORY is configured.
 
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther } from 'viem'
-import { base } from 'viem/chains'
+import { formatEther } from 'viem'
 import { kv } from '@vercel/kv'
 import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { createStreamingClient } from '@/lib/streaming/client'
 import { getStreamingBoardMeta } from '@/lib/streaming/boardMeta'
 import { fetchBoardTotals } from '@/lib/streaming/subgraph'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
@@ -26,19 +26,6 @@ const LAST_GOOD_KEY = 'cache:streaming:leaderboards:lastgood'
 const LAST_GOOD_TTL = 7 * 24 * 60 * 60
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
-function getClient() {
-  // The streaming factory lives on whatever chain NEXT_PUBLIC_STREAMING_FACTORY was deployed to,
-  // which is the chain NEXT_PUBLIC_BASE_RPC_URL points at (the same RPC every client-side streaming
-  // hook reads). Prefer it so this server-side read sees the same factory; fall back to Alchemy/default.
-  return createPublicClient({
-    chain: base,
-    transport: http(
-      process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
-      { batch: true, fetchOptions: { cache: 'no-store' } },
-    ),
-  })
-}
-
 export async function GET(request: Request) {
   if (!STREAMING_ENABLED) {
     return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
@@ -51,7 +38,7 @@ export async function GET(request: Request) {
       if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
     }
 
-    const client = getClient()
+    const client = createStreamingClient()
     const factory = STREAMING_FACTORY as `0x${string}`
 
     const addresses = await client.readContract({

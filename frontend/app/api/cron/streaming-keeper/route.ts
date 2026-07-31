@@ -52,7 +52,7 @@ async function handle(req: NextRequest) {
   const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL
   if (!rpc) return NextResponse.json({ error: 'no rpc configured' }, { status: 500 })
 
-  const key = process.env.KEEPER_PRIVATE_KEY as `0x${string}` | undefined
+  const key = process.env.KEEPER_PRIVATE_KEY
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'
 
   const publicClient = createPublicClient({ chain: base, transport: http(rpc) })
@@ -61,13 +61,18 @@ async function handle(req: NextRequest) {
 
   if (!dryRun) {
     if (!key) return NextResponse.json({ error: 'no signer configured' }, { status: 500 })
-    const signer = privateKeyToAccount(key)
+    // Checked here rather than left to privateKeyToAccount: its throw carries the key material into
+    // the error path, and every response out of this route is machine-read by the cron.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+      return NextResponse.json({ error: 'malformed signer configured' }, { status: 500 })
+    }
+    const signer = privateKeyToAccount(key as `0x${string}`)
     account = signer.address
     walletClient = createWalletClient({ account: signer, chain: base, transport: http(rpc) })
   }
 
-  const locked = dryRun || await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: LOCK_TTL }) === 'OK'
-  if (!locked) return NextResponse.json({ ok: true, skipped: 'previous run still in flight' })
+  const canProceed = dryRun || await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: LOCK_TTL }) === 'OK'
+  if (!canProceed) return NextResponse.json({ ok: true, skipped: 'previous run still in flight' })
 
   try {
     const report = await runKeeper({

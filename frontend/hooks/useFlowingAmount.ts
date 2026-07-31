@@ -28,7 +28,9 @@ export default function useFlowingAmount(
       if (currentAnimationTimestamp - lastAnimationTimestamp > ANIMATION_MINIMUM_STEP_TIME) {
         lastAnimationTimestamp = currentAnimationTimestamp
 
-        const elapsedTimeInMilliseconds = BigInt(Date.now() - startingTimestamp * 1000)
+        // Clamped at zero: a snapshot stamped in the future (clock skew, or a cached API response
+        // read ahead of the local clock) would otherwise tick the total *below* its known amount.
+        const elapsedTimeInMilliseconds = BigInt(Math.max(0, Date.now() - startingTimestamp * 1000))
         setFlowingAmount(startingAmount + (flowRate * elapsedTimeInMilliseconds) / 1000n)
       }
     }

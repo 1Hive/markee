@@ -711,12 +711,13 @@ function CreateWizardInner() {
         body: JSON.stringify({ leaderboardAddress: found, repoFullName: selectedRepo, filePath: selectedFile }),
       }).catch(() => {})
     }
-    // The placement is already tagged on-chain at creation; the off-chain record carries the board name
-    // and keeps the listing working for boards created before tags existed.
+    // The placement is already tagged on-chain at creation; this mirrors it into the KV fallback the
+    // listing reads for boards created before tags existed. The route re-reads the tag off the factory,
+    // so the vertical is deliberately not sent.
     if (strategy === 'streaming') {
       fetch('/api/streaming/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: found, vertical }),
+        body: JSON.stringify({ address: found }),
       }).catch(() => {})
     }
     setStep(s => s + 1)

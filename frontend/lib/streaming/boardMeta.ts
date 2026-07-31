@@ -3,9 +3,9 @@ import type { Vertical } from '@/lib/strategy'
 
 // Streaming boards are vertical-agnostic on-chain (one factory). The placement (which vertical listing
 // the board belongs to) is stored off-chain here, mirroring how github/open-internet metadata is kept.
+// Names are not mirrored: the listing reads leaderboardName() straight off the board.
 export interface StreamingBoardMeta {
   vertical: Vertical
-  name?: string
 }
 
 const key = (addr: string) => `streaming:board:${addr.toLowerCase()}`

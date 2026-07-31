@@ -68,8 +68,8 @@ interface BackerMemberRow {
   }
 }
 
-const BACKER_STREAM_QUERY = `query BackerStreams($sender: String!, $token: String!, $receivers: [String!]!) {
-  streams(where: { sender: $sender, token: $token, receiver_in: $receivers }, first: ${PAGE}) {
+const BACKER_STREAM_QUERY = `query BackerStreams($sender: String!, $token: String!, $receivers: [String!]!, $skip: Int!) {
+  streams(where: { sender: $sender, token: $token, receiver_in: $receivers }, first: ${PAGE}, skip: $skip) {
     receiver { id }
     updatedAtTimestamp
     currentFlowRate
@@ -77,8 +77,8 @@ const BACKER_STREAM_QUERY = `query BackerStreams($sender: String!, $token: Strin
   }
 }`
 
-const BACKER_REFUND_QUERY = `query BackerRefunds($account: String!, $token: String!, $admins: [String!]!) {
-  poolMembers(where: { account: $account, pool_: { admin_in: $admins, token: $token } }, first: ${PAGE}) {
+const BACKER_REFUND_QUERY = `query BackerRefunds($account: String!, $token: String!, $admins: [String!]!, $skip: Int!) {
+  poolMembers(where: { account: $account, pool_: { admin_in: $admins, token: $token } }, first: ${PAGE}, skip: $skip) {
     units
     totalAmountReceivedUntilUpdatedAt
     syncedPerUnitSettledValue
@@ -174,29 +174,40 @@ export async function fetchBackerPositions(
   for (let i = 0; i < addrs.length; i += ADDR_BATCH) {
     const batch = addrs.slice(i, i + ADDR_BATCH)
 
-    const { streams } = await query<{ streams: BackerStreamRow[] }>(
-      BACKER_STREAM_QUERY, { sender, token: tokenId, receivers: batch },
-    )
-    for (const row of streams) {
-      const board = row.receiver.id.toLowerCase()
-      const rate = BigInt(row.currentFlowRate)
-      const streamed = carryForward(BigInt(row.streamedUntilUpdatedAt), rate, BigInt(row.updatedAtTimestamp), atTimestamp)
-      const entry = out.get(board)
-      // A board can hold several Stream entities for one sender: each close/reopen starts a new one.
-      if (entry) {
-        entry.contributed += streamed
-        entry.rate += rate
-      } else {
-        out.set(board, { contributed: streamed, rate })
+    // Paginated like the pool query: a backer who has reopened streams often accumulates one Stream
+    // entity per close/reopen, so a single page silently truncates a long history into a low total.
+    for (let skip = 0; ; skip += PAGE) {
+      const { streams } = await query<{ streams: BackerStreamRow[] }>(
+        BACKER_STREAM_QUERY, { sender, token: tokenId, receivers: batch, skip },
+      )
+      for (const row of streams) {
+        const board = row.receiver.id.toLowerCase()
+        const rate = BigInt(row.currentFlowRate)
+        const streamed = carryForward(BigInt(row.streamedUntilUpdatedAt), rate, BigInt(row.updatedAtTimestamp), atTimestamp)
+        const entry = out.get(board)
+        // A board can hold several Stream entities for one sender: each close/reopen starts a new one.
+        if (entry) {
+          entry.contributed += streamed
+          entry.rate += rate
+        } else {
+          out.set(board, { contributed: streamed, rate })
+        }
       }
+      if (streams.length < PAGE) break
     }
 
     if (out.size === 0) continue
 
-    const { poolMembers } = await query<{ poolMembers: BackerMemberRow[] }>(
-      BACKER_REFUND_QUERY, { account: sender, token: tokenId, admins: batch },
-    )
-    for (const member of poolMembers) {
+    const members: BackerMemberRow[] = []
+    for (let skip = 0; ; skip += PAGE) {
+      const { poolMembers } = await query<{ poolMembers: BackerMemberRow[] }>(
+        BACKER_REFUND_QUERY, { account: sender, token: tokenId, admins: batch, skip },
+      )
+      members.push(...poolMembers)
+      if (poolMembers.length < PAGE) break
+    }
+
+    for (const member of members) {
       const entry = out.get(member.pool.admin.id.toLowerCase())
       if (!entry) continue
       const units = BigInt(member.units)
