@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { formatEther } from 'viem'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -10,6 +10,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { useStreamingRows } from '@/hooks/useStreamingRows'
 import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -216,7 +217,6 @@ function TableRow({
 export default function GithubPlatformPage() {
   const ethPrice = useEthPrice()
   const [leaderboards, setLeaderboards] = useState<GithubLeaderboard[]>([])
-  const [streamRows, setStreamRows] = useState<GithubLeaderboard[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [loading, setLoading] = useState(true)
   const [buyModal, setBuyModal] = useState<{ address: string; topFundsAdded: bigint } | null>(null)
@@ -233,34 +233,17 @@ export default function GithubPlatformPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Streaming boards placed on the GitHub vertical (empty unless the streaming factory is configured).
-  useEffect(() => {
-    fetch(`/api/streaming/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return
-        const rows: GithubLeaderboard[] = (data.leaderboards ?? [])
-          .filter((l: any) => l.platform === 'github')
-          .map((l: any) => ({
-            address: l.address,
-            name: l.name,
-            totalFundsRaw: l.totalFundsRaw ?? '0',
-            markeeCount: l.markeeCount ?? 0,
-            topFundsAddedRaw: l.topFundsAddedRaw ?? '0',
-            topMessage: l.topMessage ?? null,
-            topMessageOwner: l.topMessageOwner ?? null,
-            topMarkeeAddress: l.topMarkeeAddress ?? null,
-            repoVerified: false,
-            repoFullName: null,
-            repoAvatarUrl: null,
-            githubTrafficViews: null,
-            strategy: 'streaming' as const,
-            effectiveRateRaw: l.effectiveRateRaw ?? '0',
-          }))
-        setStreamRows(rows)
-      })
-      .catch(() => {})
-  }, [])
+  const streaming = useStreamingRows('github')
+  const streamRows: GithubLeaderboard[] = useMemo(
+    () => streaming.map(row => ({
+      ...row,
+      repoVerified: false,
+      repoFullName: null,
+      repoAvatarUrl: null,
+      githubTrafficViews: null,
+    })),
+    [streaming],
+  )
 
   // Fixed-price and streaming rank together on effectiveRate (imputed for fixed, on-chain for streaming).
   const tableRows = [...leaderboards.map(lb => ({ ...lb, strategy: lb.strategy ?? ('fixed' as const) })), ...streamRows]

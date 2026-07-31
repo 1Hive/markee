@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { formatEther } from 'viem'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -11,6 +11,7 @@ import { formatUsd } from '@/lib/utils'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { RewardsModal } from '@/components/modals/RewardsModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { useStreamingRows } from '@/hooks/useStreamingRows'
 import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -406,7 +407,6 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
 export default function SuperfluidPlatformPage() {
   const ethPrice = useEthPrice()
   const [leaderboards, setLeaderboards] = useState<SuperfluidLeaderboard[]>([])
-  const [streamRows, setStreamRows] = useState<SuperfluidLeaderboard[]>([])
   const [boostedLeaderboards, setBoostedLeaderboards] = useState<BoostedLeaderboardEntry[]>([])
   const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
   const [loading, setLoading] = useState(true)
@@ -427,31 +427,11 @@ export default function SuperfluidPlatformPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Streaming boards placed on the Superfluid vertical (empty unless the streaming factory is configured).
-  useEffect(() => {
-    fetch(`/api/streaming/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return
-        const rows: SuperfluidLeaderboard[] = (data.leaderboards ?? [])
-          .filter((l: any) => l.platform === 'superfluid')
-          .map((l: any) => ({
-            address: l.address,
-            name: l.name,
-            totalFundsRaw: l.totalFundsRaw ?? '0',
-            markeeCount: l.markeeCount ?? 0,
-            topFundsAddedRaw: l.topFundsAddedRaw ?? '0',
-            topMessage: l.topMessage ?? null,
-            topMessageOwner: l.topMessageOwner ?? null,
-            topMarkeeAddress: l.topMarkeeAddress ?? null,
-            boosted: false,
-            strategy: 'streaming' as const,
-            effectiveRateRaw: l.effectiveRateRaw ?? '0',
-          }))
-        setStreamRows(rows)
-      })
-      .catch(() => {})
-  }, [])
+  const streaming = useStreamingRows('superfluid')
+  const streamRows: SuperfluidLeaderboard[] = useMemo(
+    () => streaming.map(row => ({ ...row, boosted: false })),
+    [streaming],
+  )
 
   // Batch-fetch views for all top markees (boosted + regular)
   useEffect(() => {

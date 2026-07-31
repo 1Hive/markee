@@ -387,41 +387,32 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
       </span>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {isStreaming ? (
-          <button
-            onClick={e => { e.preventDefault(); e.stopPropagation(); onStream() }}
-            style={{
-              width: '100%', textAlign: 'center',
-              background: PINK, color: BG, border: 'none', borderRadius: 7,
-              padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-              cursor: 'pointer', whiteSpace: 'nowrap',
-              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
-              transition: 'transform 120ms, box-shadow 120ms',
-            }}
-            onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
-            onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
-          >
-            {monthlyRateLabel(lb, ethPrice)}
-          </button>
-        ) : (
-          <button
-            onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
-            style={{
-              width: '100%', textAlign: 'center',
-              background: PINK, color: BG, border: 'none', borderRadius: 7,
-              padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-              cursor: 'pointer', whiteSpace: 'nowrap',
-              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
-              transition: 'transform 120ms, box-shadow 120ms',
-            }}
-            onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
-            onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
-          >
-            {priceLabel}
-          </button>
-        )}
+        {isStreaming
+          ? <RowActionButton label={monthlyRateLabel(lb, ethPrice)} onClick={onStream} />
+          : <RowActionButton label={priceLabel} onClick={onBuy} />}
       </div>
     </a>
+  )
+}
+
+// The row is a link, so the action stops the click from navigating to the board detail page.
+function RowActionButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onClick() }}
+      style={{
+        width: '100%', textAlign: 'center',
+        background: PINK, color: BG, border: 'none', borderRadius: 7,
+        padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+        cursor: 'pointer', whiteSpace: 'nowrap',
+        boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+        transition: 'transform 120ms, box-shadow 120ms',
+      }}
+      onMouseEnter={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)' }}
+      onMouseLeave={e => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)' }}
+    >
+      {label}
+    </button>
   )
 }
 
