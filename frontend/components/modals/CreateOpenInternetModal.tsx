@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const OI_FACTORY_ADDRESS = '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const
 
@@ -37,6 +38,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const [beneficiary, setBeneficiary] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [newAddress, setNewAddress] = useState<string | null>(null)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -47,6 +49,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setBeneficiary('')
       setError(null)
       setNewAddress(null)
+      setHasUserEdited(false)
       reset()
     }
   }, [isOpen, reset])
@@ -72,6 +75,27 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
     onSuccess?.()
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (writeError) logTransactionError(writeError, 'CreateOpenInternetModal')
+  }, [writeError])
+
+  const blockBackdropClose = hasUserEdited && !isPending && !isConfirming && !isSuccess
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (blockBackdropClose) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      onClose()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, blockBackdropClose, onClose])
+
   const handleCreate = () => {
     setError(null)
     if (!name.trim()) { setError('Enter a name for your sign.'); return }
@@ -79,19 +103,30 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
       setError('Enter a valid treasury address.')
       return
     }
-    writeContract({
-      address: OI_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'createLeaderboard',
-      args: [beneficiary as `0x${string}`, name.trim()],
-    })
+    try {
+      writeContract({
+        address: OI_FACTORY_ADDRESS,
+        abi: FACTORY_ABI,
+        functionName: 'createLeaderboard',
+        args: [beneficiary as `0x${string}`, name.trim()],
+      })
+    } catch (err) {
+      logTransactionError(err, 'CreateOpenInternetModal.createLeaderboard')
+      setError(formatTransactionError(err))
+    }
   }
 
   if (!isOpen) return null
+  const transactionError = error || (writeError ? formatTransactionError(writeError) : null)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => {
+          if (!blockBackdropClose) onClose()
+        }}
+      />
       <div className="relative bg-[#0A0F3D] border border-[#8A8FBF]/30 rounded-2xl p-6 sm:p-8 max-w-md sm:max-w-xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
@@ -144,7 +179,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                     <input
                       type="text"
                       value={name}
-                      onChange={e => setName(e.target.value)}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value) }}
                       placeholder="e.g. My Website"
                       className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm outline-none transition-colors"
                       disabled={isPending || isConfirming}
@@ -158,7 +193,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                     <input
                       type="text"
                       value={beneficiary}
-                      onChange={e => setBeneficiary(e.target.value)}
+                      onChange={e => { setHasUserEdited(true); setBeneficiary(e.target.value) }}
                       placeholder="0x..."
                       className="w-full bg-[#060A2A] border border-[#8A8FBF]/20 focus:border-[#F897FE]/50 rounded-lg px-4 py-3 text-[#EDEEFF] text-sm font-mono outline-none transition-colors"
                       disabled={isPending || isConfirming}
@@ -180,10 +215,10 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
                   </div>
                 </div>
 
-                {(error || writeError) && (
+                {transactionError && (
                   <div className="flex items-start gap-2 text-red-400 text-sm">
                     <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                    <span>{error ?? writeError?.message}</span>
+                    <span>{transactionError}</span>
                   </div>
                 )}
 

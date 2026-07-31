@@ -6,9 +6,9 @@ import { Eye } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -327,7 +327,6 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
         transition: 'background 120ms', cursor: 'pointer',
       }}
     >
-      {/* SERVED ON */}
       <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
         <ServedLogo lb={lb} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: lb.platform === 'website' ? MONO : 'inherit' }}>
@@ -335,25 +334,21 @@ function TableRow({ lb, views, ethPrice, onBuy }: { lb: Leaderboard; views: numb
         </span>
       </span>
 
-      {/* TOTAL RAISED */}
       <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
         {totalLabel}
       </span>
 
-      {/* CURRENT MESSAGE */}
       <div style={{ minWidth: 0 }}>
         <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
       </div>
 
-      {/* VIEWS */}
       <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
         <Eye size={10} style={{ opacity: 0.7 }} />
         {views > 0 ? formatViews(views) : '—'}
       </span>
 
-      {/* PRICE TO CHANGE */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}

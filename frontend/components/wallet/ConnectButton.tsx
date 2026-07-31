@@ -1,5 +1,7 @@
 'use client'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { useState } from 'react'
+import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const BORDER = 'rgba(138,143,191,0.2)'
@@ -16,6 +18,8 @@ function GlowDot() {
 export function ConnectButton() {
   const { authenticated, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   if (!authenticated) {
     return (
@@ -39,31 +43,117 @@ export function ConnectButton() {
     ? `${displayAddress.slice(0, 6)}…${displayAddress.slice(-4)}`
     : user?.email?.address ?? 'Account'
 
+  const copyAddress = async () => {
+    if (!displayAddress) return
+    await navigator.clipboard.writeText(displayAddress)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleDisconnect = async () => {
+    setMenuOpen(false)
+    await logout()
+  }
+
   return (
-    <button
-      onClick={logout}
-      type="button"
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        background: 'transparent', color: '#B8B6D9',
-        border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 14px',
-        fontWeight: 600, fontSize: 13, fontFamily: MONO,
-        cursor: 'pointer', flexShrink: 0,
-        transition: 'border-color 160ms, color 160ms',
-      }}
-      onMouseEnter={e => {
-        const el = e.currentTarget as HTMLElement
-        el.style.borderColor = 'rgba(248,151,254,0.35)'
-        el.style.color = '#EDEEFF'
-      }}
-      onMouseLeave={e => {
-        const el = e.currentTarget as HTMLElement
-        el.style.borderColor = BORDER
-        el.style.color = '#B8B6D9'
-      }}
-    >
-      <GlowDot />
-      {displayName}
-    </button>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setMenuOpen(open => !open)}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'transparent', color: '#B8B6D9',
+          border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 14px',
+          fontWeight: 600, fontSize: 13, fontFamily: MONO,
+          cursor: 'pointer', flexShrink: 0,
+          transition: 'border-color 160ms, color 160ms',
+        }}
+        onMouseEnter={e => {
+          const el = e.currentTarget as HTMLElement
+          el.style.borderColor = 'rgba(248,151,254,0.35)'
+          el.style.color = '#EDEEFF'
+        }}
+        onMouseLeave={e => {
+          const el = e.currentTarget as HTMLElement
+          el.style.borderColor = BORDER
+          el.style.color = '#B8B6D9'
+        }}
+      >
+        <GlowDot />
+        {displayName}
+        <ChevronDown size={14} style={{ transform: menuOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 160ms' }} />
+      </button>
+
+      {menuOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close account menu"
+            onClick={() => setMenuOpen(false)}
+            tabIndex={-1}
+            style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'transparent', border: 0, cursor: 'default' }}
+          />
+          <div
+            role="menu"
+            style={{
+              position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 50,
+              width: 210, overflow: 'hidden', borderRadius: 8,
+              border: `1px solid ${BORDER}`, background: '#0A0F3D',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+            }}
+          >
+            <a
+              href="/account"
+              role="menuitem"
+              onClick={() => setMenuOpen(false)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+                padding: '11px 13px', background: 'transparent', border: 0,
+                color: '#EDEEFF', fontFamily: MONO, fontSize: 12,
+                cursor: 'pointer', textAlign: 'left', textDecoration: 'none',
+                boxSizing: 'border-box',
+              }}
+            >
+              <LayoutDashboard size={15} color="#8A8FBF" />
+              Dashboard
+            </a>
+            {displayAddress && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={copyAddress}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+                  padding: '11px 13px', background: 'transparent', border: 0,
+                  borderTop: `1px solid ${BORDER}`,
+                  color: '#EDEEFF', fontFamily: MONO, fontSize: 12,
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                {copied ? <Check size={15} color="#1DB227" /> : <Copy size={15} color="#8A8FBF" />}
+                {copied ? 'Copied address' : 'Copy address'}
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleDisconnect}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+                padding: '11px 13px', background: 'transparent',
+                border: 0, borderTop: `1px solid ${BORDER}`,
+                color: '#FF8E8E', fontFamily: MONO, fontSize: 12,
+                cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <LogOut size={15} />
+              Disconnect
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   )
 }

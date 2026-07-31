@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Vercel
+.vercel
+
+# Foundry build/deploy artifacts (repo-root only — anchored so frontend/lib source is never ignored).
+# lib/ is deliberately not ignored: Foundry deps live there as tracked submodules (see .gitmodules).
+/out/
+/cache/
+/broadcast/
+/foundry.lock
+
+.env
+.env.local
+.env.*.local
+
+# Local-only design docs and Claude Code workspace
+/.claude/
+
+# Local-only streaming dev/testnet scripts (kept out of the repo)
+/frontend/scripts/
