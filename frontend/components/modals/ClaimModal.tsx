@@ -41,6 +41,7 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const pending = usePendingMarkee(isOpen ? board : undefined, enabled ? address : undefined)
+  const { refetch: refetchPending } = pending
   const pendingEthWei = useFlowingAmount(pending.pendingWei, pending.snapshotAt, pending.ratePerSec)
   const earnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(pendingEthWei)), pending.feeBps)
 
@@ -50,11 +51,11 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
 
   useEffect(() => {
     if (isSuccess && isOpen) {
-      pending.refetch()
+      refetchPending()
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isSuccess, isOpen, onClose, onSuccess, refetchPending])
 
   async function handleClaim() {
     setError(null)

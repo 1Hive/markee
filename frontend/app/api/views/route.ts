@@ -110,21 +110,26 @@ export async function POST(req: NextRequest) {
   const dedupeKey = `dedup:${ip}:${address}`
   const alreadyCounted = await kv.get(dedupeKey)
 
-  if (!alreadyCounted) {
-    const pipeline = kv.pipeline()
-    pipeline.incr(`views:total:${address}`)
-    pipeline.incr(`views:msg:${address}:${msgHash}`)
-    pipeline.set(dedupeKey, '1', { ex: 3600 })
-    pipeline.incr('views:network:total')
-    await pipeline.exec()
+  if (alreadyCounted) {
+    const [totalViews, messageViews] = await kv.mget<number[]>(
+      `views:total:${address}`,
+      `views:msg:${address}:${msgHash}`,
+    )
+    return NextResponse.json(
+      { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
+      { headers: corsHeaders(origin) },
+    )
   }
 
-  const [totalViews, messageViews] = await kv.mget<number[]>(
-    `views:total:${address}`,
-    `views:msg:${address}:${msgHash}`,
-  )
+  const pipeline = kv.pipeline()
+  pipeline.incr(`views:total:${address}`)
+  pipeline.incr(`views:msg:${address}:${msgHash}`)
+  pipeline.set(dedupeKey, '1', { ex: 3600 })
+  pipeline.incr('views:network:total')
+  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number]>()
+
   return NextResponse.json(
-    { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: !alreadyCounted },
+    { totalViews, messageViews, counted: true },
     { headers: corsHeaders(origin) },
   )
 }

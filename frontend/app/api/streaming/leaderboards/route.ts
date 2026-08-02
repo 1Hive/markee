@@ -171,7 +171,7 @@ export async function GET(request: Request) {
         siteUrl: oiMeta?.siteUrl ?? null,
         verifiedUrl: oiMeta?.verifiedUrl ?? null,
         verifiedUrls: Array.isArray(oiMeta?.verifiedUrls) ? oiMeta.verifiedUrls : oiMeta?.verifiedUrl ? [oiMeta.verifiedUrl] : [],
-        status: (oiMeta?.status as 'pending' | 'verified') ?? 'pending',
+        status: oiMeta?.status === 'verified' ? 'verified' as const : 'pending' as const,
         platform: VERTICAL_PLATFORM[vertical],
         strategy: 'streaming' as const,
         // Streamed inflow minus GDA refunds (non-#1 backers get refunded, so gross would overstate it),
