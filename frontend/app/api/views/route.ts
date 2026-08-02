@@ -105,6 +105,9 @@ export async function POST(req: NextRequest) {
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
 
+  // Deliberately unguarded by environment: previews and local dev increment the same shared
+  // counters as production, trading a little noise in the totals for staging that behaves real.
+
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
   const dedupeKey = `dedup:${ip}:${address}`

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Eye } from 'lucide-react'
 import { formatEther, parseEther, type Address, type Hex } from 'viem'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
@@ -96,15 +96,17 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     ? markees.find(m => m.address.toLowerCase() === backedMarkee.toLowerCase()) ?? null
     : null
 
-  const refetchAll = () => { refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); pending.refetch() }
+  const { refetch: refetchPending } = pending
+  const refetchAll = useCallback(() => {
+    refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); refetchPending()
+  }, [refetch, refetchBacked, refetchMyRate, refetchDeposit, refetchPending])
 
   // ── Views ───────────────────────────────────────────────────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
-  const markeeAddrKey = markees.map(m => m.address).join(',')
+  const markeeAddrKey = markees.map(m => m.address.toLowerCase()).join(',')
   useEffect(() => {
-    if (!markees.length) return
-    const addrs = markees.map(m => m.address.toLowerCase()).join(',')
-    fetch(`/api/views?addresses=${addrs}`)
+    if (!markeeAddrKey) return
+    fetch(`/api/views?addresses=${markeeAddrKey}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return
@@ -115,10 +117,10 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         setViewsMap(map)
       })
       .catch(() => {})
-  }, [markeeAddrKey])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [markeeAddrKey])
 
   // Track + increment a view for the top message, mirroring the fixed reader. The POST both
-  // increments (production only, gated server-side) and returns the current total for display.
+  // increments (rate-limited per IP server-side) and returns the current total for display.
   const topAddress = markees[0]?.address
   const topMessage = markees[0]?.message
   useEffect(() => {
