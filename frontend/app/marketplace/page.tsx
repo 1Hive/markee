@@ -356,7 +356,7 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
-        gap: 16, padding: '11px 14px', textDecoration: 'none',
+        gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
         background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
         transition: 'background 120ms', cursor: 'pointer',

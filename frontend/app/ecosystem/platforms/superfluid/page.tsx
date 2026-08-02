@@ -444,6 +444,9 @@ export default function SuperfluidPlatformPage() {
     for (const lb of leaderboards) {
       if (lb.topMarkeeAddress) addrs.push(lb.topMarkeeAddress.toLowerCase())
     }
+    for (const row of streaming) {
+      if (row.topMarkeeAddress) addrs.push(row.topMarkeeAddress.toLowerCase())
+    }
 
     const unique = Array.from(new Set(addrs))
     if (unique.length === 0) return
@@ -459,7 +462,7 @@ export default function SuperfluidPlatformPage() {
         setViewsMap(m)
       })
       .catch(() => {})
-  }, [leaderboards, boostedLeaderboards])
+  }, [leaderboards, boostedLeaderboards, streaming])
 
   const boostedAddressSet = new Set(boostedLeaderboards.map(b => b.address.toLowerCase()))
 

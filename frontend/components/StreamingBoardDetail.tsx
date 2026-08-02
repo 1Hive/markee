@@ -1,34 +1,36 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { ChevronRight, Zap, Trophy, Plus, Copy, Check, Eye } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { formatEther, parseEther, type Address, type Hex } from 'viem'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
+import { ManageStreamModal } from '@/components/modals/ManageStreamModal'
+import { ClaimModal } from '@/components/modals/ClaimModal'
 import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { STREAMING_BASE, CFA_FORWARDER_ABI, ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
+import { usePendingMarkee } from '@/hooks/usePendingMarkee'
+import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { NETWORK_PAUSED } from '@/lib/paused'
+import {
+  MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
+  formatViews, fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, EmbedPanel, BoardDetailSkeleton,
+} from '@/components/board-detail/shared'
 
-// ── Theme tokens (shared with StreamModal) ─────────────────────────────────────
-const BG = '#060A2A'
-const BG2 = '#0A0F3D'
-const PINK = '#F897FE'
-const BORDER = 'rgba(138,143,191,0.2)'
-const MUTED = '#8A8FBF'
-const TEXT = '#EDEEFF'
-const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
+const ETHX = STREAMING_BASE.ethx as Address
+const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
+const ZERO = '0x0000000000000000000000000000000000000000'
 
 // Effective rate (wei/sec) → human "X ETH/mo".
 function formatRate(weiPerSec: bigint): string {
@@ -38,60 +40,85 @@ function formatRate(weiPerSec: bigint): string {
   return `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
 }
 
-function formatViews(n: number): string {
-  if (n < 1000) return String(n)
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
-}
-
-function SkeletonBar({ className = '' }: { className?: string }) {
-  return <div className={`bg-[#1A1F4D] rounded animate-pulse ${className}`} />
-}
-
-function MarkeeRowSkeleton() {
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 px-5 py-4 flex items-start gap-4">
-      <SkeletonBar className="flex-shrink-0 w-8 h-8 rounded-full" />
-      <div className="flex-1 min-w-0 space-y-2.5 pt-0.5">
-        <SkeletonBar className="h-4 w-4/5" />
-        <SkeletonBar className="h-3 w-24" />
-      </div>
-      <SkeletonBar className="w-24 h-4" />
-    </div>
-  )
-}
-
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export function StreamingBoardDetail({ board }: { board: Address }) {
   const { meta, markees, isLoading, refetch } = useStreamingMarkees(board)
   const { address } = useAccount()
-
-  const boardTotal = useStreamingBoardTotal(board)
   const ethPrice = useEthPrice()
+  const ecoEntry = useServedOn(board)
+
+  // Live cumulative total: API snapshot ticking forward at the board's aggregate inflow rate.
+  const boardTotal = useStreamingBoardTotal(board)
   const liveStreamedWei = useFlowingAmount(
     boardTotal?.totalRaw ?? 0n,
     boardTotal?.streamedAt ?? 0,
     boardTotal?.rateRaw ?? 0n,
   )
   const streamedEth = parseFloat(formatEther(liveStreamedWei))
-  const hasFlow = boardTotal !== null && (boardTotal.totalRaw > 0n || boardTotal.rateRaw > 0n)
-
-  const [target, setTarget] = useState<StreamTarget | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
 
   const canStream = !NETWORK_PAUSED && meta.version !== undefined
 
   const messageCount = meta.markeeCount !== undefined
-    ? (meta.markeeCount > 0n ? meta.markeeCount - 1n : 0n)
-    : undefined
+    ? Number(meta.markeeCount > 0n ? meta.markeeCount - 1n : 0n)
+    : 0
 
-  const topMarkee = markees[0]
-  const [topViews, setTopViews] = useState<number | null>(null)
+  // ── Modal state ─────────────────────────────────────────────────────────────
+  const [target, setTarget] = useState<StreamTarget | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
+  const [claimOpen, setClaimOpen] = useState(false)
+  const [embedOpen, setEmbedOpen] = useState(false)
 
-  // Track a view for the board's top message, mirroring the fixed reader. The POST both increments
-  // (production only, gated server-side) and returns the current total for display.
+  const backMarkee = (m: StreamingMarkee) =>
+    setTarget({ address: m.address, message: m.message, name: m.name })
+
+  // ── Your position on this board ─────────────────────────────────────────────
+  const { data: backedMarkee, refetch: refetchBacked } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerMarkee', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !!address },
+  })
+  const { data: myRate, refetch: refetchMyRate } = useReadContract({
+    address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI, functionName: 'getFlowrate', args: address ? [ETHX, address, board] : undefined, chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !!address },
+  })
+  const { data: myDeposit, refetch: refetchDeposit } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !!address },
+  })
+  const hasPosition = (!!backedMarkee && backedMarkee !== ZERO) || (myDeposit ?? 0n) > 0n
+
+  const pending = usePendingMarkee(hasPosition ? board : undefined, address)
+  const pendingEthWei = useFlowingAmount(pending.pendingWei, pending.snapshotAt, pending.ratePerSec)
+  const earnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(pendingEthWei)), pending.feeBps)
+
+  const backedEntry = backedMarkee && backedMarkee !== ZERO
+    ? markees.find(m => m.address.toLowerCase() === backedMarkee.toLowerCase()) ?? null
+    : null
+
+  const refetchAll = () => { refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); pending.refetch() }
+
+  // ── Views ───────────────────────────────────────────────────────────────────
+  const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
+  const markeeAddrKey = markees.map(m => m.address).join(',')
+  useEffect(() => {
+    if (!markees.length) return
+    const addrs = markees.map(m => m.address.toLowerCase()).join(',')
+    fetch(`/api/views?addresses=${addrs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        const map = new Map<string, number>()
+        for (const [k, v] of Object.entries(data as Record<string, { totalViews: number }>)) {
+          map.set(k.toLowerCase(), v.totalViews)
+        }
+        setViewsMap(map)
+      })
+      .catch(() => {})
+  }, [markeeAddrKey])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track + increment a view for the top message, mirroring the fixed reader. The POST both
+  // increments (production only, gated server-side) and returns the current total for display.
   const topAddress = markees[0]?.address
   const topMessage = markees[0]?.message
   useEffect(() => {
@@ -102,213 +129,203 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       body: JSON.stringify({ address: topAddress, message: topMessage }),
     })
       .then(r => (r.ok ? r.json() : null))
-      .then(data => { if (typeof data?.totalViews === 'number') setTopViews(data.totalViews) })
+      .then(data => {
+        if (typeof data?.totalViews === 'number') {
+          setViewsMap(m => new Map(m).set(topAddress.toLowerCase(), data.totalViews))
+        }
+      })
       .catch(() => {})
   }, [topAddress, topMessage])
 
-  const copyAddress = () => {
-    navigator.clipboard.writeText(board)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const backMarkee = (m: StreamingMarkee) =>
-    setTarget({ address: m.address, message: m.message, name: m.name })
+  const topMarkee = markees[0] ?? null
+  const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
 
   const isBoardAdmin = !!address && !!meta.admin && address.toLowerCase() === meta.admin.toLowerCase()
 
+  const totalStreamedNode = (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+      <span style={{ width: 8, height: 8, borderRadius: 99, background: GREEN, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+      <MetricValue text={`${streamedEth.toFixed(6)} ETH`} color={GREEN} />
+      {ethPrice && streamedEth > 0 ? (
+        <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>≈ {formatUsd(streamedEth * ethPrice)}</span>
+      ) : null}
+    </span>
+  )
+
   return (
-    <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="create-a-markee" />
+    <div style={{ minHeight: '100vh', background: BG }}>
+      <Header activePage="marketplace" useRegularLinks />
 
-      {/* Breadcrumbs */}
-      <section className="bg-[#0A0F3D] py-4 border-b border-[#8A8FBF]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 text-sm flex-wrap">
-            <Link href="/create-a-markee" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Create a Markee</Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
-            <Link href="/create-a-markee?strategy=streaming" className="text-[#8A8FBF] hover:text-[#F897FE] transition-colors">Streaming</Link>
-            <ChevronRight size={16} className="text-[#8A8FBF]" />
-            {isLoading && !meta.name
-              ? <SkeletonBar className="w-32 h-3.5" />
-              : <span className="text-[#EDEEFF] truncate max-w-xs">{meta.name ?? ''}</span>
-            }
-          </div>
-        </div>
-      </section>
-
-      {/* Hero */}
-      <section className="relative py-16 overflow-hidden">
-        <HeroBackground />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="flex items-center gap-5">
-              <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-[#0A0F3D] border border-[#8A8FBF]/30">
-                <Zap size={28} className="text-[#1DB227]" />
-              </div>
-              <div>
-                <div className="flex items-center gap-3 mb-1">
-                  {isLoading && !meta.name
-                    ? <SkeletonBar className="w-48 h-7" />
-                    : (
-                      <>
-                        <h1 className="text-2xl font-bold text-[#EDEEFF]">{meta.name ?? ''}</h1>
-                        <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                          Streaming
-                        </span>
-                      </>
-                    )
-                  }
-                </div>
-                <button
-                  onClick={copyAddress}
-                  className="flex items-center gap-1.5 text-[#8A8FBF] hover:text-[#F897FE] text-xs font-mono transition-colors"
-                >
-                  {board.slice(0, 8)}…{board.slice(-6)}
-                  {copied ? <Check size={11} /> : <Copy size={11} />}
-                </button>
-              </div>
-            </div>
-
-            {canStream && (
-              <button
-                onClick={() => setCreateOpen(true)}
-                className="flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors whitespace-nowrap"
-              >
-                <Plus size={18} />
-                Add a message
-              </button>
-            )}
-          </div>
-
-          {/* Stats */}
-          <div className="flex flex-wrap items-center gap-8 mt-8">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
-              <span className="text-[#F897FE] font-semibold">{messageCount?.toString() ?? '—'}</span>
-              <span className="text-[#8A8FBF]">messages</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Trophy size={14} className="text-[#7C9CFF]" />
-              <span className="text-[#7C9CFF] font-semibold">
-                {topMarkee ? formatRate(topMarkee.rate) : '—'}
-              </span>
-              <span className="text-[#8A8FBF]">top rate</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Eye size={14} className="text-[#8A8FBF]" />
-              <span className="text-[#EDEEFF] font-semibold">
-                {topViews !== null ? formatViews(topViews) : '—'}
-              </span>
-              <span className="text-[#8A8FBF]">views</span>
-            </div>
-          </div>
-
-          {/* Live total streamed — ticks up in real time at the board's aggregate inflow rate */}
-          {hasFlow && (
-            <div className="mt-8">
-              <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-1.5">
-                Total streamed to this board
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#1DB227] animate-pulse" />
-                <span className="text-3xl md:text-4xl font-bold text-[#EDEEFF] font-mono tabular-nums">
-                  {streamedEth.toFixed(6)}
-                </span>
-                <span className="text-[#8A8FBF] text-lg font-mono">ETHx</span>
-                {ethPrice && (
-                  <span className="text-[#7C9CFF] text-sm font-mono">
-                    ≈ {formatUsd(streamedEth * ethPrice)}
-                  </span>
-                )}
-              </div>
-            </div>
+      {isLoading ? (
+        <BoardDetailSkeleton />
+      ) : !topMarkee ? (
+        // Board exists but nothing is backed yet
+        <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
+          {meta.name && (
+            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.name}</div>
           )}
-        </div>
-      </section>
-
-      {/* Top message spotlight */}
-      {topMarkee && (
-        <section className="bg-[#0A0F3D] border-y border-[#8A8FBF]/20 py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#FFD700] text-xs font-bold">
-                #1
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
-                <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
-                  {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
-                </p>
-                <div className="flex items-center gap-4 mt-3">
-                  {topMarkee.name && <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>}
-                  <span className="text-[#F897FE] text-xs font-semibold">{formatRate(topMarkee.rate)}</span>
-                  {canStream && (
-                    <button
-                      onClick={() => backMarkee(topMarkee)}
-                      className="text-[#7C9CFF] text-xs hover:text-[#F897FE] transition-colors"
-                    >
-                      Stream to back →
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>No messages yet</h1>
+          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Add a message and stream to it to take the top spot.</p>
+          {canStream && (
+            <button
+              onClick={() => setCreateOpen(true)}
+              style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '13px 26px', fontWeight: 700, fontSize: 15, fontFamily: MONO, cursor: 'pointer', boxShadow: '0 4px 18px rgba(248,151,254,0.3)' }}
+            >
+              Add the First Message
+            </button>
+          )}
+          <div style={{ marginTop: 20 }}>
+            <a href="/marketplace" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Marketplace</a>
           </div>
         </section>
-      )}
+      ) : (
+        <>
+          {/* ── Hero ── */}
+          <section style={{ position: 'relative', zIndex: 2, borderBottom: `1px solid ${BORDER}`, background: HERO_GRAD, padding: '44px 40px 30px', overflow: 'hidden' }}>
+            <HeroBackground />
+            {/* scanlines */}
+            <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px)', mixBlendMode: 'overlay' }} />
 
-      {/* All Messages */}
-      <section className="py-12 bg-[#060A2A]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-[#EDEEFF]">Leaderboard</h2>
+            <FeaturedCard
+              markeeAddress={topMarkee.address}
+              message={topMarkee.message || 'No message set'}
+              displayName={topMarkee.name || undefined}
+              ownerAddress={topMarkee.owner}
+              views={topViews}
+              pillLabel={canStream ? `${formatRate(topMarkee.rate)} to back` : undefined}
+              onClick={() => canStream && backMarkee(topMarkee)}
+            />
+            <div style={{ height: 28 }} />
+            <MetricsBar
+              address={board}
+              entry={ecoEntry}
+              topViews={topViews}
+              markeeCount={messageCount}
+              totalLabel="Total streamed"
+              totalNode={totalStreamedNode}
+              messagesLabel="Messages"
+            />
+          </section>
+
+          {/* ── Your position ── */}
+          {hasPosition && (
+            <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}`, background: BG2 }}>
+              <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' as const }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 240 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 99, background: myRate && myRate > 0n ? GREEN : MUTED, flexShrink: 0, animation: myRate && myRate > 0n ? 'glowPulse 1.5s ease-in-out infinite' : 'none' }} />
+                  <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
+                    {myRate && myRate > 0n ? (
+                      <>You stream <span style={{ color: TEXT }}>{formatRate(myRate)}</span>{' '}
+                        to <span style={{ color: PINK }}>{backedEntry?.name || backedEntry?.message || (backedMarkee ? fmtAddr(backedMarkee) : '')}</span></>
+                    ) : (
+                      <>Your stream is stopped{(myDeposit ?? 0n) > 0n ? ', your deposit is ready to withdraw' : ''}</>
+                    )}
+                    {(pendingEthWei > 0n || pending.accruing) && (
+                      <> · earning <span style={{ color: GREEN }}>
+                        {pending.mintsMarkee
+                          ? `~${earnedMarkee.toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE`
+                          : `${Number(formatEther(pendingEthWei)).toFixed(6)} ETH`}
+                      </span></>
+                    )}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                  {(pendingEthWei > 0n || pending.accruing) && (
+                    <button onClick={() => setClaimOpen(true)} style={posBtn(true)}>Claim</button>
+                  )}
+                  {myRate && myRate > 0n && backedEntry && (
+                    <button onClick={() => backMarkee(backedEntry)} style={posBtn(false)}>Change rate</button>
+                  )}
+                  <button onClick={() => setManageOpen(true)} style={posBtn(false)}>Manage stream</button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ── Action bar ── */}
+          <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+              <button
+                onClick={() => setEmbedOpen(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'transparent', border: `1px solid ${BORDER}`,
+                  borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
+                  fontFamily: MONO, fontSize: 13, color: TEXT2,
+                  transition: 'border-color 140ms, color 140ms',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+                Embed this Markee
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: embedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 160ms', marginLeft: 2 }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            </div>
+            {embedOpen && (
+              <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
+                <EmbedPanel address={board} name={meta.name} platform={ecoEntry?.platform} />
+              </div>
+            )}
+          </section>
+
+          {/* ── Leaderboard table ── */}
+          <section style={{ padding: '8px 40px 20px' }}>
+            <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
+              <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 15 }}>The message with the highest stream rate takes the top spot.</p>
+              <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+                <div style={{ minWidth: 760, background: BG2 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: BOARD_LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
+                    {['', 'Backed by', 'Stream rate', 'Current message', 'Views', ''].map((h, i) => (
+                      <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
+                    ))}
+                  </div>
+                  {markees.map((m, i) => (
+                    <StreamingRow
+                      key={m.address}
+                      markee={m}
+                      rank={i + 1}
+                      featured={i === 0}
+                      viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
+                      isBackedByYou={!!backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase()}
+                      onStream={canStream ? () => backMarkee(m) : undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Bottom CTAs ── */}
+          <section style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 40px 96px', display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
             {canStream && (
               <button
                 onClick={() => setCreateOpen(true)}
-                className="flex items-center gap-1.5 text-sm text-[#8A8FBF] hover:text-[#F897FE] transition-colors border border-[#8A8FBF]/30 hover:border-[#F897FE]/40 px-4 py-2 rounded-lg"
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '13px 24px', fontWeight: 700, fontSize: 15, fontFamily: MONO, cursor: 'pointer', letterSpacing: 0.3, transition: 'transform 120ms, box-shadow 120ms', boxShadow: '0 4px 18px rgba(248,151,254,0.3)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 28px rgba(248,151,254,0.45)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(248,151,254,0.3)' }}
               >
-                <Plus size={14} />
-                Add a message
+                Add a New Message
               </button>
             )}
-          </div>
+            <a
+              href="/create-a-markee"
+              style={{ display: 'inline-flex', alignItems: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '13px 24px', fontWeight: 600, fontSize: 15, fontFamily: MONO, textDecoration: 'none', letterSpacing: 0.3, transition: 'border-color 120ms, color 120ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+            >
+              Create Your Own Markee
+            </a>
+          </section>
 
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map(i => <MarkeeRowSkeleton key={i} />)}
-            </div>
-          ) : markees.length === 0 ? (
-            <div className="bg-[#0A0F3D] rounded-2xl p-12 border border-[#8A8FBF]/20 text-center">
-              <Trophy size={40} className="text-[#8A8FBF] mx-auto mb-4" />
-              <p className="text-[#EDEEFF] font-semibold mb-2">No backed messages yet</p>
-              <p className="text-[#8A8FBF] text-sm mb-6">Add a message and open a stream to claim the top spot.</p>
-              {canStream && (
-                <button
-                  onClick={() => setCreateOpen(true)}
-                  className="inline-flex items-center gap-2 bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
-                >
-                  <Plus size={18} />
-                  Add the first message
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {markees.map((markee, idx) => (
-                <MarkeeRow
-                  key={markee.address}
-                  markee={markee}
-                  rank={idx + 1}
-                  onBack={canStream ? () => backMarkee(markee) : undefined}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {isBoardAdmin && <BoardAdminPanel board={board} meta={meta} onUpdated={refetch} />}
+          {isBoardAdmin && <BoardAdminPanel board={board} meta={meta} onUpdated={refetch} />}
+        </>
+      )}
 
       <Footer />
 
@@ -318,9 +335,23 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
           board={board}
           markee={target}
           onClose={() => setTarget(null)}
-          onSuccess={refetch}
+          onSuccess={refetchAll}
         />
       )}
+
+      <ManageStreamModal
+        isOpen={manageOpen}
+        board={board}
+        onClose={() => setManageOpen(false)}
+        onSuccess={refetchAll}
+      />
+
+      <ClaimModal
+        isOpen={claimOpen}
+        board={board}
+        onClose={() => setClaimOpen(false)}
+        onSuccess={refetchAll}
+      />
 
       {createOpen && (
         <CreateMessageModal
@@ -333,6 +364,109 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
           }}
         />
       )}
+    </div>
+  )
+}
+
+function posBtn(primary: boolean): React.CSSProperties {
+  return {
+    background: primary ? PINK : 'transparent',
+    color: primary ? BG : TEXT2,
+    border: primary ? 'none' : `1px solid ${BORDER}`,
+    borderRadius: 7, padding: '8px 14px',
+    fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+    cursor: 'pointer', whiteSpace: 'nowrap' as const,
+  }
+}
+
+// ── Leaderboard row ────────────────────────────────────────────────────────────
+
+function StreamingRow({ markee, rank, featured, viewCount, isBackedByYou, onStream }: {
+  markee: StreamingMarkee
+  rank: number
+  featured: boolean
+  viewCount: number
+  isBackedByYou: boolean
+  onStream?: () => void
+}) {
+  const { address } = useAccount()
+  const isOwner = !!address && markee.owner.toLowerCase() === address.toLowerCase()
+  const displayName = markee.name || fmtAddr(markee.owner)
+
+  return (
+    <div style={{ borderBottom: `1px solid ${BORDER}`, background: featured ? `${PINK}0A` : 'transparent' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: BOARD_LB_COLS,
+          gap: 16,
+          padding: '13px 16px',
+          alignItems: 'center',
+          borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent',
+        }}
+      >
+        <span style={{
+          width: 28, height: 28, borderRadius: 99, border: `1px solid ${featured ? 'rgba(248,151,254,0.4)' : BORDER}`,
+          color: featured ? PINK : MUTED, background: featured ? 'rgba(248,151,254,0.08)' : 'transparent',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: MONO, fontSize: 11, fontWeight: 700,
+        }}>
+          {rank}
+        </span>
+
+        <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayName}
+          {isOwner && <span style={{ color: PINK }}> · yours</span>}
+        </span>
+
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+          <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {formatRate(markee.rate)}
+          </span>
+          {markee.legacyFloor > markee.streamRate && (
+            <span
+              title="This Markee was funded with a lump sum before the board streamed. That sum counts as a rate that decays to zero, so the rate to overtake it keeps falling."
+              style={{ fontSize: 9.5, color: MUTED, fontFamily: MONO, whiteSpace: 'nowrap', cursor: 'help', borderBottom: `1px dotted ${MUTED}`, alignSelf: 'flex-start' }}
+            >
+              decaying
+            </span>
+          )}
+        </span>
+
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {markee.message || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>No message</span>}
+          </p>
+        </div>
+
+        <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Eye size={10} style={{ opacity: 0.7 }} />
+          {viewCount > 0 ? formatViews(viewCount) : '-'}
+        </span>
+
+        <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
+          {onStream && (
+            <button
+              type="button"
+              onClick={onStream}
+              style={{
+                background: isBackedByYou ? 'transparent' : PINK,
+                color: isBackedByYou ? TEXT2 : BG,
+                border: isBackedByYou ? `1px solid ${BORDER}` : 'none',
+                borderRadius: 7,
+                padding: '8px 14px',
+                fontFamily: MONO,
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isBackedByYou ? 'Change rate' : 'Stream'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -450,64 +584,5 @@ function BoardAdminPanel({ board, meta, onUpdated }: {
         {busy && <p className="text-[#8A8FBF] text-sm mt-4">Confirming on Base…</p>}
       </div>
     </section>
-  )
-}
-
-// ── Markee row ─────────────────────────────────────────────────────────────────
-
-function MarkeeRow({
-  markee,
-  rank,
-  onBack,
-}: {
-  markee: StreamingMarkee
-  rank: number
-  onBack?: () => void
-}) {
-  const { address } = useAccount()
-  const isOwner = address && markee.owner.toLowerCase() === address.toLowerCase()
-
-  const rankColors: Record<number, string> = {
-    1: 'text-[#FFD700] border-[#FFD700]/40 bg-[#FFD700]/10',
-    2: 'text-[#C0C0C0] border-[#C0C0C0]/40 bg-[#C0C0C0]/10',
-    3: 'text-[#CD7F32] border-[#CD7F32]/40 bg-[#CD7F32]/10',
-  }
-  const rankStyle = rankColors[rank] ?? 'text-[#8A8FBF] border-[#8A8FBF]/20 bg-[#8A8FBF]/5'
-
-  return (
-    <div className="bg-[#0A0F3D] rounded-lg border border-[#8A8FBF]/20 hover:border-[#8A8FBF]/40 transition-all px-5 py-4 flex items-start gap-4">
-      <div className={`flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold ${rankStyle}`}>
-        {rank}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[#EDEEFF] font-mono text-sm leading-relaxed line-clamp-2">
-          {markee.message || <span className="opacity-40 italic">No message</span>}
-        </p>
-        <div className="flex items-center gap-3 mt-1.5">
-          {markee.name && <span className="text-[#8A8FBF] text-xs">{markee.name}</span>}
-          {isOwner && (
-            <span className="text-xs bg-[#F897FE]/15 border border-[#F897FE]/30 text-[#F897FE] px-2 py-0.5 rounded-full">
-              yours
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex-shrink-0 flex flex-col items-end gap-2">
-        <span className="text-[#F897FE] text-sm font-semibold">{formatRate(markee.rate)}</span>
-        {markee.legacyFloor > markee.streamRate && (
-          <span
-            title="This Markee was funded with a lump sum before the board streamed. That sum counts as a rate that decays to zero, so the price to overtake it keeps falling."
-            className="text-[10px] text-[#8A8FBF] border border-[#8A8FBF]/25 bg-[#8A8FBF]/5 px-2 py-0.5 rounded-full whitespace-nowrap"
-          >
-            grandfathered · decaying
-          </span>
-        )}
-        {onBack && (
-          <button onClick={onBack} className="text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
-            stream to back
-          </button>
-        )}
-      </div>
-    </div>
   )
 }

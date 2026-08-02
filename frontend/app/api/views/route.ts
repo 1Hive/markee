@@ -105,45 +105,26 @@ export async function POST(req: NextRequest) {
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
 
-  // Only production deployments mutate the shared view store. Previews and local dev read the same
-  // store through (so counts look real) but never increment it, keeping preview traffic and bots
-  // out of the production totals.
-  if (process.env.VERCEL_ENV !== 'production') {
-    const [totalViews, messageViews] = await kv.mget<number[]>(
-      `views:total:${address}`,
-      `views:msg:${address}:${msgHash}`,
-    )
-    return NextResponse.json(
-      { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
-      { headers: corsHeaders(origin) },
-    )
-  }
-
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
   const dedupeKey = `dedup:${ip}:${address}`
   const alreadyCounted = await kv.get(dedupeKey)
 
-  if (alreadyCounted) {
-    const [totalViews, messageViews] = await kv.mget<number[]>(
-      `views:total:${address}`,
-      `views:msg:${address}:${msgHash}`,
-    )
-    return NextResponse.json(
-      { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
-      { headers: corsHeaders(origin) },
-    )
+  if (!alreadyCounted) {
+    const pipeline = kv.pipeline()
+    pipeline.incr(`views:total:${address}`)
+    pipeline.incr(`views:msg:${address}:${msgHash}`)
+    pipeline.set(dedupeKey, '1', { ex: 3600 })
+    pipeline.incr('views:network:total')
+    await pipeline.exec()
   }
 
-  const pipeline = kv.pipeline()
-  pipeline.incr(`views:total:${address}`)
-  pipeline.incr(`views:msg:${address}:${msgHash}`)
-  pipeline.set(dedupeKey, '1', { ex: 3600 })
-  pipeline.incr('views:network:total')
-  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number]>()
-
+  const [totalViews, messageViews] = await kv.mget<number[]>(
+    `views:total:${address}`,
+    `views:msg:${address}:${msgHash}`,
+  )
   return NextResponse.json(
-    { totalViews, messageViews, counted: true },
+    { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: !alreadyCounted },
     { headers: corsHeaders(origin) },
   )
 }

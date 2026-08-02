@@ -119,13 +119,17 @@ export async function GET(request: Request) {
       address: factory, abi: StreamingLeaderboardFactoryABI, functionName: 'boardPlatform' as const, args: [addr],
     }))
 
-    const [markeeResults, platformResults, metas, totalsByBoard] = await Promise.all([
+    // Same KV record the fixed open-internet listing reads: logo, site and verified URLs are stored
+    // per board address regardless of pricing strategy, so streaming boards render with them too.
+    const oiMetaKeys = addresses.map(a => `oi:meta:${a.toLowerCase()}`)
+    const [markeeResults, platformResults, metas, totalsByBoard, oiMetas] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
       chunkedMulticall(platformCalls as Parameters<typeof client.multicall>[0]['contracts']),
       Promise.all(addresses.map(a => getStreamingBoardMeta(a))),
       fetchBoardTotals(addresses, ETHX, BigInt(streamedAt)),
+      kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...oiMetaKeys),
     ])
 
     const leaderboards = addresses.map((addr, i) => {
@@ -156,10 +160,18 @@ export async function GET(request: Request) {
 
       const taggedPlatform = (platformResults[i]?.result as [string, string] | undefined)?.[0]
       const vertical: Vertical = verticalFromPlatform(taggedPlatform) ?? metas[i]?.vertical ?? 'openinternet'
+      const oiMeta = oiMetas[i]
 
       return {
         address: addr,
         name,
+        // The listings read leaderboardName for labels and letter avatars; mirror name into it.
+        leaderboardName: name,
+        logoUrl: oiMeta?.logoUrl ?? null,
+        siteUrl: oiMeta?.siteUrl ?? null,
+        verifiedUrl: oiMeta?.verifiedUrl ?? null,
+        verifiedUrls: Array.isArray(oiMeta?.verifiedUrls) ? oiMeta.verifiedUrls : oiMeta?.verifiedUrl ? [oiMeta.verifiedUrl] : [],
+        status: (oiMeta?.status as 'pending' | 'verified') ?? 'pending',
         platform: VERTICAL_PLATFORM[vertical],
         strategy: 'streaming' as const,
         // Streamed inflow minus GDA refunds (non-#1 backers get refunded, so gross would overstate it),

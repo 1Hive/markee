@@ -559,7 +559,11 @@ export default function Home() {
                           <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
                             <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           </span>
-                        ) : null}
+                        ) : (
+                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(248,151,254,0.13)', color: '#F897FE', fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>
+                            {(servedOnLabel[0] || '?').toUpperCase()}
+                          </span>
+                        )}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
                           {servedOnLabel}
                         </span>
