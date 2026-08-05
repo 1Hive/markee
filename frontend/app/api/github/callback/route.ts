@@ -74,12 +74,18 @@ export async function GET(request: NextRequest) {
         : base
   )
 
+  const callbackHostname = new URL(request.url).hostname
+  const cookieDomain = callbackHostname === 'markee.xyz' || callbackHostname.endsWith('.markee.xyz')
+    ? '.markee.xyz'
+    : undefined
+
   response.cookies.set('github_uid', String(user.id), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 365,
     path: '/',
+    domain: cookieDomain,
   })
 
   return response

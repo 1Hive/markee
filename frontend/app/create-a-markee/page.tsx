@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { STRATEGIES, VERTICAL_PLATFORM, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -638,6 +639,7 @@ function CreateWizardInner() {
   const [vertical, setVertical] = useState<Vertical | null>(null)
   const [verticalLocked, setVerticalLocked] = useState(false)
   const [step, setStep] = useState(0)
+  const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [ghUser, setGhUser] = useState<GhUser>({ connected: false })
   const [repos, setRepos] = useState<Repo[]>([])
@@ -889,6 +891,7 @@ function CreateWizardInner() {
 
       {stepKey === 'activate' && vInfo && strategy && newLeaderboardAddress && (
         <div>
+          {/* Transaction confirmed banner */}
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', background: 'rgba(29,178,39,0.08)', border: `1px solid ${C.green}`, borderRadius: 14, padding: '20px 22px', marginBottom: 26 }}>
             <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 99, background: 'rgba(29,178,39,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Check size={22} color={C.green} strokeWidth={2.6} />
@@ -906,16 +909,34 @@ function CreateWizardInner() {
             </div>
           </div>
 
-          <ActivationGuide vertical={vInfo} strategy={strategy} leaderboardAddress={newLeaderboardAddress} selectedFile={selectedFile} name={values.name} />
-
-          <div style={{ marginTop: 14, paddingTop: 24, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end' }}>
-            <Link href="/account" style={{
-              background: C.pink, color: C.bg, borderRadius: 8, padding: '11px 24px',
-              fontSize: 14, fontWeight: 700 as const, textDecoration: 'none',
-            }}>
-              Go to my dashboard →
-            </Link>
+          {/* Activate CTA */}
+          <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: '32px 28px', textAlign: 'center' as const }}>
+            <div style={{ fontSize: 22, fontWeight: 800 as const, color: C.text, marginBottom: 10 }}>Activate your Markee</div>
+            <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, maxWidth: '40ch', margin: '0 auto 24px' }}>
+              {strategy === 'streaming'
+                ? 'Open a stream on your board to claim the top spot and go live.'
+                : 'Buy the first message on your board to go live.'}
+            </p>
+            <button
+              onClick={() => setBuyModalOpen(true)}
+              style={{ background: C.pink, color: C.bg, border: 'none', borderRadius: 8, padding: '12px 28px', fontSize: 15, fontWeight: 700 as const, cursor: 'pointer' }}
+            >
+              {strategy === 'streaming' ? 'Open a stream →' : 'Buy first message →'}
+            </button>
+            <div style={{ marginTop: 16 }}>
+              <Link href={`/markee/${newLeaderboardAddress}`} style={{ color: C.muted, fontSize: 13, textDecoration: 'none' }}>
+                Skip for now →
+              </Link>
+            </div>
           </div>
+
+          <BuyMessageModal
+            isOpen={buyModalOpen}
+            onClose={() => setBuyModalOpen(false)}
+            strategyAddress={newLeaderboardAddress as `0x${string}`}
+            platformId={vInfo.key === 'github' ? 'github' : vInfo.key === 'superfluid' ? 'superfluid' : undefined}
+            onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
+          />
         </div>
       )}
     </div>
