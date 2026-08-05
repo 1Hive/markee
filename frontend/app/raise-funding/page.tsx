@@ -123,15 +123,23 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
             {/* Stats */}
             <div style={{ display: 'flex', gap: 24, flexShrink: 0, paddingLeft: 8, borderLeft: `1px solid ${C.border}` }}>
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
-                  {stats[p.key] != null ? stats[p.key].markees.toLocaleString() : '—'}
-                </div>
+                {stats[p.key] != null ? (
+                  <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
+                    {stats[p.key].markees.toLocaleString()}
+                  </div>
+                ) : (
+                  <div style={{ width: 36, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', animation: 'shimmer 1.4s ease-in-out infinite', margin: '0 auto' }} />
+                )}
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>active signs</div>
               </div>
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
-                  {stats[p.key] != null ? fmtUsd(stats[p.key].usd) : '—'}
-                </div>
+                {stats[p.key] != null ? (
+                  <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
+                    {fmtUsd(stats[p.key].usd)}
+                  </div>
+                ) : (
+                  <div style={{ width: 44, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', animation: 'shimmer 1.4s ease-in-out infinite', margin: '0 auto' }} />
+                )}
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>raised</div>
               </div>
             </div>

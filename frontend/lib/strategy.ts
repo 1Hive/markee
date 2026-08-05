@@ -54,7 +54,7 @@ export const STRATEGIES: Record<Strategy, StrategyMeta> = {
   fixed: {
     key: 'fixed',
     label: 'Fixed',
-    tagline: 'Pay upfront to buy any message',
+    tagline: 'Pay upfront',
     summary: 'Anyone can buy a new message or add funds to an existing message. Top funded message wins.',
     glyph: 'tag',
     accent: '#7C9CFF',
@@ -62,8 +62,8 @@ export const STRATEGIES: Record<Strategy, StrategyMeta> = {
   streaming: {
     key: 'streaming',
     label: 'Streaming',
-    tagline: 'Pay only when your message is featured',
-    summary: 'Anyone can bid a monthly price on a new or existing message. Top funded message wins. Payment streams while message is featured',
+    tagline: 'Pay only when message is featured.',
+    summary: 'Top funded message wins. Payment streams only while message is featured',
     glyph: 'stream',
     accent: '#F897FE',
   },

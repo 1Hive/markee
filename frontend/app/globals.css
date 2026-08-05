@@ -198,6 +198,7 @@ img.emoji {
 @keyframes rowHighlight { 0% { background: rgba(248,151,254,0.18); } 100% { background: transparent; } }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes glowPulse { 0%, 100% { opacity: 0.6; box-shadow: 0 0 4px #F897FE; } 50% { opacity: 1; box-shadow: 0 0 10px #F897FE; } }
+@keyframes shimmer { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.9; } }
 .markee-row--new { animation: rowHighlight 1.6s ease-out; }
 
 /* ── Accessibility / performance ────────────────────────────────────────────── */
