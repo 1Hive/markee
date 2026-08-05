@@ -283,9 +283,8 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
             boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
           }}
         >
-          {/* top row: strategy badge + views */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
-            <StrategyBadge strategy={lb.strategy ?? 'fixed'} />
+          {/* top row: views */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
               <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(views)}
             </span>
