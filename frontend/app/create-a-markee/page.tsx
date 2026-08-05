@@ -636,6 +636,7 @@ function CreateWizardInner() {
 
   const [strategy, setStrategy] = useState<Strategy | null>(null)
   const [vertical, setVertical] = useState<Vertical | null>(null)
+  const [verticalLocked, setVerticalLocked] = useState(false)
   const [step, setStep] = useState(0)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [ghUser, setGhUser] = useState<GhUser>({ connected: false })
@@ -667,7 +668,9 @@ function CreateWizardInner() {
       setStrategy('streaming'); setStep(1); return
     }
     if (platformParam && verticals.includes(platformParam as Vertical)) {
-      setStrategy('fixed'); setVertical(platformParam as Vertical); setStep(2)
+      setVertical(platformParam as Vertical)
+      setVerticalLocked(true)
+      // stay at step 0 so user picks strategy first
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -733,11 +736,10 @@ function CreateWizardInner() {
 
   const stepKeys: StepKey[] = useMemo(() => {
     if (!strategy) return ['strategy']
-    if (!vInfo) return ['strategy', 'vertical']
-    return vInfo.requiresConnect === 'github'
-      ? ['strategy', 'vertical', 'connect', 'setup', 'review', 'activate']
-      : ['strategy', 'vertical', 'setup', 'review', 'activate']
-  }, [strategy, vInfo?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!vInfo) return verticalLocked ? ['strategy'] : ['strategy', 'vertical']
+    const mid: StepKey[] = vInfo.requiresConnect === 'github' ? ['connect', 'setup', 'review', 'activate'] : ['setup', 'review', 'activate']
+    return verticalLocked ? ['strategy', ...mid] : ['strategy', 'vertical', ...mid]
+  }, [strategy, vInfo?.key, verticalLocked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stepKey = stepKeys[step] ?? 'strategy'
 
@@ -813,13 +815,12 @@ function CreateWizardInner() {
         {stepKey === 'strategy' ? 'Choose a pricing strategy' : stepKey === 'vertical' ? 'Choose where it lives' : 'Create a Markee'}
       </h1>
 
-      {step >= 2 && vInfo && (
-        <Stepper steps={vInfo.steps} current={Math.min(step - 2, vInfo.steps.length - 1)} />
+      {step >= (verticalLocked ? 1 : 2) && vInfo && (
+        <Stepper steps={vInfo.steps} current={Math.min(step - (verticalLocked ? 1 : 2), vInfo.steps.length - 1)} />
       )}
 
       {stepKey === 'strategy' && (
         <StepShell
-          sub="Pick how backers pay to hold the top message. You choose where the board lives next."
           onBack={() => router.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!strategy}
         >
           <ChooseStrategy selected={strategy} onSelect={setStrategy} />

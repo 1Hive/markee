@@ -53,17 +53,17 @@ export interface StrategyMeta {
 export const STRATEGIES: Record<Strategy, StrategyMeta> = {
   fixed: {
     key: 'fixed',
-    label: 'Fixed price',
-    tagline: 'Pay a lump sum to hold #1',
-    summary: 'Buy the top message for a one-time price. The most funded message holds the top spot.',
+    label: 'Fixed',
+    tagline: 'Pay upfront to buy any message',
+    summary: 'Anyone can buy a new message or add funds to an existing message. Top funded message wins.',
     glyph: 'tag',
     accent: '#7C9CFF',
   },
   streaming: {
     key: 'streaming',
     label: 'Streaming',
-    tagline: 'Stream by the second to hold #1',
-    summary: 'Backers stream ETH by the second. The highest active rate holds the top spot; stop anytime.',
+    tagline: 'Pay only when your message is featured',
+    summary: 'Anyone can bid a monthly price on a new or existing message. Top funded message wins. Payment streams while message is featured',
     glyph: 'stream',
     accent: '#F897FE',
   },
