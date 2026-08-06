@@ -531,8 +531,10 @@ function CreateWizardInner() {
             isOpen={buyModalOpen}
             onClose={() => setBuyModalOpen(false)}
             strategyAddress={newLeaderboardAddress as `0x${string}`}
+            title="ACTIVATE MARKEE"
+            messageLabel="SET FIRST MESSAGE"
+            messagePlaceholder="Set the text your newly activated Markee will display..."
             ctaLabel="Activate Markee"
-            subtitle="Buy the first message to activate your Markee."
             onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
           />
 
@@ -545,6 +547,9 @@ function CreateWizardInner() {
                 setCreateMsgOpen(false)
                 setStreamTarget({ address: addr, message, name })
               }}
+              title="ACTIVATE MARKEE"
+              messageLabel="SET FIRST MESSAGE"
+              messagePlaceholder="Set the text your newly activated Markee will display..."
             />
           )}
           {streamTarget && (
@@ -554,6 +559,7 @@ function CreateWizardInner() {
               markee={streamTarget}
               onClose={() => setStreamTarget(null)}
               onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
+              isActivation
             />
           )}
         </div>

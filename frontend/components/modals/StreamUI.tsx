@@ -8,6 +8,7 @@ export const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 export const BG = '#060A2A'
 export const BG2 = '#0A0F3D'
 export const PINK = '#F897FE'
+export const BLUE = '#7C9CFF'
 export const BORDER = 'rgba(138,143,191,0.2)'
 export const MUTED = '#8A8FBF'
 export const TEXT = '#EDEEFF'
@@ -150,9 +151,10 @@ export function TxRing({ done }: { done: boolean }) {
 }
 
 // Full-screen overlay + card + pulsing-dot header every streaming modal shares.
-export function ModalShell({ stepLabel, onClose, children }: {
+export function ModalShell({ stepLabel, onClose, footer, children }: {
   stepLabel: string
   onClose: () => void
+  footer?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -187,19 +189,57 @@ export function ModalShell({ stepLabel, onClose, children }: {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}>×</button>
         </div>
         {children}
+        {footer && (
+          <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', flexShrink: 0 }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
+// Step indicator for multi-tx flows (e.g. activation: create → approve → stream).
+export function TxSteps({ steps }: { steps: { label: string; done: boolean; active: boolean }[] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 4 }}>
+      {steps.map(s => (
+        <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 22, height: 22, borderRadius: 99, flexShrink: 0,
+            background: s.done ? PINK : 'transparent',
+            border: s.done ? 'none' : `1.5px solid ${s.active ? PINK : BORDER}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {s.done ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : s.active ? (
+              <span style={{ width: 7, height: 7, borderRadius: 99, background: PINK, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            ) : (
+              <span style={{ width: 6, height: 6, borderRadius: 99, background: MUTED }} />
+            )}
+          </div>
+          <span style={{ fontFamily: MONO, fontSize: 11, color: s.done ? TEXT2 : s.active ? PINK : MUTED, letterSpacing: 0.5 }}>
+            {s.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // The in-flight / success body: ring + headline + supporting line.
-export function TxProgress({ isSuccess, headline, detail }: {
+export function TxProgress({ isSuccess, headline, detail, steps }: {
   isSuccess: boolean
   headline: string
   detail: string
+  steps?: { label: string; done: boolean; active: boolean }[]
 }) {
   return (
-    <div style={{ padding: '56px 22px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
+    <div style={{ padding: steps ? '40px 22px 40px' : '56px 22px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
+      {steps && <TxSteps steps={steps} />}
       <TxRing done={isSuccess} />
       <div>
         <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>

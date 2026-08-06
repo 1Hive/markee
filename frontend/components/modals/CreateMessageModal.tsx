@@ -6,6 +6,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchCh
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { TxProgress } from '@/components/modals/StreamUI'
 
 // ── Theme tokens (shared with StreamModal) ─────────────────────────────────────
 const BG = '#060A2A'
@@ -35,17 +36,22 @@ export function CreateMessageModal({
   board,
   onClose,
   onCreated,
+  title = 'Add a message',
+  messageLabel = 'Message',
+  messagePlaceholder = 'Your message on the board',
 }: {
   board: Address
   onClose: () => void
   onCreated: (address: Address, message: string, name: string) => void
+  title?: string
+  messageLabel?: string
+  messagePlaceholder?: string
 }) {
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
   const [message, setMessage] = useState('')
-  const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
@@ -87,7 +93,7 @@ export function CreateMessageModal({
         address: board,
         abi: StreamingLeaderboardABI,
         functionName: 'createMarkee',
-        args: [message, name],
+        args: [message, ''],
         chainId: CANONICAL_CHAIN.id,
       })
     } catch (err) {
@@ -117,42 +123,46 @@ export function CreateMessageModal({
         }}
       >
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>Add a message</span>
+          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>{title}</span>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4 }}>×</button>
         </div>
 
-        <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {!isCorrectChain ? (
-            <div style={{ textAlign: 'center', padding: '16px 0' }}>
-              <p style={{ color: '#B8B6D9', marginBottom: 16, fontSize: 14 }}>Switch to {CANONICAL_CHAIN.name} to add a message.</p>
-              <button onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })} style={primaryBtn}>Switch to Base</button>
-            </div>
-          ) : (
-            <>
-              <label style={{ display: 'block' }}>
-                <div style={fieldLabel}>Message</div>
-                <textarea
-                  value={message}
-                  onChange={e => setMessage(e.target.value)}
-                  placeholder="Your message on the board"
-                  rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
-                />
-              </label>
-              <label style={{ display: 'block' }}>
-                <div style={fieldLabel}>Name (optional)</div>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="who's this from" style={inputStyle} />
-              </label>
-              <button onClick={submit} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>
-                {isSuccess ? 'Opening stream…' : isConfirming ? 'Creating…' : isPending ? 'Confirm in wallet' : 'Create message'}
-              </button>
-              <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                Creating a message is free. You back it with a stream next, which sets its rank.
+        {busy ? (
+          <TxProgress
+            isSuccess={isSuccess}
+            headline={isSuccess ? 'Markee created' : isPending ? 'Confirm in your wallet' : 'Creating your Markee…'}
+            detail={isSuccess ? 'Opening the stream next…' : isPending ? 'Sign the transaction in your wallet.' : 'Usually under 2 seconds on Base.'}
+          />
+        ) : (
+          <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {!isCorrectChain ? (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <p style={{ color: '#B8B6D9', marginBottom: 16, fontSize: 14 }}>Switch to {CANONICAL_CHAIN.name} to add a message.</p>
+                <button onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })} style={primaryBtn}>Switch to Base</button>
               </div>
-            </>
-          )}
-          {transactionError && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{transactionError}</div>}
-        </div>
+            ) : (
+              <>
+                <label style={{ display: 'block' }}>
+                  <div style={fieldLabel}>{messageLabel}</div>
+                  <textarea
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder={messagePlaceholder}
+                    rows={3}
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                  />
+                </label>
+                <button onClick={submit} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>
+                  Confirm in wallet
+                </button>
+                <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                  Creating a message is free. You back it with a stream next, which sets its rank.
+                </div>
+              </>
+            )}
+            {transactionError && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{transactionError}</div>}
+          </div>
+        )}
       </div>
     </div>
   )

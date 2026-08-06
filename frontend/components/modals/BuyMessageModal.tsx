@@ -14,6 +14,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { TxProgress } from '@/components/modals/StreamUI'
 import type { Markee } from '@/types'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -53,6 +54,9 @@ interface BuyMessageModalProps {
   platformId?: 'github' | 'superfluid'
   ctaLabel?: string
   subtitle?: string
+  title?: string
+  messageLabel?: string
+  messagePlaceholder?: string
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
@@ -66,27 +70,6 @@ function ModalField({ label, children }: { label: string; children: React.ReactN
       </div>
       {children}
     </label>
-  )
-}
-
-function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
-  const done = step === 'success'
-  return (
-    <div style={{
-      width: 72, height: 72, borderRadius: 99, flexShrink: 0,
-      background: done ? PINK : 'transparent',
-      border: done ? 'none' : `2px solid ${PINK}`,
-      borderTopColor: done ? undefined : 'transparent',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      animation: done ? 'none' : 'spin 1s linear infinite',
-      boxShadow: '0 0 32px rgba(248,151,254,0.3)',
-    }}>
-      {done && (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-          <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
-    </div>
   )
 }
 
@@ -130,6 +113,9 @@ export function BuyMessageModal({
   platformId,
   ctaLabel,
   subtitle,
+  title,
+  messageLabel = 'Set Your Message',
+  messagePlaceholder = 'Your message here',
 }: BuyMessageModalProps) {
   const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
@@ -137,7 +123,6 @@ export function BuyMessageModal({
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
-  const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
@@ -239,6 +224,7 @@ export function BuyMessageModal({
     else if (userMarkee) setActiveTab('addFunds')
     else setActiveTab('create')
     setMessage('')
+    setAmount('')
     setError(null)
     setHasUserEdited(false)
     reset()
@@ -319,7 +305,7 @@ export function BuyMessageModal({
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
-      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name], value: amountWei, chainId: CANONICAL_CHAIN.id })
+      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, ''], value: amountWei, chainId: CANONICAL_CHAIN.id })
     } catch (err) {
       logTransactionError(err, 'BuyMessageModal.createMarkee')
       setError(formatTransactionError(err))
@@ -372,12 +358,9 @@ export function BuyMessageModal({
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
-    txStep === 'signing' ? 'AWAITING SIGNATURE' :
-    txStep === 'pending' ? 'CONFIRMING ONCHAIN' :
-    txStep === 'success' ? 'CONFIRMED' :
     activeTab === 'addFunds' ? 'ADD FUNDS' :
     activeTab === 'updateMessage' ? 'UPDATE MESSAGE' :
-    'BUY A NEW MESSAGE'
+    (title ?? 'BUY A NEW MESSAGE')
 
   // Amount section (create + addFunds)
   const bidNum = parseFloat(amount || '0')
@@ -441,21 +424,23 @@ export function BuyMessageModal({
 
         {/* ── Tx state panel ── */}
         {txStep ? (
-          <div style={{ padding: '60px 22px 52px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
-            <TxRing step={txStep} />
-            <div>
-              <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                {txStep === 'signing' && 'Waiting for wallet...'}
-                {txStep === 'pending' && 'Transaction pending on Base'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : (!hasCompetition || selFeatured) ? '🎉 You just took #1' : '✓ Message submitted')}
-              </div>
-              <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
-                {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
-                {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : (!hasCompetition || selFeatured) ? `"${message}" is now the #1 Markee. The board is reordering.` : `"${message}" has been added to the leaderboard.`)}
-              </div>
-            </div>
-          </div>
+          <TxProgress
+            isSuccess={txStep === 'success'}
+            headline={
+              txStep === 'signing' ? 'Waiting for wallet…' :
+              txStep === 'pending' ? 'Confirming on Base' :
+              activeTab === 'addFunds' ? '✓ Funds added' :
+              (!hasCompetition || selFeatured) ? '🎉 You just took #1' :
+              '✓ Message submitted'
+            }
+            detail={
+              txStep === 'signing' ? 'Sign the transaction in your wallet.' :
+              txStep === 'pending' ? 'Usually under 2 seconds on Base.' :
+              activeTab === 'addFunds' ? 'Your funds were added to the message.' :
+              (!hasCompetition || selFeatured) ? `"${message}" is now the #1 Markee. The board is reordering.` :
+              `"${message}" has been added to the leaderboard.`
+            }
+          />
 
         ) : isWalletConnectionPending ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
@@ -508,58 +493,35 @@ export function BuyMessageModal({
                 </div>
               )}
 
-              {/* Create: message + name inputs */}
+              {/* Create: message input */}
               {activeTab === 'create' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
-                  <ModalField label="Set Your Message">
+                  <ModalField label={messageLabel}>
                     <textarea
                       value={message}
                       onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
-                      placeholder="Your message here"
+                      placeholder={messagePlaceholder}
                       rows={2}
                       style={{ ...inputStyle, resize: 'vertical' }}
                       onFocus={e => { e.target.style.borderColor = PINK }}
                       onBlur={e => { e.target.style.borderColor = BORDER }}
                       disabled={isPending || isConfirming}
                     />
-                  </ModalField>
-                  <ModalField label="Name (optional)">
-                    <input
-                      value={name}
-                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, Number(maxNameLength || 32))) }}
-                      placeholder="anon"
-                      style={{ ...inputStyle }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
-                      disabled={isPending || isConfirming}
-                    />
+                    <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
+                      {message.length}/{maxLen}
+                    </div>
                   </ModalField>
                 </div>
               )}
 
-              {/* Message preview (create) or funded message read-only (addFunds) */}
-              {activeTab !== 'updateMessage' && (
-                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: activeTab === 'create' ? 80 : undefined, marginBottom: 18 }}>
-                  {activeTab === 'addFunds' ? (
-                    <>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {userMarkee?.message || '—'}
-                      </div>
-                      {userMarkee?.name && (
-                        <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: message ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {message || 'Your message will appear here...'}
-                        {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontStyle: 'italic' }}>- {name || (activeAddress ? `${activeAddress.slice(0, 6)}…${activeAddress.slice(-4)}` : '0x...')}</span>
-                        <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
-                      </div>
-                    </>
+              {/* Funded message read-only (addFunds) */}
+              {activeTab === 'addFunds' && (
+                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                    {userMarkee?.message || '—'}
+                  </div>
+                  {userMarkee?.name && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
                   )}
                 </div>
               )}

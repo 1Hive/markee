@@ -32,10 +32,11 @@ import { formatTransactionError, logTransactionError } from '@/lib/transactionEr
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import {
-  MONO, BG, PINK, BORDER, MUTED, TEXT2,
+  MONO, BG, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
   inputStyle, btnStyle, sanitizeDecimalInput, parseEthInput, retryUntilLoaded,
   Spinner, InfoTip, ModalField, Row, ModalShell, TxProgress,
 } from '@/components/modals/StreamUI'
+import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -43,17 +44,24 @@ const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
 
 export type StreamTarget = { address: Address; message?: string; name?: string }
 
+const ADMIN_ABI = [
+  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+] as const
+
+const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
+
 interface StreamModalProps {
   isOpen: boolean
   onClose: () => void
   board: Address
   markee: StreamTarget
   onSuccess?: () => void
+  isActivation?: boolean
 }
 
 // Opening a stream to back a Markee, or changing the rate of the stream you already run. Claiming
 // lives in ClaimModal and stop/top-up/withdraw in ManageStreamModal.
-export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: StreamModalProps) {
+export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActivation = false }: StreamModalProps) {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -82,6 +90,10 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
+
+  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
+    ? balanceData.value - FAST_TX_GAS_RESERVE
+    : 0n
 
   // ── Reads ─────────────────────────────────────────────────────────────────
   const { data: minMonthlyWei } = useReadContract({
@@ -116,6 +128,10 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     address: ETHX, abi: erc20Abi, functionName: 'allowance', args: address ? [address, board] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled, refetchInterval: retryUntilLoaded },
   })
+  const { data: boardAdmin } = useReadContract({
+    address: board, abi: ADMIN_ABI, functionName: 'admin', chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen },
+  })
 
   const backsThis = !!backedMarkee && backedMarkee.toLowerCase() === markee.address.toLowerCase()
   const backsOther = !!backedMarkee && backedMarkee !== '0x0000000000000000000000000000000000000000' && !backsThis
@@ -139,8 +155,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
   }, [monthly, fundMonths])
 
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
-  // Mirror the on-chain check exactly: it validates ratePerSec * SECONDS_IN_MONTH, not the typed amount.
-  const belowMin = calc.ratePerSec > 0n && !!minMonthlyWei && ratePerSecToMonthly(calc.ratePerSec) < minMonthlyWei
+  // Compare the typed amount directly to avoid integer-division round-trip precision loss.
+  const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
 
   // ── Derived state for editing a running stream ──────────────────────────────
   const live = useMemo(() => {
@@ -151,10 +167,10 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     const held = deposit ?? 0n
     // The board refuses an update whose new rate outruns the buffer it holds for this backer.
     const depositTopUp = required > held ? required - held : 0n
-    return { rate, nextRate, depositTopUp, changed: nextRate > 0n && nextRate !== rate }
+    return { rate, nextRate, nextMonthlyWei, depositTopUp, changed: nextRate > 0n && nextRate !== rate }
   }, [currentRate, newMonthly, deposit])
 
-  const nextBelowMin = live.nextRate > 0n && !!minMonthlyWei && ratePerSecToMonthly(live.nextRate) < minMonthlyWei
+  const nextBelowMin = live.nextMonthlyWei > 0n && !!minMonthlyWei && live.nextMonthlyWei < minMonthlyWei
 
   // ── Reset / close-on-success ────────────────────────────────────────────────
   useEffect(() => {
@@ -318,7 +334,16 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     : isPending ? 'Confirm in wallet'
     : isConfirming ? 'On Base'
     : backsThis ? 'Change your rate'
+    : isActivation ? 'Activate Markee'
     : 'Stream to back'
+
+  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Number(formatEther(calc.value)))
+
+  const activationSteps = isActivation ? [
+    { label: 'Create Markee', done: true, active: false },
+    { label: 'Approve Deposit', done: !approving && (submitting || isSuccess), active: approving },
+    { label: 'Start Stream', done: isSuccess, active: !approving && submitting },
+  ] : undefined
 
   const currentMonthlyEth = currentRate && currentRate > 0n ? formatEther(ratePerSecToMonthly(currentRate)) : '0'
 
@@ -328,20 +353,32 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
     </div>
   ) : null
 
+  const footer = !txActive && boardAdmin ? (
+    <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+      62% to{' '}
+      <a href={`https://basescan.org/address/${boardAdmin}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>
+        {boardAdmin.slice(0, 6)}…{boardAdmin.slice(-4)}
+      </a>
+      {' '}· 38% to the{' '}
+      <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+    </div>
+  ) : undefined
+
   return (
-    <ModalShell stepLabel={stepLabel} onClose={onClose}>
+    <ModalShell stepLabel={stepLabel} onClose={onClose} footer={footer}>
       {txActive ? (
         <TxProgress
           isSuccess={isSuccess}
+          steps={activationSteps}
           headline={isSuccess
             ? (action === 'update' ? '✓ Rate updated' : '🎉 Stream live')
             : approving ? 'Approving the deposit' : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
           detail={isSuccess
             ? (action === 'update'
                 ? 'Your stream now runs at the new rate.'
-                : 'Your stream is backing this Markee. The board ranks by streamed rate.')
+                : isActivation ? 'Your Markee is now live!' : 'Your stream is backing this Markee. The board ranks by streamed rate.')
             : approving
-              ? 'A small approval first, then the stream opens.'
+              ? isActivation ? 'Step 2 of 3 — a small approval before the stream opens.' : 'A small approval first, then the stream opens.'
               : 'Usually under 2 seconds on Base.'}
         />
       ) : !isConnected ? (
@@ -404,6 +441,25 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
             </div>
           ) : (
             <>
+              {/* Minimum preset card */}
+              {minLoaded && minMonthlyWei && (
+                <button
+                  onClick={() => setMonthly(minMonthlyEth)}
+                  style={{
+                    textAlign: 'left', cursor: 'pointer', width: '100%',
+                    background: monthly === minMonthlyEth ? 'rgba(248,151,254,0.08)' : BG,
+                    border: `1.5px solid ${monthly === minMonthlyEth ? PINK : BORDER}`,
+                    borderRadius: 12, padding: '13px 15px',
+                    transition: 'border-color 140ms',
+                  }}
+                >
+                  <div style={{ color: monthly === minMonthlyEth ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5, fontFamily: 'Manrope, system-ui, sans-serif' }}>Minimum</div>
+                  <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{minMonthlyEth} ETH / mo</div>
+                  {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(Number(minMonthlyEth) * ethPrice)} / mo</div>}
+                  <div style={{ color: MUTED, fontSize: 12, marginTop: 4, fontFamily: 'Manrope, system-ui, sans-serif' }}>Stream at the lowest rate</div>
+                </button>
+              )}
+
               <ModalField label="Monthly rate (ETH)">
                 <input
                   inputMode="decimal"
@@ -413,19 +469,39 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                   style={inputStyle}
                 />
                 {minHint(monthly, belowMin)}
-                {!belowMin && (
-                  minLoaded ? (
-                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6 }}>
-                      Minimum {minMonthlyEth} ETH / month
-                      {calc.monthlyWei > 0n && ethPrice ? <> · ≈ {formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)} / month</> : null}
-                    </div>
-                  ) : (
-                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Spinner size={10} /> Loading the board minimum…
-                    </div>
-                  )
+                {!belowMin && calc.monthlyWei > 0n && ethPrice && (
+                  <div style={{ fontFamily: MONO, fontSize: 12, color: BLUE, marginTop: 6 }}>
+                    ≈ {formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)} / month
+                  </div>
+                )}
+                {!belowMin && !minLoaded && (
+                  <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Spinner size={10} /> Loading the board minimum…
+                  </div>
                 )}
               </ModalField>
+
+              {/* Balance + use max */}
+              {balanceData && (
+                <div style={{ fontSize: 12, color: MUTED, marginTop: -8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <span>
+                    Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
+                    <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} kept for gas)</span>
+                  </span>
+                  {ethPrice && <span style={{ color: BLUE, fontFamily: MONO }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const months = BigInt(Math.max(1, Math.round(Number(fundMonths) || 1)))
+                      setMonthly(formatEther(spendableBalance / months))
+                    }}
+                    disabled={spendableBalance <= 0n}
+                    style={{ background: 'transparent', border: 0, padding: 0, color: BLUE, fontFamily: MONO, fontSize: 12, cursor: spendableBalance > 0n ? 'pointer' : 'not-allowed', opacity: spendableBalance > 0n ? 1 : 0.45 }}
+                  >
+                    Use max
+                  </button>
+                </div>
+              )}
 
               <ModalField
                 label="Fund for (months)"
@@ -456,6 +532,15 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                 </div>
               )}
 
+              {/* MARKEE token estimate */}
+              {calc.value > 0n && (
+                <div style={{ borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
+                  <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
+                  <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                  <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
+                </div>
+              )}
+
               {insufficientBalance ? (
                 <button
                   onClick={() => authenticated && address ? fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } }) : undefined}
@@ -466,12 +551,14 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess }: Strea
                 </button>
               ) : (
                 <button onClick={handleOpenStream} disabled={busy || !readsReady || belowMin} style={btnStyle(true, busy || !readsReady || belowMin)}>
-                  {!readsReady ? <><Spinner /> Loading on-chain data…</> : 'Start streaming'}
+                  {!readsReady ? <><Spinner /> Loading on-chain data…</> : isActivation ? 'Activate Markee' : 'Start streaming'}
                 </button>
               )}
-              <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                Two quick transactions: an approval, then your stream goes live.
-              </div>
+              {!isActivation && (
+                <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                  Two quick transactions: an approval, then your stream goes live.
+                </div>
+              )}
             </>
           )}
 

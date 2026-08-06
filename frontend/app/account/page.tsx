@@ -1296,8 +1296,10 @@ export default function AccountPage() {
         isOpen={!!activateTarget}
         onClose={() => setActivateTarget(null)}
         strategyAddress={activateTarget?.address as `0x${string}` | undefined}
+        title="ACTIVATE MARKEE"
+        messageLabel="SET FIRST MESSAGE"
+        messagePlaceholder="Set the text your newly activated Markee will display..."
         ctaLabel="Activate Markee"
-        subtitle="Buy the first message to activate your Markee."
         onSuccess={() => { setActivateTarget(null); if (activeAddress) fetchAll(activeAddress) }}
       />
 
@@ -1307,6 +1309,9 @@ export default function AccountPage() {
           board={activateStreamBoard.address as `0x${string}`}
           onClose={() => setActivateStreamBoard(null)}
           onCreated={(addr, message, name) => setActivateStreamTarget({ address: addr, message, name })}
+          title="ACTIVATE MARKEE"
+          messageLabel="SET FIRST MESSAGE"
+          messagePlaceholder="Set the text your newly activated Markee will display..."
         />
       )}
       {activateStreamBoard && activateStreamTarget && (
@@ -1316,6 +1321,7 @@ export default function AccountPage() {
           markee={activateStreamTarget}
           onClose={() => { setActivateStreamTarget(null); setActivateStreamBoard(null) }}
           onSuccess={() => { setActivateStreamTarget(null); setActivateStreamBoard(null); if (activeAddress) fetchAll(activeAddress) }}
+          isActivation
         />
       )}
     </div>
