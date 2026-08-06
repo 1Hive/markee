@@ -337,9 +337,18 @@ function CreateWizardInner() {
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // Deep-link via ?strategy=
+  // Restore activate step from URL (survives tab reload after clicking Basescan link).
+  // Also handles ?strategy= deep-link for the strategy step.
   useEffect(() => {
+    const deployed = searchParams.get('deployed')
     const strategyParam = searchParams.get('strategy') as Strategy | null
+    if (deployed && /^0x[0-9a-fA-F]{40}$/.test(deployed)) {
+      const s: Strategy = strategyParam === 'streaming' && STREAMING_ENABLED ? 'streaming' : 'fixed'
+      setStrategy(s)
+      setNewLeaderboardAddress(deployed)
+      setStep(3) // 'activate' is always index 3 in ['strategy','setup','review','activate']
+      return
+    }
     if (strategyParam === 'streaming' && STREAMING_ENABLED) setStrategy('streaming')
     else if (strategyParam === 'fixed') setStrategy('fixed')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -357,6 +366,7 @@ function CreateWizardInner() {
     }
     if (!found) return
     setNewLeaderboardAddress(found)
+    router.replace(`/create-a-markee?deployed=${found}&strategy=${strategy}`)
     if (strategy === 'streaming') {
       fetch('/api/streaming/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

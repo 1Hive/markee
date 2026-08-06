@@ -1016,10 +1016,10 @@ export default function AccountPage() {
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My dashboard</h1>
-              {mounted && activeAddress
+              {mounted && (activeAddress
                 ? <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(activeAddress)}</p>
                 : <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14 }}>Connect your wallet to continue</p>
-              }
+              )}
             </div>
             {mounted && !hasWallet && (
               <div style={{ marginLeft: 'auto' }}><ConnectButton /></div>
