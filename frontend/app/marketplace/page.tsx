@@ -354,7 +354,7 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
         gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
         background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
@@ -374,8 +374,7 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
       </span>
 
       {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
@@ -390,6 +389,10 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
         {isStreaming
           ? <RowActionButton label={monthlyRateLabel(lb, ethPrice)} onClick={onStream} />
           : <RowActionButton label={priceLabel} onClick={onBuy} />}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
       </div>
     </a>
   )
@@ -641,21 +644,23 @@ export default function MarketplacePage() {
         {/* table */}
         <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
             <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" title="Fixed boards: one-time price. Streaming boards: monthly rate to hold the top." />
+            <span />
           </div>
 
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
+                <div />
               </div>
             ))
           ) : pageRows.length === 0 ? (

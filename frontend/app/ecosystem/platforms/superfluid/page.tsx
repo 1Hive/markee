@@ -252,7 +252,7 @@ function BoostedTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -269,8 +269,7 @@ function BoostedTableRow({
         {totalLabel}
       </span>
 
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
@@ -288,6 +287,10 @@ function BoostedTableRow({
           ? <BuyButton label={priceLabel} onClick={onBuy} />
           : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
         }
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
       </div>
     </a>
   )
@@ -326,7 +329,7 @@ function RegularTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -343,8 +346,7 @@ function RegularTableRow({
         {totalLabel}
       </span>
 
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
         </div>
@@ -363,6 +365,10 @@ function RegularTableRow({
           : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
         }
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
+      </div>
     </a>
   )
 }
@@ -372,7 +378,7 @@ function TableHeaders() {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '190px 110px 1fr 74px 120px',
+      gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
       gap: 16,
       padding: '11px 14px',
       borderBottom: `1px solid ${BORDER}`,
@@ -384,6 +390,7 @@ function TableHeaders() {
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current Message</span>
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Views</span>
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Price to Change</span>
+      <span />
     </div>
   )
 }
@@ -393,10 +400,11 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
           {[1, 2, 3, 4, 5].map(j => (
             <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
           ))}
+          <div />
         </div>
       ))}
     </>

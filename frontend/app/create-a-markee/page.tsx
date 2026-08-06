@@ -5,12 +5,11 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
-import { Check, Loader2 } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
-import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
-import { STRATEGIES, VERTICAL_PLATFORM, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
+import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const C = {
@@ -113,10 +112,7 @@ const VERTICALS: VerticalInfo[] = [
 
 const STRATEGY_KEYS: Strategy[] = ['fixed', 'streaming']
 
-type StepKey = 'strategy' | 'vertical' | 'connect' | 'setup' | 'review' | 'activate'
-
-interface GhUser { connected: boolean; login?: string; avatarUrl?: string }
-interface Repo { fullName: string; name: string; owner: string }
+type StepKey = 'strategy' | 'setup' | 'review' | 'activate'
 
 // ── Platform glyph ──────────────────────────────────────────────────────────
 function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; color: string }) {
@@ -254,174 +250,9 @@ function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onS
   )
 }
 
-// ── ChooseVertical ──────────────────────────────────────────────────────────
-function ChooseVertical({ selected, onSelect }: { selected: Vertical | null; onSelect: (k: Vertical) => void }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 8 }}>
-      {VERTICALS.map(v => (
-        <ChoiceCard
-          key={v.key}
-          icon={v.icon}
-          color={v.color}
-          name={v.name}
-          tagline={v.tagline}
-          summary={v.summary}
-          on={selected === v.key}
-          onSelect={() => onSelect(v.key)}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ── ConnectGitHub ─────────────────────────────────────────────────────────
-function ConnectGitHub({ ghUser, strategy, onDisconnect }: { ghUser: GhUser; strategy: Strategy; onDisconnect?: () => void }) {
-  const returnTo = encodeURIComponent(`/create-a-markee?vertical=github&strategy=${strategy}`)
-  return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 32, textAlign: 'center' as const }}>
-      <div style={{ width: 56, height: 56, margin: '0 auto 16px', borderRadius: 14, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <PlatGlyph icon="github" color={C.text} size={28} />
-      </div>
-      {ghUser.connected ? (
-        <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: C.green, fontWeight: 600, fontSize: 15 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: C.green, display: 'inline-block' }} />
-            Connected as <span style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>@{ghUser.login}</span>
-          </div>
-          <p style={{ color: C.muted, fontSize: 13, marginTop: 8 }}>You can now pick a repository and file.</p>
-          {onDisconnect && (
-            <button
-              onClick={onDisconnect}
-              style={{ marginTop: 14, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 7, padding: '7px 18px', color: C.muted, fontSize: 12, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
-            >
-              Disconnect — use a different account
-            </button>
-          )}
-        </div>
-      ) : (
-        <div>
-          <p style={{ color: C.text2, fontSize: 15, margin: '0 0 20px', lineHeight: 1.55 }}>Connect your GitHub account so we can verify your repo and confirm the Markee integration via the GitHub API.</p>
-          <a href={`/api/github/connect?returnTo=${returnTo}`} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: C.text, color: C.bg, borderRadius: 8, padding: '11px 24px',
-            fontSize: 14, fontWeight: 700 as const, textDecoration: 'none',
-          }}>
-            <PlatGlyph icon="github" color={C.bg} size={18} />
-            Connect GitHub
-          </a>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── GitHub repo + file picker ───────────────────────────────────────────────
-interface GitHubSetupProps {
-  repos: Repo[]
-  selectedRepo: string | null; setSelectedRepo: (r: string) => void
-  selectedFile: string | null; setSelectedFile: (f: string | null) => void
-  beneficiary: string; setBeneficiary: (v: string) => void
-  onDisconnect?: () => void
-}
-
-function GitHubSetup({ repos, selectedRepo, setSelectedRepo, selectedFile, setSelectedFile, beneficiary, setBeneficiary, onDisconnect }: GitHubSetupProps) {
-  const [files, setFiles] = useState<string[]>([])
-  const [loadingFiles, setLoadingFiles] = useState(false)
-  const [fileInput, setFileInput] = useState('')
-
-  useEffect(() => {
-    if (!selectedRepo) return
-    setLoadingFiles(true)
-    setFiles([])
-    fetch(`/api/github/repo-files?repo=${encodeURIComponent(selectedRepo)}`)
-      .then(r => r.ok ? r.json() : { files: [] })
-      .then(d => setFiles(Array.isArray(d.files) ? d.files : []))
-      .catch(() => setFiles([]))
-      .finally(() => setLoadingFiles(false))
-  }, [selectedRepo])
-
-  const mono = 'var(--font-jetbrains-mono)'
-  const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 14, outline: 'none', fontFamily: mono, boxSizing: 'border-box' }
-  const labelCss: React.CSSProperties = { display: 'block', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 10 }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-      <div>
-        <span style={labelCss}>Repository</span>
-        {repos.length === 0 ? (
-          <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, textAlign: 'center' as const }}>
-            <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>No repos found. Make sure you have push access.</p>
-            {onDisconnect && (
-              <button
-                onClick={onDisconnect}
-                style={{ marginTop: 10, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 7, padding: '6px 14px', color: C.text2, fontSize: 12, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
-              >
-                Try a different GitHub account →
-              </button>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-            {repos.slice(0, 10).map(r => (
-              <button key={r.fullName} onClick={() => { setSelectedRepo(r.fullName); setSelectedFile(null); setFileInput('') }} style={{
-                textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
-                background: selectedRepo === r.fullName ? 'rgba(248,151,254,0.06)' : C.bg,
-                border: `1px solid ${selectedRepo === r.fullName ? C.borderHover : C.border}`,
-                borderRadius: 8, padding: '12px 14px', color: C.text, fontFamily: mono, fontSize: 13,
-              }}>
-                <PlatGlyph icon="github" color={C.muted} size={16} /> {r.fullName}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {selectedRepo && (
-        <div>
-          <span style={labelCss}>Markdown file</span>
-          {loadingFiles ? (
-            <div style={{ color: C.muted, fontSize: 13, padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Loader2 size={14} className="animate-spin" /> Loading files…
-            </div>
-          ) : files.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-              {files.slice(0, 12).map(f => (
-                <button key={f} onClick={() => setSelectedFile(f)} style={{
-                  textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
-                  background: selectedFile === f ? 'rgba(248,151,254,0.06)' : C.bg,
-                  border: `1px solid ${selectedFile === f ? C.borderHover : C.border}`,
-                  borderRadius: 8, padding: '12px 14px', color: C.text, fontFamily: mono, fontSize: 13,
-                }}>
-                  <span style={{ color: C.muted }}>📄</span> {f}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div>
-              <input
-                value={fileInput}
-                onChange={e => { setFileInput(e.target.value); setSelectedFile(e.target.value.trim() || null) }}
-                placeholder="README.md"
-                style={fieldBase}
-              />
-              <span style={{ color: C.muted, fontSize: 12, marginTop: 6, display: 'block' }}>No markdown files found — type a path manually.</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      <label style={{ display: 'block' }}>
-        <span style={labelCss}>Beneficiary address</span>
-        <input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={fieldBase} />
-      </label>
-    </div>
-  )
-}
-
-// ── Website / Superfluid setup ──────────────────────────────────────────────
-function WebsiteSetupFields({ values, setValue, vertical }: {
+// ── Website setup ───────────────────────────────────────────────────────────
+function WebsiteSetupFields({ values, setValue }: {
   values: Record<string, string>; setValue: (k: string, v: string) => void
-  vertical: Vertical
 }) {
   const mono = 'var(--font-jetbrains-mono)'
   const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box' }
@@ -429,18 +260,10 @@ function WebsiteSetupFields({ values, setValue, vertical }: {
 
   return (
     <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26 }}>
-      {vertical === 'openinternet' && (
-        <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={labelCss}>Name this Markee</span>
-          <input value={values.siteName ?? ''} onChange={e => setValue('siteName', e.target.value)} placeholder="My Project" style={fieldBase} />
-        </label>
-      )}
-      {vertical === 'superfluid' && (
-        <label style={{ display: 'block', marginBottom: 20 }}>
-          <span style={labelCss}>Superfluid project name</span>
-          <input value={values.projectName ?? ''} onChange={e => setValue('projectName', e.target.value)} placeholder="My Stream" style={fieldBase} />
-        </label>
-      )}
+      <label style={{ display: 'block', marginBottom: 20 }}>
+        <span style={labelCss}>Name this Markee</span>
+        <input value={values.siteName ?? ''} onChange={e => setValue('siteName', e.target.value)} placeholder="My Project" style={fieldBase} />
+      </label>
       <label style={{ display: 'block' }}>
         <span style={labelCss}>Beneficiary address</span>
         <input value={values.beneficiary ?? ''} onChange={e => setValue('beneficiary', e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={{ ...fieldBase, fontFamily: mono }} />
@@ -496,137 +319,6 @@ function ReviewSign({ vertical, strategy, values, selectedRepo, selectedFile, is
   )
 }
 
-// ── Copy block ──────────────────────────────────────────────────────────────
-function CopyBlock({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <div style={{ position: 'relative', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 56px 14px 16px', marginTop: 12 }}>
-      <pre style={{ margin: 0, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12, color: C.text2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' as const, lineHeight: 1.65 }}>{code}</pre>
-      <button onClick={() => { navigator.clipboard.writeText(code).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-        style={{ position: 'absolute', top: 10, right: 10, background: copied ? C.green : C.bg2, color: copied ? C.bg : C.text2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '5px 10px', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, cursor: 'pointer' }}>
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-    </div>
-  )
-}
-
-// ── Activation guide ────────────────────────────────────────────────────────
-function ActivationGuide({ vertical, strategy, leaderboardAddress, selectedFile, name }: {
-  vertical: VerticalInfo; strategy: Strategy; leaderboardAddress: string; selectedFile: string | null; name?: string
-}) {
-  const [verified, setVerified] = useState(false)
-  const [verifying, setVerifying] = useState(false)
-  const [intModalOpen, setIntModalOpen] = useState(false)
-  const addr = leaderboardAddress.toLowerCase()
-  const isGithub = vertical.key === 'github'
-  const isSuperfluid = vertical.key === 'superfluid'
-  const isStreaming = strategy === 'streaming'
-  // Embed/verify is a placement (vertical) concern: a streaming GitHub board still needs delimiters.
-  // Only Superfluid has no external integration to embed.
-  const skipEmbed = isSuperfluid
-
-  const embedCode = isGithub
-    ? `<!-- MARKEE:START:${addr} -->\n<!-- MARKEE:END:${addr} -->`
-    : `<div data-markee-address="${addr}"></div>\n<script src="https://markee.xyz/api/embed/${leaderboardAddress}" async></script>`
-
-  const handleVerify = async () => {
-    setVerifying(true)
-    try {
-      await new Promise(r => setTimeout(r, 1000))
-      setVerified(true)
-    } finally {
-      setVerifying(false)
-    }
-  }
-
-  const step = (n: number, title: string, children: React.ReactNode) => (
-    <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: '22px 24px', marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 99, background: C.pink, color: C.bg, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 13, fontWeight: 700 as const, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{n}</div>
-        <div style={{ color: C.text, fontWeight: 700 as const, fontSize: 16 }}>{title}</div>
-      </div>
-      <div style={{ paddingLeft: 38 }}>{children}</div>
-    </div>
-  )
-
-  const confirmedTag = (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: C.green, fontWeight: 600 as const, fontSize: 14 }}>
-      <span style={{ width: 7, height: 7, borderRadius: 99, background: C.green, display: 'inline-block' }} />
-      Integration confirmed
-    </span>
-  )
-
-  let n = 1
-  return (
-    <div>
-      {!skipEmbed && step(n++, isGithub ? 'Add the Markee delimiters to your markdown file' : 'Embed on your site',
-        <div>
-          <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 4px' }}>
-            {isGithub
-              ? `Paste the snippet below into ${selectedFile ?? 'your markdown file'}, then commit the change.`
-              : 'Copy and paste the snippet below, or use the integration guide to get a full AI prompt.'}
-          </p>
-          <CopyBlock code={embedCode} />
-          {!isGithub && (
-            <button
-              onClick={() => setIntModalOpen(true)}
-              style={{ marginTop: 12, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 16px', color: C.text2, fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
-            >
-              Open integration guide →
-            </button>
-          )}
-        </div>
-      )}
-
-      <IntegrationModal
-        isOpen={intModalOpen}
-        onClose={() => setIntModalOpen(false)}
-        leaderboard={{ address: leaderboardAddress, name: name ?? leaderboardAddress }}
-      />
-
-      {!skipEmbed && step(n++, 'Verify Integration',
-        <div>
-          <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' }}>
-            {isGithub ? 'Click once your delimiter is committed.' : 'Click once your embed is live on the site.'}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            {verified ? confirmedTag : (
-              <button onClick={handleVerify} disabled={verifying} style={{
-                background: verifying ? C.bg2 : C.pink, color: verifying ? C.muted : C.bg,
-                border: verifying ? `1px solid ${C.border}` : 'none',
-                borderRadius: 8, padding: '11px 24px', fontSize: 14, fontWeight: 700 as const,
-                cursor: verifying ? 'default' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: 8,
-              }}>
-                {verifying && <Loader2 size={14} className="animate-spin" />}
-                {verifying ? 'Checking…' : isGithub ? 'Check Integration' : 'Confirm Integration'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {step(skipEmbed ? 1 : n, 'Activate your Markee',
-        <div>
-          <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, margin: '0 0 14px' }}>
-            {isStreaming
-              ? 'Add a message and open a stream to claim the #1 spot on your board.'
-              : 'Buy the first message to activate your Markee.'}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Link href={`/markee/${leaderboardAddress}`} style={{
-              background: C.pink, color: C.bg, borderRadius: 8, padding: '11px 24px',
-              fontSize: 14, fontWeight: 700 as const, textDecoration: 'none',
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-            }}>
-              {isStreaming ? 'Open your board →' : 'View your Markee →'}
-            </Link>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Inner wizard (uses useSearchParams) ─────────────────────────────────────
 function CreateWizardInner() {
@@ -636,71 +328,26 @@ function CreateWizardInner() {
   const { switchChain } = useSwitchChain()
 
   const [strategy, setStrategy] = useState<Strategy | null>(null)
-  const [vertical, setVertical] = useState<Vertical | null>(null)
-  const [verticalLocked, setVerticalLocked] = useState(false)
   const [step, setStep] = useState(0)
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
-  const [ghUser, setGhUser] = useState<GhUser>({ connected: false })
-  const [repos, setRepos] = useState<Repo[]>([])
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // Deep-link via ?strategy= / ?vertical= (and legacy ?platform= where streaming was a "platform").
+  // Deep-link via ?strategy=
   useEffect(() => {
-    const verticals = VERTICALS.map(v => v.key)
     const strategyParam = searchParams.get('strategy') as Strategy | null
-    const verticalParam = searchParams.get('vertical') as Vertical | null
-    const platformParam = searchParams.get('platform')
-    const resolvedStrategy: Strategy =
-      strategyParam === 'streaming' && STREAMING_ENABLED ? 'streaming' : 'fixed'
-
-    if (verticalParam && verticals.includes(verticalParam)) {
-      setStrategy(resolvedStrategy)
-      setVertical(verticalParam)
-      setStep(2)
-      return
-    }
-    if (platformParam === 'streaming' && STREAMING_ENABLED) {
-      setStrategy('streaming'); setStep(1); return
-    }
-    if (platformParam && verticals.includes(platformParam as Vertical)) {
-      setVertical(platformParam as Vertical)
-      setVerticalLocked(true)
-      // stay at step 0 so user picks strategy first
-    }
+    if (strategyParam === 'streaming' && STREAMING_ENABLED) setStrategy('streaming')
+    else if (strategyParam === 'fixed') setStrategy('fixed')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Check GitHub on mount
-  useEffect(() => {
-    fetch('/api/github/me')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.connected) {
-          setGhUser({ connected: true, login: d.login, avatarUrl: d.avatarUrl })
-          fetch('/api/github/my-repos')
-            .then(r => r.ok ? r.json() : { repos: [] })
-            .then(d => setRepos(Array.isArray(d.repos) ? d.repos : []))
-            .catch(() => {})
-        }
-      })
-      .catch(() => {})
-  }, [])
-
-  // Auto-advance past the connect step once GitHub is confirmed connected (post-OAuth return)
-  useEffect(() => {
-    if (ghUser.connected && stepKey === 'connect') setStep(s => s + 1)
-  }, [ghUser.connected]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle confirmed tx
   useEffect(() => {
-    if (!isSuccess || !receipt || !strategy || !vertical) return
-    const factoryAddr = FACTORIES[strategy][vertical].toLowerCase()
+    if (!isSuccess || !receipt || !strategy) return
+    const factoryAddr = FACTORIES[strategy]['openinternet'].toLowerCase()
     let found: string | null = null
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() === factoryAddr && log.topics[1]) {
@@ -710,15 +357,6 @@ function CreateWizardInner() {
     }
     if (!found) return
     setNewLeaderboardAddress(found)
-    if (vertical === 'github' && selectedRepo && selectedFile) {
-      fetch('/api/github/register-markee', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress: found, repoFullName: selectedRepo, filePath: selectedFile }),
-      }).catch(() => {})
-    }
-    // The placement is already tagged on-chain at creation; this mirrors it into the KV fallback the
-    // listing reads for boards created before tags existed. The route re-reads the tag off the factory,
-    // so the vertical is deliberately not sent.
     if (strategy === 'streaming') {
       fetch('/api/streaming/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -734,40 +372,25 @@ function CreateWizardInner() {
 
   const setValue = (k: string, v: string) => setValuesRaw(prev => ({ ...prev, [k]: v }))
 
-  const vInfo = vertical ? VERTICALS.find(v => v.key === vertical)! : null
+  const vInfo = VERTICALS.find(v => v.key === 'openinternet')!
 
   const stepKeys: StepKey[] = useMemo(() => {
     if (!strategy) return ['strategy']
-    if (!vInfo) return verticalLocked ? ['strategy'] : ['strategy', 'vertical']
-    const mid: StepKey[] = vInfo.requiresConnect === 'github' ? ['connect', 'setup', 'review', 'activate'] : ['setup', 'review', 'activate']
-    return verticalLocked ? ['strategy', ...mid] : ['strategy', 'vertical', ...mid]
-  }, [strategy, vInfo?.key, verticalLocked]) // eslint-disable-line react-hooks/exhaustive-deps
+    return ['strategy', 'setup', 'review', 'activate']
+  }, [strategy])
 
   const stepKey = stepKeys[step] ?? 'strategy'
 
   const fieldsComplete = useMemo(() => {
-    if (!vInfo) return false
     const b = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
-    if (vInfo.key === 'openinternet') return !!(values.siteName?.trim() && b)
-    if (vInfo.key === 'github') return !!(selectedRepo && selectedFile && b)
-    if (vInfo.key === 'superfluid') return !!(values.projectName?.trim() && b)
-    return false
-  }, [vInfo, values, selectedRepo, selectedFile])
+    return !!(values.siteName?.trim() && b)
+  }, [values])
 
   const go = (d: number) => setStep(s => Math.max(0, Math.min(s + d, stepKeys.length - 1)))
 
-  const handleDisconnect = async () => {
-    await fetch('/api/github/me', { method: 'DELETE' }).catch(() => {})
-    setGhUser({ connected: false })
-    setRepos([])
-    setSelectedRepo(null)
-    setSelectedFile(null)
-    setStep(stepKeys.indexOf('connect'))
-  }
-
   const handleDeploy = () => {
     setTxError(null)
-    if (!strategy || !vertical) return
+    if (!strategy) return
     if (chain?.id !== CANONICAL_CHAIN.id) {
       setTxError(`Wrong network. Switch your wallet to ${CANONICAL_CHAIN.name}, then deploy again.`)
       switchChain?.({ chainId: CANONICAL_CHAIN.id })
@@ -775,27 +398,21 @@ function CreateWizardInner() {
     }
     const bene = values.beneficiary?.trim() ?? ''
     if (!/^0x[0-9a-fA-F]{40}$/.test(bene)) { setTxError('Enter a valid beneficiary address.'); return }
-    const name =
-      vertical === 'openinternet' ? (values.siteName?.trim() || 'My Website') :
-      vertical === 'github' ? (selectedRepo?.split('/').pop() ?? 'My Repo') :
-      (values.projectName?.trim() || 'My Project')
+    const name = values.siteName?.trim() || 'My Markee'
     resetWrite()
     try {
       if (strategy === 'streaming') {
-        const platformId = toPlatformTag(
-          vertical === 'github' ? (selectedRepo ?? name) : name,
-          VERTICAL_PLATFORM[vertical],
-        )
+        const platformId = toPlatformTag(name, 'website')
         writeContract({
-          address: FACTORIES[strategy][vertical],
+          address: STREAMING_FACTORY_ADDR,
           abi: STREAMING_FACTORY_ABI,
           functionName: 'createLeaderboard',
-          args: [bene as `0x${string}`, name, VERTICAL_PLATFORM[vertical], platformId],
+          args: [bene as `0x${string}`, name, 'website', platformId],
           chainId: CANONICAL_CHAIN.id,
         })
       } else {
         writeContract({
-          address: FACTORIES[strategy][vertical],
+          address: FACTORIES['fixed']['openinternet'],
           abi: FACTORY_ABI,
           functionName: 'createLeaderboard',
           args: [bene as `0x${string}`, name],
@@ -814,11 +431,11 @@ function CreateWizardInner() {
     <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '48px 24px 80px' }}>
       <Link href="/raise-funding" style={{ color: C.muted, textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)' }}>← Raise Funding</Link>
       <h1 style={{ margin: '14px 0 32px', fontSize: 'clamp(28px,4vw,40px)', fontWeight: 800, letterSpacing: -1, color: C.text }}>
-        {stepKey === 'strategy' ? 'Choose a pricing strategy' : stepKey === 'vertical' ? 'Choose where it lives' : 'Create a Markee'}
+        {stepKey === 'strategy' ? 'Choose a pricing strategy' : 'Create a Markee'}
       </h1>
 
-      {step >= (verticalLocked ? 1 : 2) && vInfo && (
-        <Stepper steps={vInfo.steps} current={Math.min(step - (verticalLocked ? 1 : 2), vInfo.steps.length - 1)} />
+      {step >= 1 && (
+        <Stepper steps={['Set up your Markee', 'Deploy Markee', 'Activate']} current={step - 1} />
       )}
 
       {stepKey === 'strategy' && (
@@ -829,48 +446,17 @@ function CreateWizardInner() {
         </StepShell>
       )}
 
-      {stepKey === 'vertical' && (
-        <StepShell
-          sub="Pick where your board lives. The pricing strategy stays the same wherever you place it."
-          onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!vertical}
-        >
-          <ChooseVertical selected={vertical} onSelect={setVertical} />
-        </StepShell>
-      )}
-
-      {stepKey === 'connect' && (
-        <StepShell
-          title="Connect GitHub"
-          sub="We use your connection to add the Markee delimiter and confirm it via the GitHub API."
-          onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!ghUser.connected}
-        >
-          <ConnectGitHub ghUser={ghUser} strategy={strategy ?? 'fixed'} onDisconnect={handleDisconnect} />
-        </StepShell>
-      )}
-
-      {stepKey === 'setup' && vInfo && (
+      {stepKey === 'setup' && (
         <StepShell
           title="Set up your Markee"
           sub="Name your Markee and set a beneficiary address to receive funds."
           onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!fieldsComplete}
         >
-          {vInfo.key === 'github' ? (
-            <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26 }}>
-              <GitHubSetup
-                repos={repos}
-                selectedRepo={selectedRepo} setSelectedRepo={r => { setSelectedRepo(r); setSelectedFile(null) }}
-                selectedFile={selectedFile} setSelectedFile={setSelectedFile}
-                beneficiary={values.beneficiary ?? ''} setBeneficiary={v => setValue('beneficiary', v)}
-                onDisconnect={handleDisconnect}
-              />
-            </div>
-          ) : (
-            <WebsiteSetupFields values={values} setValue={setValue} vertical={vInfo.key} />
-          )}
+          <WebsiteSetupFields values={values} setValue={setValue} />
         </StepShell>
       )}
 
-      {stepKey === 'review' && vInfo && strategy && (
+      {stepKey === 'review' && strategy && (
         <StepShell
           title="Deploy Markee"
           sub="Review your info and sign the transaction to deploy your Markee on Base."
@@ -881,7 +467,7 @@ function CreateWizardInner() {
         >
           <ReviewSign
             vertical={vInfo} strategy={strategy} values={values}
-            selectedRepo={selectedRepo} selectedFile={selectedFile}
+            selectedRepo={null} selectedFile={null}
             isPending={isPending} isConfirming={isConfirming}
             error={txError ?? (writeError ? formatTransactionError(writeError) : null)}
             isConnected={isConnected}
@@ -889,9 +475,8 @@ function CreateWizardInner() {
         </StepShell>
       )}
 
-      {stepKey === 'activate' && vInfo && strategy && newLeaderboardAddress && (
+      {stepKey === 'activate' && strategy && newLeaderboardAddress && (
         <div>
-          {/* Transaction confirmed banner */}
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', background: 'rgba(29,178,39,0.08)', border: `1px solid ${C.green}`, borderRadius: 14, padding: '20px 22px', marginBottom: 26 }}>
             <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 99, background: 'rgba(29,178,39,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Check size={22} color={C.green} strokeWidth={2.6} />
@@ -899,7 +484,7 @@ function CreateWizardInner() {
             <div>
               <div style={{ color: C.text, fontWeight: 700 as const, fontSize: 17 }}>Transaction confirmed</div>
               <p style={{ color: C.text2, fontSize: 14, margin: '4px 0 0', lineHeight: 1.55 }}>
-                Your {vInfo.name} Markee was deployed onchain.{' '}
+                Your Markee was deployed onchain.{' '}
                 {hash && (
                   <a href={`https://basescan.org/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'var(--font-jetbrains-mono)', color: C.blue, textDecoration: 'none', borderBottom: `1px dotted ${C.blue}` }}>
                     {hash.slice(0, 6)}…{hash.slice(-4)} ↗
@@ -909,7 +494,6 @@ function CreateWizardInner() {
             </div>
           </div>
 
-          {/* Activate CTA */}
           <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: '32px 28px', textAlign: 'center' as const }}>
             <div style={{ fontSize: 22, fontWeight: 800 as const, color: C.text, marginBottom: 10 }}>Activate your Markee</div>
             <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, maxWidth: '40ch', margin: '0 auto 24px' }}>
@@ -934,7 +518,6 @@ function CreateWizardInner() {
             isOpen={buyModalOpen}
             onClose={() => setBuyModalOpen(false)}
             strategyAddress={newLeaderboardAddress as `0x${string}`}
-            platformId={vInfo.key === 'github' ? 'github' : vInfo.key === 'superfluid' ? 'superfluid' : undefined}
             onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
           />
         </div>

@@ -159,7 +159,7 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
               >
                 Learn More
               </Link>
-              <Link href={`/create-a-markee?platform=${p.key}`} style={{
+              <Link href="/create-a-markee" style={{
                 background: C.pink, color: C.bg, border: 'none',
                 borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700,
                 textDecoration: 'none', whiteSpace: 'nowrap' as const,
