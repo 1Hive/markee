@@ -8,8 +8,7 @@ import Link from 'next/link'
 import { Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
-import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
-import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
+import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -332,8 +331,7 @@ function CreateWizardInner() {
   const [strategy, setStrategy] = useState<Strategy | null>(null)
   const [step, setStep] = useState(0)
   const [buyModalOpen, setBuyModalOpen] = useState(false)
-  const [createMsgOpen, setCreateMsgOpen] = useState(false)
-  const [streamTarget, setStreamTarget] = useState<StreamTarget | null>(null)
+  const [streamActivateOpen, setStreamActivateOpen] = useState(false)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
@@ -514,7 +512,7 @@ function CreateWizardInner() {
               Buy the first message to activate your Markee.
             </p>
             <button
-              onClick={() => strategy === 'streaming' ? setCreateMsgOpen(true) : setBuyModalOpen(true)}
+              onClick={() => strategy === 'streaming' ? setStreamActivateOpen(true) : setBuyModalOpen(true)}
               style={{ background: C.pink, color: C.bg, border: 'none', borderRadius: 8, padding: '12px 28px', fontSize: 15, fontWeight: 700 as const, cursor: 'pointer' }}
             >
               Activate Markee →
@@ -538,30 +536,15 @@ function CreateWizardInner() {
             onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
           />
 
-          {/* Streaming activation: create markee first, then open stream */}
-          {createMsgOpen && (
-            <CreateMessageModal
-              board={newLeaderboardAddress as `0x${string}`}
-              onClose={() => setCreateMsgOpen(false)}
-              onCreated={(addr, message, name) => {
-                setCreateMsgOpen(false)
-                setStreamTarget({ address: addr, message, name })
-              }}
-              title="ACTIVATE MARKEE"
-              messageLabel="SET FIRST MESSAGE"
-              messagePlaceholder="Set the text your newly activated Markee will display..."
-            />
-          )}
-          {streamTarget && (
-            <StreamModal
-              isOpen={true}
-              board={newLeaderboardAddress as `0x${string}`}
-              markee={streamTarget}
-              onClose={() => setStreamTarget(null)}
-              onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
-              isActivation
-            />
-          )}
+          {/* Streaming activation: single modal handles create + approve + stream */}
+          <StreamActivateModal
+            isOpen={streamActivateOpen}
+            board={newLeaderboardAddress as `0x${string}`}
+            onClose={() => setStreamActivateOpen(false)}
+            onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
+            messageLabel="SET FIRST MESSAGE"
+            messagePlaceholder="Set the text your newly activated Markee will display..."
+          />
         </div>
       )}
     </div>

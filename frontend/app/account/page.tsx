@@ -13,8 +13,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
-import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
-import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
+import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -880,7 +879,6 @@ export default function AccountPage() {
   const [manageTarget, setManageTarget]           = useState<AnyLeaderboard | null>(null)
   const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
   const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
-  const [activateStreamTarget, setActivateStreamTarget] = useState<StreamTarget | null>(null)
   const [editingBoard, setEditingBoard]       = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
   const [verifyBoard, setVerifyBoard]         = useState<WebsiteLeaderboard | null>(null)
@@ -1303,25 +1301,15 @@ export default function AccountPage() {
         onSuccess={() => { setActivateTarget(null); if (activeAddress) fetchAll(activeAddress) }}
       />
 
-      {/* Streaming activation: create markee first, then open stream */}
-      {activateStreamBoard && !activateStreamTarget && (
-        <CreateMessageModal
+      {/* Streaming activation: single modal handles create + approve + stream */}
+      {activateStreamBoard && (
+        <StreamActivateModal
+          isOpen={!!activateStreamBoard}
           board={activateStreamBoard.address as `0x${string}`}
           onClose={() => setActivateStreamBoard(null)}
-          onCreated={(addr, message, name) => setActivateStreamTarget({ address: addr, message, name })}
-          title="ACTIVATE MARKEE"
+          onSuccess={() => { setActivateStreamBoard(null); if (activeAddress) fetchAll(activeAddress) }}
           messageLabel="SET FIRST MESSAGE"
           messagePlaceholder="Set the text your newly activated Markee will display..."
-        />
-      )}
-      {activateStreamBoard && activateStreamTarget && (
-        <StreamModal
-          isOpen={true}
-          board={activateStreamBoard.address as `0x${string}`}
-          markee={activateStreamTarget}
-          onClose={() => { setActivateStreamTarget(null); setActivateStreamBoard(null) }}
-          onSuccess={() => { setActivateStreamTarget(null); setActivateStreamBoard(null); if (activeAddress) fetchAll(activeAddress) }}
-          isActivation
         />
       )}
     </div>
