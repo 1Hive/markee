@@ -179,9 +179,9 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
 // ── How it works ──────────────────────────────────────────────────────────────
 function HowItWorks() {
   const steps = [
-    { n: '01', t: 'Choose your platform', d: 'Pick where your Markee will be embedded.' },
-    { n: '02', t: 'Set up your sign', d: 'Add your info and a wallet to receive funds.' },
-    { n: '03', t: 'Activate your Markee', d: 'Embed to your site in just a few clicks.' },
+    { n: '01', t: 'Set up your sign', d: 'Add a Markee name and funding recipient.' },
+    { n: '02', t: 'Activate your Markee', d: 'Buy the first message to activate.' },
+    { n: '03', t: 'Embed to your site', d: 'Push your Markee live and start earning.' },
   ]
   return (
     <section id="how" style={{ borderTop: `1px solid ${C.border}`, background: C.bg2 }}>
