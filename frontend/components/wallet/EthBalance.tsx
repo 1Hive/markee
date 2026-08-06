@@ -6,11 +6,14 @@ import { formatEther } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
+import { useState, useEffect } from 'react'
 
 export function EthBalance() {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const ethPrice = useEthPrice()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   const { data: balanceData } = useBalance({
     address,
@@ -20,7 +23,7 @@ export function EthBalance() {
     },
   })
 
-  if (!authenticated || !isConnected || !address || chain?.id !== CANONICAL_CHAIN.id) {
+  if (!mounted || !authenticated || !isConnected || !address || chain?.id !== CANONICAL_CHAIN.id) {
     return null
   }
 

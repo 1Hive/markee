@@ -1,7 +1,7 @@
 'use client'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { useAccount } from 'wagmi'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -22,6 +22,10 @@ export function ConnectButton() {
   const { address } = useAccount()
   const [menuOpen, setMenuOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  if (!mounted) return null
 
   if (!authenticated) {
     return (
