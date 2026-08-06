@@ -13,6 +13,8 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
+import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -875,8 +877,10 @@ export default function AccountPage() {
   const [tab, setTab]                         = useState<TabId>('markees')
   const [archived, setArchived]               = useState<string[]>([])
   const [archivedExpanded, setArchivedExpanded] = useState(false)
-  const [manageTarget, setManageTarget]       = useState<AnyLeaderboard | null>(null)
-  const [activateTarget, setActivateTarget]   = useState<AnyLeaderboard | null>(null)
+  const [manageTarget, setManageTarget]           = useState<AnyLeaderboard | null>(null)
+  const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
+  const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
+  const [activateStreamTarget, setActivateStreamTarget] = useState<StreamTarget | null>(null)
   const [editingBoard, setEditingBoard]       = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
   const [verifyBoard, setVerifyBoard]         = useState<WebsiteLeaderboard | null>(null)
@@ -1122,7 +1126,7 @@ export default function AccountPage() {
                         </div>
                         <ActivationTable
                           markees={inactiveBoards}
-                          onActivate={lb => setActivateTarget(lb)}
+                          onActivate={lb => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
                           onArchive={addr => setArchived(prev => [...prev, addr])}
                         />
                       </div>
@@ -1287,6 +1291,7 @@ export default function AccountPage() {
         />
       )}
 
+      {/* Fixed-price activation modal */}
       <BuyMessageModal
         isOpen={!!activateTarget}
         onClose={() => setActivateTarget(null)}
@@ -1295,6 +1300,24 @@ export default function AccountPage() {
         subtitle="Buy the first message to activate your Markee."
         onSuccess={() => { setActivateTarget(null); if (activeAddress) fetchAll(activeAddress) }}
       />
+
+      {/* Streaming activation: create markee first, then open stream */}
+      {activateStreamBoard && !activateStreamTarget && (
+        <CreateMessageModal
+          board={activateStreamBoard.address as `0x${string}`}
+          onClose={() => setActivateStreamBoard(null)}
+          onCreated={(addr, message, name) => setActivateStreamTarget({ address: addr, message, name })}
+        />
+      )}
+      {activateStreamBoard && activateStreamTarget && (
+        <StreamModal
+          isOpen={true}
+          board={activateStreamBoard.address as `0x${string}`}
+          markee={activateStreamTarget}
+          onClose={() => { setActivateStreamTarget(null); setActivateStreamBoard(null) }}
+          onSuccess={() => { setActivateStreamTarget(null); setActivateStreamBoard(null); if (activeAddress) fetchAll(activeAddress) }}
+        />
+      )}
     </div>
   )
 }

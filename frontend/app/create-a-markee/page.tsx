@@ -8,6 +8,8 @@ import Link from 'next/link'
 import { Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
+import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -330,6 +332,8 @@ function CreateWizardInner() {
   const [strategy, setStrategy] = useState<Strategy | null>(null)
   const [step, setStep] = useState(0)
   const [buyModalOpen, setBuyModalOpen] = useState(false)
+  const [createMsgOpen, setCreateMsgOpen] = useState(false)
+  const [streamTarget, setStreamTarget] = useState<StreamTarget | null>(null)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
@@ -507,15 +511,13 @@ function CreateWizardInner() {
           <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: '32px 28px', textAlign: 'center' as const }}>
             <div style={{ fontSize: 22, fontWeight: 800 as const, color: C.text, marginBottom: 10 }}>Activate your Markee</div>
             <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, maxWidth: '40ch', margin: '0 auto 24px' }}>
-              {strategy === 'streaming'
-                ? 'Open a stream on your board to claim the top spot and go live.'
-                : 'Buy the first message on your board to go live.'}
+              Buy the first message to activate your Markee.
             </p>
             <button
-              onClick={() => setBuyModalOpen(true)}
+              onClick={() => strategy === 'streaming' ? setCreateMsgOpen(true) : setBuyModalOpen(true)}
               style={{ background: C.pink, color: C.bg, border: 'none', borderRadius: 8, padding: '12px 28px', fontSize: 15, fontWeight: 700 as const, cursor: 'pointer' }}
             >
-              {strategy === 'streaming' ? 'Open a stream →' : 'Buy first message →'}
+              Activate Markee →
             </button>
             <div style={{ marginTop: 16 }}>
               <Link href={`/markee/${newLeaderboardAddress}`} style={{ color: C.muted, fontSize: 13, textDecoration: 'none' }}>
@@ -524,12 +526,36 @@ function CreateWizardInner() {
             </div>
           </div>
 
+          {/* Fixed-price activation */}
           <BuyMessageModal
             isOpen={buyModalOpen}
             onClose={() => setBuyModalOpen(false)}
             strategyAddress={newLeaderboardAddress as `0x${string}`}
+            ctaLabel="Activate Markee"
+            subtitle="Buy the first message to activate your Markee."
             onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
           />
+
+          {/* Streaming activation: create markee first, then open stream */}
+          {createMsgOpen && (
+            <CreateMessageModal
+              board={newLeaderboardAddress as `0x${string}`}
+              onClose={() => setCreateMsgOpen(false)}
+              onCreated={(addr, message, name) => {
+                setCreateMsgOpen(false)
+                setStreamTarget({ address: addr, message, name })
+              }}
+            />
+          )}
+          {streamTarget && (
+            <StreamModal
+              isOpen={true}
+              board={newLeaderboardAddress as `0x${string}`}
+              markee={streamTarget}
+              onClose={() => setStreamTarget(null)}
+              onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
+            />
+          )}
         </div>
       )}
     </div>
