@@ -51,6 +51,8 @@ interface BuyMessageModalProps {
   partnerSplitPercentage?: number
   topFundsAdded?: bigint
   platformId?: 'github' | 'superfluid'
+  ctaLabel?: string
+  subtitle?: string
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
@@ -126,6 +128,8 @@ export function BuyMessageModal({
   partnerName,
   topFundsAdded,
   platformId,
+  ctaLabel,
+  subtitle,
 }: BuyMessageModalProps) {
   const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
@@ -418,9 +422,14 @@ export function BuyMessageModal({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-            {stepLabel}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              {stepLabel}
+            </div>
+            {subtitle && !txStep && (
+              <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', fontSize: 13, color: MUTED, paddingLeft: 18 }}>{subtitle}</div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -758,7 +767,7 @@ export function BuyMessageModal({
                     transition: 'opacity 140ms',
                   }}
                 >
-                  {activeTab === 'create' ? 'Buy Message' : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
+                  {activeTab === 'create' ? (ctaLabel ?? 'Buy Message') : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
                 </button>
               </BtnTooltip>
             </div>

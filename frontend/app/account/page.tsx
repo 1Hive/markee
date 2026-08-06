@@ -12,6 +12,7 @@ import { Footer } from '@/components/layout/Footer'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -387,7 +388,61 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
-// ── Setup-required table (Awaiting Integration / Awaiting Activation) ────────
+// ── Awaiting Activation table ─────────────────────────────────────────────────
+const ACTIVATION_COLS = '1fr 150px 220px 160px'
+
+function ActivationTable({ markees, onActivate, onArchive }: {
+  markees: AnyLeaderboard[]
+  onActivate: (lb: AnyLeaderboard) => void
+  onArchive: (address: string) => void
+}) {
+  const fmtAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
+  return (
+    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 640, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: ACTIVATION_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Markee Name', 'Pricing Strategy', 'Beneficiary', ''].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
+        </div>
+        {markees.map(lb => (
+          <div
+            key={lb.address}
+            onClick={() => window.location.href = `/markee/${lb.address}`}
+            style={{ display: 'grid', gridTemplateColumns: ACTIVATION_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <ServedOnCell lb={lb} />
+            <div>
+              <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+            </div>
+            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtAddr(lb.admin)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={e => { e.stopPropagation(); onActivate(lb) }}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
+              >
+                Activate Markee
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); onArchive(lb.address) }}
+                title="Archive"
+                style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'color 120ms, border-color 120ms' }}
+                onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = TEXT2; el.style.borderColor = `${MUTED}66` }}
+                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Setup-required table (Awaiting Integration) ───────────────────────────────
 const SETUP_COLS = '180px 165px 1fr 220px'
 
 function SetupStatusPill({ lb }: { lb: AnyLeaderboard }) {
@@ -821,6 +876,7 @@ export default function AccountPage() {
   const [archived, setArchived]               = useState<string[]>([])
   const [archivedExpanded, setArchivedExpanded] = useState(false)
   const [manageTarget, setManageTarget]       = useState<AnyLeaderboard | null>(null)
+  const [activateTarget, setActivateTarget]   = useState<AnyLeaderboard | null>(null)
   const [editingBoard, setEditingBoard]       = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
   const [verifyBoard, setVerifyBoard]         = useState<WebsiteLeaderboard | null>(null)
@@ -1057,6 +1113,21 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+                    {/* Awaiting Activation — boards with no messages yet (shown first, it's step 1) */}
+                    {inactiveBoards.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: PINK }}>Awaiting Activation</h2>
+                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{inactiveBoards.length}</span>
+                        </div>
+                        <ActivationTable
+                          markees={inactiveBoards}
+                          onActivate={lb => setActivateTarget(lb)}
+                          onArchive={addr => setArchived(prev => [...prev, addr])}
+                        />
+                      </div>
+                    )}
+
                     {/* Awaiting Integration — website boards with funds but no verified URL */}
                     {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
                       <div>
@@ -1067,21 +1138,6 @@ export default function AccountPage() {
                         <SetupTable
                           markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
                           onVerify={lb => setIntegrationBoard(lb)}
-                          onArchive={addr => setArchived(prev => [...prev, addr])}
-                        />
-                      </div>
-                    )}
-
-                    {/* Awaiting Activation — boards with no messages yet */}
-                    {inactiveBoards.length > 0 && (
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: BLUE }}>Awaiting Activation</h2>
-                          <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{inactiveBoards.length}</span>
-                        </div>
-                        <SetupTable
-                          markees={inactiveBoards}
-                          onIntegrate={lb => setIntegrationBoard(lb)}
                           onArchive={addr => setArchived(prev => [...prev, addr])}
                         />
                       </div>
@@ -1230,6 +1286,15 @@ export default function AccountPage() {
           onOpenIntegration={() => { setVerifyBoard(null); setIntegrationBoard(verifyBoard) }}
         />
       )}
+
+      <BuyMessageModal
+        isOpen={!!activateTarget}
+        onClose={() => setActivateTarget(null)}
+        strategyAddress={activateTarget?.address as `0x${string}` | undefined}
+        ctaLabel="Activate Markee"
+        subtitle="Buy the first message to activate your Markee."
+        onSuccess={() => { setActivateTarget(null); if (activeAddress) fetchAll(activeAddress) }}
+      />
     </div>
   )
 }
