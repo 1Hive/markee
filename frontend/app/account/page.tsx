@@ -1158,7 +1158,7 @@ export default function AccountPage() {
 
                     {/* No active markees prompt */}
                     {activeBoards.length === 0 && (awaitingVerification.length > 0 || inactiveBoards.length > 0) && (
-                      <p style={{ color: MUTED, fontSize: 14 }}>No active signs yet — complete setup above to go live.</p>
+                      <p style={{ color: MUTED, fontSize: 14 }}>No integrated signs yet. Complete setup above to go live.</p>
                     )}
 
                     {/* Archived */}
