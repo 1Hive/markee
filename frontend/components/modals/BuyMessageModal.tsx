@@ -551,52 +551,6 @@ export function BuyMessageModal({
               {/* Amount section (create + addFunds) */}
               {activeTab !== 'updateMessage' && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 10 }}>Amount (ETH)</div>
-
-                  {/* Preset cards */}
-                  {!userIsTopDawg && (
-                    <div style={{ display: 'grid', gridTemplateColumns: hasCompetition ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
-                      {hasCompetition && takeFirstAmountFormatted && (
-                        <button
-                          onClick={() => { setHasUserEdited(true); setAmount(takeFirstAmountFormatted) }}
-                          disabled={isPending || isConfirming}
-                          style={{
-                            textAlign: 'left', cursor: 'pointer',
-                            background: selFeatured ? 'rgba(248,151,254,0.08)' : BG,
-                            border: `1.5px solid ${selFeatured ? PINK : BORDER}`,
-                            borderRadius: 12, padding: '13px 15px',
-                            transition: 'border-color 140ms',
-                          }}
-                        >
-                          <div style={{ color: selFeatured ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Featured Message 👑</div>
-                          <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{takeFirstAmountFormatted} ETH</div>
-                          {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(parseFloat(takeFirstAmountFormatted) * ethPrice)}</div>}
-                          <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
-                            {activeTab === 'addFunds' ? 'Additional ETH to take the top spot' : 'Price to take the top spot'}
-                          </div>
-                        </button>
-                      )}
-                      {activeTab !== 'addFunds' && (
-                        <button
-                          onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted) }}
-                          disabled={isPending || isConfirming}
-                          style={{
-                            textAlign: 'left', cursor: 'pointer',
-                            background: selMin ? 'rgba(248,151,254,0.08)' : BG,
-                            border: `1.5px solid ${selMin ? PINK : BORDER}`,
-                            borderRadius: 12, padding: '13px 15px',
-                            transition: 'border-color 140ms',
-                          }}
-                        >
-                          <div style={{ color: selMin ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Minimum</div>
-                          <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>0.001 ETH</div>
-                          {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(0.001 * ethPrice)}</div>}
-                          <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Buy a message at the lowest price</div>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
                   {/* #1 spot banner */}
                   {userIsTopDawg && (
                     <div style={{ borderRadius: 10, border: '1.5px solid rgba(255,215,0,0.4)', background: 'rgba(255,215,0,0.08)', padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -608,61 +562,89 @@ export function BuyMessageModal({
                     </div>
                   )}
 
-                  {/* ETH input */}
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={e => { setHasUserEdited(true); setAmount(e.target.value) }}
-                      placeholder={minimumAmountFormatted}
-                      step="0.0001"
-                      style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 56px 14px 16px' }}
-                      disabled={isPending || isConfirming}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
-                    />
-                    <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontFamily: MONO, fontSize: 12, color: MUTED, pointerEvents: 'none', userSelect: 'none' }}>
-                      ETH
-                    </span>
+                  {/* Price card */}
+                  <div style={{
+                    border: `1.5px solid ${PINK}`,
+                    borderRadius: 12,
+                    padding: '16px',
+                    background: BG,
+                    boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+                  }}>
+                    {/* Large amount input + MIN/MAX */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flex: 1, minWidth: 0 }}>
+                        <input
+                          inputMode="decimal"
+                          value={amount}
+                          onChange={e => { setHasUserEdited(true); setAmount(e.target.value) }}
+                          placeholder={minimumAmountFormatted}
+                          disabled={isPending || isConfirming}
+                          style={{
+                            background: 'transparent', border: 'none', outline: 'none',
+                            color: TEXT, fontFamily: MONO, fontSize: 34, fontWeight: 800,
+                            width: '1px', flex: 1, minWidth: 0, padding: 0,
+                          }}
+                        />
+                        <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED, flexShrink: 0 }}>ETH</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+                        {activeTab !== 'addFunds' && (
+                          <button
+                            type="button"
+                            onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted) }}
+                            disabled={isPending || isConfirming}
+                            style={{
+                              border: `1px solid ${PINK}`, background: 'transparent', color: PINK,
+                              borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                              fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
+                              opacity: isPending || isConfirming ? 0.4 : 1,
+                            }}
+                          >
+                            MIN
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted) }}
+                          disabled={spendableBalance <= 0n || isPending || isConfirming}
+                          style={{
+                            border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2,
+                            borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                            fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
+                            opacity: spendableBalance > 0n && !isPending && !isConfirming ? 1 : 0.4,
+                          }}
+                        >
+                          MAX
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* USD equiv + balance */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED }}>
+                      <span>
+                        {ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}` : ' '}
+                      </span>
+                      <span>
+                        {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Live USD equivalent */}
-                  {ethPrice && bidNum > 0 && (
-                    <div style={{ fontSize: 12, color: BLUE, marginTop: 6, fontFamily: MONO }}>
-                      ≈ {formatUsd(bidNum * ethPrice)}
-                    </div>
-                  )}
-
-                  {/* Balance */}
-                  {balanceData && (
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                      <span>
-                        Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                        <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)</span>
-                      </span>
-                      {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
-                      <button
-                        type="button"
-                        onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted) }}
-                        disabled={spendableBalance <= 0n || isPending || isConfirming}
-                        style={{
-                          background: 'transparent', border: 0, padding: 0,
-                          color: BLUE, fontFamily: MONO, fontSize: 12,
-                          cursor: spendableBalance > 0n ? 'pointer' : 'not-allowed',
-                          opacity: spendableBalance > 0n ? 1 : 0.45,
-                        }}
-                      >
-                        Use max
-                      </button>
-                    </div>
-                  )}
-
-                  {/* MARKEE token estimate */}
+                  {/* You'll receive — horizontal */}
                   {bidNum > 0 && (
-                    <div style={{ marginTop: 14, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
-                      <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
-                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-                      <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
+                    <div style={{
+                      marginTop: 12, borderRadius: 14, padding: '16px 20px',
+                      background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
+                      border: `1px solid rgba(248,151,254,0.35)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <span style={{ color: PINK, fontSize: 15, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 30, letterSpacing: -0.5 }}>
+                          {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </span>
+                        <span style={{ color: PINK, fontSize: 14, fontWeight: 700 }}>MARKEE</span>
+                      </div>
                     </div>
                   )}
                 </div>
