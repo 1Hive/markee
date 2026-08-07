@@ -12,8 +12,8 @@ import {
 } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
-  inputStyle, btnStyle, sanitizeDecimalInput, parseEthInput, retryUntilLoaded,
-  Spinner, InfoTip, ModalField, Row, ModalShell, TxProgress, TxSteps,
+  inputStyle, sanitizeDecimalInput, parseEthInput, retryUntilLoaded,
+  InfoTip, ModalField, ModalShell, TxProgress, TxSteps,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -293,16 +293,40 @@ export function StreamActivateModal({
           ? 'Last step — sign to open your stream.'
           : 'Usually under 2 seconds on Base.'
 
-  const btnDisabled = !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || insufficientBalance
+  const btnDisabled = !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded
 
-  const footer = !txActive && boardAdmin ? (
-    <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-      62% to{' '}
-      <a href={`https://basescan.org/address/${boardAdmin}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>
-        {(boardAdmin as string).slice(0, 6)}…{(boardAdmin as string).slice(-4)}
-      </a>
-      {' '}· 38% to the{' '}
-      <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+  const footer = !txActive ? (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+      <div style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
+        62/38 split
+        {boardAdmin && (
+          <InfoTip>
+            62% goes to the board beneficiary · 38% to the{' '}
+            <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+          </InfoTip>
+        )}
+      </div>
+      {insufficientBalance && authenticated && address ? (
+        <button
+          onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } })}
+          style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: 'pointer', flexShrink: 0 }}
+        >
+          Add funds
+        </button>
+      ) : (
+        <button
+          onClick={handleActivate}
+          disabled={btnDisabled}
+          style={{
+            background: PINK, color: BG, border: 'none', borderRadius: 8,
+            padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+            cursor: btnDisabled ? 'not-allowed' : 'pointer', flexShrink: 0,
+            opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
+          }}
+        >
+          {!minLoaded ? 'Loading…' : 'Activate Markee'}
+        </button>
+      )}
     </div>
   ) : undefined
 
@@ -336,124 +360,126 @@ export function StreamActivateModal({
             />
           </ModalField>
 
-          {/* Minimum preset card */}
-          {minLoaded && minMonthlyWei && (
-            <button
-              onClick={() => setMonthly(minMonthlyEth)}
-              style={{
-                textAlign: 'left', cursor: 'pointer', width: '100%',
-                background: monthly === minMonthlyEth ? 'rgba(248,151,254,0.08)' : BG,
-                border: `1.5px solid ${monthly === minMonthlyEth ? PINK : BORDER}`,
-                borderRadius: 10, padding: '9px 12px',
-                transition: 'border-color 140ms',
-              }}
-            >
-              <div style={{ color: monthly === minMonthlyEth ? PINK : TEXT2, fontSize: 11, fontWeight: 600, marginBottom: 3, fontFamily: 'Manrope, system-ui, sans-serif' }}>Minimum</div>
-              <div style={{ color: TEXT, fontFamily: MONO, fontSize: 13, fontWeight: 800 }}>{minMonthlyEth} ETH / mo{ethPrice && <span style={{ color: BLUE, marginLeft: 8 }}>{formatUsd(Number(minMonthlyEth) * ethPrice)} / mo</span>}</div>
-              <div style={{ color: MUTED, fontSize: 11, marginTop: 2, fontFamily: 'Manrope, system-ui, sans-serif' }}>Stream at the lowest rate</div>
-            </button>
-          )}
+          {/* Price card */}
+          <div style={{
+            border: `1.5px solid ${PINK}`,
+            borderRadius: 12,
+            padding: '16px',
+            background: BG,
+            boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+          }}>
+            {/* Large amount input + MIN/MAX */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flex: 1, minWidth: 0 }}>
+                <input
+                  inputMode="decimal"
+                  value={monthly}
+                  onChange={e => setMonthly(sanitizeDecimalInput(e.target.value))}
+                  placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
+                  style={{
+                    background: 'transparent', border: 'none', outline: 'none',
+                    color: TEXT, fontFamily: MONO, fontSize: 34, fontWeight: 800,
+                    width: '1px', flex: 1, minWidth: 0, padding: 0,
+                  }}
+                />
+                <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED, flexShrink: 0 }}>ETH/mo</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => minMonthlyWei && setMonthly(minMonthlyEth)}
+                  disabled={!minLoaded}
+                  style={{
+                    border: `1px solid ${PINK}`, background: 'transparent', color: PINK,
+                    borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                    fontWeight: 700, cursor: minLoaded ? 'pointer' : 'default',
+                    opacity: minLoaded ? 1 : 0.4,
+                  }}
+                >
+                  MIN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const months = BigInt(Math.max(1, Number(fundMonths) || 1))
+                    if (spendableBalance > 0n) setMonthly(formatEther(spendableBalance / months))
+                  }}
+                  disabled={spendableBalance <= 0n}
+                  style={{
+                    border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2,
+                    borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                    fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
+                    opacity: spendableBalance > 0n ? 1 : 0.4,
+                  }}
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
 
-          {/* Monthly rate + fund months side by side */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <ModalField label="Monthly rate (ETH)">
-              <input
-                inputMode="decimal"
-                value={monthly}
-                onChange={e => setMonthly(sanitizeDecimalInput(e.target.value))}
-                placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.05'}
-                style={inputStyle}
-              />
-              {belowMin && (
-                <div style={{ fontFamily: MONO, fontSize: 11, color: PINK, marginTop: 6 }}>
-                  Min: {minMonthlyEth} ETH / mo
-                </div>
-              )}
-              {!belowMin && calc.monthlyWei > 0n && ethPrice && (
-                <div style={{ fontFamily: MONO, fontSize: 11, color: BLUE, marginTop: 6 }}>
-                  ≈ {formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)} / mo
-                </div>
-              )}
-              {!belowMin && !minLoaded && (
-                <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Spinner size={10} /> Loading…
-                </div>
-              )}
-            </ModalField>
-            <ModalField
-              label="Fund for (months)"
-              info="You send this much upfront and it streams out over time. Top up or stop whenever you like."
-            >
-              <input
-                inputMode="decimal"
-                value={fundMonths}
-                onChange={e => setFundMonths(sanitizeDecimalInput(e.target.value))}
-                style={inputStyle}
-              />
-            </ModalField>
+            {/* USD equiv + balance */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 14 }}>
+              <span>
+                {belowMin
+                  ? `Min: ${minMonthlyEth} ETH/mo`
+                  : calc.monthlyWei > 0n && ethPrice
+                    ? `≈ ${formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)}/mo`
+                    : ' '}
+              </span>
+              <span>
+                {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+              </span>
+            </div>
+
+            {/* Month duration pills */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['1', '2', '3'] as const).map(mo => {
+                const sel = fundMonths === mo
+                return (
+                  <button
+                    key={mo}
+                    type="button"
+                    onClick={() => setFundMonths(mo)}
+                    style={{
+                      flex: 1, padding: '9px 0', borderRadius: 8, cursor: 'pointer',
+                      border: `1px solid ${sel ? PINK : BORDER}`,
+                      background: sel ? PINK : 'transparent',
+                      color: sel ? BG : TEXT2,
+                      fontFamily: MONO, fontSize: 13, fontWeight: 700,
+                      transition: 'border-color 140ms, background 140ms, color 140ms',
+                    }}
+                  >
+                    {mo} mo
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* ETH total */}
+            {calc.prefund > 0n && (
+              <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 13 }}>
+                <span style={{ color: TEXT, fontWeight: 700 }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
+                <span style={{ color: MUTED }}> total</span>
+              </div>
+            )}
           </div>
 
-          {/* Balance + use max */}
-          {balanceData && (
-            <div style={{ fontSize: 12, color: MUTED, marginTop: -6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-              <span>
-                Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} for gas)</span>
-              </span>
-              {ethPrice && <span style={{ color: BLUE, fontFamily: MONO }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
-              <button
-                type="button"
-                onClick={() => {
-                  const months = BigInt(Math.max(1, Math.round(Number(fundMonths) || 1)))
-                  setMonthly(formatEther(spendableBalance / months))
-                }}
-                disabled={spendableBalance <= 0n}
-                style={{ background: 'transparent', border: 0, padding: 0, color: BLUE, fontFamily: MONO, fontSize: 12, cursor: spendableBalance > 0n ? 'pointer' : 'not-allowed', opacity: spendableBalance > 0n ? 1 : 0.45 }}
-              >
-                Use max
-              </button>
-            </div>
-          )}
-
-          {/* Stream summary */}
+          {/* You'll receive — horizontal */}
           {calc.value > 0n && (
-            <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Row label="Stream rate" value={`${formatEther(calc.monthlyWei)} ETH / mo`} />
-              <Row label="Runs for" value={`~${calc.runwayDays.toFixed(1)} days`} />
-              <div style={{ height: 1, background: BORDER, margin: '2px 0' }} />
-              <Row
-                label="Total to send"
-                value={`${formatEther(calc.value)} ETH`}
-                bold
-                info={<>
-                  {formatEther(calc.prefund)} ETH funds the stream, plus a {formatEther(calc.buffer)} ETH
-                  security deposit Superfluid requires. The deposit is returned in full when you stop.
-                </>}
-              />
+            <div style={{
+              borderRadius: 14, padding: '16px 20px',
+              background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
+              border: `1px solid rgba(248,151,254,0.35)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ color: PINK, fontSize: 15, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 30, letterSpacing: -0.5 }}>
+                  {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </span>
+                <span style={{ color: PINK, fontSize: 14, fontWeight: 700 }}>MARKEE</span>
+              </div>
             </div>
-          )}
-
-          {/* MARKEE estimate */}
-          {calc.value > 0n && (
-            <div style={{ borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
-              <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
-              <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-              <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
-            </div>
-          )}
-
-          {insufficientBalance ? (
-            <button
-              onClick={() => authenticated && address ? fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } }) : undefined}
-              disabled={!authenticated || !address}
-              style={btnStyle(true, !authenticated || !address)}
-            >
-              Add funds
-            </button>
-          ) : (
-            <button onClick={handleActivate} disabled={btnDisabled} style={btnStyle(true, btnDisabled)}>
-              {!minLoaded ? <><Spinner /> Loading…</> : 'Activate Markee'}
-            </button>
           )}
 
           {error && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{error}</div>}
