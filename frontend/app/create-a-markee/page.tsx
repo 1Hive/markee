@@ -190,19 +190,24 @@ function StepShell({ title, sub, children, onBack, onNext, nextLabel, nextDisabl
   )
 }
 
+function fmtViews(n: number): string {
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)     return `${+(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
 // ── Strategy preview card — styled after FeaturedCard in board-detail/shared.tsx ──
 function StrategyPreviewCard({
-  strategyKey, selected, disabled, onSelect,
+  strategyKey, selected, disabled, onSelect, viewCount,
 }: {
-  strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void
+  strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void; viewCount?: number
 }) {
   const [hovering, setHovering] = useState(false)
   const [pressing, setPressing] = useState(false)
   const meta    = STRATEGIES[strategyKey]
   const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
 
-  const sampleViews = strategyKey === 'fixed' ? '1.5K' : '892'
-  const pillText    = strategyKey === 'fixed'
+  const pillText = strategyKey === 'fixed'
     ? 'Pay lump sum to change a message.'
     : 'Stream payment to change a message.'
 
@@ -251,7 +256,7 @@ function StrategyPreviewCard({
         <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
         </svg>
-        {sampleViews}
+        {viewCount != null ? fmtViews(viewCount) : '…'}
       </div>
 
       {/* Label + icon — centered, gradient text */}
@@ -294,10 +299,19 @@ function StrategyPreviewCard({
 
 // ── ChooseStrategy ──────────────────────────────────────────────────────────
 function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onSelect: (s: Strategy) => void }) {
+  const [strategyViews, setStrategyViews] = useState<{ fixed: number; streaming: number } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/views/strategy-totals')
+      .then(r => r.json())
+      .then(setStrategyViews)
+      .catch(() => {})
+  }, [])
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24, marginBottom: 28 }}>
-      <StrategyPreviewCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} />
-      <StrategyPreviewCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} />
+      <StrategyPreviewCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} viewCount={strategyViews?.fixed} />
+      <StrategyPreviewCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} viewCount={strategyViews?.streaming} />
     </div>
   )
 }
