@@ -190,63 +190,103 @@ function StepShell({ title, sub, children, onBack, onNext, nextLabel, nextDisabl
   )
 }
 
-// ── Selection card (shared by strategy + vertical choosers) ──────────────────
-function ChoiceCard({ icon, color, name, tagline, summary, on, disabled, badge, onSelect }: {
-  icon: string; color: string; name: string; tagline: string; summary: string
-  on: boolean; disabled?: boolean; badge?: string; onSelect: () => void
+// ── Strategy preview card ────────────────────────────────────────────────────
+function StrategyPreviewCard({
+  strategyKey, selected, disabled, onSelect,
+}: {
+  strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void
 }) {
+  const [hovering, setHovering] = useState(false)
+  const meta = STRATEGIES[strategyKey]
+  const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
+
+  const sampleViews = strategyKey === 'fixed' ? '1.2K' : '874'
+  const priceLabel = strategyKey === 'fixed' ? '$5.00 Lump Sum Payment' : '$5/mo. Payment Stream'
+
+  const outerBorder = selected ? C.pink : (hovering && !disabled) ? C.borderHover : C.border
+  const innerBorder = selected ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.25)'
+
   return (
-    <button onClick={disabled ? undefined : onSelect} disabled={disabled} style={{
-      textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
-      background: on ? 'rgba(248,151,254,0.06)' : 'rgba(10,15,61,0.5)',
-      border: `1px solid ${on ? C.borderHover : C.border}`,
-      borderRadius: 14, padding: 20, opacity: disabled ? 0.55 : 1,
-      display: 'flex', flexDirection: 'column' as const, gap: 12,
-      transition: 'border-color 160ms, background 160ms',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ width: 46, height: 46, borderRadius: 12, background: C.bg, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <PlatGlyph icon={icon} color={color} size={24} />
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      {/* Label + icon above card */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <PlatGlyph icon={iconKey} color={meta.accent} size={17} />
+        <span style={{ color: meta.accent, fontWeight: 700, fontSize: 14 }}>{meta.label}</span>
+      </div>
+
+      {/* Card */}
+      <button
+        onClick={disabled ? undefined : onSelect}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        style={{
+          textAlign: 'left' as const, cursor: disabled ? 'default' : 'pointer',
+          background: selected ? 'rgba(248,151,254,0.06)' : C.bg2,
+          border: `1px solid ${outerBorder}`,
+          borderRadius: 14, padding: 0, width: '100%',
+          opacity: disabled ? 0.55 : 1,
+          position: 'relative' as const,
+          transition: 'border-color 160ms, background 160ms',
+          display: 'flex', flexDirection: 'column' as const,
+        }}
+      >
+        {/* Inner message area */}
+        <div style={{ padding: '16px 16px 12px' }}>
+          <div style={{ border: `1px solid ${innerBorder}`, borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+            <div style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 13, fontWeight: 600, color: C.text, lineHeight: 1.55 }}>
+              {meta.summary}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <span style={{ fontSize: 11, color: C.muted, fontStyle: 'italic' }}>— example.xyz</span>
+            </div>
+          </div>
         </div>
-        {badge ? (
-          <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>{badge}</span>
-        ) : (
-          <div style={{ width: 20, height: 20, borderRadius: 99, border: `1px solid ${on ? C.pink : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {on && <div style={{ width: 10, height: 10, borderRadius: 99, background: C.pink }} />}
+
+        {/* Footer: views + price label */}
+        <div style={{ borderTop: `1px solid ${C.border}`, padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.muted, fontSize: 12 }}>
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>{sampleViews} views</span>
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            color: (hovering && !disabled) ? meta.accent : C.muted,
+            fontSize: 11, transition: 'color 160ms',
+          }}>
+            <PlatGlyph icon={iconKey} color={(hovering && !disabled) ? meta.accent : C.muted} size={11} />
+            <span>{priceLabel}</span>
+          </div>
+        </div>
+
+        {/* Coming soon badge */}
+        {disabled && (
+          <div style={{ position: 'absolute' as const, top: 10, right: 10 }}>
+            <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
           </div>
         )}
-      </div>
-      <div>
-        <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{name}</div>
-        <div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{tagline}</div>
-      </div>
-      <div style={{ color: C.text2, fontSize: 13, lineHeight: 1.5 }}>{summary}</div>
-    </button>
+
+        {/* Selected checkmark */}
+        {selected && (
+          <div style={{ position: 'absolute' as const, top: 10, right: 10, width: 22, height: 22, borderRadius: 99, background: C.pink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Check size={13} color={C.bg} strokeWidth={3} />
+          </div>
+        )}
+      </button>
+
+      {/* Tagline below card */}
+      <p style={{ margin: 0, color: C.muted, fontSize: 12, lineHeight: 1.4 }}>{meta.tagline}</p>
+    </div>
   )
 }
 
 // ── ChooseStrategy ──────────────────────────────────────────────────────────
 function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onSelect: (s: Strategy) => void }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14, marginBottom: 8 }}>
-      {STRATEGY_KEYS.map(key => {
-        const meta = STRATEGIES[key]
-        const disabled = key === 'streaming' && !STREAMING_ENABLED
-        return (
-          <ChoiceCard
-            key={key}
-            icon={meta.glyph === 'stream' ? 'zap' : 'tag'}
-            color={meta.accent}
-            name={meta.label}
-            tagline={meta.tagline}
-            summary={meta.summary}
-            on={selected === key}
-            disabled={disabled}
-            badge={disabled ? 'Coming soon' : undefined}
-            onSelect={() => onSelect(key)}
-          />
-        )
-      })}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 8 }}>
+      <StrategyPreviewCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} />
+      <StrategyPreviewCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} />
     </div>
   )
 }

@@ -56,6 +56,8 @@ const cspDirectives = {
     'https://*.farcaster.xyz',
     // Vercel — analytics & speed insights if ever added
     'https://va.vercel-scripts.com',
+    // Web3Forms contact form submission
+    'https://api.web3forms.com',
   ],
   'worker-src':   ["'self'", 'blob:'],
   'manifest-src': ["'self'"],
