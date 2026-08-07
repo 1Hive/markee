@@ -1296,7 +1296,7 @@ export default function AccountPage() {
         strategyAddress={activateTarget?.address as `0x${string}` | undefined}
         title="ACTIVATE MARKEE"
         messageLabel="SET FIRST MESSAGE"
-        messagePlaceholder="Set the text your newly activated Markee will display..."
+        messagePlaceholder="Your message here..."
         ctaLabel="Activate Markee"
         onSuccess={() => { setActivateTarget(null); if (activeAddress) fetchAll(activeAddress) }}
       />
@@ -1309,7 +1309,7 @@ export default function AccountPage() {
           onClose={() => setActivateStreamBoard(null)}
           onSuccess={() => { setActivateStreamBoard(null); if (activeAddress) fetchAll(activeAddress) }}
           messageLabel="SET FIRST MESSAGE"
-          messagePlaceholder="Set the text your newly activated Markee will display..."
+          messagePlaceholder="Your message here..."
         />
       )}
     </div>

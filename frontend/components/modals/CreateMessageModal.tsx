@@ -38,7 +38,7 @@ export function CreateMessageModal({
   onCreated,
   title = 'Add a message',
   messageLabel = 'Message',
-  messagePlaceholder = 'Your message on the board',
+  messagePlaceholder = 'Your message here...',
 }: {
   board: Address
   onClose: () => void

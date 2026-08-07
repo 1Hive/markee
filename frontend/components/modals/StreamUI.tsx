@@ -170,7 +170,7 @@ export function ModalShell({ stepLabel, onClose, footer, children }: {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 480,
+          width: '100%', maxWidth: 560,
           background: BG2, borderRadius: 16, border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           fontFamily: 'Manrope, system-ui, sans-serif', color: TEXT, overflow: 'hidden',

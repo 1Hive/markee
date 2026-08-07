@@ -363,7 +363,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         onClose={() => setActivateOpen(false)}
         onSuccess={() => { setActivateOpen(false); refetchAll() }}
         messageLabel="SET FIRST MESSAGE"
-        messagePlaceholder="Set the text your newly activated Markee will display..."
+        messagePlaceholder="Your message here..."
       />
 
       {createOpen && (

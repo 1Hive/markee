@@ -449,44 +449,57 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
                     textAlign: 'left', cursor: 'pointer', width: '100%',
                     background: monthly === minMonthlyEth ? 'rgba(248,151,254,0.08)' : BG,
                     border: `1.5px solid ${monthly === minMonthlyEth ? PINK : BORDER}`,
-                    borderRadius: 12, padding: '13px 15px',
+                    borderRadius: 10, padding: '9px 12px',
                     transition: 'border-color 140ms',
                   }}
                 >
-                  <div style={{ color: monthly === minMonthlyEth ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5, fontFamily: 'Manrope, system-ui, sans-serif' }}>Minimum</div>
-                  <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{minMonthlyEth} ETH / mo</div>
-                  {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(Number(minMonthlyEth) * ethPrice)} / mo</div>}
-                  <div style={{ color: MUTED, fontSize: 12, marginTop: 4, fontFamily: 'Manrope, system-ui, sans-serif' }}>Stream at the lowest rate</div>
+                  <div style={{ color: monthly === minMonthlyEth ? PINK : TEXT2, fontSize: 11, fontWeight: 600, marginBottom: 3, fontFamily: 'Manrope, system-ui, sans-serif' }}>Minimum</div>
+                  <div style={{ color: TEXT, fontFamily: MONO, fontSize: 13, fontWeight: 800 }}>{minMonthlyEth} ETH / mo{ethPrice && <span style={{ color: BLUE, marginLeft: 8 }}>{formatUsd(Number(minMonthlyEth) * ethPrice)} / mo</span>}</div>
+                  <div style={{ color: MUTED, fontSize: 11, marginTop: 2, fontFamily: 'Manrope, system-ui, sans-serif' }}>Stream at the lowest rate</div>
                 </button>
               )}
 
-              <ModalField label="Monthly rate (ETH)">
-                <input
-                  inputMode="decimal"
-                  value={monthly}
-                  onChange={e => setMonthly(sanitizeDecimalInput(e.target.value))}
-                  placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.05'}
-                  style={inputStyle}
-                />
-                {minHint(monthly, belowMin)}
-                {!belowMin && calc.monthlyWei > 0n && ethPrice && (
-                  <div style={{ fontFamily: MONO, fontSize: 12, color: BLUE, marginTop: 6 }}>
-                    ≈ {formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)} / month
-                  </div>
-                )}
-                {!belowMin && !minLoaded && (
-                  <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Spinner size={10} /> Loading the board minimum…
-                  </div>
-                )}
-              </ModalField>
+              {/* Monthly rate + fund months side by side */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <ModalField label="Monthly rate (ETH)">
+                  <input
+                    inputMode="decimal"
+                    value={monthly}
+                    onChange={e => setMonthly(sanitizeDecimalInput(e.target.value))}
+                    placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.05'}
+                    style={inputStyle}
+                  />
+                  {minHint(monthly, belowMin)}
+                  {!belowMin && calc.monthlyWei > 0n && ethPrice && (
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: BLUE, marginTop: 6 }}>
+                      ≈ {formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)} / mo
+                    </div>
+                  )}
+                  {!belowMin && !minLoaded && (
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Spinner size={10} /> Loading…
+                    </div>
+                  )}
+                </ModalField>
+                <ModalField
+                  label="Fund for (months)"
+                  info="You send this much upfront and it streams out over time. Top up or stop whenever you like."
+                >
+                  <input
+                    inputMode="decimal"
+                    value={fundMonths}
+                    onChange={e => setFundMonths(sanitizeDecimalInput(e.target.value))}
+                    style={inputStyle}
+                  />
+                </ModalField>
+              </div>
 
               {/* Balance + use max */}
               {balanceData && (
-                <div style={{ fontSize: 12, color: MUTED, marginTop: -8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: -6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                   <span>
                     Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                    <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} kept for gas)</span>
+                    <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} for gas)</span>
                   </span>
                   {ethPrice && <span style={{ color: BLUE, fontFamily: MONO }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
                   <button
@@ -502,18 +515,6 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
                   </button>
                 </div>
               )}
-
-              <ModalField
-                label="Fund for (months)"
-                info="You send this much upfront and it streams out over time. Top up or stop whenever you like."
-              >
-                <input
-                  inputMode="decimal"
-                  value={fundMonths}
-                  onChange={e => setFundMonths(sanitizeDecimalInput(e.target.value))}
-                  style={inputStyle}
-                />
-              </ModalField>
 
               {calc.value > 0n && (
                 <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -553,11 +554,6 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
                 <button onClick={handleOpenStream} disabled={busy || !readsReady || belowMin} style={btnStyle(true, busy || !readsReady || belowMin)}>
                   {!readsReady ? <><Spinner /> Loading on-chain data…</> : isActivation ? 'Activate Markee' : 'Start streaming'}
                 </button>
-              )}
-              {!isActivation && (
-                <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                  Two quick transactions: an approval, then your stream goes live.
-                </div>
               )}
             </>
           )}

@@ -115,7 +115,7 @@ export function BuyMessageModal({
   subtitle,
   title,
   messageLabel = 'Set Your Message',
-  messagePlaceholder = 'Your message here',
+  messagePlaceholder = 'Your message here...',
 }: BuyMessageModalProps) {
   const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()

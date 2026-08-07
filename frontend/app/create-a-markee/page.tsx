@@ -113,7 +113,7 @@ const VERTICALS: VerticalInfo[] = [
 
 const STRATEGY_KEYS: Strategy[] = ['fixed', 'streaming']
 
-type StepKey = 'strategy' | 'setup' | 'review' | 'activate'
+type StepKey = 'setup' | 'review' | 'activate'
 
 // ── Platform glyph ──────────────────────────────────────────────────────────
 function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; color: string }) {
@@ -197,6 +197,7 @@ function StrategyPreviewCard({
   strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void
 }) {
   const [hovering, setHovering] = useState(false)
+  const [pressing, setPressing] = useState(false)
   const meta    = STRATEGIES[strategyKey]
   const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
 
@@ -211,95 +212,90 @@ function StrategyPreviewCard({
   const textGradient = `linear-gradient(120deg, ${C.text} 0%, ${meta.accent} 100%)`
 
   const borderColor = isSelected
-    ? 'rgba(248,151,254,0.65)'
+    ? 'rgba(248,151,254,0.75)'
     : active
     ? 'rgba(248,151,254,0.4)'
     : 'rgba(255,255,255,0.18)'
 
+  const handleClick = () => {
+    if (disabled) return
+    setPressing(true)
+    setTimeout(() => setPressing(false), 220)
+    onSelect()
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, paddingBottom: 20 }}>
-      {/* Card */}
-      <button
-        onClick={disabled ? undefined : onSelect}
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => setHovering(false)}
-        style={{
-          position: 'relative' as const, width: '100%',
-          textAlign: 'left' as const, cursor: disabled ? 'default' : 'pointer',
-          background: 'rgba(255,255,255,0.04)',
-          border: `1px solid ${borderColor}`,
-          borderRadius: 16, padding: '18px 26px 22px',
-          backdropFilter: 'blur(4px)',
-          opacity: disabled ? 0.55 : 1,
-          boxShadow: isSelected
-            ? `0 0 0 1px ${C.pink}55, 0 16px 44px rgba(6,10,42,0.55)`
-            : active ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
-          transform: active ? 'translateY(-2px)' : 'none',
-          transition: 'border-color 180ms, transform 180ms, box-shadow 180ms',
-          display: 'flex', flexDirection: 'column' as const,
-        }}
-      >
-        {/* View count — top right */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginBottom: 14, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.blue }}>
-          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-          </svg>
-          {sampleViews}
-        </div>
+    <button
+      onClick={handleClick}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => { setHovering(false); setPressing(false) }}
+      style={{
+        position: 'relative' as const, width: '100%', minHeight: 130,
+        textAlign: 'center' as const, cursor: disabled ? 'default' : 'pointer',
+        background: isSelected ? 'rgba(248,151,254,0.07)' : 'rgba(255,255,255,0.04)',
+        border: `1px solid ${borderColor}`,
+        borderRadius: 16, padding: '20px 24px',
+        backdropFilter: 'blur(4px)',
+        opacity: disabled ? 0.55 : 1,
+        boxShadow: isSelected
+          ? `0 0 0 4px rgba(248,151,254,0.14), 0 16px 44px rgba(6,10,42,0.55)`
+          : active ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
+        transform: pressing ? 'scale(0.96)' : active || isSelected ? 'translateY(-2px)' : 'none',
+        transition: 'border-color 220ms, transform 220ms, box-shadow 220ms, background 220ms',
+        display: 'flex', flexDirection: 'column' as const,
+        alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      {/* View count — absolute top-right */}
+      <div style={{ position: 'absolute' as const, top: 14, right: 18, display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.blue }}>
+        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        {sampleViews}
+      </div>
 
-        {/* Label + icon — gradient text, large */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <PlatGlyph icon={iconKey} color={meta.accent} size={28} />
-          <div style={{
-            fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700,
-            fontSize: 'clamp(20px, 2.5vw, 30px)', lineHeight: 1.15, letterSpacing: '-0.02em',
-            background: textGradient,
-            WebkitBackgroundClip: 'text' as const, backgroundClip: 'text' as const,
-            WebkitTextFillColor: 'transparent', userSelect: 'none' as const,
-          }}>
-            {meta.label}
-          </div>
-        </div>
-
-        {/* Price pill — floats up from bottom center on hover */}
-        <span style={{
-          position: 'absolute' as const, bottom: -14, left: '50%',
-          transform: `translateX(-50%) ${active ? 'translateY(0)' : 'translateY(4px)'}`,
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: meta.accent, color: C.bg,
-          fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700, fontSize: 12,
-          padding: '6px 14px', borderRadius: 8, whiteSpace: 'nowrap' as const,
-          boxShadow: `0 6px 22px ${meta.accent}66`,
-          opacity: active ? 1 : 0,
-          transition: 'opacity 180ms, transform 180ms',
-          pointerEvents: 'none' as const, zIndex: 3,
+      {/* Label + icon — centered, gradient text */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <PlatGlyph icon={iconKey} color={meta.accent} size={28} />
+        <div style={{
+          fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700,
+          fontSize: 'clamp(20px, 2.5vw, 30px)', lineHeight: 1.15, letterSpacing: '-0.02em',
+          background: textGradient,
+          WebkitBackgroundClip: 'text' as const, backgroundClip: 'text' as const,
+          WebkitTextFillColor: 'transparent', userSelect: 'none' as const,
         }}>
-          {pillText}
-        </span>
+          {meta.label}
+        </div>
+      </div>
 
-        {/* Coming soon badge */}
-        {disabled && (
-          <span style={{ position: 'absolute' as const, top: 12, right: 12, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
-        )}
+      {/* Price pill — floats up from bottom center on hover */}
+      <span style={{
+        position: 'absolute' as const, bottom: -14, left: '50%',
+        transform: `translateX(-50%) ${active ? 'translateY(0)' : 'translateY(4px)'}`,
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        background: meta.accent, color: C.bg,
+        fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700, fontSize: 12,
+        padding: '6px 14px', borderRadius: 8, whiteSpace: 'nowrap' as const,
+        boxShadow: `0 6px 22px ${meta.accent}66`,
+        opacity: active ? 1 : 0,
+        transition: 'opacity 180ms, transform 180ms',
+        pointerEvents: 'none' as const, zIndex: 3,
+      }}>
+        {pillText}
+      </span>
 
-        {/* Selected checkmark */}
-        {isSelected && (
-          <div style={{ position: 'absolute' as const, top: 12, right: 12, width: 22, height: 22, borderRadius: 99, background: C.pink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Check size={13} color={C.bg} strokeWidth={3} />
-          </div>
-        )}
-      </button>
-
-      {/* Tagline */}
-      <p style={{ margin: 0, color: C.muted, fontSize: 12, lineHeight: 1.4 }}>{meta.tagline}</p>
-    </div>
+      {/* Coming soon badge */}
+      {disabled && (
+        <span style={{ position: 'absolute' as const, top: 12, right: 12, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
+      )}
+    </button>
   )
 }
 
 // ── ChooseStrategy ──────────────────────────────────────────────────────────
 function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onSelect: (s: Strategy) => void }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24, marginBottom: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24, marginBottom: 28 }}>
       <StrategyPreviewCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} />
       <StrategyPreviewCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} />
     </div>
@@ -395,7 +391,7 @@ function CreateWizardInner() {
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   // Restore activate step from URL (survives tab reload after clicking Basescan link).
-  // Also handles ?strategy= deep-link for the strategy step.
+  // Also handles ?strategy= deep-link pre-selecting a strategy.
   useEffect(() => {
     const deployed = searchParams.get('deployed')
     const strategyParam = searchParams.get('strategy') as Strategy | null
@@ -403,7 +399,7 @@ function CreateWizardInner() {
       const s: Strategy = strategyParam === 'streaming' && STREAMING_ENABLED ? 'streaming' : 'fixed'
       setStrategy(s)
       setNewLeaderboardAddress(deployed)
-      setStep(3) // 'activate' is always index 3 in ['strategy','setup','review','activate']
+      setStep(2) // 'activate' is index 2 in ['setup','review','activate']
       return
     }
     if (strategyParam === 'streaming' && STREAMING_ENABLED) setStrategy('streaming')
@@ -441,12 +437,9 @@ function CreateWizardInner() {
 
   const vInfo = VERTICALS.find(v => v.key === 'openinternet')!
 
-  const stepKeys: StepKey[] = useMemo(() => {
-    if (!strategy) return ['strategy']
-    return ['strategy', 'setup', 'review', 'activate']
-  }, [strategy])
+  const stepKeys: StepKey[] = ['setup', 'review', 'activate']
 
-  const stepKey = stepKeys[step] ?? 'strategy'
+  const stepKey = stepKeys[step] ?? 'setup'
 
   const fieldsComplete = useMemo(() => {
     const b = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
@@ -498,27 +491,18 @@ function CreateWizardInner() {
     <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '48px 24px 80px' }}>
       <Link href="/raise-funding" style={{ color: C.muted, textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)' }}>← Raise Funding</Link>
       <h1 style={{ margin: '14px 0 32px', fontSize: 'clamp(28px,4vw,40px)', fontWeight: 800, letterSpacing: -1, color: C.text }}>
-        {stepKey === 'strategy' ? 'Choose a pricing strategy' : 'Create a Markee'}
+        Create a Markee
       </h1>
 
-      {step >= 1 && (
-        <Stepper steps={['Set up your Markee', 'Deploy Markee', 'Activate']} current={step - 1} />
-      )}
-
-      {stepKey === 'strategy' && (
-        <StepShell
-          onBack={() => router.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!strategy}
-        >
-          <ChooseStrategy selected={strategy} onSelect={setStrategy} />
-        </StepShell>
-      )}
+      <Stepper steps={['Set up your Markee', 'Deploy Markee', 'Activate']} current={step} />
 
       {stepKey === 'setup' && (
         <StepShell
           title="Set up your Markee"
-          sub="Name your Markee and set a beneficiary address to receive funds."
-          onBack={() => go(-1)} onNext={() => go(1)} nextDisabled={!fieldsComplete}
+          sub="Choose a pricing strategy, name your Markee, and set a beneficiary address to receive funds."
+          onBack={() => router.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!strategy || !fieldsComplete}
         >
+          <ChooseStrategy selected={strategy} onSelect={setStrategy} />
           <WebsiteSetupFields values={values} setValue={setValue} />
         </StepShell>
       )}
@@ -586,7 +570,7 @@ function CreateWizardInner() {
             strategyAddress={newLeaderboardAddress as `0x${string}`}
             title="ACTIVATE MARKEE"
             messageLabel="SET FIRST MESSAGE"
-            messagePlaceholder="Set the text your newly activated Markee will display..."
+            messagePlaceholder="Your message here..."
             ctaLabel="Activate Markee"
             onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
           />
@@ -598,7 +582,7 @@ function CreateWizardInner() {
             onClose={() => setStreamActivateOpen(false)}
             onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
             messageLabel="SET FIRST MESSAGE"
-            messagePlaceholder="Set the text your newly activated Markee will display..."
+            messagePlaceholder="Your message here..."
           />
         </div>
       )}
