@@ -200,7 +200,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
             Activate Markee →
           </button>
           <div style={{ marginTop: 20 }}>
-            <a href="/marketplace" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Marketplace</a>
+            <a href="/account" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Your Dashboard</a>
           </div>
         </section>
       ) : (

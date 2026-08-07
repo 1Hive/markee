@@ -212,9 +212,9 @@ function StrategyPreviewCard({
   const textGradient = `linear-gradient(120deg, ${C.text} 0%, ${meta.accent} 100%)`
 
   const borderColor = isSelected
-    ? 'rgba(248,151,254,0.75)'
+    ? 'rgba(124,156,255,0.75)'
     : active
-    ? 'rgba(248,151,254,0.4)'
+    ? 'rgba(124,156,255,0.35)'
     : 'rgba(255,255,255,0.18)'
 
   const handleClick = () => {
@@ -232,13 +232,13 @@ function StrategyPreviewCard({
       style={{
         position: 'relative' as const, width: '100%', minHeight: 130,
         textAlign: 'center' as const, cursor: disabled ? 'default' : 'pointer',
-        background: isSelected ? 'rgba(248,151,254,0.07)' : 'rgba(255,255,255,0.04)',
+        background: isSelected ? 'rgba(124,156,255,0.06)' : 'rgba(255,255,255,0.04)',
         border: `1px solid ${borderColor}`,
         borderRadius: 16, padding: '20px 24px',
         backdropFilter: 'blur(4px)',
         opacity: disabled ? 0.55 : 1,
         boxShadow: isSelected
-          ? `0 0 0 4px rgba(248,151,254,0.14), 0 16px 44px rgba(6,10,42,0.55)`
+          ? `0 0 0 4px rgba(124,156,255,0.12), 0 16px 44px rgba(6,10,42,0.55)`
           : active ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
         transform: pressing ? 'scale(0.96)' : active || isSelected ? 'translateY(-2px)' : 'none',
         transition: 'border-color 220ms, transform 220ms, box-shadow 220ms, background 220ms',
@@ -303,23 +303,32 @@ function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onS
 }
 
 // ── Website setup ───────────────────────────────────────────────────────────
-function WebsiteSetupFields({ values, setValue }: {
-  values: Record<string, string>; setValue: (k: string, v: string) => void
+function WebsiteSetupFields({ values, setValue, touched }: {
+  values: Record<string, string>; setValue: (k: string, v: string) => void; touched?: boolean
 }) {
   const mono = 'var(--font-jetbrains-mono)'
+  const nameOk = !!(values.siteName?.trim())
+  const beneOk = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
+  const errCss: React.CSSProperties = { fontFamily: mono, fontSize: 12, color: '#F87171', marginTop: 6 }
   const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box' }
   const labelCss: React.CSSProperties = { display: 'block', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 8 }
 
   return (
     <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 26 }}>
-      <label style={{ display: 'block', marginBottom: 20 }}>
-        <span style={labelCss}>Name this Markee</span>
-        <input value={values.siteName ?? ''} onChange={e => setValue('siteName', e.target.value)} placeholder="My Project" style={fieldBase} />
-      </label>
-      <label style={{ display: 'block' }}>
-        <span style={labelCss}>Beneficiary address</span>
-        <input value={values.beneficiary ?? ''} onChange={e => setValue('beneficiary', e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={{ ...fieldBase, fontFamily: mono }} />
-      </label>
+      <div style={{ marginBottom: 20 }}>
+        <label>
+          <span style={labelCss}>Name this Markee</span>
+          <input value={values.siteName ?? ''} onChange={e => setValue('siteName', e.target.value)} placeholder="My Project" style={fieldBase} />
+        </label>
+        {touched && !nameOk && <p style={{ ...errCss, margin: '6px 0 0' }}>Markee name is required.</p>}
+      </div>
+      <div>
+        <label>
+          <span style={labelCss}>Beneficiary address</span>
+          <input value={values.beneficiary ?? ''} onChange={e => setValue('beneficiary', e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={{ ...fieldBase, fontFamily: mono }} />
+        </label>
+        {touched && !beneOk && <p style={{ ...errCss, margin: '6px 0 0' }}>Enter a valid 0x wallet address.</p>}
+      </div>
     </div>
   )
 }
@@ -332,13 +341,12 @@ function ReviewSign({ vertical, strategy, values, selectedRepo, selectedFile, is
 }) {
   const mono = 'var(--font-jetbrains-mono)'
   const rows: [string, string][] = [
-    ['Strategy', STRATEGIES[strategy].label],
-    ['Placement', vertical.name],
+    ['Pricing Strategy', STRATEGIES[strategy].label],
     ...(selectedRepo ? [['Repository', selectedRepo] as [string, string]] : []),
     ...(selectedFile ? [['File', selectedFile] as [string, string]] : []),
-    ...(vertical.key === 'openinternet' && values.siteName ? [['Name', values.siteName] as [string, string]] : []),
+    ...(vertical.key === 'openinternet' && values.siteName ? [['Markee Name', values.siteName] as [string, string]] : []),
     ...(vertical.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, string]] : []),
-    ['Beneficiary', values.beneficiary ?? '-'],
+    ['Beneficiary Address', values.beneficiary ?? '-'],
   ]
 
   return (
@@ -386,6 +394,7 @@ function CreateWizardInner() {
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
+  const [setupTouched, setSetupTouched] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -498,12 +507,19 @@ function CreateWizardInner() {
 
       {stepKey === 'setup' && (
         <StepShell
-          title="Set up your Markee"
-          sub="Choose a pricing strategy, name your Markee, and set a beneficiary address to receive funds."
-          onBack={() => router.back()} backLabel="Cancel" onNext={() => go(1)} nextDisabled={!strategy || !fieldsComplete}
+          onBack={() => router.back()} backLabel="Cancel"
+          onNext={() => {
+            setSetupTouched(true)
+            if (strategy && fieldsComplete) go(1)
+          }}
         >
-          <ChooseStrategy selected={strategy} onSelect={setStrategy} />
-          <WebsiteSetupFields values={values} setValue={setValue} />
+          <h2 style={{ margin: '0 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Choose Pricing Strategy</h2>
+          <ChooseStrategy selected={strategy} onSelect={s => { setStrategy(s); setSetupTouched(false) }} />
+          {setupTouched && !strategy && (
+            <p style={{ margin: '-16px 0 24px', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12, color: '#F87171' }}>Please select a pricing strategy.</p>
+          )}
+          <h2 style={{ margin: '16px 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Add Funding Recipient Details</h2>
+          <WebsiteSetupFields values={values} setValue={setValue} touched={setupTouched} />
         </StepShell>
       )}
 
@@ -557,7 +573,7 @@ function CreateWizardInner() {
               Activate Markee →
             </button>
             <div style={{ marginTop: 16 }}>
-              <Link href={`/markee/${newLeaderboardAddress}`} style={{ color: C.muted, fontSize: 13, textDecoration: 'none' }}>
+              <Link href="/account" style={{ color: C.muted, fontSize: 13, textDecoration: 'none' }}>
                 Skip for now →
               </Link>
             </div>
