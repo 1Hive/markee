@@ -200,11 +200,13 @@ function StrategyPreviewCard({
   const meta = STRATEGIES[strategyKey]
   const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
 
-  const sampleViews = strategyKey === 'fixed' ? '1.2K' : '874'
-  const priceLabel = strategyKey === 'fixed' ? '$5.00 Lump Sum Payment' : '$5/mo. Payment Stream'
+  const sampleMsg    = strategyKey === 'fixed'  ? 'FUND MY NEXT FEATURE →' : 'BUILDING ON BASE →'
+  const sampleAuthor = strategyKey === 'fixed'  ? 'example.xyz' : 'example.xyz'
+  const sampleViews  = strategyKey === 'fixed'  ? '1.5K' : '892'
+  const priceLabel   = strategyKey === 'fixed'  ? '$5.00 Lump Sum' : '$5/mo. Stream'
 
-  const outerBorder = selected ? C.pink : (hovering && !disabled) ? C.borderHover : C.border
-  const innerBorder = selected ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.25)'
+  const active = hovering && !disabled
+  const outerBorderColor = selected ? C.pink : active ? C.borderHover : C.border
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
@@ -214,68 +216,82 @@ function StrategyPreviewCard({
         <span style={{ color: meta.accent, fontWeight: 700, fontSize: 14 }}>{meta.label}</span>
       </div>
 
-      {/* Card */}
+      {/* Card outer */}
       <button
         onClick={disabled ? undefined : onSelect}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
         style={{
           textAlign: 'left' as const, cursor: disabled ? 'default' : 'pointer',
-          background: selected ? 'rgba(248,151,254,0.06)' : C.bg2,
-          border: `1px solid ${outerBorder}`,
-          borderRadius: 14, padding: 0, width: '100%',
-          opacity: disabled ? 0.55 : 1,
-          position: 'relative' as const,
-          transition: 'border-color 160ms, background 160ms',
+          background: C.bg2, borderRadius: 12, padding: 0, width: '100%',
+          opacity: disabled ? 0.55 : 1, position: 'relative' as const,
+          border: `1px solid ${outerBorderColor}`,
+          boxShadow: selected ? `0 0 0 1px ${C.pink}` : 'none',
+          transition: 'border-color 160ms, box-shadow 160ms',
           display: 'flex', flexDirection: 'column' as const,
         }}
       >
-        {/* Inner message area */}
+        {/* Inner bordered message area — matches MarkeeCard large */}
         <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{ border: `1px solid ${innerBorder}`, borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
-            <div style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 13, fontWeight: 600, color: C.text, lineHeight: 1.55 }}>
-              {meta.summary}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <span style={{ fontSize: 11, color: C.muted, fontStyle: 'italic' }}>— example.xyz</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer: views + price label */}
-        <div style={{ borderTop: `1px solid ${C.border}`, padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.muted, fontSize: 12 }}>
-            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-            <span>{sampleViews} views</span>
-          </div>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            color: (hovering && !disabled) ? meta.accent : C.muted,
-            fontSize: 11, transition: 'color 160ms',
+            border: `1px solid ${selected ? 'rgba(248,151,254,0.3)' : 'rgba(138,143,191,0.25)'}`,
+            borderRadius: 8, padding: '14px 16px',
+            display: 'flex', flexDirection: 'column' as const, gap: 12,
+            transition: 'border-color 160ms',
           }}>
-            <PlatGlyph icon={iconKey} color={(hovering && !disabled) ? meta.accent : C.muted} size={11} />
-            <span>{priceLabel}</span>
+            {/* View count — top right, matches real card */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.muted, fontSize: 12 }}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                {sampleViews}
+              </div>
+            </div>
+
+            {/* Message — big bold JetBrains Mono, the centerpiece */}
+            <div style={{
+              fontFamily: 'var(--font-jetbrains-mono)',
+              fontSize: 18, fontWeight: 700, color: C.text,
+              lineHeight: 1.35, userSelect: 'none' as const,
+            }}>
+              {sampleMsg}
+            </div>
+
+            {/* Attribution — bottom right, italic muted */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <span style={{ fontSize: 12, color: C.muted, fontStyle: 'italic' }}>— {sampleAuthor}</span>
+            </div>
           </div>
         </div>
 
-        {/* Coming soon badge */}
+        {/* Price tag footer */}
+        <div style={{
+          borderTop: `1px solid ${C.border}`, padding: '8px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5,
+          color: active ? meta.accent : C.muted,
+          fontSize: 11, transition: 'color 160ms',
+        }}>
+          <PlatGlyph icon={iconKey} color={active ? meta.accent : C.muted} size={11} />
+          <span>{priceLabel}</span>
+        </div>
+
+        {/* Disabled / coming soon */}
         {disabled && (
-          <div style={{ position: 'absolute' as const, top: 10, right: 10 }}>
-            <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
+          <div style={{ position: 'absolute' as const, top: -11, right: 10 }}>
+            <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
           </div>
         )}
 
         {/* Selected checkmark */}
         {selected && (
-          <div style={{ position: 'absolute' as const, top: 10, right: 10, width: 22, height: 22, borderRadius: 99, background: C.pink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute' as const, top: -11, right: 10, width: 22, height: 22, borderRadius: 99, background: C.pink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Check size={13} color={C.bg} strokeWidth={3} />
           </div>
         )}
       </button>
 
-      {/* Tagline below card */}
+      {/* Tagline below */}
       <p style={{ margin: 0, color: C.muted, fontSize: 12, lineHeight: 1.4 }}>{meta.tagline}</p>
     </div>
   )
