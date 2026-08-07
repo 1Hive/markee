@@ -11,6 +11,7 @@ import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
 import { ManageStreamModal } from '@/components/modals/ManageStreamModal'
 import { ClaimModal } from '@/components/modals/ClaimModal'
 import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
+import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -65,6 +66,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   // ── Modal state ─────────────────────────────────────────────────────────────
   const [target, setTarget] = useState<StreamTarget | null>(null)
+  const [activateOpen, setActivateOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
@@ -166,14 +168,14 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
           {meta.name && (
             <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.name}</div>
           )}
-          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>No messages yet</h1>
-          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Add a message and stream to it to take the top spot.</p>
+          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Activate your Markee</h1>
+          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Buy the first message to activate your Markee.</p>
           {canStream && (
             <button
-              onClick={() => setCreateOpen(true)}
+              onClick={() => setActivateOpen(true)}
               style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '13px 26px', fontWeight: 700, fontSize: 15, fontFamily: MONO, cursor: 'pointer', boxShadow: '0 4px 18px rgba(248,151,254,0.3)' }}
             >
-              Add the First Message
+              Activate Markee →
             </button>
           )}
           <div style={{ marginTop: 20 }}>
@@ -353,6 +355,15 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         board={board}
         onClose={() => setClaimOpen(false)}
         onSuccess={refetchAll}
+      />
+
+      <StreamActivateModal
+        isOpen={activateOpen}
+        board={board}
+        onClose={() => setActivateOpen(false)}
+        onSuccess={() => { setActivateOpen(false); refetchAll() }}
+        messageLabel="SET FIRST MESSAGE"
+        messagePlaceholder="Set the text your newly activated Markee will display..."
       />
 
       {createOpen && (

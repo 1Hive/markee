@@ -191,13 +191,13 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
           {meta.leaderboardName && (
             <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.leaderboardName}</div>
           )}
-          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>No messages yet</h1>
-          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Be the first to buy a message and take the top spot.</p>
+          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Activate your Markee</h1>
+          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Buy the first message to activate your Markee.</p>
           <button
             onClick={openBuy}
             style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '13px 26px', fontWeight: 700, fontSize: 15, fontFamily: MONO, cursor: 'pointer', boxShadow: '0 4px 18px rgba(248,151,254,0.3)' }}
           >
-            Buy First Message
+            Activate Markee →
           </button>
           <div style={{ marginTop: 20 }}>
             <a href="/marketplace" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Marketplace</a>
@@ -394,6 +394,12 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
           initialMode="create"
           strategyAddress={leaderboardAddress as `0x${string}`}
           topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
+          {...(!topMarkee ? {
+            title: 'ACTIVATE MARKEE',
+            messageLabel: 'SET FIRST MESSAGE',
+            messagePlaceholder: 'Set the text your newly activated Markee will display...',
+            ctaLabel: 'Activate Markee',
+          } : {})}
         />
       )}
 
