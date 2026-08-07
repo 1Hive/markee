@@ -25,6 +25,21 @@ const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
 
 const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+// createMarkee sets up the pool in the same tx, but the RPC node may not reflect
+// it immediately after confirmation. Poll until non-zero before proceeding (up to ~18s).
+async function waitForPool(
+  readFn: (markeeAddress: Address) => Promise<unknown>,
+  markeeAddress: Address,
+): Promise<Address> {
+  for (let i = 0; i < 12; i++) {
+    if (i > 0) await new Promise<void>(r => setTimeout(r, 1500))
+    const pool = await readFn(markeeAddress) as Address
+    if (pool && pool.toLowerCase() !== ZERO_ADDRESS) return pool
+  }
+  throw new Error('Pool not ready after 18 s — please try again.')
+}
 
 const ADMIN_ABI = [
   { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
@@ -172,18 +187,20 @@ export function StreamActivateModal({
       }
       if (!markeeAddress) throw new Error('Could not find new Markee address in receipt.')
 
-      // Read agreements, pool, and allowance inline (pool only exists after createMarkee)
-      const [cfaAgreement, gdaAgreement, pool, currentAllowance] = await Promise.all([
+      // Read stable Superfluid addresses and allowance, then poll for pool
+      // (pool is created inside createMarkee but RPC may lag behind chain state)
+      const [cfaAgreement, gdaAgreement, currentAllowance] = await Promise.all([
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID] }),
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID] }),
-        publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [markeeAddress] }),
         publicClient.readContract({ address: ETHX, abi: erc20Abi, functionName: 'allowance', args: [address, board] }),
       ])
       if (!mountedRef.current) return
 
-      if (!pool || (pool as Address) === '0x0000000000000000000000000000000000000000') {
-        throw new Error('Markee pool not yet initialized. Please try again.')
-      }
+      const pool = await waitForPool(
+        (addr) => publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [addr] }),
+        markeeAddress,
+      )
+      if (!mountedRef.current) return
 
       // ── Tx 2: Approve (if needed) ────────────────────────────────────────
       if ((currentAllowance as bigint) < calc.buffer) {
