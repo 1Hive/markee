@@ -278,16 +278,21 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
     { key: 'funded',  label: "Messages I've Funded", n: counts.funded  },
   ]
   return (
-    <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${BORDER}`, overflowX: 'auto' }}>
-      {items.map(it => {
-        const on = tab === it.key
-        return (
-          <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : MUTED, fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? PINK : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {it.label}
-            <span style={{ fontFamily: MONO, fontSize: 12, color: on ? PINK : MUTED, background: on ? `${PINK}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
-          </button>
-        )
-      })}
+    <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}`, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+        {items.map(it => {
+          const on = tab === it.key
+          return (
+            <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : MUTED, fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? PINK : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {it.label}
+              <span style={{ fontFamily: MONO, fontSize: 12, color: on ? PINK : MUTED, background: on ? `${PINK}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
+            </button>
+          )
+        })}
+      </div>
+      <a href="/create-a-markee" style={{ flexShrink: 0, marginLeft: 16, marginRight: 4, padding: '8px 16px', background: PINK, color: BG, borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+        + Create a New Markee
+      </a>
     </div>
   )
 }
