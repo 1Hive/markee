@@ -190,108 +190,115 @@ function StepShell({ title, sub, children, onBack, onNext, nextLabel, nextDisabl
   )
 }
 
-// ── Strategy preview card ────────────────────────────────────────────────────
+// ── Strategy preview card — styled after FeaturedCard in board-detail/shared.tsx ──
 function StrategyPreviewCard({
   strategyKey, selected, disabled, onSelect,
 }: {
   strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void
 }) {
   const [hovering, setHovering] = useState(false)
-  const meta = STRATEGIES[strategyKey]
+  const meta    = STRATEGIES[strategyKey]
   const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
 
-  const sampleMsg    = strategyKey === 'fixed'  ? 'FUND MY NEXT FEATURE →' : 'BUILDING ON BASE →'
-  const sampleAuthor = strategyKey === 'fixed'  ? 'example.xyz' : 'example.xyz'
-  const sampleViews  = strategyKey === 'fixed'  ? '1.5K' : '892'
-  const priceLabel   = strategyKey === 'fixed'  ? '$5.00 Lump Sum' : '$5/mo. Stream'
+  const sampleMsg   = strategyKey === 'fixed' ? 'FUND MY NEXT FEATURE →' : 'BUILDING ON BASE →'
+  const sampleViews = strategyKey === 'fixed' ? '1.5K' : '892'
+  const priceLabel  = strategyKey === 'fixed' ? '$5.00 Lump Sum' : '$5/mo. Stream'
 
-  const active = hovering && !disabled
-  const outerBorderColor = selected ? C.pink : active ? C.borderHover : C.border
+  const active     = hovering && !disabled
+  const isSelected = selected && !disabled
+
+  // Gradient text: white → strategy accent, exactly like FeaturedCard
+  const textGradient = `linear-gradient(120deg, ${C.text} 0%, ${meta.accent} 100%)`
+
+  const borderColor = isSelected
+    ? 'rgba(248,151,254,0.65)'
+    : active
+    ? 'rgba(248,151,254,0.4)'
+    : 'rgba(255,255,255,0.18)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
-      {/* Label + icon above card */}
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, paddingBottom: 20 }}>
+      {/* Label + icon above */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <PlatGlyph icon={iconKey} color={meta.accent} size={17} />
         <span style={{ color: meta.accent, fontWeight: 700, fontSize: 14 }}>{meta.label}</span>
       </div>
 
-      {/* Card outer */}
+      {/* Card — matches FeaturedCard layout & styling exactly */}
       <button
         onClick={disabled ? undefined : onSelect}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
         style={{
+          position: 'relative' as const, width: '100%',
           textAlign: 'left' as const, cursor: disabled ? 'default' : 'pointer',
-          background: C.bg2, borderRadius: 12, padding: 0, width: '100%',
-          opacity: disabled ? 0.55 : 1, position: 'relative' as const,
-          border: `1px solid ${outerBorderColor}`,
-          boxShadow: selected ? `0 0 0 1px ${C.pink}` : 'none',
-          transition: 'border-color 160ms, box-shadow 160ms',
+          background: 'rgba(255,255,255,0.04)',
+          border: `1px solid ${borderColor}`,
+          borderRadius: 16, padding: '18px 26px 22px',
+          backdropFilter: 'blur(4px)',
+          opacity: disabled ? 0.55 : 1,
+          boxShadow: isSelected
+            ? `0 0 0 1px ${C.pink}55, 0 16px 44px rgba(6,10,42,0.55)`
+            : active ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
+          transform: active ? 'translateY(-2px)' : 'none',
+          transition: 'border-color 180ms, transform 180ms, box-shadow 180ms',
           display: 'flex', flexDirection: 'column' as const,
         }}
       >
-        {/* Inner bordered message area — matches MarkeeCard large */}
-        <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{
-            border: `1px solid ${selected ? 'rgba(248,151,254,0.3)' : 'rgba(138,143,191,0.25)'}`,
-            borderRadius: 8, padding: '14px 16px',
-            display: 'flex', flexDirection: 'column' as const, gap: 12,
-            transition: 'border-color 160ms',
-          }}>
-            {/* View count — top right, matches real card */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.muted, fontSize: 12 }}>
-                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-                {sampleViews}
-              </div>
-            </div>
-
-            {/* Message — big bold JetBrains Mono, the centerpiece */}
-            <div style={{
-              fontFamily: 'var(--font-jetbrains-mono)',
-              fontSize: 18, fontWeight: 700, color: C.text,
-              lineHeight: 1.35, userSelect: 'none' as const,
-            }}>
-              {sampleMsg}
-            </div>
-
-            {/* Attribution — bottom right, italic muted */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <span style={{ fontSize: 12, color: C.muted, fontStyle: 'italic' }}>— {sampleAuthor}</span>
-            </div>
-          </div>
+        {/* View count — top right, blue, small caps, matches FeaturedCard */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginBottom: 14, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.blue }}>
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+          {sampleViews}
         </div>
 
-        {/* Price tag footer */}
+        {/* Message — gradient text, large, matches FeaturedCard exactly */}
         <div style={{
-          borderTop: `1px solid ${C.border}`, padding: '8px 16px',
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5,
-          color: active ? meta.accent : C.muted,
-          fontSize: 11, transition: 'color 160ms',
+          fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700,
+          fontSize: 'clamp(16px, 2.5vw, 28px)', lineHeight: 1.15, letterSpacing: '-0.02em',
+          background: textGradient,
+          WebkitBackgroundClip: 'text' as const, backgroundClip: 'text' as const,
+          WebkitTextFillColor: 'transparent', userSelect: 'none' as const,
         }}>
-          <PlatGlyph icon={iconKey} color={active ? meta.accent : C.muted} size={11} />
-          <span>{priceLabel}</span>
+          {sampleMsg}
         </div>
 
-        {/* Disabled / coming soon */}
+        {/* Attribution — bottom right italic, matches FeaturedCard */}
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, fontSize: 12, color: C.muted, fontStyle: 'italic' }}>
+          <span>—</span><span>example.xyz</span>
+        </div>
+
+        {/* Price pill — floats up from bottom center on hover, matches FeaturedCard pillLabel */}
+        <span style={{
+          position: 'absolute' as const, bottom: -14, left: '50%',
+          transform: `translateX(-50%) ${active ? 'translateY(0)' : 'translateY(4px)'}`,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: meta.accent, color: C.bg,
+          fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700, fontSize: 12,
+          padding: '6px 14px', borderRadius: 8, whiteSpace: 'nowrap' as const,
+          boxShadow: `0 6px 22px ${meta.accent}66`,
+          opacity: active ? 1 : 0,
+          transition: 'opacity 180ms, transform 180ms',
+          pointerEvents: 'none' as const, zIndex: 3,
+        }}>
+          <PlatGlyph icon={iconKey} color={C.bg} size={11} />{priceLabel}
+        </span>
+
+        {/* Coming soon badge */}
         {disabled && (
-          <div style={{ position: 'absolute' as const, top: -11, right: 10 }}>
-            <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
-          </div>
+          <span style={{ position: 'absolute' as const, top: 12, right: 12, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
         )}
 
         {/* Selected checkmark */}
-        {selected && (
-          <div style={{ position: 'absolute' as const, top: -11, right: 10, width: 22, height: 22, borderRadius: 99, background: C.pink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isSelected && (
+          <div style={{ position: 'absolute' as const, top: 12, right: 12, width: 22, height: 22, borderRadius: 99, background: C.pink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Check size={13} color={C.bg} strokeWidth={3} />
           </div>
         )}
       </button>
 
-      {/* Tagline below */}
+      {/* Tagline */}
       <p style={{ margin: 0, color: C.muted, fontSize: 12, lineHeight: 1.4 }}>{meta.tagline}</p>
     </div>
   )
@@ -300,7 +307,7 @@ function StrategyPreviewCard({
 // ── ChooseStrategy ──────────────────────────────────────────────────────────
 function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onSelect: (s: Strategy) => void }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24, marginBottom: 8 }}>
       <StrategyPreviewCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} />
       <StrategyPreviewCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} />
     </div>
