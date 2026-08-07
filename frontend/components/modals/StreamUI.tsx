@@ -231,23 +231,18 @@ export function TxSteps({ steps }: { steps: { label: string; done: boolean; acti
 }
 
 // The in-flight / success body: ring + headline + supporting line.
-export function TxProgress({ isSuccess, headline, detail, steps }: {
+export function TxProgress({ isSuccess, headline, steps }: {
   isSuccess: boolean
   headline: string
-  detail: string
+  detail?: string
   steps?: { label: string; done: boolean; active: boolean }[]
 }) {
   return (
     <div style={{ padding: steps ? '40px 22px 40px' : '56px 22px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
       {steps && <TxSteps steps={steps} />}
       <TxRing done={isSuccess} />
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-          {headline}
-        </div>
-        <div style={{ color: MUTED, fontSize: 13, maxWidth: 320, lineHeight: 1.5 }}>
-          {detail}
-        </div>
+      <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+        {headline}
       </div>
     </div>
   )
