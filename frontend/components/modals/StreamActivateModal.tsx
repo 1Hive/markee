@@ -8,7 +8,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
   STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID,
-  monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps,
+  CFA_FORWARDER_ABI, monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
@@ -23,6 +23,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
+const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
 
 const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
@@ -162,6 +163,17 @@ export function StreamActivateModal({
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
 
     try {
+      // Guard: CFA createFlow fails if the backer already has an active stream to this board.
+      // Check before tx1 so we don't create an orphan Markee that can never be activated.
+      const existingRate = await publicClient.readContract({
+        address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
+        functionName: 'getFlowrate', args: [ETHX, address, board],
+      }) as bigint
+      if (existingRate > 0n) {
+        setError('You already have an active stream to this board. Stop it first, then activate your new Markee.')
+        return
+      }
+
       // ── Tx 1: Create Markee ──────────────────────────────────────────────
       setPhase('creating')
       const createHash = await writeContractAsync({
@@ -256,7 +268,7 @@ export function StreamActivateModal({
   const done = phase === 'done' || isSuccess
 
   const activationSteps = [
-    { label: 'Create Markee', done: phase !== 'creating' && phase !== 'idle', active: phase === 'creating' },
+    { label: 'Create Markee Message', done: phase !== 'creating' && phase !== 'idle', active: phase === 'creating' },
     { label: 'Approve Deposit', done: phase === 'streaming' || done, active: phase === 'approving' },
     { label: 'Start Stream', done: done, active: phase === 'streaming' },
   ]
