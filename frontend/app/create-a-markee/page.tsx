@@ -200,14 +200,14 @@ function StrategyPreviewCard({
   const meta    = STRATEGIES[strategyKey]
   const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
 
-  const sampleMsg   = strategyKey === 'fixed' ? 'FUND MY NEXT FEATURE →' : 'BUILDING ON BASE →'
   const sampleViews = strategyKey === 'fixed' ? '1.5K' : '892'
-  const priceLabel  = strategyKey === 'fixed' ? '$5.00 Lump Sum' : '$5/mo. Stream'
+  const pillText    = strategyKey === 'fixed'
+    ? 'Pay lump sum to change a message.'
+    : 'Stream payment to change a message.'
 
   const active     = hovering && !disabled
   const isSelected = selected && !disabled
 
-  // Gradient text: white → strategy accent, exactly like FeaturedCard
   const textGradient = `linear-gradient(120deg, ${C.text} 0%, ${meta.accent} 100%)`
 
   const borderColor = isSelected
@@ -218,13 +218,7 @@ function StrategyPreviewCard({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, paddingBottom: 20 }}>
-      {/* Label + icon above */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <PlatGlyph icon={iconKey} color={meta.accent} size={17} />
-        <span style={{ color: meta.accent, fontWeight: 700, fontSize: 14 }}>{meta.label}</span>
-      </div>
-
-      {/* Card — matches FeaturedCard layout & styling exactly */}
+      {/* Card */}
       <button
         onClick={disabled ? undefined : onSelect}
         onMouseEnter={() => setHovering(true)}
@@ -245,7 +239,7 @@ function StrategyPreviewCard({
           display: 'flex', flexDirection: 'column' as const,
         }}
       >
-        {/* View count — top right, blue, small caps, matches FeaturedCard */}
+        {/* View count — top right */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginBottom: 14, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.blue }}>
           <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -253,23 +247,21 @@ function StrategyPreviewCard({
           {sampleViews}
         </div>
 
-        {/* Message — gradient text, large, matches FeaturedCard exactly */}
-        <div style={{
-          fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700,
-          fontSize: 'clamp(16px, 2.5vw, 28px)', lineHeight: 1.15, letterSpacing: '-0.02em',
-          background: textGradient,
-          WebkitBackgroundClip: 'text' as const, backgroundClip: 'text' as const,
-          WebkitTextFillColor: 'transparent', userSelect: 'none' as const,
-        }}>
-          {sampleMsg}
+        {/* Label + icon — gradient text, large */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <PlatGlyph icon={iconKey} color={meta.accent} size={28} />
+          <div style={{
+            fontFamily: 'var(--font-jetbrains-mono)', fontWeight: 700,
+            fontSize: 'clamp(20px, 2.5vw, 30px)', lineHeight: 1.15, letterSpacing: '-0.02em',
+            background: textGradient,
+            WebkitBackgroundClip: 'text' as const, backgroundClip: 'text' as const,
+            WebkitTextFillColor: 'transparent', userSelect: 'none' as const,
+          }}>
+            {meta.label}
+          </div>
         </div>
 
-        {/* Attribution — bottom right italic, matches FeaturedCard */}
-        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, fontSize: 12, color: C.muted, fontStyle: 'italic' }}>
-          <span>—</span><span>example.xyz</span>
-        </div>
-
-        {/* Price pill — floats up from bottom center on hover, matches FeaturedCard pillLabel */}
+        {/* Price pill — floats up from bottom center on hover */}
         <span style={{
           position: 'absolute' as const, bottom: -14, left: '50%',
           transform: `translateX(-50%) ${active ? 'translateY(0)' : 'translateY(4px)'}`,
@@ -282,7 +274,7 @@ function StrategyPreviewCard({
           transition: 'opacity 180ms, transform 180ms',
           pointerEvents: 'none' as const, zIndex: 3,
         }}>
-          <PlatGlyph icon={iconKey} color={C.bg} size={11} />{priceLabel}
+          {pillText}
         </span>
 
         {/* Coming soon badge */}
