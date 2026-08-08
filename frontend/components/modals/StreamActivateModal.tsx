@@ -93,6 +93,7 @@ export function StreamActivateModal({
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
+  const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>(null)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
@@ -133,15 +134,24 @@ export function StreamActivateModal({
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
-  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Number(formatEther(calc.value)))
+  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Number(formatEther(calc.monthlyWei)))
 
   // ── Reset on close ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) {
       setMessage(''); setMonthly(''); setFundMonths('1')
       setPhase('idle'); setError(null); setTxHash(undefined); reset()
+      setLastPreset(null)
     }
   }, [isOpen, reset])
+
+  // ── Initialize to minimum rate when it loads ──────────────────────────────
+  useEffect(() => {
+    if (minMonthlyWei && !monthly) {
+      setMonthly(minMonthlyEth)
+      setLastPreset('min')
+    }
+  }, [minMonthlyWei]) // eslint-disable-line
 
   // ── Success → close ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -301,8 +311,7 @@ export function StreamActivateModal({
         62/38 split
         {boardAdmin && (
           <InfoTip>
-            62% goes to the board beneficiary · 38% to the{' '}
-            <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+            62% to the sign&apos;s Beneficiary / 38% to the Revnet, issuing MARKEE for you
           </InfoTip>
         )}
       </div>
@@ -364,36 +373,40 @@ export function StreamActivateModal({
           <div style={{
             border: `1.5px solid ${PINK}`,
             borderRadius: 12,
-            padding: '16px',
+            padding: '14px 16px',
             background: BG,
             boxShadow: '0 0 24px rgba(248,151,254,0.08)',
           }}>
-            {/* Large amount input + MIN/MAX */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flex: 1, minWidth: 0 }}>
+            {/* Number + unit inline on left, MIN/MAX on right */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                 <input
                   inputMode="decimal"
                   value={monthly}
-                  onChange={e => setMonthly(sanitizeDecimalInput(e.target.value))}
+                  onChange={e => { setMonthly(sanitizeDecimalInput(e.target.value)); setLastPreset(null) }}
                   placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
                   style={{
                     background: 'transparent', border: 'none', outline: 'none',
-                    color: TEXT, fontFamily: MONO, fontSize: 34, fontWeight: 800,
-                    width: '1px', flex: 1, minWidth: 0, padding: 0,
+                    color: TEXT, fontFamily: MONO, fontSize: 26, fontWeight: 800,
+                    padding: 0,
+                    width: `${Math.max(5, (monthly || (minLoaded && minMonthlyWei ? minMonthlyEth : '0.001')).length + 0.5)}ch`,
                   }}
                 />
-                <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED, flexShrink: 0 }}>ETH/mo</span>
+                <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
               </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   type="button"
-                  onClick={() => minMonthlyWei && setMonthly(minMonthlyEth)}
+                  onClick={() => { if (minMonthlyWei) { setMonthly(minMonthlyEth); setLastPreset('min') } }}
                   disabled={!minLoaded}
                   style={{
-                    border: `1px solid ${PINK}`, background: 'transparent', color: PINK,
-                    borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                    border: `1px solid ${lastPreset === 'min' ? PINK : BORDER}`,
+                    background: 'transparent',
+                    color: lastPreset === 'min' ? PINK : TEXT2,
+                    borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
                     fontWeight: 700, cursor: minLoaded ? 'pointer' : 'default',
                     opacity: minLoaded ? 1 : 0.4,
+                    transition: 'border-color 120ms, color 120ms',
                   }}
                 >
                   MIN
@@ -402,14 +415,17 @@ export function StreamActivateModal({
                   type="button"
                   onClick={() => {
                     const months = BigInt(Math.max(1, Number(fundMonths) || 1))
-                    if (spendableBalance > 0n) setMonthly(formatEther(spendableBalance / months))
+                    if (spendableBalance > 0n) { setMonthly(formatEther(spendableBalance / months)); setLastPreset('max') }
                   }}
                   disabled={spendableBalance <= 0n}
                   style={{
-                    border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2,
-                    borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                    border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
+                    background: 'transparent',
+                    color: lastPreset === 'max' ? PINK : TEXT2,
+                    borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
                     fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
                     opacity: spendableBalance > 0n ? 1 : 0.4,
+                    transition: 'border-color 120ms, color 120ms',
                   }}
                 >
                   MAX
@@ -418,7 +434,7 @@ export function StreamActivateModal({
             </div>
 
             {/* USD equiv + balance */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 12 }}>
               <span>
                 {belowMin
                   ? `Min: ${minMonthlyEth} ETH/mo`
@@ -441,7 +457,7 @@ export function StreamActivateModal({
                     type="button"
                     onClick={() => setFundMonths(mo)}
                     style={{
-                      flex: 1, padding: '9px 0', borderRadius: 8, cursor: 'pointer',
+                      flex: 1, padding: '8px 0', borderRadius: 8, cursor: 'pointer',
                       border: `1px solid ${sel ? PINK : BORDER}`,
                       background: sel ? PINK : 'transparent',
                       color: sel ? BG : TEXT2,
@@ -457,7 +473,7 @@ export function StreamActivateModal({
 
             {/* ETH total */}
             {calc.prefund > 0n && (
-              <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 13 }}>
+              <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 12 }}>
                 <span style={{ color: TEXT, fontWeight: 700 }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
                 <span style={{ color: MUTED }}> total</span>
               </div>
@@ -465,19 +481,19 @@ export function StreamActivateModal({
           </div>
 
           {/* You'll receive — horizontal */}
-          {calc.value > 0n && (
+          {calc.monthlyWei > 0n && (
             <div style={{
-              borderRadius: 14, padding: '16px 20px',
+              borderRadius: 14, padding: '14px 20px',
               background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
               border: `1px solid rgba(248,151,254,0.35)`,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <span style={{ color: PINK, fontSize: 15, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 30, letterSpacing: -0.5 }}>
+              <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
                   {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </span>
-                <span style={{ color: PINK, fontSize: 14, fontWeight: 700 }}>MARKEE</span>
+                <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE/mo</span>
               </div>
             </div>
           )}

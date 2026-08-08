@@ -14,7 +14,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip } from '@/components/modals/StreamUI'
 import type { Markee } from '@/types'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -126,6 +126,7 @@ export function BuyMessageModal({
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
+  const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>('min')
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -227,6 +228,7 @@ export function BuyMessageModal({
     setAmount('')
     setError(null)
     setHasUserEdited(false)
+    setLastPreset(null)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userMarkee, initialMode, isOpen, reset])
@@ -235,6 +237,7 @@ export function BuyMessageModal({
     if (!isOpen) return
     if (hasCompetition && takeFirstAmountFormatted) setAmount(takeFirstAmountFormatted)
     else setAmount(minimumAmountFormatted)
+    setLastPreset('min')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -394,7 +397,7 @@ export function BuyMessageModal({
           border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           fontFamily: 'Manrope, system-ui, sans-serif',
-          color: TEXT, overflow: 'hidden',
+          color: TEXT, overflow: 'visible',
           animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
           maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         }}
@@ -566,38 +569,42 @@ export function BuyMessageModal({
                   <div style={{
                     border: `1.5px solid ${PINK}`,
                     borderRadius: 12,
-                    padding: '16px',
+                    padding: '14px 16px',
                     background: BG,
                     boxShadow: '0 0 24px rgba(248,151,254,0.08)',
                   }}>
-                    {/* Large amount input + MIN/MAX */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flex: 1, minWidth: 0 }}>
+                    {/* Number + unit inline on left, MIN/MAX on right */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                         <input
                           inputMode="decimal"
                           value={amount}
-                          onChange={e => { setHasUserEdited(true); setAmount(e.target.value) }}
+                          onChange={e => { setHasUserEdited(true); setAmount(e.target.value); setLastPreset(null) }}
                           placeholder={minimumAmountFormatted}
                           disabled={isPending || isConfirming}
                           style={{
                             background: 'transparent', border: 'none', outline: 'none',
-                            color: TEXT, fontFamily: MONO, fontSize: 34, fontWeight: 800,
-                            width: '1px', flex: 1, minWidth: 0, padding: 0,
+                            color: TEXT, fontFamily: MONO, fontSize: 26, fontWeight: 800,
+                            padding: 0,
+                            width: `${Math.max(5, (amount || minimumAmountFormatted).length + 0.5)}ch`,
                           }}
                         />
-                        <span style={{ fontFamily: MONO, fontSize: 15, color: MUTED, flexShrink: 0 }}>ETH</span>
+                        <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH</span>
                       </div>
-                      <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
                         {activeTab !== 'addFunds' && (
                           <button
                             type="button"
-                            onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted) }}
+                            onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted); setLastPreset('min') }}
                             disabled={isPending || isConfirming}
                             style={{
-                              border: `1px solid ${PINK}`, background: 'transparent', color: PINK,
-                              borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                              border: `1px solid ${lastPreset === 'min' ? PINK : BORDER}`,
+                              background: 'transparent',
+                              color: lastPreset === 'min' ? PINK : TEXT2,
+                              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
                               fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
                               opacity: isPending || isConfirming ? 0.4 : 1,
+                              transition: 'border-color 120ms, color 120ms',
                             }}
                           >
                             MIN
@@ -605,13 +612,16 @@ export function BuyMessageModal({
                         )}
                         <button
                           type="button"
-                          onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted) }}
+                          onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted); setLastPreset('max') }}
                           disabled={spendableBalance <= 0n || isPending || isConfirming}
                           style={{
-                            border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2,
-                            borderRadius: 6, padding: '5px 12px', fontFamily: MONO, fontSize: 11,
+                            border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
+                            background: 'transparent',
+                            color: lastPreset === 'max' ? PINK : TEXT2,
+                            borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
                             fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
                             opacity: spendableBalance > 0n && !isPending && !isConfirming ? 1 : 0.4,
+                            transition: 'border-color 120ms, color 120ms',
                           }}
                         >
                           MAX
@@ -633,17 +643,17 @@ export function BuyMessageModal({
                   {/* You'll receive — horizontal */}
                   {bidNum > 0 && (
                     <div style={{
-                      marginTop: 12, borderRadius: 14, padding: '16px 20px',
+                      marginTop: 12, borderRadius: 14, padding: '14px 20px',
                       background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
                       border: `1px solid rgba(248,151,254,0.35)`,
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     }}>
-                      <span style={{ color: PINK, fontSize: 15, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 30, letterSpacing: -0.5 }}>
+                      <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
                           {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </span>
-                        <span style={{ color: PINK, fontSize: 14, fontWeight: 700 }}>MARKEE</span>
+                        <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
                       </div>
                     </div>
                   )}
@@ -689,11 +699,12 @@ export function BuyMessageModal({
                   ? 'Funds are added onchain to this message.'
                   : activeTab === 'updateMessage'
                   ? 'Only the message owner can update their message.'
-                  : partnerName
-                  ? <>62% to <span style={{ color: TEXT2 }}>{partnerName}</span> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : beneficiaryAddress
-                  ? <>62% to <a href={`https://basescan.org/address/${beneficiaryAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{beneficiaryAddress.slice(0, 6)}…{beneficiaryAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
+                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      62/38 split
+                      <InfoTip>
+                        62% to the sign&apos;s Beneficiary / 38% to the Revnet, issuing MARKEE for you
+                      </InfoTip>
+                    </span>}
               </div>
               <BtnTooltip reason={btnDisabledReason}>
                 <button

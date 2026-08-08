@@ -173,7 +173,7 @@ export function ModalShell({ stepLabel, onClose, footer, children }: {
           width: '100%', maxWidth: 560,
           background: BG2, borderRadius: 16, border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-          fontFamily: 'Manrope, system-ui, sans-serif', color: TEXT, overflow: 'hidden',
+          fontFamily: 'Manrope, system-ui, sans-serif', color: TEXT, overflow: 'visible',
           animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
           maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         }}
