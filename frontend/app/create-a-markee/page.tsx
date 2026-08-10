@@ -11,6 +11,7 @@ import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
+import { StrategyBadge } from '@/components/StrategyBadge'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 
 const C = {
@@ -366,12 +367,12 @@ function ReviewSign({ vertical, strategy, values, selectedRepo, selectedFile, is
   isPending: boolean; isConfirming: boolean; error: string | null; isConnected: boolean
 }) {
   const mono = 'var(--font-jetbrains-mono)'
-  const rows: [string, string][] = [
-    ['Pricing Strategy', STRATEGIES[strategy].label],
-    ...(selectedRepo ? [['Repository', selectedRepo] as [string, string]] : []),
-    ...(selectedFile ? [['File', selectedFile] as [string, string]] : []),
-    ...(vertical.key === 'openinternet' && values.siteName ? [['Markee Name', values.siteName] as [string, string]] : []),
-    ...(vertical.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, string]] : []),
+  const rows: [string, React.ReactNode][] = [
+    ['Pricing Strategy', <StrategyBadge key="strat" strategy={strategy} size="sm" />],
+    ...(selectedRepo ? [['Repository', selectedRepo] as [string, React.ReactNode]] : []),
+    ...(selectedFile ? [['File', selectedFile] as [string, React.ReactNode]] : []),
+    ...(vertical.key === 'openinternet' && values.siteName ? [['Markee Name', values.siteName] as [string, React.ReactNode]] : []),
+    ...(vertical.key === 'superfluid' && values.projectName ? [['Project name', values.projectName] as [string, React.ReactNode]] : []),
     ['Beneficiary Address', values.beneficiary ?? '-'],
   ]
 
@@ -379,8 +380,8 @@ function ReviewSign({ vertical, strategy, values, selectedRepo, selectedFile, is
     <div>
       <div style={{ background: 'rgba(10,15,61,0.4)', border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 18 }}>
         {rows.map(([k, v], i) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '10px 0', borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-            <span style={{ color: C.muted, fontSize: 13 }}>{k}</span>
+          <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: '10px 0', borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+            <span style={{ color: C.muted, fontSize: 13, flexShrink: 0 }}>{k}</span>
             <span style={{ color: C.text, fontSize: 13, fontFamily: mono, textAlign: 'right' as const, wordBreak: 'break-all' as const }}>{v}</span>
           </div>
         ))}
