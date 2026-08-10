@@ -360,6 +360,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       <StreamActivateModal
         isOpen={activateOpen}
         board={board}
+        topMonthlyWei={markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined}
         onClose={() => setActivateOpen(false)}
         onSuccess={() => { setActivateOpen(false); refetchAll() }}
         messageLabel="SET FIRST MESSAGE"

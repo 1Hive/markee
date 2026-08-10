@@ -394,6 +394,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
           initialMode="create"
           strategyAddress={leaderboardAddress as `0x${string}`}
           topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
+          allMarkees={markees}
           {...(!topMarkee ? {
             title: 'ACTIVATE MARKEE',
             messageLabel: 'SET FIRST MESSAGE',
@@ -413,6 +414,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
           initialMode="addFunds"
           strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
           topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
+          allMarkees={markees}
         />
       )}
 

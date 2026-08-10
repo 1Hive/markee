@@ -64,16 +64,20 @@ interface StreamActivateModalProps {
   isOpen: boolean
   onClose: () => void
   board: Address
+  topMonthlyWei?: bigint
   onSuccess?: () => void
   title?: string
   messageLabel?: string
   messagePlaceholder?: string
 }
 
+type StreamSuccessSnap = { tookTop: boolean; additionalMonthlyWei: bigint | null }
+
 export function StreamActivateModal({
   isOpen,
   onClose,
   board,
+  topMonthlyWei,
   onSuccess,
   title = 'ACTIVATE MARKEE',
   messageLabel = 'SET FIRST MESSAGE',
@@ -94,6 +98,7 @@ export function StreamActivateModal({
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>(null)
+  const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
@@ -141,7 +146,7 @@ export function StreamActivateModal({
     if (!isOpen) {
       setMessage(''); setMonthly(''); setFundMonths('1')
       setPhase('idle'); setError(null); setTxHash(undefined); reset()
-      setLastPreset(null)
+      setLastPreset(null); setSuccessSnap(null)
     }
   }, [isOpen, reset])
 
@@ -156,6 +161,9 @@ export function StreamActivateModal({
   // ── Success → close ───────────────────────────────────────────────────────
   useEffect(() => {
     if (isSuccess && isOpen) {
+      const tookTop = !topMonthlyWei || topMonthlyWei === 0n || calc.monthlyWei > topMonthlyWei
+      const additionalMonthlyWei = !tookTop && topMonthlyWei ? topMonthlyWei + 1n - calc.monthlyWei : null
+      setSuccessSnap({ tookTop, additionalMonthlyWei })
       setPhase('done')
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
@@ -293,7 +301,9 @@ export function StreamActivateModal({
   ]
 
   const txHeadline = done
-    ? '🎉 Your Markee is live!'
+    ? (successSnap?.tookTop !== false
+        ? 'Success! Your message holds the Featured #1 Spot'
+        : 'Success! Your message is live')
     : phase === 'creating'
       ? (isPending ? 'Confirm in your wallet' : 'Creating your Markee…')
       : phase === 'approving'
@@ -303,7 +313,11 @@ export function StreamActivateModal({
           : 'Starting your stream…'
 
   const txDetail = done
-    ? 'Your message is live and backed by your stream.'
+    ? (successSnap?.tookTop !== false
+        ? 'Your stream is active and your message is featured.'
+        : successSnap?.additionalMonthlyWei
+          ? `Stream ${parseFloat(formatEther(successSnap.additionalMonthlyWei)).toFixed(4)} ETH/mo more to take the #1 spot.`
+          : 'Your stream is active on the leaderboard.')
     : phase === 'creating'
       ? (isPending ? 'This transaction is free — it registers your message on-chain.' : 'Usually under 2 seconds on Base.')
       : phase === 'approving'

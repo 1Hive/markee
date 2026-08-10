@@ -45,6 +45,7 @@ interface BuyMessageModalProps {
   isOpen: boolean
   onClose: () => void
   userMarkee?: MarkeeSlot | null
+  allMarkees?: MarkeeSlot[]
   initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onSuccess?: () => void
   strategyAddress?: `0x${string}`
@@ -58,6 +59,14 @@ interface BuyMessageModalProps {
   messageLabel?: string
   messagePlaceholder?: string
 }
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+type SuccessSnap = { tookTop: boolean; rank: number | null; additionalWei: bigint | null; isUpdate: boolean }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
@@ -105,6 +114,7 @@ export function BuyMessageModal({
   isOpen,
   onClose,
   userMarkee,
+  allMarkees,
   initialMode,
   onSuccess,
   strategyAddress: customStrategyAddress,
@@ -127,6 +137,7 @@ export function BuyMessageModal({
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>('min')
+  const [successSnap, setSuccessSnap] = useState<SuccessSnap | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -229,6 +240,7 @@ export function BuyMessageModal({
     setError(null)
     setHasUserEdited(false)
     setLastPreset(null)
+    setSuccessSnap(null)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userMarkee, initialMode, isOpen, reset])
@@ -243,6 +255,30 @@ export function BuyMessageModal({
 
   useEffect(() => {
     if (isSuccess && isOpen) {
+      const snap: SuccessSnap = { tookTop: false, rank: null, additionalWei: null, isUpdate: activeTab === 'updateMessage' }
+      try {
+        const amountWei = parseEther(amount || '0')
+        const top = topFundsAdded ?? 0n
+        if (activeTab === 'create') {
+          snap.tookTop = top === 0n || amountWei > top
+          if (!snap.tookTop) {
+            snap.rank = allMarkees ? allMarkees.filter(m => m.totalFundsAdded > amountWei).length + 1 : null
+            if (top > 0n) snap.additionalWei = top + MIN_INCREMENT - amountWei
+          }
+        } else if (activeTab === 'addFunds' && userMarkee) {
+          const newTotal = userMarkee.totalFundsAdded + amountWei
+          snap.tookTop = top === 0n || newTotal >= top
+          if (!snap.tookTop) {
+            snap.rank = allMarkees
+              ? allMarkees.filter(m => m.address.toLowerCase() !== userMarkee.address.toLowerCase() && m.totalFundsAdded > newTotal).length + 1
+              : null
+            if (top > 0n) snap.additionalWei = top + MIN_INCREMENT - newTotal
+          }
+        } else if (activeTab === 'updateMessage') {
+          snap.tookTop = !!userIsTopDawg
+        }
+      } catch { /* invalid amount */ }
+      setSuccessSnap(snap)
       setTimeout(() => {
         setMessage('')
         setAmount('')
@@ -432,16 +468,19 @@ export function BuyMessageModal({
             headline={
               txStep === 'signing' ? 'Waiting for wallet…' :
               txStep === 'pending' ? 'Confirming on Base' :
-              activeTab === 'addFunds' ? '✓ Funds added' :
-              (!hasCompetition || selFeatured) ? '🎉 You just took #1' :
-              '✓ Message submitted'
+              successSnap?.isUpdate ? '✓ Message updated' :
+              successSnap?.tookTop ? 'Success! Your message holds the Featured #1 Spot' :
+              successSnap?.rank ? `Success! Your message holds the ${ordinal(successSnap.rank)} spot` :
+              '✓ Success'
             }
             detail={
               txStep === 'signing' ? 'Sign the transaction in your wallet.' :
               txStep === 'pending' ? 'Usually under 2 seconds on Base.' :
-              activeTab === 'addFunds' ? 'Your funds were added to the message.' :
-              (!hasCompetition || selFeatured) ? `"${message}" is now the #1 Markee. The board is reordering.` :
-              `"${message}" has been added to the leaderboard.`
+              successSnap?.isUpdate ? 'Your message has been updated on the leaderboard.' :
+              successSnap?.tookTop ? 'Your message is now featured. The board is reordering.' :
+              successSnap?.additionalWei
+                ? `Add ${parseFloat(formatEther(successSnap.additionalWei)).toFixed(3)} ETH to take the #1 spot.`
+                : 'Your message has been added to the leaderboard.'
             }
           />
 
