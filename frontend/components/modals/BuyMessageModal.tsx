@@ -247,8 +247,7 @@ export function BuyMessageModal({
 
   useEffect(() => {
     if (!isOpen) return
-    if (hasCompetition && takeFirstAmountFormatted) setAmount(takeFirstAmountFormatted)
-    else setAmount(minimumAmountFormatted)
+    setAmount(minimumAmountFormatted)
     setLastPreset('min')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
