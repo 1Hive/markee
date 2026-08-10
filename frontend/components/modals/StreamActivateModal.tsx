@@ -72,7 +72,7 @@ interface StreamActivateModalProps {
   messagePlaceholder?: string
 }
 
-type StreamSuccessSnap = { tookTop: boolean; additionalMonthlyWei: bigint | null }
+type StreamSuccessSnap = { tookTop: boolean; additionalMonthlyWei: bigint | null; isFirstOnBoard: boolean }
 
 export function StreamActivateModal({
   isOpen,
@@ -167,9 +167,10 @@ export function StreamActivateModal({
   // ── Success → close ───────────────────────────────────────────────────────
   useEffect(() => {
     if (isSuccess && isOpen) {
-      const tookTop = !topMonthlyWei || topMonthlyWei === 0n || calc.monthlyWei > topMonthlyWei
+      const isFirstOnBoard = !topMonthlyWei || topMonthlyWei === 0n
+      const tookTop = isFirstOnBoard || calc.monthlyWei > topMonthlyWei
       const additionalMonthlyWei = !tookTop && topMonthlyWei ? topMonthlyWei + 1n - calc.monthlyWei : null
-      setSuccessSnap({ tookTop, additionalMonthlyWei })
+      setSuccessSnap({ tookTop, additionalMonthlyWei, isFirstOnBoard })
       setPhase('done')
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
@@ -309,9 +310,9 @@ export function StreamActivateModal({
   ]
 
   const txHeadline = done
-    ? (successSnap?.tookTop !== false
-        ? 'Success! Your message holds the Featured #1 Spot'
-        : 'Success! Your message is live')
+    ? (successSnap?.isFirstOnBoard ? 'Success! Your Markee is Activated' :
+       successSnap?.tookTop ? 'Success! Your message is now featured' :
+       'Success! Your message is created')
     : phase === 'creating'
       ? (isPending ? 'Confirm in your wallet' : 'Creating your Markee…')
       : phase === 'approving'
@@ -321,11 +322,11 @@ export function StreamActivateModal({
           : 'Starting your stream…'
 
   const txDetail = done
-    ? (successSnap?.tookTop !== false
-        ? 'Your stream is active and your message is featured.'
-        : successSnap?.additionalMonthlyWei
-          ? `Stream ${parseFloat(formatEther(successSnap.additionalMonthlyWei)).toFixed(4)} ETH/mo more to take the #1 spot.`
-          : 'Your stream is active on the leaderboard.')
+    ? (successSnap?.isFirstOnBoard ? 'You\'re the first on this leaderboard!' :
+       successSnap?.tookTop ? 'Your stream is active and your message is featured at #1.' :
+       successSnap?.additionalMonthlyWei
+         ? `Stream ${parseFloat(formatEther(successSnap.additionalMonthlyWei)).toFixed(4)} ETH/mo more to take the #1 spot.`
+         : 'Your stream is active on the leaderboard.')
     : phase === 'creating'
       ? (isPending ? 'This transaction is free — it registers your message on-chain.' : 'Usually under 2 seconds on Base.')
       : phase === 'approving'

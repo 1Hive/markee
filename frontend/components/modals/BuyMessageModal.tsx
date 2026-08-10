@@ -67,7 +67,14 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
-type SuccessSnap = { tookTop: boolean; rank: number | null; additionalWei: bigint | null; isUpdate: boolean }
+type SuccessSnap = {
+  tookTop: boolean
+  rank: number | null
+  additionalWei: bigint | null
+  isUpdate: boolean
+  tab: 'create' | 'addFunds' | 'updateMessage'
+  isFirstOnBoard: boolean
+}
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
 
@@ -255,7 +262,12 @@ export function BuyMessageModal({
 
   useEffect(() => {
     if (isSuccess && isOpen) {
-      const snap: SuccessSnap = { tookTop: false, rank: null, additionalWei: null, isUpdate: activeTab === 'updateMessage' }
+      const snap: SuccessSnap = {
+        tookTop: false, rank: null, additionalWei: null,
+        isUpdate: activeTab === 'updateMessage',
+        tab: activeTab,
+        isFirstOnBoard: activeTab === 'create' && (!topFundsAdded || topFundsAdded === 0n),
+      }
       try {
         const amountWei = parseEther(amount || '0')
         const top = topFundsAdded ?? 0n
@@ -468,16 +480,18 @@ export function BuyMessageModal({
             headline={
               txStep === 'signing' ? 'Waiting for wallet…' :
               txStep === 'pending' ? 'Confirming on Base' :
-              successSnap?.isUpdate ? '✓ Message updated' :
-              successSnap?.tookTop ? 'Success! Your message holds the Featured #1 Spot' :
-              successSnap?.rank ? `Success! Your message holds the ${ordinal(successSnap.rank)} spot` :
-              '✓ Success'
+              successSnap?.isUpdate ? 'Success! Your message is updated' :
+              successSnap?.isFirstOnBoard ? 'Success! Your Markee is Activated' :
+              successSnap?.tookTop ? 'Success! Your message is now featured' :
+              successSnap?.tab === 'create' ? 'Success! Your message is created' :
+              'Success! Your funds are added'
             }
             detail={
               txStep === 'signing' ? 'Sign the transaction in your wallet.' :
               txStep === 'pending' ? 'Usually under 2 seconds on Base.' :
               successSnap?.isUpdate ? 'Your message has been updated on the leaderboard.' :
-              successSnap?.tookTop ? 'Your message is now featured. The board is reordering.' :
+              successSnap?.isFirstOnBoard ? 'You\'re the first on this leaderboard!' :
+              successSnap?.tookTop ? 'Your message is now featured at #1.' :
               successSnap?.additionalWei
                 ? `Add ${parseFloat(formatEther(successSnap.additionalWei)).toFixed(3)} ETH to take the #1 spot.`
                 : 'Your message has been added to the leaderboard.'

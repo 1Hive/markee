@@ -57,11 +57,12 @@ interface StreamModalProps {
   markee: StreamTarget
   onSuccess?: () => void
   isActivation?: boolean
+  topMonthlyWei?: bigint
 }
 
 // Opening a stream to back a Markee, or changing the rate of the stream you already run. Claiming
 // lives in ClaimModal and stop/top-up/withdraw in ManageStreamModal.
-export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActivation = false }: StreamModalProps) {
+export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActivation = false, topMonthlyWei }: StreamModalProps) {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -75,6 +76,8 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
   const [error, setError] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
   const [action, setAction] = useState<'open' | 'update'>('open')
+  const [tookTop, setTookTop] = useState(false)
+  const submittedRateRef = useRef<bigint>(0n)
 
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN.id })
   // The approve transaction is awaited inline, so only the action's final hash lands here and
@@ -194,11 +197,13 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
 
   useEffect(() => {
     if (isSuccess && isOpen) {
+      const submittedMonthly = submittedRateRef.current * 2628000n
+      setTookTop(!topMonthlyWei || topMonthlyWei === 0n || submittedMonthly > topMonthlyWei)
       refetchBacked(); refetchDeposit(); refetchRate(); refetchAllowance(); refetchBalance()
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance])
+  }, [isSuccess, isOpen, onClose, onSuccess, topMonthlyWei, refetchBacked, refetchDeposit, refetchRate, refetchAllowance, refetchBalance])
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   async function handleOpenStream() {
@@ -252,6 +257,7 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
         chainId: CANONICAL_CHAIN.id,
       })
       if (!openRef.current) return
+      submittedRateRef.current = calc.ratePerSec
       setTxHash(batchHash)
     } catch (e: unknown) {
       if (!openRef.current) return
@@ -314,6 +320,7 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
         chainId: CANONICAL_CHAIN.id,
       })
       if (!openRef.current) return
+      submittedRateRef.current = live.nextRate
       setTxHash(hash)
     } catch (e: unknown) {
       if (!openRef.current) return
@@ -371,12 +378,14 @@ export function StreamModal({ isOpen, onClose, board, markee, onSuccess, isActiv
           isSuccess={isSuccess}
           steps={activationSteps}
           headline={isSuccess
-            ? (action === 'update' ? '✓ Rate updated' : '🎉 Stream live')
+            ? (tookTop ? 'Success! Your message is now featured' :
+               action === 'update' ? 'Success! Your streaming bid is updated' :
+               'Success! Your streaming bid is added')
             : approving ? 'Approving the deposit' : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
           detail={isSuccess
-            ? (action === 'update'
-                ? 'Your stream now runs at the new rate.'
-                : isActivation ? 'Your Markee is now live!' : 'Your stream is backing this Markee. The board ranks by streamed rate.')
+            ? (tookTop ? 'Your stream is active and your message is featured at #1.' :
+               action === 'update' ? 'Your stream now runs at the new rate.' :
+               'Your stream is backing this Markee. The board ranks by streamed rate.')
             : approving
               ? isActivation ? 'Step 2 of 3 — a small approval before the stream opens.' : 'A small approval first, then the stream opens.'
               : 'Usually under 2 seconds on Base.'}

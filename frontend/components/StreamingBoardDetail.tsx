@@ -341,6 +341,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
           markee={target}
           onClose={() => setTarget(null)}
           onSuccess={refetchAll}
+          topMonthlyWei={markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined}
         />
       )}
 
