@@ -128,25 +128,29 @@ function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; co
 // ── Stepper ──────────────────────────────────────────────────────────────────
 function Stepper({ steps, current }: { steps: string[]; current: number }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' as const, marginBottom: 40 }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 40 }}>
       {steps.map((label, i) => {
         const done = i < current, active = i === current
         return (
           <div key={i} style={{ display: 'contents' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               <div style={{
-                width: 26, height: 26, borderRadius: 99, flexShrink: 0,
+                width: 36, height: 36, borderRadius: 99, flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, fontWeight: 700 as const, fontFamily: 'var(--font-jetbrains-mono)',
-                background: done ? C.pink : 'transparent',
-                border: active ? `1px solid ${C.pink}` : done ? 'none' : `1px solid ${C.border}`,
+                fontSize: 13, fontWeight: 700 as const, fontFamily: 'var(--font-jetbrains-mono)',
+                background: done ? C.pink : active ? 'rgba(248,151,254,0.12)' : 'transparent',
+                border: active ? `1.5px solid ${C.pink}` : done ? 'none' : `1px solid ${C.border}`,
                 color: done ? C.bg : active ? C.pink : C.muted,
+                boxShadow: active ? '0 0 0 5px rgba(248,151,254,0.08)' : 'none',
+                transition: 'all 300ms',
               }}>
-                {done ? <Check size={12} strokeWidth={2.8} /> : i + 1}
+                {done ? <Check size={14} strokeWidth={2.8} /> : i + 1}
               </div>
-              <span style={{ fontSize: 13, whiteSpace: 'nowrap' as const, color: active ? C.text : done ? C.text2 : C.muted, fontWeight: active ? 600 : 500 }}>{label}</span>
+              <span style={{ fontSize: 12, whiteSpace: 'nowrap' as const, color: active ? C.pink : done ? C.text2 : C.muted, fontWeight: active ? 600 : 500 }}>{label}</span>
             </div>
-            {i < steps.length - 1 && <div style={{ flex: 1, minWidth: 18, height: 1, background: C.border, margin: '0 14px' }} />}
+            {i < steps.length - 1 && (
+              <div style={{ flex: 1, height: 1.5, background: i < current ? C.pink : C.border, marginTop: 18, minWidth: 16, transition: 'background 300ms' }} />
+            )}
           </div>
         )
       })}
@@ -216,10 +220,18 @@ function StrategyPreviewCard({
 
   const textGradient = `linear-gradient(120deg, ${C.text} 0%, ${meta.accent} 100%)`
 
+  const accentRgba = (a: number): string => {
+    const hex = meta.accent.replace('#', '')
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return `rgba(${r},${g},${b},${a})`
+  }
+
   const borderColor = isSelected
-    ? 'rgba(124,156,255,0.75)'
+    ? accentRgba(0.75)
     : active
-    ? 'rgba(124,156,255,0.35)'
+    ? accentRgba(0.35)
     : 'rgba(255,255,255,0.18)'
 
   const handleClick = () => {
@@ -237,13 +249,13 @@ function StrategyPreviewCard({
       style={{
         position: 'relative' as const, width: '100%', minHeight: 130,
         textAlign: 'center' as const, cursor: disabled ? 'default' : 'pointer',
-        background: isSelected ? 'rgba(124,156,255,0.06)' : 'rgba(255,255,255,0.04)',
+        background: isSelected ? accentRgba(0.06) : 'rgba(255,255,255,0.04)',
         border: `1px solid ${borderColor}`,
         borderRadius: 16, padding: '20px 24px',
         backdropFilter: 'blur(4px)',
         opacity: disabled ? 0.55 : 1,
         boxShadow: isSelected
-          ? `0 0 0 4px rgba(124,156,255,0.12), 0 16px 44px rgba(6,10,42,0.55)`
+          ? `0 0 0 4px ${accentRgba(0.12)}, 0 16px 44px rgba(6,10,42,0.55)`
           : active ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
         transform: pressing ? 'scale(0.96)' : active || isSelected ? 'translateY(-2px)' : 'none',
         transition: 'border-color 220ms, transform 220ms, box-shadow 220ms, background 220ms',
@@ -527,13 +539,12 @@ function CreateWizardInner() {
             if (strategy && fieldsComplete) go(1)
           }}
         >
-          <h2 style={{ margin: '0 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Choose Pricing Strategy</h2>
+          <WebsiteSetupFields values={values} setValue={setValue} touched={setupTouched} />
+          <h2 style={{ margin: '28px 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Choose Pricing Strategy</h2>
           <ChooseStrategy selected={strategy} onSelect={s => { setStrategy(s); setSetupTouched(false) }} />
           {setupTouched && !strategy && (
             <p style={{ margin: '-16px 0 24px', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12, color: '#F87171' }}>Please select a pricing strategy.</p>
           )}
-          <h2 style={{ margin: '16px 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Add Funding Recipient Details</h2>
-          <WebsiteSetupFields values={values} setValue={setValue} touched={setupTouched} />
         </StepShell>
       )}
 
