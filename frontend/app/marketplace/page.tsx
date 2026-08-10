@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import Image from 'next/image'
 import { formatEther } from 'viem'
 import { Eye } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
@@ -190,6 +191,7 @@ function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: n
 
 // ── Platform glyph for SERVED ON ──────────────────────────────────────────────
 function ServedLogo({ lb }: { lb: Leaderboard }) {
+  const [failed, setFailed] = useState(false)
   const box: React.CSSProperties = { width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${BORDER}`, overflow: 'hidden' }
   if (lb.platform === 'github') {
     return <span style={{ ...box, background: 'rgba(237,238,255,0.08)' }}>
@@ -201,8 +203,22 @@ function ServedLogo({ lb }: { lb: Leaderboard }) {
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
     </span>
   }
-  if (lb.logoUrl) {
-    return <span style={{ ...box }}><img src={lb.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></span>
+  const primaryUrl = lb.verifiedUrl || lb.verifiedUrls?.[0] || null
+  let hostname: string | null = null
+  if (primaryUrl) { try { hostname = new URL(primaryUrl).hostname } catch { /* ignore */ } }
+  if (hostname && !failed) {
+    return (
+      <span style={box}>
+        <Image
+          src={`https://img.logo.dev/${hostname}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=32`}
+          alt={`${hostname} logo`}
+          width={22}
+          height={22}
+          style={{ objectFit: 'contain' }}
+          onError={() => setFailed(true)}
+        />
+      </span>
+    )
   }
   const raw = lb.verifiedUrl ? extractDomain(lb.verifiedUrl) : (lb.leaderboardName || '?')
   const ch = (raw[0] || '?').toUpperCase()
