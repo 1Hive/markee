@@ -153,12 +153,13 @@ export function RevnetBuyWidget({ compact = false }: Props) {
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={2}
-              placeholder="Set an optional message to be displayed publicly on the Revnet."
+              placeholder="Optional, displayed publicly on Revnets"
               style={{
                 width: '100%', boxSizing: 'border-box', resize: 'none',
                 background: '#060A2A', border: `1px solid ${BORDER}`,
                 borderRadius: 11, padding: '11px 14px',
                 color: '#EDEEFF', fontSize: 14, outline: 'none', lineHeight: 1.4,
+                fontStyle: 'italic',
               }}
             />
           </div>
