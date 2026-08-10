@@ -15,6 +15,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
+import { StreamModal } from '@/components/modals/StreamModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -904,7 +905,7 @@ function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
 const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
 const MSG_HEADERS = ['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Streaming', 'Ranking']
 
-function BoughtTable({ items, ethPrice }: { items: MyMessage[]; ethPrice: number | null }) {
+function BoughtTable({ items, ethPrice, onEdit }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
@@ -926,7 +927,18 @@ function BoughtTable({ items, ethPrice }: { items: MyMessage[]; ethPrice: number
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
-              <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', minWidth: 0 }}>
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit(m) }}
+                  title="Edit message"
+                  style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 6px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = PINK; el.style.borderColor = `${PINK}66` }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+                >
+                  <Pencil size={11} />
+                </button>
+                <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
               <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
               <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: isStreaming ? TEXT2 : MUTED }}>
@@ -1075,9 +1087,11 @@ export default function AccountPage() {
   const [manageTarget, setManageTarget]           = useState<AnyLeaderboard | null>(null)
   const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
   const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
-  const [editingBoard, setEditingBoard]       = useState<WebsiteLeaderboard | null>(null)
+  const [editingBoard, setEditingBoard]         = useState<WebsiteLeaderboard | null>(null)
   const [integrationBoard, setIntegrationBoard] = useState<WebsiteLeaderboard | null>(null)
-  const [verifyBoard, setVerifyBoard]         = useState<WebsiteLeaderboard | null>(null)
+  const [verifyBoard, setVerifyBoard]           = useState<WebsiteLeaderboard | null>(null)
+  const [editMessageTarget, setEditMessageTarget]       = useState<MyMessage | null>(null)
+  const [streamEditTarget, setStreamEditTarget]         = useState<MyMessage | null>(null)
 
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
@@ -1186,7 +1200,8 @@ export default function AccountPage() {
       // Merge, deduplicating by markee address (RPC wins for duplicates)
       const seen = new Set(rpcMessages.map(m => m.address.toLowerCase()))
       const merged = [...rpcMessages, ...subgraphMessages.filter(m => !seen.has(m.address.toLowerCase()))]
-      const paidMessages = merged.filter(m => m.totalFundsAdded > 0n)
+      // Streaming markees have totalFundsAdded=0 on-chain (ETHx flows via Superfluid, not direct additions).
+      const paidMessages = merged.filter(m => m.strategy === 'streaming' || m.totalFundsAdded > 0n)
       paidMessages.sort((a, b) => (b.totalFundsAdded > a.totalFundsAdded ? 1 : -1))
       setMyMessages(paidMessages)
     } catch { /* non-critical */ }
@@ -1251,6 +1266,11 @@ export default function AccountPage() {
   const handleManage = useCallback((lb: AnyLeaderboard) => {
     if (isFixedWebsiteBoard(lb)) setManageTarget(lb)
     else window.open(detailUrl(lb), '_self')
+  }, [])
+
+  const handleEditMessage = useCallback((m: MyMessage) => {
+    if (m.strategy === 'streaming') setStreamEditTarget(m)
+    else setEditMessageTarget(m)
   }, [])
 
   return (
@@ -1403,7 +1423,7 @@ export default function AccountPage() {
                 ) : myMessages.length === 0 ? (
                   <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
-                  <BoughtTable items={myMessages} ethPrice={ethPrice} />
+                  <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} />
                 )
               )}
 
@@ -1502,7 +1522,11 @@ export default function AccountPage() {
         messageLabel="SET FIRST MESSAGE"
         messagePlaceholder="Your message here..."
         ctaLabel="Activate Markee"
-        onSuccess={() => { setActivateTarget(null); if (activeAddress) fetchAll(activeAddress) }}
+        onSuccess={() => {
+          const addr = activateTarget?.address
+          setActivateTarget(null)
+          if (addr) window.location.href = `/markee/${addr}`
+        }}
       />
 
       {/* Streaming activation: single modal handles create + approve + stream */}
@@ -1511,9 +1535,36 @@ export default function AccountPage() {
           isOpen={!!activateStreamBoard}
           board={activateStreamBoard.address as `0x${string}`}
           onClose={() => setActivateStreamBoard(null)}
-          onSuccess={() => { setActivateStreamBoard(null); if (activeAddress) fetchAll(activeAddress) }}
+          onSuccess={() => {
+            const addr = activateStreamBoard?.address
+            setActivateStreamBoard(null)
+            if (addr) window.location.href = `/markee/${addr}`
+          }}
           messageLabel="SET FIRST MESSAGE"
           messagePlaceholder="Your message here..."
+        />
+      )}
+
+      {/* Edit message — fixed board */}
+      <BuyMessageModal
+        isOpen={!!editMessageTarget}
+        onClose={() => setEditMessageTarget(null)}
+        strategyAddress={editMessageTarget?.strategyId as `0x${string}` | undefined}
+        title="EDIT MESSAGE"
+        messageLabel="YOUR MESSAGE"
+        messagePlaceholder="Your updated message..."
+        ctaLabel="Update Message"
+        onSuccess={() => { setEditMessageTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+      />
+
+      {/* Edit stream — streaming board */}
+      {streamEditTarget && (
+        <StreamModal
+          isOpen={!!streamEditTarget}
+          board={streamEditTarget.strategyId as `0x${string}`}
+          markee={{ address: streamEditTarget.address as `0x${string}`, message: streamEditTarget.message, name: streamEditTarget.name }}
+          onClose={() => setStreamEditTarget(null)}
+          onSuccess={() => { setStreamEditTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
         />
       )}
     </div>
