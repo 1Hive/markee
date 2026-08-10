@@ -389,7 +389,7 @@ export function StreamActivateModal({
         <div style={{ padding: '22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Message field */}
-          <ModalField label={`${messageLabel} (${message.length}/${maxLen})`}>
+          <ModalField label={messageLabel}>
             <textarea
               value={message}
               onChange={e => { if (e.target.value.length <= maxLen) setMessage(e.target.value) }}
@@ -397,6 +397,9 @@ export function StreamActivateModal({
               rows={2}
               style={{ ...inputStyle, resize: 'vertical' }}
             />
+            <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
+              {message.length}/{maxLen}
+            </div>
           </ModalField>
 
           {/* Price card */}
