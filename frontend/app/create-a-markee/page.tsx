@@ -337,7 +337,7 @@ function WebsiteSetupFields({ values, setValue, touched }: {
   const nameOk = !!(values.siteName?.trim())
   const beneOk = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
   const errCss: React.CSSProperties = { fontFamily: mono, fontSize: 12, color: '#F87171', marginTop: 6 }
-  const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box' }
+  const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'Manrope, system-ui, sans-serif' }
   const labelCss: React.CSSProperties = { display: 'block', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 8 }
 
   return (

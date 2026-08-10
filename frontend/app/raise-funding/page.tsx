@@ -243,6 +243,7 @@ function IntegrateForm() {
   const inputStyle: React.CSSProperties = {
     width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
     padding: '12px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box',
+    fontFamily: 'Manrope, system-ui, sans-serif',
   }
   const labelStyle: React.CSSProperties = {
     display: 'block', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11,
