@@ -15,6 +15,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
+import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -42,6 +43,7 @@ interface BaseLeaderboard {
   topMessage: string | null
   topMessageOwner?: string | null
   topFundsAddedRaw: string
+  topRateRaw?: string
   minimumPriceRaw?: string
   strategy?: 'fixed' | 'streaming'
 }
@@ -666,37 +668,85 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
   )
 }
 
-function ActiveTable({ markees, onManage }: { markees: AnyLeaderboard[]; onManage: (lb: AnyLeaderboard) => void }) {
+const ACTIVE_COLS = '180px 1fr 90px 130px 160px 110px'
+const ACTIVE_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Streaming', '']
+
+function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
+  if (isLive) {
+    return (
+      <div style={{ textAlign: 'right' as const }}>
+        <div style={{ fontFamily: MONO, fontSize: 11.5, color: BLUE, fontWeight: 600, letterSpacing: 0.3 }}>
+          {formatLiveEth(balance, 10)} ETH
+        </div>
+        <div style={{ fontFamily: MONO, fontSize: 10, color: GREEN, marginTop: 1 }}>▲ live</div>
+      </div>
+    )
+  }
+  const eth = Number(balance) / 1e18
+  const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
+  const usd = ethPrice ? eth * ethPrice : null
+  return (
+    <div style={{ textAlign: 'right' as const }}>
+      <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
+      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>}
+    </div>
+  )
+}
+
+function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onManage: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
+  const isStreaming = lb.strategy === 'streaming'
+  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
+  const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
+  const hasActiveStream = ratePerSec > 0n
+  return (
+    <div
+      onClick={() => window.location.href = `/markee/${lb.address}`}
+      style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    >
+      <ServedOnCell lb={lb} />
+      <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
+        {lb.topMessage || 'No message yet'}
+      </span>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <StrategyLabel strategy={lb.strategy ?? 'fixed'} />
+      </div>
+      <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
+      <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: hasActiveStream ? TEXT2 : MUTED }}>
+        {hasActiveStream
+          ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+              <StreamStatusIcon status="active" />
+              <span>{fmtFlowRate(lb.topRateRaw!, ethPrice)}</span>
+            </div>
+          : <span style={{ color: MUTED }}>—</span>
+        }
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={e => { e.stopPropagation(); onManage(lb) }}
+          style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+        >
+          Manage
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[]; onManage: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 600, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Served on', 'Total raised', 'Current message', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
+      <div style={{ minWidth: 760, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {ACTIVE_HEADERS.map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
         </div>
         {markees.map(lb => (
-          <div
-            key={lb.address}
-            onClick={() => window.location.href = `/markee/${lb.address}`}
-            style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <ServedOnCell lb={lb} />
-            <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontWeight: 600 }}>{lb.totalFunds}</span>
-            <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>{lb.topMessage || 'No message yet'}</span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={e => { e.stopPropagation(); onManage(lb) }}
-                style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-              >
-                Manage
-              </button>
-            </div>
-          </div>
+          <ActiveTableRow key={lb.address} lb={lb} onManage={onManage} ethPrice={ethPrice} />
         ))}
       </div>
     </div>
@@ -1306,7 +1356,7 @@ export default function AccountPage() {
                           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Active Markees</h2>
                           <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{activeBoards.length}</span>
                         </div>
-                        <ActiveTable markees={activeBoards} onManage={handleManage} />
+                        <ActiveTable markees={activeBoards} onManage={handleManage} ethPrice={ethPrice} />
                       </div>
                     )}
 
