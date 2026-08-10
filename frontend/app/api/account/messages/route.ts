@@ -5,6 +5,9 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
+import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
+import { STREAMING_BASE } from '@/lib/superfluid/streaming'
+import { fetchBackerPositions } from '@/lib/streaming/subgraph'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +31,8 @@ const MARKEE_ABI = [
   { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
 ] as const
 
+const ZERO = '0x0000000000000000000000000000000000000000'
+
 function getClient() {
   return createPublicClient({
     chain: base,
@@ -48,6 +53,80 @@ async function chunkedMulticall(
     results.push(...await client.multicall({ contracts: slice }))
   }
   return results
+}
+
+async function fetchStreamingOwned(
+  client: ReturnType<typeof getClient>,
+  owner: string,
+  origin: string,
+  headers: HeadersInit,
+) {
+  const data = await fetch(`${origin}/api/streaming/leaderboards`, { headers })
+    .then(r => r.ok ? r.json() : null).catch(() => null)
+
+  const boards: Array<{ address: string; name: string; topMarkeeAddress: string | null; topFundsAddedRaw: string }> =
+    (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
+  if (boards.length === 0) return []
+
+  // Find this owner's markee on each streaming board
+  const backerResults = await chunkedMulticall(
+    client,
+    boards.map(lb => ({
+      address: lb.address as `0x${string}`,
+      abi: StreamingLeaderboardABI,
+      functionName: 'backerMarkee' as const,
+      args: [owner as `0x${string}`] as const,
+    })),
+  )
+
+  const candidates = boards
+    .map((lb, i) => ({ lb, markee: (backerResults[i]?.result as string | undefined)?.toLowerCase() }))
+    .filter((b): b is { lb: typeof boards[0]; markee: string } =>
+      !!b.markee && b.markee !== ZERO)
+
+  if (candidates.length === 0) return []
+
+  const [detailResults, positions] = await Promise.all([
+    chunkedMulticall(
+      client,
+      candidates.flatMap(b => [
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const },
+      ]),
+    ),
+    fetchBackerPositions(
+      owner,
+      candidates.map(b => b.lb.address),
+      STREAMING_BASE.ethx,
+      BigInt(Math.floor(Date.now() / 1000)),
+    ).catch(() => new Map<string, { contributed: bigint; rate: bigint }>()),
+  ])
+
+  return candidates
+    .map((b, i) => {
+      const o = i * 3
+      const markeeOwner = (detailResults[o]?.result as string | undefined)?.toLowerCase()
+      if (markeeOwner !== owner) return null
+      const totalFundsAdded = (detailResults[o + 1]?.result as bigint) ?? 0n
+      const message = (detailResults[o + 2]?.result as string) ?? ''
+      const isTop = b.lb.topMarkeeAddress?.toLowerCase() === b.markee
+      const pos = positions.get(b.lb.address.toLowerCase())
+      return {
+        address: b.markee,
+        message,
+        name: '',
+        totalFundsAdded: totalFundsAdded.toString(),
+        strategyId: b.lb.address,
+        strategyName: b.lb.name ?? 'Unknown Leaderboard',
+        isTop,
+        topFundsRaw: b.lb.topFundsAddedRaw ?? '0',
+        strategy: 'streaming' as const,
+        rank: isTop ? 1 : null,
+        flowRateRaw: (pos?.rate ?? 0n).toString(),
+      }
+    })
+    .filter((m): m is NonNullable<typeof m> => m !== null)
 }
 
 export async function GET(request: Request) {
@@ -78,34 +157,41 @@ export async function GET(request: Request) {
     ...(oiData?.leaderboards ?? []),
   ].filter((lb: any) => lb.markeeCount > 0)
 
-  if (leaderboards.length === 0) {
-    return NextResponse.json({ messages: [] })
-  }
-
   const client = getClient()
 
-  // Get all markee addresses from every leaderboard (getMarkees reverts on legacy contracts — that's fine)
-  const markeeListCalls = leaderboards.map(lb => ({
-    address: lb.address as `0x${string}`,
-    abi: LEADERBOARD_ABI,
-    functionName: 'getMarkees' as const,
-    args: [0n, 1000n] as const,
-  }))
-  const markeeListResults = await chunkedMulticall(client, markeeListCalls)
+  // Get all markee addresses from every leaderboard
+  const markeeListResults = leaderboards.length > 0
+    ? await chunkedMulticall(
+        client,
+        leaderboards.map(lb => ({
+          address: lb.address as `0x${string}`,
+          abi: LEADERBOARD_ABI,
+          functionName: 'getMarkees' as const,
+          args: [0n, 1000n] as const,
+        })),
+      )
+    : []
 
-  // Flat list of { lbIndex, markeeAddress } for all markees across all leaderboards
+  // Build rank maps: leaderboard index → (markeeAddr → rank 1-based)
+  // getMarkees returns addresses sorted descending by totalFundsAdded
+  const lbRankMaps = new Map<number, Map<string, number>>()
   const entries: { lbIndex: number; markeeAddress: `0x${string}` }[] = []
   for (let i = 0; i < leaderboards.length; i++) {
     const addrs = (markeeListResults[i]?.result as string[]) ?? []
+    const ranks = new Map<string, number>()
+    let rank = 1
     for (const addr of addrs) {
-      if (addr && addr !== '0x0000000000000000000000000000000000000000') {
+      if (addr && addr !== ZERO) {
         entries.push({ lbIndex: i, markeeAddress: addr as `0x${string}` })
+        ranks.set(addr.toLowerCase(), rank++)
       }
     }
+    lbRankMaps.set(i, ranks)
   }
 
   if (entries.length === 0) {
-    return NextResponse.json({ messages: [] })
+    const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => [])
+    return NextResponse.json({ messages: streamingMsgs })
   }
 
   // Multicall owner() on all markees
@@ -120,19 +206,16 @@ export async function GET(request: Request) {
     return o === owner
   })
 
-  if (owned.length === 0) {
-    return NextResponse.json({ messages: [] })
-  }
-
-  // Fetch details for owned markees
-  const detailResults = await chunkedMulticall(
-    client,
-    owned.flatMap(e => [
-      { address: e.markeeAddress, abi: MARKEE_ABI, functionName: 'totalFundsAdded' as const },
-      { address: e.markeeAddress, abi: MARKEE_ABI, functionName: 'message' as const },
-      { address: e.markeeAddress, abi: MARKEE_ABI, functionName: 'name' as const },
-    ]),
-  )
+  const detailResults = owned.length > 0
+    ? await chunkedMulticall(
+        client,
+        owned.flatMap(e => [
+          { address: e.markeeAddress, abi: MARKEE_ABI, functionName: 'totalFundsAdded' as const },
+          { address: e.markeeAddress, abi: MARKEE_ABI, functionName: 'message' as const },
+          { address: e.markeeAddress, abi: MARKEE_ABI, functionName: 'name' as const },
+        ]),
+      )
+    : []
 
   const messages = owned.map((e, i) => {
     const b = i * 3
@@ -141,6 +224,7 @@ export async function GET(request: Request) {
     const message = (detailResults[b + 1]?.result as string) ?? ''
     const name = (detailResults[b + 2]?.result as string) ?? ''
     const isTop = lb.topMarkeeAddress?.toLowerCase() === e.markeeAddress.toLowerCase()
+    const rank = lbRankMaps.get(e.lbIndex)?.get(e.markeeAddress.toLowerCase()) ?? 1
     return {
       address: e.markeeAddress,
       message,
@@ -150,8 +234,13 @@ export async function GET(request: Request) {
       strategyName: lb.name,
       isTop,
       topFundsRaw: lb.topFundsAddedRaw ?? '0',
+      strategy: 'fixed' as const,
+      rank,
+      flowRateRaw: '0',
     }
   })
 
-  return NextResponse.json({ messages })
+  const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => [])
+
+  return NextResponse.json({ messages: [...messages, ...streamingMsgs] })
 }

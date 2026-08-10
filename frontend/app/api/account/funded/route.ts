@@ -61,6 +61,9 @@ interface FundedMessage {
   strategyName: string
   isTop: boolean
   topFundsRaw: string
+  strategy: 'fixed' | 'streaming'
+  rank: number | null
+  flowRateRaw: string
 }
 
 type Board = {
@@ -104,13 +107,18 @@ async function fixedFunded(
 
   type Entry = { lbIndex: number; markeeAddress: `0x${string}` }
   const entries: Entry[] = []
+  const lbRankMaps = new Map<number, Map<string, number>>()
   for (let i = 0; i < leaderboards.length; i++) {
     const addrs = (markeeListResults[i]?.result as string[]) ?? []
+    const ranks = new Map<string, number>()
+    let rank = 1
     for (const addr of addrs) {
       if (addr && addr !== '0x0000000000000000000000000000000000000000') {
         entries.push({ lbIndex: i, markeeAddress: addr as `0x${string}` })
+        ranks.set(addr.toLowerCase(), rank++)
       }
     }
+    lbRankMaps.set(i, ranks)
   }
 
   if (entries.length === 0) return []
@@ -165,11 +173,16 @@ async function fixedFunded(
     ]),
   )
 
-  // Build markee → leaderboard lookup
+  // Build markee → leaderboard + rank lookup
   const markeeToLb = new Map<string, typeof leaderboards[0]>()
+  const markeeToRank = new Map<string, number>()
   for (const e of entries) {
     const key = e.markeeAddress.toLowerCase()
-    if (!markeeToLb.has(key)) markeeToLb.set(key, leaderboards[e.lbIndex])
+    if (!markeeToLb.has(key)) {
+      markeeToLb.set(key, leaderboards[e.lbIndex])
+      const r = lbRankMaps.get(e.lbIndex)?.get(key)
+      if (r !== undefined) markeeToRank.set(key, r)
+    }
   }
 
   return externalAddrs.map((addr, i) => {
@@ -189,6 +202,9 @@ async function fixedFunded(
       strategyName: lb?.name ?? 'Unknown Leaderboard',
       isTop,
       topFundsRaw: lb?.topFundsAddedRaw ?? '0',
+      strategy: 'fixed' as const,
+      rank: markeeToRank.get(addr) ?? null,
+      flowRateRaw: '0',
     }
   })
 }
@@ -249,7 +265,9 @@ async function streamingFunded(
       // Markees the wallet owns belong in "bought", not "funded"
       if (markeeOwner === owner) return null
       const totalFundsAdded = (detailResults[o + 3]?.result as bigint) ?? 0n
-      const contributed = positions.get(b.lb.address.toLowerCase())?.contributed ?? 0n
+      const pos = positions.get(b.lb.address.toLowerCase())
+      const contributed = pos?.contributed ?? 0n
+      const isTop = b.lb.topMarkeeAddress?.toLowerCase() === b.markee
       return {
         address: b.markee,
         message: (detailResults[o]?.result as string) ?? '',
@@ -258,11 +276,14 @@ async function streamingFunded(
         totalContributed: contributed.toString(),
         strategyId: b.lb.address,
         strategyName: b.lb.name ?? 'Unknown Leaderboard',
-        isTop: b.lb.topMarkeeAddress?.toLowerCase() === b.markee,
+        isTop,
         topFundsRaw: b.lb.topFundsAddedRaw ?? '0',
+        strategy: 'streaming' as const,
+        rank: isTop ? 1 : null,
+        flowRateRaw: (pos?.rate ?? 0n).toString(),
       }
     })
-    .filter((m): m is FundedMessage => m !== null)
+    .filter((m): m is NonNullable<typeof m> => m !== null)
 }
 
 export async function GET(request: Request) {

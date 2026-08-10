@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
@@ -86,6 +87,9 @@ interface MyMessage {
   strategyName: string
   isTop: boolean
   topFunds: bigint
+  strategy?: 'fixed' | 'streaming'
+  rank?: number | null
+  flowRateRaw?: string
 }
 
 interface FundedMessage {
@@ -98,6 +102,9 @@ interface FundedMessage {
   strategyName: string
   isTop: boolean
   topFundsRaw: string
+  strategy?: 'fixed' | 'streaming'
+  rank?: number | null
+  flowRateRaw?: string
 }
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -734,71 +741,204 @@ function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; on
   )
 }
 
-// ── Messages I've Bought table ────────────────────────────────────────────────
-const MSG_COLS = '180px 1fr 110px 80px'
+// ── Stream status icon ────────────────────────────────────────────────────────
+type StreamStatus = 'active' | 'pending' | 'cancelled'
 
-function BoughtTable({ items }: { items: MyMessage[] }) {
+function streamStatusOf(isTop: boolean, flowRateRaw: string | undefined): StreamStatus {
+  const rate = BigInt(flowRateRaw ?? '0')
+  if (rate === 0n) return 'cancelled'
+  return isTop ? 'active' : 'pending'
+}
+
+const STREAM_STATUS_META: Record<StreamStatus, { color: string; label: string; tip: string }> = {
+  active:    { color: GREEN,   label: 'Active',    tip: 'This message is winning and your payment is streaming.' },
+  pending:   { color: GOLD,    label: 'Pending',   tip: "This message isn't winning. Your stream is being fully refunded until you take the top spot." },
+  cancelled: { color: '#F87171', label: 'Stopped', tip: 'This stream has been cancelled. Reactivate to get your message featured.' },
+}
+
+function StreamStatusIcon({ status }: { status: StreamStatus }) {
+  const [open, setOpen] = useState(false)
+  const { color, tip } = STREAM_STATUS_META[status]
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span style={{
+        width: 8, height: 8, borderRadius: 99, background: color, flexShrink: 0,
+        boxShadow: status === 'active' ? `0 0 6px ${color}` : 'none',
+        animation: status === 'active' ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
+      }} />
+      {open && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+          width: 230, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 8,
+          padding: '8px 10px', zIndex: 50, boxShadow: '0 12px 34px rgba(0,0,0,0.5)',
+          color: TEXT2, fontSize: 11.5, lineHeight: 1.45, whiteSpace: 'normal',
+          fontFamily: SANS, fontWeight: 400, pointerEvents: 'none',
+        }}>
+          {tip}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// ── Strategy badge (For Sale / For Rent) ──────────────────────────────────────
+function StrategyLabel({ strategy }: { strategy: 'fixed' | 'streaming' }) {
+  const isStreaming = strategy === 'streaming'
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.3,
+      color: isStreaming ? PINK : BLUE,
+      background: isStreaming ? `${PINK}18` : `${BLUE}18`,
+      border: `1px solid ${isStreaming ? PINK : BLUE}44`,
+      borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap' as const,
+    }}>
+      {isStreaming ? '⚡ For Rent' : '🏷 For Sale'}
+    </span>
+  )
+}
+
+// ── Flow rate formatter (wei/sec → ETH/mo + $USD/mo) ─────────────────────────
+function fmtFlowRate(weiPerSec: string, ethPrice: number | null): string {
+  const rate = BigInt(weiPerSec ?? '0')
+  if (rate === 0n) return ''
+  const ethPerMonth = Number(rate) / 1e18 * 60 * 60 * 24 * 30
+  const ethStr = ethPerMonth < 0.001 ? '< 0.001' : ethPerMonth.toFixed(4).replace(/\.?0+$/, '')
+  const usdStr = ethPrice ? `$${(ethPerMonth * ethPrice).toFixed(2)}/mo` : ''
+  return `${ethStr} ETH/mo${usdStr ? ` · ${usdStr}` : ''}`
+}
+
+// ── ETH + USD stacked cell ────────────────────────────────────────────────────
+function SpentCell({ wei, ethPrice }: { wei: bigint; ethPrice: number | null }) {
+  const eth = Number(wei) / 1e18
+  const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH`
+  const usd = ethPrice ? eth * ethPrice : null
+  return (
+    <div style={{ textAlign: 'right' as const }}>
+      <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
+      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>}
+    </div>
+  )
+}
+
+// ── Ranking cell ──────────────────────────────────────────────────────────────
+function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
+  isTop: boolean; rank: number | null | undefined
+  isStreaming: boolean; streamStatus?: StreamStatus
+}) {
+  if (isStreaming && streamStatus === 'cancelled') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        <StreamStatusIcon status="cancelled" />
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      {isStreaming && streamStatus && <StreamStatusIcon status={streamStatus} />}
+      {isTop
+        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' as const }}>★ Top</span>
+        : rank != null
+          ? <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, fontWeight: 600 }}>#{rank}</span>
+          : <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>—</span>
+      }
+    </div>
+  )
+}
+
+// ── Messages I've Bought table ────────────────────────────────────────────────
+const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
+const MSG_HEADERS = ['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Streaming', 'Ranking']
+
+function BoughtTable({ items, ethPrice }: { items: MyMessage[]; ethPrice: number | null }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 560, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Leaderboard', 'Your message', 'Spent', 'Status'].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i > 1 ? 'right' as const : 'left' as const }}>{h}</span>
+      <div style={{ minWidth: 800, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {MSG_HEADERS.map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
         </div>
-        {items.map(m => (
-          <div
-            key={m.address}
-            onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-            style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
-            <span style={{ fontFamily: MONO, fontSize: 13, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
-            <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600, textAlign: 'right' }}>{fmtEth(m.totalFundsAdded)}</span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              {m.isTop
-                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>★ Top</span>
-                : <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: `${MUTED}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>Overtaken</span>}
+        {items.map(m => {
+          const strategy = m.strategy ?? 'fixed'
+          const isStreaming = strategy === 'streaming'
+          const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
+          return (
+            <div
+              key={m.address}
+              onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
+              style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
+              <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
+              <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
+              <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: isStreaming ? TEXT2 : MUTED }}>
+                {isStreaming && m.flowRateRaw && m.flowRateRaw !== '0'
+                  ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      {streamStatus && <StreamStatusIcon status={streamStatus} />}
+                      <span>{fmtFlowRate(m.flowRateRaw, ethPrice)}</span>
+                    </div>
+                  : <span style={{ color: MUTED }}>—</span>
+                }
+              </div>
+              <RankingCell isTop={m.isTop} rank={m.rank} isStreaming={isStreaming} streamStatus={streamStatus} />
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
 }
 
 // ── Messages I've Funded table ────────────────────────────────────────────────
-const FUNDED_COLS = '180px 1fr 120px 80px'
+const FUNDED_COLS = '160px 1fr 90px 120px 170px 100px'
+const FUNDED_HEADERS = ['Markee Name', 'Current Message', 'Strategy', 'Total Spent', 'Streaming', 'Ranking']
 
-function FundedTable({ items }: { items: FundedMessage[] }) {
+function FundedTable({ items, ethPrice }: { items: FundedMessage[]; ethPrice: number | null }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 560, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Leaderboard', 'Current message', 'Contributed', 'Status'].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i > 1 ? 'right' as const : 'left' as const }}>{h}</span>
+      <div style={{ minWidth: 800, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {FUNDED_HEADERS.map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
         </div>
-        {items.map(m => (
-          <div
-            key={m.address}
-            onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-            style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
-            <span style={{ fontFamily: MONO, fontSize: 13, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
-            <span style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600, textAlign: 'right' }}>{fmtEth(BigInt(m.totalContributed))}</span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              {m.isTop
-                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>★ Top</span>
-                : <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: `${MUTED}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>Not Top</span>}
+        {items.map(m => {
+          const strategy = m.strategy ?? 'fixed'
+          const isStreaming = strategy === 'streaming'
+          const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
+          return (
+            <div
+              key={m.address}
+              onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
+              style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
+              <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
+              <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
+              <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: isStreaming ? TEXT2 : MUTED }}>
+                {isStreaming && m.flowRateRaw && m.flowRateRaw !== '0'
+                  ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      {streamStatus && <StreamStatusIcon status={streamStatus} />}
+                      <span>{fmtFlowRate(m.flowRateRaw, ethPrice)}</span>
+                    </div>
+                  : <span style={{ color: MUTED }}>—</span>
+                }
+              </div>
+              <RankingCell isTop={m.isTop} rank={m.rank} isStreaming={isStreaming} streamStatus={streamStatus} />
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -861,6 +1001,7 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
   const { activeAddress, hasWallet } = useActiveWallet()
+  const ethPrice = useEthPrice()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
@@ -966,6 +1107,9 @@ export default function AccountPage() {
           strategyName: m.strategyName ?? 'Unknown Leaderboard',
           isTop: m.isTop ?? false,
           topFunds: BigInt(m.topFundsRaw ?? '0'),
+          strategy: m.strategy ?? 'fixed',
+          rank: m.rank ?? null,
+          flowRateRaw: m.flowRateRaw ?? '0',
         })))
         .catch(() => [])
 
@@ -1005,7 +1149,12 @@ export default function AccountPage() {
       const res = await fetch(`/api/account/funded?owner=${addr.toLowerCase()}`)
       if (!res.ok) return
       const data = await res.json()
-      setFundedMessages(data.funded ?? [])
+      setFundedMessages((data.funded ?? []).map((m: any) => ({
+        ...m,
+        strategy: m.strategy ?? 'fixed',
+        rank: m.rank ?? null,
+        flowRateRaw: m.flowRateRaw ?? '0',
+      })))
     } catch { /* non-critical */ }
     finally { setIsLoadingFunded(false) }
   }, [])
@@ -1193,10 +1342,10 @@ export default function AccountPage() {
               {tab === 'bought' && (
                 isLoadingMessages ? (
                   <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 500, background: BG2 }}>
+                    <div style={{ minWidth: 800, background: BG2 }}>
                       {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
                         </div>
                       ))}
                     </div>
@@ -1204,7 +1353,7 @@ export default function AccountPage() {
                 ) : myMessages.length === 0 ? (
                   <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
-                  <BoughtTable items={myMessages} />
+                  <BoughtTable items={myMessages} ethPrice={ethPrice} />
                 )
               )}
 
@@ -1212,10 +1361,10 @@ export default function AccountPage() {
               {tab === 'funded' && (
                 isLoadingFunded ? (
                   <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 500, background: BG2 }}>
+                    <div style={{ minWidth: 800, background: BG2 }}>
                       {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
                         </div>
                       ))}
                     </div>
@@ -1223,7 +1372,7 @@ export default function AccountPage() {
                 ) : fundedMessages.length === 0 ? (
                   <Empty icon="🤝" title="No funded messages yet" body="When you add funds to someone else's Markee, those contributions appear here." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
-                  <FundedTable items={fundedMessages} />
+                  <FundedTable items={fundedMessages} ethPrice={ethPrice} />
                 )
               )}
             </div>
