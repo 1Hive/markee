@@ -121,6 +121,11 @@ export function StreamActivateModal({
     address: board, abi: ADMIN_ABI, functionName: 'admin', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
+  const { data: maxMessageLength } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'maxMessageLength', chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen },
+  })
+  const maxLen = Number(maxMessageLength || 223)
 
   const minLoaded = minMonthlyWei !== undefined
   const minMonthlyEth = minMonthlyWei ? formatEther(minMonthlyWei) : '0'
@@ -184,6 +189,7 @@ export function StreamActivateModal({
     setError(null)
 
     if (!message.trim()) { setError('Enter a message.'); return }
+    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less.`); return }
     if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
     if (belowMin) { setError(`The minimum on this board is ${minMonthlyEth} ETH / month.`); return }
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
@@ -382,10 +388,10 @@ export function StreamActivateModal({
         <div style={{ padding: '22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Message field */}
-          <ModalField label={messageLabel}>
+          <ModalField label={`${messageLabel} (${message.length}/${maxLen})`}>
             <textarea
               value={message}
-              onChange={e => setMessage(e.target.value)}
+              onChange={e => { if (e.target.value.length <= maxLen) setMessage(e.target.value) }}
               placeholder={messagePlaceholder}
               rows={2}
               style={{ ...inputStyle, resize: 'vertical' }}

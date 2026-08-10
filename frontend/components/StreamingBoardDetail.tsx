@@ -203,6 +203,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
             <MetricsBar
               address={board}
               entry={ecoEntry}
+              strategy="streaming"
               topViews={topViews}
               markeeCount={messageCount}
               totalLabel="Total streamed"

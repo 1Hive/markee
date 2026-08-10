@@ -9,6 +9,7 @@ import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
+import { StrategyBadge } from '@/components/StrategyBadge'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 export const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -242,9 +243,10 @@ export function MetricValue({ text, color = TEXT }: { text: string; color?: stri
   )
 }
 
-export function MetricsBar({ address, entry, topViews, markeeCount, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, strategy, topViews, markeeCount, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
+  strategy: 'fixed' | 'streaming'
   topViews: number
   markeeCount: number
   totalLabel: string
@@ -260,7 +262,7 @@ export function MetricsBar({ address, entry, topViews, markeeCount, totalLabel, 
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Pricing Strategy', <PlatformCell entry={entry} />)}
+      {cell('Pricing Strategy', <StrategyBadge strategy={strategy} size="sm" />)}
       {cell('Served on', <ServedOnCell entry={entry} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', <MetricValue text={formatViews(topViews)} color={BLUE} />)}

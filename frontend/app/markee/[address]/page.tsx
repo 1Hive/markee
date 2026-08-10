@@ -224,6 +224,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
             <MetricsBar
               address={leaderboardAddress}
               entry={ecoEntry}
+              strategy="fixed"
               topViews={topViews}
               markeeCount={markees.length}
               totalLabel="Total funds added"
