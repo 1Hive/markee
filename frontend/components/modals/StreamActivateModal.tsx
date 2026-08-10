@@ -8,7 +8,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
   STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID,
-  CFA_FORWARDER_ABI, monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps, buildReopenStreamOps,
+  CFA_FORWARDER_ABI, monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
@@ -181,6 +181,18 @@ export function StreamActivateModal({
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
 
     try {
+      // Guard: the board's afterAgreementUpdated callback calls createFlow internally and
+      // reverts with CFA_FLOW_ALREADY_EXISTS if the backer already has an active stream,
+      // even when we use updateFlow. The backer must stop their existing stream first.
+      const existingRate = await publicClient.readContract({
+        address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
+        functionName: 'getFlowrate', args: [ETHX, address, board],
+      }) as bigint
+      if (existingRate > 0n) {
+        setError('You already have an active stream to this board. Stop it first from your account page, then activate your new Markee.')
+        return
+      }
+
       // ── Tx 1: Create Markee ──────────────────────────────────────────────
       setPhase('creating')
       const createHash = await writeContractAsync({
@@ -239,15 +251,7 @@ export function StreamActivateModal({
 
       // ── Tx 3: Open stream ────────────────────────────────────────────────
       setPhase('streaming')
-      // Use updateFlow if a stream already exists (e.g. from a prior partial activation),
-      // otherwise createFlow. Both pass markee in userData so the board's SuperApp registers
-      // the new markee as the owner of this backer's flow.
-      const existingFlowRate = await publicClient.readContract({
-        address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
-        functionName: 'getFlowrate', args: [ETHX, address, board],
-      }) as bigint
-      if (!mountedRef.current) return
-      const streamParams = {
+      const ops = buildOpenStreamOps({
         ethx: ETHX,
         board,
         markee: markeeAddress,
@@ -257,8 +261,7 @@ export function StreamActivateModal({
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: pool as Address,
-      }
-      const ops = existingFlowRate > 0n ? buildReopenStreamOps(streamParams) : buildOpenStreamOps(streamParams)
+      })
       const streamHash = await writeContractAsync({
         address: HOST,
         abi: SUPERFLUID_HOST_ABI,
