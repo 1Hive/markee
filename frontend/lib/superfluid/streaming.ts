@@ -187,6 +187,44 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
   return [wrap, deposit, flow, connect]
 }
 
+// Same as buildOpenStreamOps but uses updateFlow — for when the backer already has a CFA stream to
+// this board (e.g. from a prior partial activation). Keeps markee in userData so the board's SuperApp
+// callback can re-associate the flow with the new markee.
+export function buildReopenStreamOps(p: OpenStreamParams): Operation[] {
+  const wrap: Operation = {
+    operationType: OP_SIMPLE_FORWARD_CALL,
+    target: p.ethx,
+    data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
+  }
+  const deposit: Operation = {
+    operationType: OP_SIMPLE_FORWARD_CALL,
+    target: p.board,
+    data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.buffer] }),
+  }
+  const callData = encodeFunctionData({
+    abi: CFA_UPDATE_FLOW_ABI,
+    functionName: 'updateFlow',
+    args: [p.ethx, p.board, p.ratePerSec, '0x'],
+  })
+  const userData = encodeAbiParameters([{ type: 'address' }], [p.markee])
+  const flow: Operation = {
+    operationType: OP_CALL_AGREEMENT,
+    target: p.cfaAgreement,
+    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [callData, userData]),
+  }
+  const connectData = encodeFunctionData({
+    abi: GDA_CONNECT_POOL_ABI,
+    functionName: 'connectPool',
+    args: [p.pool, '0x'],
+  })
+  const connect: Operation = {
+    operationType: OP_CALL_AGREEMENT,
+    target: p.gdaAgreement,
+    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [connectData, '0x']),
+  }
+  return [wrap, deposit, flow, connect]
+}
+
 // Native ETH to send with the batch: the buffer (pulled back into the board as the SuperApp deposit)
 // plus the prefund the backer keeps as ETHx to sustain the stream over time.
 export function openStreamValue(buffer: bigint, prefund: bigint): bigint {

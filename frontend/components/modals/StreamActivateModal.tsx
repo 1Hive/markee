@@ -8,7 +8,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
   STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID,
-  CFA_FORWARDER_ABI, monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps,
+  CFA_FORWARDER_ABI, monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps, buildReopenStreamOps,
 } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
@@ -96,7 +96,7 @@ export function StreamActivateModal({
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>(null)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const mountedRef = useRef(isOpen)
   mountedRef.current = isOpen
@@ -162,6 +162,14 @@ export function StreamActivateModal({
     }
   }, [isSuccess, isOpen, onClose, onSuccess])
 
+  // ── On-chain revert → surface error ──────────────────────────────────────
+  useEffect(() => {
+    if (txReverted && txHash && isOpen) {
+      setPhase('idle')
+      setError('Transaction failed on-chain. Please try again.')
+    }
+  }, [txReverted, txHash, isOpen])
+
   // ── 3-tx handler ──────────────────────────────────────────────────────────
   async function handleActivate() {
     if (!address || !publicClient) return
@@ -173,17 +181,6 @@ export function StreamActivateModal({
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
 
     try {
-      // Guard: CFA createFlow fails if the backer already has an active stream to this board.
-      // Check before tx1 so we don't create an orphan Markee that can never be activated.
-      const existingRate = await publicClient.readContract({
-        address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
-        functionName: 'getFlowrate', args: [ETHX, address, board],
-      }) as bigint
-      if (existingRate > 0n) {
-        setError('You already have an active stream to this board. Stop it first, then activate your new Markee.')
-        return
-      }
-
       // ── Tx 1: Create Markee ──────────────────────────────────────────────
       setPhase('creating')
       const createHash = await writeContractAsync({
@@ -242,7 +239,15 @@ export function StreamActivateModal({
 
       // ── Tx 3: Open stream ────────────────────────────────────────────────
       setPhase('streaming')
-      const ops = buildOpenStreamOps({
+      // Use updateFlow if a stream already exists (e.g. from a prior partial activation),
+      // otherwise createFlow. Both pass markee in userData so the board's SuperApp registers
+      // the new markee as the owner of this backer's flow.
+      const existingFlowRate = await publicClient.readContract({
+        address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
+        functionName: 'getFlowrate', args: [ETHX, address, board],
+      }) as bigint
+      if (!mountedRef.current) return
+      const streamParams = {
         ethx: ETHX,
         board,
         markee: markeeAddress,
@@ -252,7 +257,8 @@ export function StreamActivateModal({
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: pool as Address,
-      })
+      }
+      const ops = existingFlowRate > 0n ? buildReopenStreamOps(streamParams) : buildOpenStreamOps(streamParams)
       const streamHash = await writeContractAsync({
         address: HOST,
         abi: SUPERFLUID_HOST_ABI,

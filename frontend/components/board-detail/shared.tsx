@@ -260,7 +260,7 @@ export function MetricsBar({ address, entry, topViews, markeeCount, totalLabel, 
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Platform', <PlatformCell entry={entry} />)}
+      {cell('Pricing Strategy', <PlatformCell entry={entry} />)}
       {cell('Served on', <ServedOnCell entry={entry} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', <MetricValue text={formatViews(topViews)} color={BLUE} />)}
