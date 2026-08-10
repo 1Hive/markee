@@ -101,7 +101,7 @@ export function StreamActivateModal({
   const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const mountedRef = useRef(isOpen)
   mountedRef.current = isOpen
@@ -179,9 +179,11 @@ export function StreamActivateModal({
   useEffect(() => {
     if (txReverted && txHash && isOpen) {
       setPhase('idle')
-      setError('Transaction failed on-chain. Please try again.')
+      logTransactionError(receiptError, 'StreamActivateModal.receipt')
+      const decoded = receiptError ? formatTransactionError(receiptError) : null
+      setError(decoded && decoded !== 'Transaction error' ? decoded : 'Transaction failed on-chain. Please try again.')
     }
-  }, [txReverted, txHash, isOpen])
+  }, [txReverted, txHash, isOpen, receiptError])
 
   // ── 3-tx handler ──────────────────────────────────────────────────────────
   async function handleActivate() {
@@ -195,9 +197,8 @@ export function StreamActivateModal({
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
 
     try {
-      // Guard: the board's afterAgreementUpdated callback calls createFlow internally and
-      // reverts with CFA_FLOW_ALREADY_EXISTS if the backer already has an active stream,
-      // even when we use updateFlow. The backer must stop their existing stream first.
+      // Guard: the board's onFlowCreated callback calls createFlow to the beneficiary internally,
+      // which reverts if the backer already has a stream to the board. Stop it first.
       const existingRate = await publicClient.readContract({
         address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
         functionName: 'getFlowrate', args: [ETHX, address, board],

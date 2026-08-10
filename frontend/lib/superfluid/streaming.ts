@@ -38,7 +38,10 @@ export const GDA_AGREEMENT_ID = keccak256(
 // ── Rate helpers ────────────────────────────────────────────────────────────
 
 export function monthlyToRatePerSec(weiPerMonth: bigint): bigint {
-  return weiPerMonth / SECONDS_IN_MONTH
+  // Ceiling division: floor(weiPerMonth) rounds down, causing rate*SECONDS_IN_MONTH < weiPerMonth,
+  // which triggers BelowMinimumRate on the board. Ceiling guarantees the recovered monthly value
+  // always meets the on-chain minimum.
+  return (weiPerMonth + SECONDS_IN_MONTH - 1n) / SECONDS_IN_MONTH
 }
 
 export function ratePerSecToMonthly(ratePerSec: bigint): bigint {
