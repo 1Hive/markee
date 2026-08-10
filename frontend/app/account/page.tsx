@@ -498,12 +498,9 @@ function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbe
         <StrategyLabel strategy={lb.strategy ?? 'fixed'} />
       </div>
       <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: hasActiveStream ? TEXT2 : MUTED }}>
+      <div style={{ textAlign: 'right' as const }}>
         {hasActiveStream
-          ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-              <StreamStatusIcon status="active" />
-              <span>{fmtFlowRate(lb.topRateRaw!, ethPrice)}</span>
-            </div>
+          ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
           : <span style={{ color: MUTED }}>—</span>
         }
       </div>
@@ -671,19 +668,22 @@ const ACTIVE_COLS = '180px 1fr 90px 130px 160px 110px'
 const ACTIVE_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Streaming', '']
 
 function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
+  const eth = Number(balance) / 1e18
+  const usd = ethPrice ? eth * ethPrice : null
   if (isLive) {
     return (
       <div style={{ textAlign: 'right' as const }}>
         <div style={{ fontFamily: MONO, fontSize: 11.5, color: BLUE, fontWeight: 600, letterSpacing: 0.3 }}>
           {formatLiveEth(balance, 10)} ETH
         </div>
-        <div style={{ fontFamily: MONO, fontSize: 10, color: GREEN, marginTop: 1 }}>▲ live</div>
+        {usd !== null
+          ? <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>
+          : <div style={{ fontFamily: MONO, fontSize: 10, color: GREEN, marginTop: 1 }}>▲ live</div>
+        }
       </div>
     )
   }
-  const eth = Number(balance) / 1e18
   const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
-  const usd = ethPrice ? eth * ethPrice : null
   return (
     <div style={{ textAlign: 'right' as const }}>
       <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
@@ -712,12 +712,9 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
         <StrategyLabel strategy={lb.strategy ?? 'fixed'} />
       </div>
       <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: hasActiveStream ? TEXT2 : MUTED }}>
+      <div style={{ textAlign: 'right' as const }}>
         {hasActiveStream
-          ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-              <StreamStatusIcon status="active" />
-              <span>{fmtFlowRate(lb.topRateRaw!, ethPrice)}</span>
-            </div>
+          ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
           : <span style={{ color: MUTED }}>—</span>
         }
       </div>
@@ -851,14 +848,26 @@ function StrategyLabel({ strategy }: { strategy: 'fixed' | 'streaming' }) {
   )
 }
 
-// ── Flow rate formatter (wei/sec → ETH/mo + $USD/mo) ─────────────────────────
-function fmtFlowRate(weiPerSec: string, ethPrice: number | null): string {
+// ── Flow rate cell (wei/sec → ETH/mo blue top, $USD/mo grey bottom) ──────────
+function FlowRateCell({ weiPerSec, ethPrice, streamStatus }: {
+  weiPerSec: string | undefined
+  ethPrice: number | null
+  streamStatus?: StreamStatus
+}) {
   const rate = BigInt(weiPerSec ?? '0')
-  if (rate === 0n) return ''
+  if (rate === 0n) return <span style={{ color: MUTED }}>—</span>
   const ethPerMonth = Number(rate) / 1e18 * 60 * 60 * 24 * 30
-  const ethStr = ethPerMonth < 0.001 ? '< 0.001' : ethPerMonth.toFixed(4).replace(/\.?0+$/, '')
-  const usdStr = ethPrice ? `$${(ethPerMonth * ethPrice).toFixed(2)}/mo` : ''
-  return `${ethStr} ETH/mo${usdStr ? ` · ${usdStr}` : ''}`
+  const ethStr = ethPerMonth < 0.001 ? '< 0.001 ETH/mo' : `${ethPerMonth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
+  const usd = ethPrice ? ethPerMonth * ethPrice : null
+  return (
+    <div style={{ textAlign: 'right' as const }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        {streamStatus && <StreamStatusIcon status={streamStatus} />}
+        <span style={{ fontFamily: MONO, fontSize: 12, color: BLUE, fontWeight: 600 }}>{ethStr}</span>
+      </div>
+      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 2 }}>${usd.toFixed(2)}/mo</div>}
+    </div>
+  )
 }
 
 // ── ETH + USD stacked cell ────────────────────────────────────────────────────
@@ -939,12 +948,9 @@ function BoughtTable({ items, ethPrice, onEdit }: { items: MyMessage[]; ethPrice
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
               <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
-              <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: isStreaming ? TEXT2 : MUTED }}>
+              <div style={{ textAlign: 'right' as const }}>
                 {isStreaming && m.flowRateRaw && m.flowRateRaw !== '0'
-                  ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                      {streamStatus && <StreamStatusIcon status={streamStatus} />}
-                      <span>{fmtFlowRate(m.flowRateRaw, ethPrice)}</span>
-                    </div>
+                  ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
                   : <span style={{ color: MUTED }}>—</span>
                 }
               </div>
@@ -986,12 +992,9 @@ function FundedTable({ items, ethPrice }: { items: FundedMessage[]; ethPrice: nu
               <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
               <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
-              <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: isStreaming ? TEXT2 : MUTED }}>
+              <div style={{ textAlign: 'right' as const }}>
                 {isStreaming && m.flowRateRaw && m.flowRateRaw !== '0'
-                  ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                      {streamStatus && <StreamStatusIcon status={streamStatus} />}
-                      <span>{fmtFlowRate(m.flowRateRaw, ethPrice)}</span>
-                    </div>
+                  ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
                   : <span style={{ color: MUTED }}>—</span>
                 }
               </div>

@@ -2,31 +2,54 @@
 
 import { useState, useEffect, useRef } from 'react'
 
-// Continuously increments a wei balance at ratePerSec, updating every second.
-// snapshotWei is the on-chain value at mount time; ratePerSec drives the ticker.
-// Returns a bigint that can be formatted by the caller at any desired precision.
-// Safe to call with ratePerSec=0n — no interval is started, snapshot is returned as-is.
-export function useLiveBalance(snapshotWei: bigint, ratePerSec: bigint): bigint {
-  const anchor = useRef({ time: Date.now(), snapshot: snapshotWei })
+// rAF-based live balance ticker. Runs at ~60fps but only triggers a React re-render when the
+// value changes at the given display precision — much less than 60x/sec at typical stream rates.
+//
+// How: one display unit = 10^(18 - displayDecimals) wei. We track lastUnit and only call
+// setBalance when newWei / resolution !== lastUnit, so React renders only for visible changes.
+// At 0.001 ETH/mo (380M wei/sec) with 10dp: ~1 render per 267ms.
+// At 0.1 ETH/mo: ~1 render per 3ms (near every-frame). Scales automatically.
+export function useLiveBalance(
+  snapshotWei: bigint,
+  ratePerSec: bigint,
+  displayDecimals: number = 10,
+): bigint {
+  const anchor = useRef({ time: performance.now(), snapshot: snapshotWei })
+  const frameRef = useRef<number | null>(null)
   const [balance, setBalance] = useState(snapshotWei)
 
   useEffect(() => {
-    anchor.current = { time: Date.now(), snapshot: snapshotWei }
+    anchor.current = { time: performance.now(), snapshot: snapshotWei }
     setBalance(snapshotWei)
     if (ratePerSec === 0n) return
 
-    const id = setInterval(() => {
-      const elapsedMs = BigInt(Date.now() - anchor.current.time)
-      setBalance(anchor.current.snapshot + (elapsedMs * ratePerSec) / 1000n)
-    }, 1000)
-    return () => clearInterval(id)
-  }, [snapshotWei, ratePerSec])
+    const resolution = 10n ** BigInt(Math.max(0, 18 - displayDecimals))
+    let lastUnit = snapshotWei / resolution
+
+    const tick = () => {
+      const elapsedMs = BigInt(Math.floor(performance.now() - anchor.current.time))
+      const newWei = anchor.current.snapshot + (elapsedMs * ratePerSec) / 1000n
+      const newUnit = newWei / resolution
+      if (newUnit !== lastUnit) {
+        lastUnit = newUnit
+        setBalance(newWei)
+      }
+      frameRef.current = requestAnimationFrame(tick)
+    }
+
+    frameRef.current = requestAnimationFrame(tick)
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current)
+        frameRef.current = null
+      }
+    }
+  }, [snapshotWei, ratePerSec, displayDecimals])
 
   return balance
 }
 
-// Format a live wei balance to a fixed number of decimal places.
-// Uses viem-compatible string arithmetic to avoid Number precision loss on large bigints.
+// Format a live wei balance to a fixed number of decimal places without float precision loss.
 export function formatLiveEth(wei: bigint, decimals = 10): string {
   const weiStr = wei.toString()
   const totalDigits = 18
