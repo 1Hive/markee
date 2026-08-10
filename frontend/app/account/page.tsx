@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info } from 'lucide-react'
+import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info, PlusCircle } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
@@ -15,6 +15,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamModal } from '@/components/modals/StreamModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
@@ -488,7 +489,7 @@ function ActivationTable({ markees, onActivate, onArchive }: {
 
 // ── Ready to Embed table (website boards with active message but no verified URL) ──
 const EMBED_COLS = '180px 1fr 90px 130px 160px 150px'
-const EMBED_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Streaming', '']
+const EMBED_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Latest Spend', '']
 
 function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
   const isStreaming = lb.strategy === 'streaming'
@@ -510,11 +511,22 @@ function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbe
         <StrategyLabel strategy={lb.strategy ?? 'fixed'} />
       </div>
       <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ textAlign: 'right' as const }}>
-        {hasActiveStream
-          ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
-          : <span style={{ color: MUTED }}>—</span>
-        }
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        <div style={{ textAlign: 'right' }}>
+          {hasActiveStream
+            ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
+            : <span style={{ color: MUTED }}>—</span>
+          }
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); window.location.href = `/markee/${lb.address}` }}
+          title="Add funds"
+          style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 5px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = BLUE; el.style.borderColor = `${BLUE}66` }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+        >
+          <PlusCircle size={11} />
+        </button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
@@ -921,9 +933,9 @@ function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
 
 // ── Messages I've Bought table ────────────────────────────────────────────────
 const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
-const MSG_HEADERS = ['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Streaming', 'Ranking']
+const MSG_HEADERS = ['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Latest Spend', 'Ranking']
 
-function BoughtTable({ items, ethPrice, onEdit }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void }) {
+function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
@@ -959,11 +971,24 @@ function BoughtTable({ items, ethPrice, onEdit }: { items: MyMessage[]; ethPrice
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
               <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
-              <div style={{ textAlign: 'right' as const }}>
-                {isStreaming && m.flowRateRaw && m.flowRateRaw !== '0'
-                  ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                  : <span style={{ color: MUTED }}>—</span>
-                }
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                <div style={{ textAlign: 'right' }}>
+                  {isStreaming
+                    ? (m.flowRateRaw && m.flowRateRaw !== '0'
+                        ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
+                        : <span style={{ color: MUTED }}>—</span>)
+                    : <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
+                  }
+                </div>
+                <button
+                  onClick={e => { e.stopPropagation(); onAddFunds(m) }}
+                  title="Add funds"
+                  style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 5px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = BLUE; el.style.borderColor = `${BLUE}66` }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+                >
+                  <PlusCircle size={11} />
+                </button>
               </div>
               <RankingCell isTop={m.isTop} rank={m.rank} isStreaming={isStreaming} streamStatus={streamStatus} />
             </div>
@@ -976,9 +1001,9 @@ function BoughtTable({ items, ethPrice, onEdit }: { items: MyMessage[]; ethPrice
 
 // ── Messages I've Funded table ────────────────────────────────────────────────
 const FUNDED_COLS = '160px 1fr 90px 120px 170px 100px'
-const FUNDED_HEADERS = ['Markee Name', 'Current Message', 'Strategy', 'Total Spent', 'Streaming', 'Ranking']
+const FUNDED_HEADERS = ['Markee Name', 'Current Message', 'Strategy', 'Total Spent', 'Latest Spend', 'Ranking']
 
-function FundedTable({ items, ethPrice }: { items: FundedMessage[]; ethPrice: number | null }) {
+function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
@@ -1003,11 +1028,24 @@ function FundedTable({ items, ethPrice }: { items: FundedMessage[]; ethPrice: nu
               <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
               <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
-              <div style={{ textAlign: 'right' as const }}>
-                {isStreaming && m.flowRateRaw && m.flowRateRaw !== '0'
-                  ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                  : <span style={{ color: MUTED }}>—</span>
-                }
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                <div style={{ textAlign: 'right' }}>
+                  {isStreaming
+                    ? (m.flowRateRaw && m.flowRateRaw !== '0'
+                        ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
+                        : <span style={{ color: MUTED }}>—</span>)
+                    : <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
+                  }
+                </div>
+                <button
+                  onClick={e => { e.stopPropagation(); onAddFunds(m) }}
+                  title="Add funds"
+                  style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 5px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = BLUE; el.style.borderColor = `${BLUE}66` }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+                >
+                  <PlusCircle size={11} />
+                </button>
               </div>
               <RankingCell isTop={m.isTop} rank={m.rank} isStreaming={isStreaming} streamStatus={streamStatus} />
             </div>
@@ -1104,6 +1142,15 @@ export default function AccountPage() {
   const [verifyBoard, setVerifyBoard]           = useState<WebsiteLeaderboard | null>(null)
   const [editMessageTarget, setEditMessageTarget]       = useState<MyMessage | null>(null)
   const [streamEditTarget, setStreamEditTarget]         = useState<MyMessage | null>(null)
+  const [addFundsTarget, setAddFundsTarget] = useState<{
+    strategy: 'fixed' | 'streaming'
+    strategyId: string
+    markeeAddress: string
+    message: string
+    totalFundsAdded: bigint
+    topFunds: bigint
+    name?: string
+  } | null>(null)
 
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
@@ -1436,7 +1483,7 @@ export default function AccountPage() {
                 ) : myMessages.length === 0 ? (
                   <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
-                  <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} />
+                  <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name })} />
                 )
               )}
 
@@ -1455,7 +1502,7 @@ export default function AccountPage() {
                 ) : fundedMessages.length === 0 ? (
                   <Empty icon="🤝" title="No funded messages yet" body="When you add funds to someone else's Markee, those contributions appear here." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                 ) : (
-                  <FundedTable items={fundedMessages} ethPrice={ethPrice} />
+                  <FundedTable items={fundedMessages} ethPrice={ethPrice} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt(m.totalContributed), topFunds: BigInt(m.topFundsRaw), name: m.name })} />
                 )
               )}
             </div>
@@ -1559,16 +1606,40 @@ export default function AccountPage() {
       )}
 
       {/* Edit message — fixed board */}
-      <BuyMessageModal
-        isOpen={!!editMessageTarget}
-        onClose={() => setEditMessageTarget(null)}
-        strategyAddress={editMessageTarget?.strategyId as `0x${string}` | undefined}
-        title="EDIT MESSAGE"
-        messageLabel="YOUR MESSAGE"
-        messagePlaceholder="Your updated message..."
-        ctaLabel="Update Message"
-        onSuccess={() => { setEditMessageTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
-      />
+      {editMessageTarget && (
+        <EditMessageModal
+          isOpen={!!editMessageTarget}
+          onClose={() => setEditMessageTarget(null)}
+          strategyAddress={editMessageTarget.strategyId as `0x${string}`}
+          markeeAddress={editMessageTarget.address as `0x${string}`}
+          currentMessage={editMessageTarget.message}
+          onSuccess={() => { setEditMessageTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+        />
+      )}
+
+      {/* Add funds — fixed board */}
+      {addFundsTarget?.strategy === 'fixed' && (
+        <BuyMessageModal
+          isOpen
+          onClose={() => setAddFundsTarget(null)}
+          strategyAddress={addFundsTarget.strategyId as `0x${string}`}
+          userMarkee={{ address: addFundsTarget.markeeAddress, owner: activeAddress ?? '', message: addFundsTarget.message, totalFundsAdded: addFundsTarget.totalFundsAdded }}
+          initialMode="addFunds"
+          topFundsAdded={addFundsTarget.topFunds}
+          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) { fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+        />
+      )}
+
+      {/* Add funds — streaming board */}
+      {addFundsTarget?.strategy === 'streaming' && (
+        <StreamModal
+          isOpen
+          board={addFundsTarget.strategyId as `0x${string}`}
+          markee={{ address: addFundsTarget.markeeAddress as `0x${string}`, message: addFundsTarget.message, name: addFundsTarget.name }}
+          onClose={() => setAddFundsTarget(null)}
+          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+        />
+      )}
 
       {/* Edit stream — streaming board */}
       {streamEditTarget && (
