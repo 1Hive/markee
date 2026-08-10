@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 const RESULT_KEY = 'cache:strategy-view-totals'
 const RESULT_TTL = 300
 
-type LBCache = { leaderboards: { address: string }[] }
+type LBCache = { leaderboards: { address: string; topMarkeeAddress?: string | null }[] }
 
 export async function GET() {
   const cached = await kv.get<{ fixed: number; streaming: number }>(RESULT_KEY)
@@ -31,7 +31,10 @@ export async function GET() {
     ...(gh?.leaderboards ?? []),
   ].map(l => l.address.toLowerCase())
 
-  const streamingAddrs = (st?.leaderboards ?? []).map(l => l.address.toLowerCase())
+  // Streaming views are tracked against the top markee slot address (not the board contract address),
+  // so look up topMarkeeAddress and fall back to address only if no markee exists yet.
+  const streamingAddrs = (st?.leaderboards ?? [])
+    .map(l => (l.topMarkeeAddress ?? l.address).toLowerCase())
 
   // Deduplicate in case any address appears in multiple caches
   const uniqueFixed = [...new Set(fixedAddrs)]
