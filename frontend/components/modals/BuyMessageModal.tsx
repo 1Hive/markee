@@ -27,6 +27,7 @@ const BORDER = 'rgba(138,143,191,0.2)'
 const MUTED  = '#8A8FBF'
 const TEXT   = '#EDEEFF'
 const TEXT2  = '#B8B6D9'
+const GOLD = '#FFD700'
 const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 const REV_NET_ENABLED_ABI = [
@@ -136,7 +137,7 @@ export function BuyMessageModal({
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
-  const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>('min')
+  const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | '2x' | null>('min')
   const [successSnap, setSuccessSnap] = useState<SuccessSnap | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
@@ -646,6 +647,45 @@ export function BuyMessageModal({
                             }}
                           >
                             MIN
+                          </button>
+                        )}
+                        {hasCompetition && takeFirstAmountFormatted && !userIsTopDawg && (
+                          <button
+                            type="button"
+                            onClick={() => { setHasUserEdited(true); setAmount(takeFirstAmountFormatted); setLastPreset('win') }}
+                            disabled={isPending || isConfirming}
+                            style={{
+                              border: `1px solid ${lastPreset === 'win' ? GOLD : BORDER}`,
+                              background: 'transparent',
+                              color: lastPreset === 'win' ? GOLD : TEXT2,
+                              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                              fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
+                              opacity: isPending || isConfirming ? 0.4 : 1,
+                              transition: 'border-color 120ms, color 120ms',
+                            }}
+                          >
+                            WIN
+                          </button>
+                        )}
+                        {userIsTopDawg && userMarkee && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const twoX = parseFloat(formatEther(userMarkee.totalFundsAdded)).toFixed(3)
+                              setHasUserEdited(true); setAmount(twoX); setLastPreset('2x')
+                            }}
+                            disabled={isPending || isConfirming}
+                            style={{
+                              border: `1px solid ${lastPreset === '2x' ? GOLD : BORDER}`,
+                              background: 'transparent',
+                              color: lastPreset === '2x' ? GOLD : TEXT2,
+                              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                              fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
+                              opacity: isPending || isConfirming ? 0.4 : 1,
+                              transition: 'border-color 120ms, color 120ms',
+                            }}
+                          >
+                            2X
                           </button>
                         )}
                         <button

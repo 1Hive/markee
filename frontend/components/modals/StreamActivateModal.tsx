@@ -25,6 +25,7 @@ const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
 
+const GOLD = '#FFD700'
 const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -97,7 +98,7 @@ export function StreamActivateModal({
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const [lastPreset, setLastPreset] = useState<'min' | 'max' | null>(null)
+  const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
   const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
@@ -444,6 +445,25 @@ export function StreamActivateModal({
                 >
                   MIN
                 </button>
+                {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
+                      setMonthly(formatEther(winWei)); setLastPreset('win')
+                    }}
+                    style={{
+                      border: `1px solid ${lastPreset === 'win' ? GOLD : BORDER}`,
+                      background: 'transparent',
+                      color: lastPreset === 'win' ? GOLD : TEXT2,
+                      borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                      fontWeight: 700, cursor: 'pointer',
+                      transition: 'border-color 120ms, color 120ms',
+                    }}
+                  >
+                    WIN
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
