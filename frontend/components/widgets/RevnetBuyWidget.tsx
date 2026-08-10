@@ -159,7 +159,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
                 background: '#060A2A', border: `1px solid ${BORDER}`,
                 borderRadius: 11, padding: '11px 14px',
                 color: '#EDEEFF', fontSize: 14, outline: 'none', lineHeight: 1.4,
-                fontStyle: 'italic',
+                fontFamily: 'Manrope, system-ui, sans-serif',
               }}
             />
           </div>
