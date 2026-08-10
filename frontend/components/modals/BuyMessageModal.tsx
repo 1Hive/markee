@@ -702,7 +702,7 @@ export function BuyMessageModal({
                   : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       62/38 split
                       <InfoTip>
-                        62% to the sign&apos;s Beneficiary / 38% to the Revnet, issuing MARKEE for you
+                        62% to the sign&apos;s beneficiary<br />38% to Markee&apos;s Revnet<br />Your MARKEE is issued by the Revnet
                       </InfoTip>
                     </span>}
               </div>

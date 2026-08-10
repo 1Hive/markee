@@ -311,7 +311,7 @@ export function StreamActivateModal({
         62/38 split
         {boardAdmin && (
           <InfoTip>
-            62% to the sign&apos;s Beneficiary / 38% to the Revnet, issuing MARKEE for you
+            62% to the sign&apos;s beneficiary<br />38% to Markee&apos;s Revnet<br />Your MARKEE is issued by the Revnet
           </InfoTip>
         )}
       </div>
