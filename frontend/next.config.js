@@ -73,6 +73,12 @@ const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['h
   .join('; ')
 
 const nextConfig = {
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'img.logo.dev' },
+    ],
+  },
+
   async headers() {
     return [
       // /embed/* — allow iframing from any origin, no X-Frame-Options

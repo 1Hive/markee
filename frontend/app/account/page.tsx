@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, ExternalLink, Code2, CheckCircle2, Pencil, X, ChevronDown, Info } from 'lucide-react'
@@ -198,15 +199,26 @@ function isWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
   return lb.platform === 'website'
 }
 
-// Build Google favicon URL from any site URL. Returns null if the URL can't be parsed.
-function getFaviconUrl(url: string | null): string | null {
+// Extract hostname from a URL for use with logo.dev. Returns null if unparseable.
+function getLogoDomain(url: string | null): string | null {
   if (!url) return null
-  try {
-    const { hostname } = new URL(url)
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`
-  } catch {
-    return null
-  }
+  try { return new URL(url).hostname } catch { return null }
+}
+
+// Company logo via logo.dev CDN. Falls back to 🪧 if the image fails to load.
+function LogoIcon({ domain, size = 14 }: { domain: string; size?: number }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return <span style={{ fontSize: size, lineHeight: 1 }}>🪧</span>
+  return (
+    <Image
+      src={`https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=32`}
+      alt={`${domain} logo`}
+      width={size}
+      height={size}
+      style={{ objectFit: 'contain', borderRadius: 2 }}
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 // ── Platform icon ─────────────────────────────────────────────────────────────
@@ -634,13 +646,12 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
   const primaryUrl = urls[0] || w.siteUrl || null
   const primaryLabel = primaryUrl ? primaryUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (lb.name || fmtAddr(lb.address))
   const extras = Math.max(0, urls.length - 1)
-  const faviconUrl = getFaviconUrl(primaryUrl)
+  const logoDomain = getLogoDomain(primaryUrl)
   return (
     <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
       {iconBox(
-        faviconUrl
-          ? /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={faviconUrl} alt="" width={14} height={14} style={{ objectFit: 'contain', borderRadius: 2 }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+        logoDomain
+          ? <LogoIcon domain={logoDomain} size={14} />
           : <Globe2 size={13} style={{ color: PINK }} />
       )}
       {primaryUrl ? (
