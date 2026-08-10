@@ -187,10 +187,26 @@ function detailUrl(lb: AnyLeaderboard) {
   return `/markee/${lb.address}`
 }
 
-// The website verify/integrate/edit management flows only exist for fixed-price website boards;
-// streaming boards share the 'website' placement but are managed from their board page.
+// Fixed-price website boards: go through the URL verify/integrate/edit management flows.
 function isFixedWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
   return lb.platform === 'website' && lb.strategy !== 'streaming'
+}
+
+// All website boards (fixed + streaming): need to be embedded somewhere.
+// Used to decide whether a board belongs in "Ready to Embed" rather than "Active Markees".
+function isWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
+  return lb.platform === 'website'
+}
+
+// Build Google favicon URL from any site URL. Returns null if the URL can't be parsed.
+function getFaviconUrl(url: string | null): string | null {
+  if (!url) return null
+  try {
+    const { hostname } = new URL(url)
+    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`
+  } catch {
+    return null
+  }
 }
 
 // ── Platform icon ─────────────────────────────────────────────────────────────
@@ -458,87 +474,63 @@ function ActivationTable({ markees, onActivate, onArchive }: {
   )
 }
 
-// ── Setup-required table (Awaiting Integration) ───────────────────────────────
-const SETUP_COLS = '180px 165px 1fr 220px'
+// ── Ready to Embed table (website boards with active message but no verified URL) ──
+const EMBED_COLS = '180px 1fr 90px 130px 160px 150px'
+const EMBED_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Streaming', '']
 
-function SetupStatusPill({ lb }: { lb: AnyLeaderboard }) {
-  const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
-  const missingVerify = isFixedWebsiteBoard(lb) && (lb.verifiedUrls?.length ?? 0) === 0
-  const needsIntegration = hasFunds && missingVerify
-  const col = needsIntegration ? BLUE : MUTED
-  const label = needsIntegration ? 'Integration Needed' : 'No Messages Yet'
+function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
+  const isStreaming = lb.strategy === 'streaming'
+  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
+  const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
+  const hasActiveStream = ratePerSec > 0n
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 99, fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 0.4, background: `${col}1E`, border: `1px solid ${col}44`, color: col, whiteSpace: 'nowrap' }}>
-      <GlowDot size={5} color={col} />{label}
-    </span>
+    <div
+      onClick={() => window.location.href = `/markee/${lb.address}`}
+      style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    >
+      <ServedOnCell lb={lb} />
+      <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
+        {lb.topMessage || 'No message yet'}
+      </span>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <StrategyLabel strategy={lb.strategy ?? 'fixed'} />
+      </div>
+      <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
+      <div style={{ textAlign: 'right' as const, fontFamily: MONO, fontSize: 11, color: hasActiveStream ? TEXT2 : MUTED }}>
+        {hasActiveStream
+          ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+              <StreamStatusIcon status="active" />
+              <span>{fmtFlowRate(lb.topRateRaw!, ethPrice)}</span>
+            </div>
+          : <span style={{ color: MUTED }}>—</span>
+        }
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={e => { e.stopPropagation(); onEmbed(lb) }}
+          style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
+        >
+          Embed this Markee
+        </button>
+      </div>
+    </div>
   )
 }
 
-function SetupTable({ markees, onIntegrate, onVerify, onArchive }: {
-  markees: AnyLeaderboard[]
-  onIntegrate?: (lb: WebsiteLeaderboard) => void
-  onVerify?: (lb: WebsiteLeaderboard) => void
-  onArchive: (address: string) => void
-}) {
+function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderboard[]; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 640, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Markee Name', 'Status', 'Current message', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
+      <div style={{ minWidth: 760, background: BG2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {EMBED_HEADERS.map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
         </div>
-        {markees.map(lb => {
-          const hasFunds = BigInt(lb.topFundsAddedRaw ?? '0') > 0n
-          const missingVerify = isFixedWebsiteBoard(lb) && (lb.verifiedUrls?.length ?? 0) === 0
-
-          // Awaiting Integration: has funds but no verified URL → Verify Integration
-          // Awaiting Activation: no funds → Buy First Message (all platforms, same blue style)
-          const primary: React.ReactNode = (hasFunds && missingVerify) ? (
-            <button
-              onClick={e => { e.stopPropagation(); onVerify?.(lb as WebsiteLeaderboard) }}
-              style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-            >
-              Verify Integration
-            </button>
-          ) : (
-            <a
-              href={`/markee/${lb.address}`}
-              onClick={e => e.stopPropagation()}
-              style={{ background: BLUE, color: BG, border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, textDecoration: 'none', fontFamily: SANS, whiteSpace: 'nowrap' }}
-            >
-              Buy First Message
-            </a>
-          )
-
-          return (
-            <div
-              key={lb.address}
-              onClick={() => window.location.href = `/markee/${lb.address}`}
-              style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            >
-              <ServedOnCell lb={lb} />
-              <SetupStatusPill lb={lb} />
-              <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
-                {lb.topMessage || 'No message yet'}
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                {primary}
-                <button
-                  onClick={e => { e.stopPropagation(); onArchive(lb.address) }}
-                  title="Archive"
-                  style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'color 120ms, border-color 120ms' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = TEXT2; el.style.borderColor = `${MUTED}66` }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
-                >
-                  Archive
-                </button>
-              </div>
-            </div>
-          )
-        })}
+        {markees.map(lb => (
+          <ReadyToEmbedRow key={lb.address} lb={lb} onEmbed={onEmbed} ethPrice={ethPrice} />
+        ))}
       </div>
     </div>
   )
@@ -645,9 +637,15 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
   const primaryUrl = urls[0] || w.siteUrl || null
   const primaryLabel = primaryUrl ? primaryUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (lb.name || fmtAddr(lb.address))
   const extras = Math.max(0, urls.length - 1)
+  const faviconUrl = getFaviconUrl(primaryUrl)
   return (
     <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-      {iconBox(<Globe2 size={13} style={{ color: PINK }} />)}
+      {iconBox(
+        faviconUrl
+          ? /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={faviconUrl} alt="" width={14} height={14} style={{ objectFit: 'contain', borderRadius: 2 }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+          : <Globe2 size={13} style={{ color: PINK }} />
+      )}
       {primaryUrl ? (
         <a
           href={primaryUrl}
@@ -1142,7 +1140,8 @@ export default function AccountPage() {
               if (lb.platform === 'superfluid') {
                 return { ...lb, platform: 'superfluid' }
               }
-              return { ...lb, platform: 'website', creator: lb.admin, logoUrl: null, siteUrl: null, verifiedUrl: null, verifiedUrls: [], status: 'pending', isLegacy: false }
+              // Don't override verifiedUrls/logoUrl/etc — the streaming API already reads them from KV
+              return { ...lb, platform: 'website' as const, creator: lb.admin ?? null, isLegacy: false }
             })
         )
       }
@@ -1240,7 +1239,7 @@ export default function AccountPage() {
     }), [superfluidBoards, githubBoards, websiteBoards, streamingBoards])
 
   const awaitingVerification = useMemo(() =>
-    allBoards.filter(lb => isFixedWebsiteBoard(lb) && BigInt(lb.topFundsAddedRaw ?? '0') > 0n && (lb.verifiedUrls?.length ?? 0) === 0) as WebsiteLeaderboard[], [allBoards])
+    allBoards.filter(lb => isWebsiteBoard(lb) && BigInt(lb.topFundsAddedRaw ?? '0') > 0n && (lb.verifiedUrls?.length ?? 0) === 0) as WebsiteLeaderboard[], [allBoards])
   const awaitingVerificationAddrs = useMemo(() => new Set(awaitingVerification.map(lb => lb.address)), [awaitingVerification])
 
   const activeBoards = useMemo(() =>
@@ -1331,7 +1330,7 @@ export default function AccountPage() {
                   <div style={{ overflow: 'auto' }}>
                     <div style={{ minWidth: 640, background: BG2 }}>
                       {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
                           {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
                         </div>
                       ))}
@@ -1354,17 +1353,17 @@ export default function AccountPage() {
                       </div>
                     )}
 
-                    {/* Awaiting Integration — website boards with funds but no verified URL */}
+                    {/* Ready to Embed — website boards with active messages/streams but no verified URL */}
                     {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: BLUE }}>Awaiting Integration</h2>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: BLUE }}>Ready to Embed</h2>
                           <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{awaitingVerification.filter(lb => !archived.includes(lb.address)).length}</span>
                         </div>
-                        <SetupTable
+                        <ReadyToEmbedTable
                           markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
-                          onVerify={lb => setIntegrationBoard(lb)}
-                          onArchive={addr => setArchived(prev => [...prev, addr])}
+                          onEmbed={lb => setIntegrationBoard(lb as WebsiteLeaderboard)}
+                          ethPrice={ethPrice}
                         />
                       </div>
                     )}
@@ -1461,7 +1460,7 @@ export default function AccountPage() {
           <div style={{ paddingTop: 28, overflow: 'auto' }}>
             <div style={{ minWidth: 640, background: BG2 }}>
               {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: SETUP_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
                   {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
                 </div>
               ))}
