@@ -28,6 +28,8 @@ const BLUE   = '#7C9CFF'
 const PURP   = '#7B6AF4'
 const GREEN  = '#1DB227'
 const GOLD   = '#FFD45E'
+const SILVER = '#C7CCD6'
+const BRONZE = '#CD7F32'
 const BG     = '#060A2A'
 const BG2    = '#0A0F3D'
 const TEXT   = '#EDEEFF'
@@ -516,6 +518,28 @@ function CountBadge({ n }: { n: number }) {
   )
 }
 
+// ── Sortable column header ────────────────────────────────────────────────────
+function SortHead({ label, col, sortKey, sortDir, onSort, align = 'right' }: { label: string; col: string; sortKey: string; sortDir: string; onSort: (col: string) => void; align?: 'left' | 'right' }) {
+  const active = sortKey === col
+  return (
+    <button
+      onClick={() => onSort(col)}
+      style={{
+        background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+        display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' as const,
+        justifySelf: align === 'right' ? 'end' : 'start',
+        fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const,
+        color: active ? PINK : MUTED, transition: 'color 120ms',
+      }}
+    >
+      <span>{label}</span>
+      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1 }}>
+        {active ? (sortDir === 'asc' ? '▲' : '▼') : '▾'}
+      </span>
+    </button>
+  )
+}
+
 // ── Awaiting Activation table ─────────────────────────────────────────────────
 const ACTIVATION_COLS = '1fr 150px 220px 160px'
 
@@ -806,7 +830,7 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
         {lb.topMessage || 'No message yet'}
       </span>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <StrategyLabel strategy={lb.strategy ?? 'fixed'} />
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
       </div>
       <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
       <div style={{ textAlign: 'right' as const }}>
@@ -928,23 +952,6 @@ function StreamStatusIcon({ status }: { status: StreamStatus }) {
   )
 }
 
-// ── Strategy badge (For Sale / For Rent) ──────────────────────────────────────
-function StrategyLabel({ strategy }: { strategy: 'fixed' | 'streaming' }) {
-  const isStreaming = strategy === 'streaming'
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.3,
-      color: isStreaming ? PINK : BLUE,
-      background: isStreaming ? `${PINK}18` : `${BLUE}18`,
-      border: `1px solid ${isStreaming ? PINK : BLUE}44`,
-      borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap' as const,
-    }}>
-      {isStreaming ? '⚡ For Rent' : '🏷 For Sale'}
-    </span>
-  )
-}
-
 // ── Flow rate cell (wei/sec → ETH/mo blue top, $USD/mo grey bottom) ──────────
 function FlowRateCell({ weiPerSec, ethPrice, streamStatus }: {
   weiPerSec: string | undefined
@@ -981,25 +988,30 @@ function SpentCell({ wei, ethPrice }: { wei: bigint; ethPrice: number | null }) 
 }
 
 // ── Ranking cell ──────────────────────────────────────────────────────────────
+function rankTierColor(r: number): string {
+  if (r === 1) return GOLD
+  if (r === 2) return SILVER
+  if (r === 3) return BRONZE
+  return MUTED
+}
+
 function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
   isTop: boolean; rank: number | null | undefined
   isStreaming: boolean; streamStatus?: StreamStatus
 }) {
-  if (isStreaming && streamStatus === 'cancelled') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <StreamStatusIcon status="cancelled" />
-      </div>
-    )
-  }
+  const effectiveRank = isTop ? 1 : (rank ?? null)
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
       {isStreaming && streamStatus && <StreamStatusIcon status={streamStatus} />}
-      {isTop
-        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: GOLD, background: `${GOLD}1E`, padding: '3px 8px', borderRadius: 99, whiteSpace: 'nowrap' as const }}>★ Top</span>
-        : rank != null
-          ? <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, fontWeight: 600 }}>#{rank}</span>
-          : <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>—</span>
+      {effectiveRank != null
+        ? <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+            border: `1.5px solid ${rankTierColor(effectiveRank)}`,
+            color: rankTierColor(effectiveRank),
+            fontFamily: MONO, fontSize: 12, fontWeight: 800,
+          }}>{effectiveRank}</span>
+        : <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>—</span>
       }
     </div>
   )
@@ -1007,18 +1019,42 @@ function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
 
 // ── Messages I've Bought table ────────────────────────────────────────────────
 const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
-const MSG_HEADERS = ['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Latest Spend', 'Ranking']
 
 function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void }) {
+  const [sortKey, setSortKey] = useState('rank')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const onSort = useCallback((col: string) => {
+    setSortKey(prev => {
+      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : (col === 'rank' ? 'asc' : 'desc'))
+      return col
+    })
+  }, [])
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...items].sort((a, b) => {
+      if (sortKey === 'rank') {
+        const ar = (a.isTop ? 1 : a.rank) ?? Infinity
+        const br = (b.isTop ? 1 : b.rank) ?? Infinity
+        return (ar - br) * dir
+      }
+      return (a.totalFundsAdded > b.totalFundsAdded ? -1 : a.totalFundsAdded < b.totalFundsAdded ? 1 : 0) * dir
+    })
+  }, [items, sortKey, sortDir])
+
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {MSG_HEADERS.map((h, i) => (
+          {(['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Latest Spend'] as const).map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </div>
         </div>
-        {items.map(m => {
+        {sorted.map(m => {
           const strategy = m.strategy ?? 'fixed'
           const isStreaming = strategy === 'streaming'
           const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
@@ -1043,7 +1079,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
                 </button>
                 <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
               <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                 <div style={{ textAlign: 'right' }}>
@@ -1066,18 +1102,42 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
 
 // ── Messages I've Funded table ────────────────────────────────────────────────
 const FUNDED_COLS = '160px 1fr 90px 120px 170px 100px'
-const FUNDED_HEADERS = ['Markee Name', 'Current Message', 'Strategy', 'Total Spent', 'Latest Spend', 'Ranking']
 
 function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void }) {
+  const [sortKey, setSortKey] = useState('rank')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const onSort = useCallback((col: string) => {
+    setSortKey(prev => {
+      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : (col === 'rank' ? 'asc' : 'desc'))
+      return col
+    })
+  }, [])
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...items].sort((a, b) => {
+      if (sortKey === 'rank') {
+        const ar = (a.isTop ? 1 : a.rank) ?? Infinity
+        const br = (b.isTop ? 1 : b.rank) ?? Infinity
+        return (ar - br) * dir
+      }
+      return (BigInt(a.totalContributed) > BigInt(b.totalContributed) ? -1 : BigInt(a.totalContributed) < BigInt(b.totalContributed) ? 1 : 0) * dir
+    })
+  }, [items, sortKey, sortDir])
+
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {FUNDED_HEADERS.map((h, i) => (
+          {(['Markee Name', 'Current Message', 'Strategy', 'Total Spent', 'Latest Spend'] as const).map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </div>
         </div>
-        {items.map(m => {
+        {sorted.map(m => {
           const strategy = m.strategy ?? 'fixed'
           const isStreaming = strategy === 'streaming'
           const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
@@ -1091,7 +1151,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
             >
               <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
               <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyLabel strategy={strategy} /></div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
               <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                 <div style={{ textAlign: 'right' }}>

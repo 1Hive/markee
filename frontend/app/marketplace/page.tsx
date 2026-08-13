@@ -14,6 +14,10 @@ import { formatUsd } from '@/lib/utils'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { SECONDS_IN_MONTH, STRATEGIES, type Strategy } from '@/lib/strategy'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
+import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
+import { useLeaderboardDetail } from '@/lib/contracts/useLeaderboardDetail'
+import { useStreamingMarkees } from '@/lib/contracts/useStreamingMarkees'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -21,6 +25,7 @@ const PINK  = '#F897FE'
 const BLUE  = '#7C9CFF'
 const PURP  = '#7B6AF4'
 const GREEN = '#1DB227'
+const GOLD  = '#FFD700'
 const BG    = '#060A2A'
 const BG2   = '#0A0F3D'
 const TEXT  = '#EDEEFF'
@@ -294,7 +299,7 @@ function PagerBtn({ children, active, disabled, onClick }: { children: React.Rea
 }
 
 // ── Featured hero card ────────────────────────────────────────────────────────
-function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number; ethPrice: number | null }) {
+function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null }) {
   const [hover, setHover] = useState(false)
   const [signModalOpen, setSignModalOpen] = useState(false)
   const priceEth = parseFloat(formatEther(priceToOvertake(lb)))
@@ -331,7 +336,7 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
           {/* top row: views */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
-              <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(views)}
+              <Eye size={10} style={{ opacity: 0.7 }} /> {viewsLoading ? <ViewsSpinner size={10} /> : formatViews(views)}
             </span>
           </div>
 
@@ -383,10 +388,60 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
   )
 }
 
+type RowOpenOpts = { initialView?: 'addFunds' | 'manage'; initialTargetAddress?: string }
+
+// ── Rank badge (Your Rank column) ───────────────────────────────────────────────
+const SILVER = '#C7CCD6'
+const BRONZE = '#CD7F32'
+
+function rankTierColor(rank: number): string {
+  if (rank === 1) return GOLD
+  if (rank === 2) return SILVER
+  if (rank === 3) return BRONZE
+  return MUTED
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  const color = rankTierColor(rank)
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+      border: `1.5px solid ${color}`, color,
+      fontFamily: MONO, fontSize: 12, fontWeight: 800,
+    }}>
+      {rank}
+    </span>
+  )
+}
+
 // ── Dense table row ───────────────────────────────────────────────────────────
-function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void; onStream: () => void }) {
+function TableRow({ lb, views, viewsLoading, ethPrice, onBuy, onStream }: { lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null; onBuy: (opts?: RowOpenOpts) => void; onStream: (opts?: RowOpenOpts) => void }) {
   const [hover, setHover] = useState(false)
   const isStreaming = lb.strategy === 'streaming'
+  const { activeAddress } = useActiveWallet()
+
+  // Wallet's own standing on this board, if any. Reuses the same on-chain readers the buy modals
+  // already use (useLeaderboardDetail / useStreamingMarkees) rather than a bespoke ranking fetch.
+  // Fixed boards can have multiple messages funded by the same wallet -- getTopMarkees already
+  // orders by funds, so the first match is their highest-ranked one. Streaming boards cap a wallet
+  // at one backed message.
+  const { markees: fixedMarkees } = useLeaderboardDetail(!isStreaming && activeAddress ? lb.address : undefined)
+  const { markees: streamMarkees } = useStreamingMarkees(isStreaming && activeAddress ? (lb.address as `0x${string}`) : undefined)
+
+  const position = useMemo(() => {
+    if (!activeAddress) return null
+    const addr = activeAddress.toLowerCase()
+    if (isStreaming) {
+      const idx = streamMarkees.findIndex(m => m.owner.toLowerCase() === addr)
+      return idx === -1 ? null : { rank: idx + 1, address: streamMarkees[idx].address as string, fundedRaw: null as bigint | null }
+    }
+    const idx = fixedMarkees.findIndex(m => m.owner.toLowerCase() === addr)
+    return idx === -1 ? null : { rank: idx + 1, address: fixedMarkees[idx].address, fundedRaw: fixedMarkees[idx].totalFundsAdded }
+  }, [activeAddress, isStreaming, fixedMarkees, streamMarkees])
+
+  const isTop = position?.rank === 1
+
   // Streaming totals tick up live from the API snapshot; fixed boards pass rate 0 → static base.
   const liveTotalWei = useFlowingAmount(
     BigInt(lb.totalFundsRaw || '0'),
@@ -400,16 +455,44 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
     : `${totalEth.toFixed(isStreaming ? 6 : 3)} ETH`
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
 
+  // Price-to-change button: "Add Funds" if the wallet already holds #1 (jumps straight into the
+  // addFunds sub-view on that message); the incremental amount still needed to retake #1 if it owns
+  // a lower-ranked message, but clicking still opens the normal Buy a Message flow (its own "add
+  // funds to an existing message" list already offers the top-up path -- landing there directly
+  // skipped the choice of writing a new message instead); otherwise the normal buy/back price.
+  let actionLabel: string
+  let actionOpts: RowOpenOpts | undefined
+  if (isTop) {
+    actionLabel = isStreaming ? 'Change' : 'Add Funds'
+    actionOpts = { initialView: isStreaming ? 'manage' : 'addFunds', initialTargetAddress: position!.address }
+  } else if (position && !isStreaming) {
+    const needed = priceToOvertake(lb) - (position.fundedRaw ?? 0n)
+    const neededWei = needed > 0n ? needed : 0n
+    const neededEth = parseFloat(formatEther(neededWei))
+    actionLabel = ethPrice ? formatUsd(neededEth * ethPrice) : `${neededEth.toFixed(3)} ETH`
+    actionOpts = undefined
+  } else if (position && isStreaming) {
+    actionLabel = monthlyRateLabel(lb, ethPrice)
+    actionOpts = { initialView: 'manage', initialTargetAddress: position.address }
+  } else {
+    actionLabel = isStreaming ? monthlyRateLabel(lb, ethPrice) : priceLabel
+    actionOpts = undefined
+  }
+
   return (
     <a
       href={detailHref(lb)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 100px',
+        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px',
         gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
-        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
+        background: isTop
+          ? (hover ? 'rgba(255,215,0,0.10)' : 'rgba(255,215,0,0.06)')
+          : position
+          ? (hover ? 'rgba(124,156,255,0.09)' : 'rgba(124,156,255,0.05)')
+          : (hover ? 'rgba(248,151,254,0.04)' : 'transparent'),
         transition: 'background 120ms', cursor: 'pointer',
       }}
     >
@@ -434,13 +517,19 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
 
       <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
         <Eye size={10} style={{ opacity: 0.7 }} />
-        {views > 0 ? formatViews(views) : '—'}
+        {viewsLoading ? <ViewsSpinner size={9} /> : views > 0 ? formatViews(views) : '—'}
       </span>
 
+      {/* YOUR RANK */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        {position && <RankBadge rank={position.rank} />}
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {isStreaming
-          ? <RowActionButton label={monthlyRateLabel(lb, ethPrice)} onClick={onStream} />
-          : <RowActionButton label={priceLabel} onClick={onBuy} />}
+        <RowActionButton
+          label={actionLabel}
+          onClick={() => (isStreaming ? onStream(actionOpts) : onBuy(actionOpts))}
+        />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -478,10 +567,11 @@ export default function MarketplacePage() {
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([])
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
+  const [viewsLoading, setViewsLoading] = useState(true)
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
 
-  const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
-  const [streamCreate, setStreamCreate] = useState<Leaderboard | null>(null)
+  const [buyModal, setBuyModal] = useState<({ lb: Leaderboard } & RowOpenOpts) | null>(null)
+  const [streamCreate, setStreamCreate] = useState<({ lb: Leaderboard } & RowOpenOpts) | null>(null)
 
   const [search,  setSearch]   = useState('')
   const [strategyFilter, setStrategyFilter] = useState<'all' | Strategy>('all')
@@ -513,7 +603,7 @@ export default function MarketplacePage() {
   // Batch-fetch views for all top markees
   useEffect(() => {
     const addrs = leaderboards.map(lb => lb.topMarkeeAddress).filter(Boolean) as string[]
-    if (addrs.length === 0) return
+    if (addrs.length === 0) { setViewsLoading(false); return }
     const params = addrs.map(a => a.toLowerCase()).join(',')
     fetch(`/api/views?addresses=${params}`)
       .then(r => r.ok ? r.json() : null)
@@ -526,6 +616,7 @@ export default function MarketplacePage() {
         setViewsMap(m)
       })
       .catch(() => {})
+      .finally(() => setViewsLoading(false))
   }, [leaderboards])
 
   // Filter
@@ -555,6 +646,11 @@ export default function MarketplacePage() {
         const av = viewsMap.get((a.topMarkeeAddress || '').toLowerCase()) ?? 0
         const bv = viewsMap.get((b.topMarkeeAddress || '').toLowerCase()) ?? 0
         return (av - bv) * dir
+      }
+      if (sortKey === 'rank') {
+        const at = BigInt(a.totalFundsRaw || '0')
+        const bt = BigInt(b.totalFundsRaw || '0')
+        return (at > bt ? 1 : at < bt ? -1 : 0) * dir
       }
       if (sortKey === 'price') {
         // Sort each row by the number its price button actually shows: streaming rows a monthly
@@ -609,7 +705,7 @@ export default function MarketplacePage() {
       <Header activePage="marketplace" useRegularLinks />
 
       {/* ── Featured hero ── */}
-      {featured && <FeaturedHero lb={featured} views={featuredViews} ethPrice={ethPrice} />}
+      {featured && <FeaturedHero lb={featured} views={featuredViews} viewsLoading={viewsLoading} ethPrice={ethPrice} />}
 
       {/* ── Metrics strip ── */}
       <MetricsStrip stats={{ ...ecoStats, views: totalViews }} loaded={!loading} />
@@ -687,11 +783,14 @@ export default function MarketplacePage() {
         {/* table */}
         <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
             <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <SortHead label="Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            </div>
             <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" title="Fixed boards: one-time price. Streaming boards: monthly rate to hold the top." />
             <span />
           </div>
@@ -699,8 +798,8 @@ export default function MarketplacePage() {
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
-                {[1, 2, 3, 4, 5].map(j => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+                {[1, 2, 3, 4, 5, 6].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
                 <div />
@@ -716,9 +815,10 @@ export default function MarketplacePage() {
                 key={lb.address}
                 lb={lb}
                 views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
+                viewsLoading={viewsLoading}
                 ethPrice={ethPrice}
-                onBuy={() => setBuyModal(lb)}
-                onStream={() => setStreamCreate(lb)}
+                onBuy={(opts) => setBuyModal({ lb, ...opts })}
+                onStream={(opts) => setStreamCreate({ lb, ...opts })}
               />
             ))
           )}
@@ -741,7 +841,9 @@ export default function MarketplacePage() {
       {buyModal && (
         <MarkeeSignModal
           isOpen={true}
-          leaderboardAddress={buyModal.address}
+          leaderboardAddress={buyModal.lb.address}
+          initialView={buyModal.initialView as 'addFunds' | undefined}
+          initialTargetAddress={buyModal.initialTargetAddress}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />
@@ -750,7 +852,9 @@ export default function MarketplacePage() {
       {streamCreate && (
         <StreamSignModal
           isOpen={true}
-          board={streamCreate.address}
+          board={streamCreate.lb.address}
+          initialView={streamCreate.initialView as 'manage' | undefined}
+          initialTargetAddress={streamCreate.initialTargetAddress}
           onClose={() => setStreamCreate(null)}
           onSuccess={() => setStreamCreate(null)}
         />
