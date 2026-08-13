@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { parseEther } from 'viem'
+import { parseEther, formatEther } from 'viem'
+import { formatUsd } from '@/lib/utils'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
 export const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -13,6 +14,7 @@ export const BORDER = 'rgba(138,143,191,0.2)'
 export const MUTED = '#8A8FBF'
 export const TEXT = '#EDEEFF'
 export const TEXT2 = '#B8B6D9'
+export const GOLD = '#FFD700'
 
 export const inputStyle = {
   width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
@@ -72,7 +74,7 @@ export function Spinner({ size = 14 }: { size?: number }) {
 
 // A little ⓘ that reveals an explanation on hover or tap: the place technical detail lives so the
 // forms themselves stay plain.
-export function InfoTip({ children }: { children: React.ReactNode }) {
+export function InfoTip({ children, align = 'center' }: { children: React.ReactNode; align?: 'center' | 'right' }) {
   const [open, setOpen] = useState(false)
   return (
     <span
@@ -92,7 +94,8 @@ export function InfoTip({ children }: { children: React.ReactNode }) {
       </button>
       {open && (
         <span style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+          position: 'absolute', bottom: 'calc(100% + 8px)',
+          ...(align === 'right' ? { right: 0 } : { left: '50%', transform: 'translateX(-50%)' }),
           width: 230, background: '#030714', border: `1px solid ${BORDER}`, borderRadius: 8,
           padding: '10px 12px', zIndex: 20, boxShadow: '0 12px 36px rgba(0,0,0,0.55)',
           fontFamily: 'Manrope, system-ui, sans-serif', fontSize: 11.5, lineHeight: 1.55,
@@ -130,21 +133,178 @@ export function Row({ label, value, bold, info }: { label: string; value: string
   )
 }
 
-export function TxRing({ done }: { done: boolean }) {
+export function TxRing({ done, spinning = !done }: { done: boolean; spinning?: boolean }) {
   return (
     <div style={{
       width: 72, height: 72, borderRadius: 99, flexShrink: 0,
       background: done ? PINK : 'transparent',
       border: done ? 'none' : `2px solid ${PINK}`,
-      borderTopColor: done ? undefined : 'transparent',
+      borderTopColor: !done && spinning ? 'transparent' : undefined,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      animation: done ? 'none' : 'spin 1s linear infinite',
+      animation: spinning ? 'spin 1s linear infinite' : 'none',
       boxShadow: '0 0 32px rgba(248,151,254,0.3)',
     }}>
       {done && (
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
           <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
+      )}
+    </div>
+  )
+}
+
+// Monthly-rate + funded-duration input shared by every For Rent "buy a message" flow (board
+// activation and backing an existing message): big rate input with MIN/MAX/WIN presets, plus
+// 1/2/3-month funding pills, mirroring the price-card pattern the For Sale buy modal uses.
+export function RatePriceCard({
+  monthly, setMonthly, fundMonths, setFundMonths,
+  minMonthlyWei, minMonthlyEth, minLoaded, belowMin,
+  ethPrice, balanceData, spendableBalance,
+  calc, topMonthlyWei, lastPreset, setLastPreset,
+}: {
+  monthly: string
+  setMonthly: (v: string) => void
+  fundMonths: string
+  setFundMonths: (v: string) => void
+  minMonthlyWei: bigint | undefined
+  minMonthlyEth: string
+  minLoaded: boolean
+  belowMin: boolean
+  ethPrice: number | null
+  balanceData: { value: bigint } | undefined
+  spendableBalance: bigint
+  calc: { monthlyWei: bigint; prefund: bigint; value: bigint }
+  topMonthlyWei?: bigint
+  lastPreset: 'min' | 'max' | 'win' | null
+  setLastPreset: (p: 'min' | 'max' | 'win' | null) => void
+}) {
+  return (
+    <div style={{
+      border: `1.5px solid ${PINK}`,
+      borderRadius: 12,
+      padding: '14px 16px',
+      background: BG,
+      boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+    }}>
+      {/* Number + unit inline on left, MIN/MAX on right */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          <input
+            inputMode="decimal"
+            value={monthly}
+            onChange={e => { setMonthly(sanitizeDecimalInput(e.target.value)); setLastPreset(null) }}
+            placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
+            style={{
+              background: 'transparent', border: 'none', outline: 'none',
+              color: TEXT, fontFamily: MONO, fontSize: 26, fontWeight: 800,
+              padding: 0,
+              width: `${Math.max(5, (monthly || (minLoaded && minMonthlyWei ? minMonthlyEth : '0.001')).length + 0.5)}ch`,
+            }}
+          />
+          <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => { if (minMonthlyWei) { setMonthly(minMonthlyEth); setLastPreset('min') } }}
+            disabled={!minLoaded}
+            style={{
+              border: `1px solid ${lastPreset === 'min' ? PINK : BORDER}`,
+              background: 'transparent',
+              color: lastPreset === 'min' ? PINK : TEXT2,
+              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+              fontWeight: 700, cursor: minLoaded ? 'pointer' : 'default',
+              opacity: minLoaded ? 1 : 0.4,
+              transition: 'border-color 120ms, color 120ms',
+            }}
+          >
+            MIN
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const months = BigInt(Math.max(1, Number(fundMonths) || 1))
+              if (spendableBalance > 0n) { setMonthly(formatEther(spendableBalance / months)); setLastPreset('max') }
+            }}
+            disabled={spendableBalance <= 0n}
+            style={{
+              border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
+              background: 'transparent',
+              color: lastPreset === 'max' ? PINK : TEXT2,
+              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+              fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
+              opacity: spendableBalance > 0n ? 1 : 0.4,
+              transition: 'border-color 120ms, color 120ms',
+            }}
+          >
+            MAX
+          </button>
+          {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && (
+            <button
+              type="button"
+              onClick={() => {
+                const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
+                setMonthly(formatEther(winWei)); setLastPreset('win')
+              }}
+              style={{
+                border: `1px solid ${lastPreset === 'win' ? GOLD : BORDER}`,
+                background: 'transparent',
+                color: lastPreset === 'win' ? GOLD : TEXT2,
+                borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                fontWeight: 700, cursor: 'pointer',
+                transition: 'border-color 120ms, color 120ms',
+              }}
+            >
+              WIN
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* USD equiv + balance */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 12 }}>
+        <span>
+          {belowMin
+            ? `Min: ${minMonthlyEth} ETH/mo`
+            : calc.monthlyWei > 0n && ethPrice
+              ? `≈ ${formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)}/mo`
+              : ' '}
+        </span>
+        <span>
+          {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+        </span>
+      </div>
+
+      {/* Month duration pills */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        {(['1', '2', '3'] as const).map(mo => {
+          const sel = fundMonths === mo
+          return (
+            <button
+              key={mo}
+              type="button"
+              onClick={() => setFundMonths(mo)}
+              style={{
+                flex: 1, padding: '8px 0', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${sel ? PINK : BORDER}`,
+                background: sel ? PINK : 'transparent',
+                color: sel ? BG : TEXT2,
+                fontFamily: MONO, fontSize: 13, fontWeight: 700,
+                transition: 'border-color 140ms, background 140ms, color 140ms',
+              }}
+            >
+              {mo} mo
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ETH total */}
+      {calc.prefund > 0n && (
+        <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 12 }}>
+          <span style={{ color: TEXT, fontWeight: 700 }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
+          <span style={{ color: MUTED }}> total</span>
+        </div>
       )}
     </div>
   )

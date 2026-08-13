@@ -23,6 +23,17 @@ export function endDelimiter(leaderboardAddress: string): string {
   return `<!-- MARKEE:END:${leaderboardAddress.toLowerCase()} -->`
 }
 
+// Case-insensitive delimiter match for one specific address. Deliberately does NOT fall back to
+// "any address-shaped delimiter pair" -- that accepted a completely unrelated project's delimiters
+// (or a typo'd/wrong address) as valid verification for this leaderboard. Legacy migration aliases
+// are handled by the caller via legacyAddressesFor(), not by this function.
+export function hasDelimiterPair(content: string, leaderboardAddress: string): boolean {
+  const addr = leaderboardAddress.toLowerCase()
+  const start = new RegExp(`<!--\\s*MARKEE:START:${addr}\\s*-->`, 'i')
+  const end = new RegExp(`<!--\\s*MARKEE:END:${addr}\\s*-->`, 'i')
+  return start.test(content) && end.test(content)
+}
+
 // Maps current GitHub leaderboard addresses → their old predecessor address(es).
 // All addresses lowercase. Used to grandfather in pre-migration delimiters.
 // v1.1 → v1.0 pairs (original migration)

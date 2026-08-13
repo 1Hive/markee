@@ -1,65 +1,27 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { useAccount, useBalance, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
-import { erc20Abi, formatEther, decodeEventLog, type Address, type Hex } from 'viem'
+import { useState, useEffect, useMemo } from 'react'
+import { useAccount, useBalance, useReadContract, useSwitchChain } from 'wagmi'
+import { formatEther, type Address } from 'viem'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import {
-  STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID,
-  CFA_FORWARDER_ABI, monthlyToRatePerSec, bufferFor, openStreamValue, buildOpenStreamOps,
-} from '@/lib/superfluid/streaming'
+import { monthlyToRatePerSec, bufferFor, openStreamValue } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
-  inputStyle, sanitizeDecimalInput, parseEthInput, retryUntilLoaded,
-  InfoTip, ModalField, ModalShell, TxProgress, TxSteps,
+  inputStyle, parseEthInput, retryUntilLoaded,
+  InfoTip, ModalField, ModalShell, TxProgress, RatePriceCard,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatUsd } from '@/lib/utils'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-
-const ETHX = STREAMING_BASE.ethx as Address
-const HOST = STREAMING_BASE.host as Address
-const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
-
-const GOLD = '#FFD700'
-const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-
-// createMarkee sets up the pool in the same tx, but the RPC node may not reflect
-// it immediately after confirmation. Poll until non-zero before proceeding (up to ~18s).
-async function waitForPool(
-  readFn: (markeeAddress: Address) => Promise<unknown>,
-  markeeAddress: Address,
-): Promise<Address> {
-  for (let i = 0; i < 12; i++) {
-    if (i > 0) await new Promise<void>(r => setTimeout(r, 1500))
-    const pool = await readFn(markeeAddress) as Address
-    if (pool && pool.toLowerCase() !== ZERO_ADDRESS) return pool
-  }
-  throw new Error('Pool not ready after 18 s — please try again.')
-}
 
 const ADMIN_ABI = [
   { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
 
-const MARKEE_CREATED_ABI = [
-  {
-    type: 'event', name: 'MarkeeCreated',
-    inputs: [
-      { name: 'markeeAddress', type: 'address', indexed: true },
-      { name: 'owner', type: 'address', indexed: true },
-      { name: 'message', type: 'string', indexed: false },
-      { name: 'name', type: 'string', indexed: false },
-    ],
-  },
-] as const
-
-type Phase = 'idle' | 'creating' | 'approving' | 'streaming' | 'done'
+const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
 
 interface StreamActivateModalProps {
   isOpen: boolean
@@ -70,6 +32,7 @@ interface StreamActivateModalProps {
   title?: string
   messageLabel?: string
   messagePlaceholder?: string
+  ctaLabel?: string
 }
 
 type StreamSuccessSnap = { tookTop: boolean; additionalMonthlyWei: bigint | null; isFirstOnBoard: boolean }
@@ -83,29 +46,21 @@ export function StreamActivateModal({
   title = 'ACTIVATE MARKEE',
   messageLabel = 'SET FIRST MESSAGE',
   messagePlaceholder = 'Your message here...',
+  ctaLabel = 'Activate Markee',
 }: StreamActivateModalProps) {
   const { authenticated } = usePrivy()
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
-  const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN.id })
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
-  const enabled = isOpen && !!address && isCorrectChain
 
   const [message, setMessage] = useState('')
   const [monthly, setMonthly] = useState('')
   const [fundMonths, setFundMonths] = useState('1')
-  const [phase, setPhase] = useState<Phase>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
   const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
 
-  const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
-
-  const mountedRef = useRef(isOpen)
-  mountedRef.current = isOpen
+  const { phase, error, setError, isPending, isConfirming, isSuccess, activate } = useCreateStreamFlow(board, isOpen)
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
@@ -147,14 +102,13 @@ export function StreamActivateModal({
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
   const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Number(formatEther(calc.monthlyWei)))
 
-  // ── Reset on close ────────────────────────────────────────────────────────
+  // ── Reset on close (UI-only state; the hook resets its own tx state) ───────
   useEffect(() => {
     if (!isOpen) {
       setMessage(''); setMonthly(''); setFundMonths('1')
-      setPhase('idle'); setError(null); setTxHash(undefined); reset()
       setLastPreset(null); setSuccessSnap(null)
     }
-  }, [isOpen, reset])
+  }, [isOpen])
 
   // ── Initialize to minimum rate when it loads ──────────────────────────────
   useEffect(() => {
@@ -171,132 +125,12 @@ export function StreamActivateModal({
       const tookTop = isFirstOnBoard || calc.monthlyWei > topMonthlyWei
       const additionalMonthlyWei = !tookTop && topMonthlyWei ? topMonthlyWei + 1n - calc.monthlyWei : null
       setSuccessSnap({ tookTop, additionalMonthlyWei, isFirstOnBoard })
-      setPhase('done')
       const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
   }, [isSuccess, isOpen, onClose, onSuccess])
 
-  // ── On-chain revert → surface error ──────────────────────────────────────
-  useEffect(() => {
-    if (txReverted && txHash && isOpen) {
-      setPhase('idle')
-      logTransactionError(receiptError, 'StreamActivateModal.receipt')
-      const decoded = receiptError ? formatTransactionError(receiptError) : null
-      setError(decoded && decoded !== 'Transaction error' ? decoded : 'Transaction failed on-chain. Please try again.')
-    }
-  }, [txReverted, txHash, isOpen, receiptError])
-
-  // ── 3-tx handler ──────────────────────────────────────────────────────────
-  async function handleActivate() {
-    if (!address || !publicClient) return
-    setError(null)
-
-    if (!message.trim()) { setError('Enter a message.'); return }
-    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less.`); return }
-    if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
-    if (belowMin) { setError(`The minimum on this board is ${minMonthlyEth} ETH / month.`); return }
-    if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
-
-    try {
-      // Guard: the board's onFlowCreated callback calls createFlow to the beneficiary internally,
-      // which reverts if the backer already has a stream to the board. Stop it first.
-      const existingRate = await publicClient.readContract({
-        address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI,
-        functionName: 'getFlowrate', args: [ETHX, address, board],
-      }) as bigint
-      if (existingRate > 0n) {
-        setError('You already have an active stream to this board. Stop it first from your account page, then activate your new Markee.')
-        return
-      }
-
-      // ── Tx 1: Create Markee ──────────────────────────────────────────────
-      setPhase('creating')
-      const createHash = await writeContractAsync({
-        address: board,
-        abi: StreamingLeaderboardABI,
-        functionName: 'createMarkee',
-        args: [message, ''],
-        chainId: CANONICAL_CHAIN.id,
-      })
-      if (!mountedRef.current) return
-      const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash })
-      if (createReceipt.status !== 'success') throw new Error('Create Markee transaction reverted.')
-      if (!mountedRef.current) return
-
-      // Decode markee address from MarkeeCreated event
-      let markeeAddress: Address | null = null
-      for (const log of createReceipt.logs) {
-        if (log.address.toLowerCase() !== board.toLowerCase()) continue
-        try {
-          const ev = decodeEventLog({ abi: MARKEE_CREATED_ABI, data: log.data, topics: log.topics })
-          if (ev.eventName === 'MarkeeCreated') { markeeAddress = ev.args.markeeAddress; break }
-        } catch { /* not the right event, keep scanning */ }
-      }
-      if (!markeeAddress) throw new Error('Could not find new Markee address in receipt.')
-
-      // Read stable Superfluid addresses and allowance, then poll for pool
-      // (pool is created inside createMarkee but RPC may lag behind chain state)
-      const [cfaAgreement, gdaAgreement, currentAllowance] = await Promise.all([
-        publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID] }),
-        publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID] }),
-        publicClient.readContract({ address: ETHX, abi: erc20Abi, functionName: 'allowance', args: [address, board] }),
-      ])
-      if (!mountedRef.current) return
-
-      const pool = await waitForPool(
-        (addr) => publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [addr] }),
-        markeeAddress,
-      )
-      if (!mountedRef.current) return
-
-      // ── Tx 2: Approve (if needed) ────────────────────────────────────────
-      if ((currentAllowance as bigint) < calc.buffer) {
-        setPhase('approving')
-        const approveHash = await writeContractAsync({
-          address: ETHX,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [board, calc.buffer],
-          chainId: CANONICAL_CHAIN.id,
-        })
-        if (!mountedRef.current) return
-        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
-        if (approveReceipt.status !== 'success') throw new Error('Approval transaction reverted.')
-        if (!mountedRef.current) return
-      }
-
-      // ── Tx 3: Open stream ────────────────────────────────────────────────
-      setPhase('streaming')
-      const ops = buildOpenStreamOps({
-        ethx: ETHX,
-        board,
-        markee: markeeAddress,
-        backer: address,
-        ratePerSec: calc.ratePerSec,
-        buffer: calc.buffer,
-        cfaAgreement: cfaAgreement as Address,
-        gdaAgreement: gdaAgreement as Address,
-        pool: pool as Address,
-      })
-      const streamHash = await writeContractAsync({
-        address: HOST,
-        abi: SUPERFLUID_HOST_ABI,
-        functionName: 'batchCall',
-        args: [ops],
-        value: calc.value,
-        chainId: CANONICAL_CHAIN.id,
-      })
-      if (!mountedRef.current) return
-      setTxHash(streamHash)
-
-    } catch (e: unknown) {
-      if (!mountedRef.current) return
-      setPhase('idle')
-      logTransactionError(e, 'StreamActivateModal')
-      setError(formatTransactionError(e))
-    }
-  }
+  const handleActivate = () => activate(message, calc, { maxLen, belowMin, minMonthlyEth })
 
   if (!isOpen) return null
 
@@ -365,7 +199,7 @@ export function StreamActivateModal({
             opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
           }}
         >
-          {!minLoaded ? 'Loading…' : 'Activate Markee'}
+          {!minLoaded ? 'Loading…' : ctaLabel}
         </button>
       )}
     </div>
@@ -405,134 +239,14 @@ export function StreamActivateModal({
           </ModalField>
 
           {/* Price card */}
-          <div style={{
-            border: `1.5px solid ${PINK}`,
-            borderRadius: 12,
-            padding: '14px 16px',
-            background: BG,
-            boxShadow: '0 0 24px rgba(248,151,254,0.08)',
-          }}>
-            {/* Number + unit inline on left, MIN/MAX on right */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <input
-                  inputMode="decimal"
-                  value={monthly}
-                  onChange={e => { setMonthly(sanitizeDecimalInput(e.target.value)); setLastPreset(null) }}
-                  placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
-                  style={{
-                    background: 'transparent', border: 'none', outline: 'none',
-                    color: TEXT, fontFamily: MONO, fontSize: 26, fontWeight: 800,
-                    padding: 0,
-                    width: `${Math.max(5, (monthly || (minLoaded && minMonthlyWei ? minMonthlyEth : '0.001')).length + 0.5)}ch`,
-                  }}
-                />
-                <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => { if (minMonthlyWei) { setMonthly(minMonthlyEth); setLastPreset('min') } }}
-                  disabled={!minLoaded}
-                  style={{
-                    border: `1px solid ${lastPreset === 'min' ? PINK : BORDER}`,
-                    background: 'transparent',
-                    color: lastPreset === 'min' ? PINK : TEXT2,
-                    borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
-                    fontWeight: 700, cursor: minLoaded ? 'pointer' : 'default',
-                    opacity: minLoaded ? 1 : 0.4,
-                    transition: 'border-color 120ms, color 120ms',
-                  }}
-                >
-                  MIN
-                </button>
-                {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
-                      setMonthly(formatEther(winWei)); setLastPreset('win')
-                    }}
-                    style={{
-                      border: `1px solid ${lastPreset === 'win' ? GOLD : BORDER}`,
-                      background: 'transparent',
-                      color: lastPreset === 'win' ? GOLD : TEXT2,
-                      borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
-                      fontWeight: 700, cursor: 'pointer',
-                      transition: 'border-color 120ms, color 120ms',
-                    }}
-                  >
-                    WIN
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const months = BigInt(Math.max(1, Number(fundMonths) || 1))
-                    if (spendableBalance > 0n) { setMonthly(formatEther(spendableBalance / months)); setLastPreset('max') }
-                  }}
-                  disabled={spendableBalance <= 0n}
-                  style={{
-                    border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
-                    background: 'transparent',
-                    color: lastPreset === 'max' ? PINK : TEXT2,
-                    borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
-                    fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
-                    opacity: spendableBalance > 0n ? 1 : 0.4,
-                    transition: 'border-color 120ms, color 120ms',
-                  }}
-                >
-                  MAX
-                </button>
-              </div>
-            </div>
-
-            {/* USD equiv + balance */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 12 }}>
-              <span>
-                {belowMin
-                  ? `Min: ${minMonthlyEth} ETH/mo`
-                  : calc.monthlyWei > 0n && ethPrice
-                    ? `≈ ${formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)}/mo`
-                    : ' '}
-              </span>
-              <span>
-                {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
-              </span>
-            </div>
-
-            {/* Month duration pills */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['1', '2', '3'] as const).map(mo => {
-                const sel = fundMonths === mo
-                return (
-                  <button
-                    key={mo}
-                    type="button"
-                    onClick={() => setFundMonths(mo)}
-                    style={{
-                      flex: 1, padding: '8px 0', borderRadius: 8, cursor: 'pointer',
-                      border: `1px solid ${sel ? PINK : BORDER}`,
-                      background: sel ? PINK : 'transparent',
-                      color: sel ? BG : TEXT2,
-                      fontFamily: MONO, fontSize: 13, fontWeight: 700,
-                      transition: 'border-color 140ms, background 140ms, color 140ms',
-                    }}
-                  >
-                    {mo} mo
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* ETH total */}
-            {calc.prefund > 0n && (
-              <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 12 }}>
-                <span style={{ color: TEXT, fontWeight: 700 }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
-                <span style={{ color: MUTED }}> total</span>
-              </div>
-            )}
-          </div>
+          <RatePriceCard
+            monthly={monthly} setMonthly={setMonthly}
+            fundMonths={fundMonths} setFundMonths={setFundMonths}
+            minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded} belowMin={belowMin}
+            ethPrice={ethPrice} balanceData={balanceData} spendableBalance={spendableBalance}
+            calc={calc} topMonthlyWei={topMonthlyWei}
+            lastPreset={lastPreset} setLastPreset={setLastPreset}
+          />
 
           {/* You'll receive — horizontal */}
           {calc.monthlyWei > 0n && (

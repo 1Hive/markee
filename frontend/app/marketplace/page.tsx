@@ -3,18 +3,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Image from 'next/image'
 import { formatEther } from 'viem'
-import { Eye } from 'lucide-react'
+import { Eye, Zap, Tag } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { formatUsd } from '@/lib/utils'
-import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
-import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
+import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
-import { SECONDS_IN_MONTH, type Strategy } from '@/lib/strategy'
+import { SECONDS_IN_MONTH, STRATEGIES, type Strategy } from '@/lib/strategy'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -236,16 +235,39 @@ function SortHead({ label, col, sortKey, sortDir, onSort, align = 'left', title 
       title={title}
       style={{
         background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
-        display: 'inline-flex', alignItems: 'center', gap: 5,
+        display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
         justifySelf: align === 'right' ? 'end' : 'start',
         fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase',
         color: active ? PINK : MUTED, transition: 'color 120ms',
       }}
     >
-      {label}
-      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1 }}>
+      <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1, flexShrink: 0 }}>
         {active ? (sortDir === 'asc' ? '▲' : '▼') : '▾'}
       </span>
+    </button>
+  )
+}
+
+// ── Strategy filter tag (click to filter marketplace by For Sale / For Rent) ──
+function StrategyFilterTag({ strategy, active, onClick }: { strategy: Strategy; active: boolean; onClick: () => void }) {
+  const meta = STRATEGIES[strategy]
+  const Icon = strategy === 'streaming' ? Zap : Tag
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+        color: active ? BG : meta.accent,
+        background: active ? meta.accent : `${meta.accent}1A`,
+        border: `1px solid ${meta.accent}`,
+        borderRadius: 99, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
+        transition: 'background 120ms, color 120ms',
+      }}
+    >
+      <Icon size={12} />
+      {meta.label}
     </button>
   )
 }
@@ -274,8 +296,10 @@ function PagerBtn({ children, active, disabled, onClick }: { children: React.Rea
 // ── Featured hero card ────────────────────────────────────────────────────────
 function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number; ethPrice: number | null }) {
   const [hover, setHover] = useState(false)
+  const [signModalOpen, setSignModalOpen] = useState(false)
   const priceEth = parseFloat(formatEther(priceToOvertake(lb)))
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+  const isStreaming = lb.strategy === 'streaming'
 
   return (
     <section
@@ -286,6 +310,11 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
       <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
         <a
           href={detailHref(lb)}
+          onClick={e => {
+            if (isStreaming) return
+            e.preventDefault()
+            setSignModalOpen(true)
+          }}
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
           style={{
@@ -343,6 +372,13 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
           </span>
         </a>
       </div>
+      {!isStreaming && (
+        <MarkeeSignModal
+          isOpen={signModalOpen}
+          onClose={() => setSignModalOpen(false)}
+          leaderboardAddress={lb.address}
+        />
+      )}
     </section>
   )
 }
@@ -370,7 +406,7 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
+        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 100px',
         gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
         background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
@@ -408,7 +444,7 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
       </div>
     </a>
   )
@@ -446,10 +482,9 @@ export default function MarketplacePage() {
 
   const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
   const [streamCreate, setStreamCreate] = useState<Leaderboard | null>(null)
-  const [streamTarget, setStreamTarget] = useState<{ board: `0x${string}`; markee: StreamTarget } | null>(null)
 
   const [search,  setSearch]   = useState('')
-  const [factory, setFactory]  = useState('all')
+  const [strategyFilter, setStrategyFilter] = useState<'all' | Strategy>('all')
   const [sortKey, setSortKey]  = useState('raised')
   const [sortDir, setSortDir]  = useState<'asc' | 'desc'>('desc')
   const [page,    setPage]     = useState(0)
@@ -498,7 +533,7 @@ export default function MarketplacePage() {
     let arr = leaderboards.filter(lb =>
       BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage
     )
-    if (factory !== 'all') arr = arr.filter(lb => lb.platform === factory)
+    if (strategyFilter !== 'all') arr = arr.filter(lb => (lb.strategy ?? 'fixed') === strategyFilter)
     if (search.trim()) {
       const s = search.toLowerCase()
       arr = arr.filter(lb =>
@@ -510,7 +545,7 @@ export default function MarketplacePage() {
       )
     }
     return arr
-  }, [leaderboards, factory, search])
+  }, [leaderboards, strategyFilter, search])
 
   // Sort
   const sorted = useMemo(() => {
@@ -538,7 +573,7 @@ export default function MarketplacePage() {
   }, [filtered, sortKey, sortDir, viewsMap])
 
   // Reset page on filter/sort changes
-  useEffect(() => { setPage(0) }, [search, factory, sortKey, sortDir])
+  useEffect(() => { setPage(0) }, [search, strategyFilter, sortKey, sortDir])
 
   const onSort = useCallback((col: string) => {
     setSortKey(prev => {
@@ -568,13 +603,6 @@ export default function MarketplacePage() {
       .catch(() => {})
   }, [])
   const totalViews = networkViews
-
-  const FACTORIES = [
-    { key: 'all',        label: 'All' },
-    { key: 'website',    label: 'Websites' },
-    { key: 'github',     label: 'GitHub Repos' },
-    { key: 'superfluid', label: 'Superfluid' },
-  ]
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -636,31 +664,30 @@ export default function MarketplacePage() {
             )}
           </div>
 
-          {/* factory toggle */}
-          <div style={{ display: 'flex', gap: 4, padding: 3, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 8 }}>
-            {FACTORIES.map(f => (
-              <button
-                key={f.key}
-                onClick={() => setFactory(f.key)}
-                style={{
-                  background: factory === f.key ? PURP : 'transparent',
-                  color: factory === f.key ? TEXT : MUTED,
-                  border: 'none', borderRadius: 5, padding: '7px 12px',
-                  fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                  whiteSpace: 'nowrap', fontFamily: 'inherit',
-                  transition: 'background 120ms, color 120ms',
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
+          {/* strategy filter */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setStrategyFilter('all')}
+              style={{
+                fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+                color: strategyFilter === 'all' ? BG : TEXT2,
+                background: strategyFilter === 'all' ? PINK : 'transparent',
+                border: `1px solid ${strategyFilter === 'all' ? PINK : BORDER}`,
+                borderRadius: 99, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'background 120ms, color 120ms, border-color 120ms',
+              }}
+            >
+              All
+            </button>
+            <StrategyFilterTag strategy="fixed" active={strategyFilter === 'fixed'} onClick={() => setStrategyFilter('fixed')} />
+            <StrategyFilterTag strategy="streaming" active={strategyFilter === 'streaming'} onClick={() => setStrategyFilter('streaming')} />
           </div>
         </div>
 
         {/* table */}
         <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
@@ -672,7 +699,7 @@ export default function MarketplacePage() {
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
@@ -712,35 +739,20 @@ export default function MarketplacePage() {
       <Footer />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={buyModal.address as `0x${string}`}
-          topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
-          platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
+          leaderboardAddress={buyModal.address}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />
       )}
 
       {streamCreate && (
-        <CreateMessageModal
-          board={streamCreate.address as `0x${string}`}
-          onClose={() => setStreamCreate(null)}
-          onCreated={(addr, message, name) => {
-            const board = streamCreate.address as `0x${string}`
-            setStreamCreate(null)
-            setStreamTarget({ board, markee: { address: addr, message, name } })
-          }}
-        />
-      )}
-
-      {streamTarget && (
-        <StreamModal
+        <StreamSignModal
           isOpen={true}
-          board={streamTarget.board}
-          markee={streamTarget.markee}
-          onClose={() => setStreamTarget(null)}
-          onSuccess={() => setStreamTarget(null)}
+          board={streamCreate.address}
+          onClose={() => setStreamCreate(null)}
+          onSuccess={() => setStreamCreate(null)}
         />
       )}
     </div>

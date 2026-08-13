@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
@@ -17,7 +18,7 @@ import type { LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { StreamingBoardDetail } from '@/components/StreamingBoardDetail'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
-  fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, EmbedPanel, BoardDetailSkeleton,
+  fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
 } from '@/components/board-detail/shared'
 
 function priceToOvertake(topFunds: bigint) {
@@ -70,23 +71,10 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const [addFundsOpen, setAddFundsOpen] = useState(false)
   const [editOpen,     setEditOpen]     = useState(false)
   const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
-  const [embedOpen,    setEmbedOpen]    = useState(false)
   const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [syncResult,    setSyncResult]    = useState<string | null>(null)
   const [trafficStatus, setTrafficStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [ghTraffic,     setGhTraffic]     = useState<{ count: number; uniques: number } | null>(null)
-
-  // Auto-open embed panel when returning from GitHub OAuth with ?embed=1
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    if (params.has('embed')) {
-      setEmbedOpen(true)
-      const clean = new URL(window.location.href)
-      clean.searchParams.delete('embed')
-      window.history.replaceState(null, '', clean.toString())
-    }
-  }, [])
 
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
@@ -97,16 +85,6 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const handleBuySuccess = useCallback(() => {
     refreshAfterTransaction()
     setBuyOpen(false)
-  }, [refreshAfterTransaction])
-  const handleAddFundsSuccess = useCallback(() => {
-    refreshAfterTransaction()
-    setAddFundsOpen(false)
-    setModalTarget(null)
-  }, [refreshAfterTransaction])
-  const handleEditSuccess = useCallback(() => {
-    refreshAfterTransaction()
-    setEditOpen(false)
-    setModalTarget(null)
   }, [refreshAfterTransaction])
 
   const handleSync = useCallback(async () => {
@@ -232,32 +210,10 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
             />
           </section>
 
-          {/* ── Action bar ── */}
+          {/* ── Action bar (GitHub sync/traffic controls) ── */}
+          {ecoEntry?.platform === 'github' && (
           <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}` }}>
             <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
-              <button
-                onClick={() => setEmbedOpen(v => !v)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  background: 'transparent', border: `1px solid ${BORDER}`,
-                  borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
-                  fontFamily: MONO, fontSize: 13, color: TEXT2,
-                  transition: 'border-color 140ms, color 140ms',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-                </svg>
-                Embed this Markee
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: embedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 160ms', marginLeft: 2 }}>
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-
-              {ecoEntry?.platform === 'github' && (
-                <>
                   <button
                     onClick={handleSync}
                     disabled={syncStatus === 'loading'}
@@ -311,16 +267,9 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
                       Failed — check GitHub connection
                     </span>
                   )}
-                </>
-              )}
-
             </div>
-            {embedOpen && (
-              <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
-                <EmbedPanel address={leaderboardAddress} name={meta.leaderboardName} platform={ecoEntry?.platform} />
-              </div>
-            )}
           </section>
+          )}
 
           {/* ── Leaderboard table ── */}
           <section style={{ padding: '8px 40px 20px' }}>
@@ -407,27 +356,25 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
 
       {/* Add Funds modal */}
       {modalTarget && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={addFundsOpen}
           onClose={() => { setAddFundsOpen(false); setModalTarget(null) }}
-          onSuccess={handleAddFundsSuccess}
-          userMarkee={modalTarget as any}
-          initialMode="addFunds"
-          strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
-          topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
-          allMarkees={markees}
+          onSuccess={refreshAfterTransaction}
+          leaderboardAddress={leaderboardAddress}
+          initialView="addFunds"
+          initialTargetAddress={modalTarget.address}
         />
       )}
 
       {/* Edit modal */}
       {modalTarget && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={editOpen}
           onClose={() => { setEditOpen(false); setModalTarget(null) }}
-          onSuccess={handleEditSuccess}
-          userMarkee={modalTarget as any}
-          initialMode="updateMessage"
-          strategyAddress={modalTarget.pricingStrategy as `0x${string}`}
+          onSuccess={refreshAfterTransaction}
+          leaderboardAddress={leaderboardAddress}
+          initialView="edit"
+          initialTargetAddress={modalTarget.address}
         />
       )}
 

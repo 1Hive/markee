@@ -1,7 +1,7 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor } from '@/lib/github/linkedFiles'
 
 async function getGithubToken(uid: string): Promise<string | null> {
   const raw = await kv.get(`github:user:${uid}`)
@@ -35,12 +35,9 @@ export async function POST(request: NextRequest) {
     const content = await fileRes.text()
     const normalizedNew = leaderboardAddress.toLowerCase()
     const legacyAddrs = legacyAddressesFor(normalizedNew)
-    const anyMarkeeBlock = /<!-- MARKEE:START:0x[0-9a-fA-F]{40} -->/.test(content) &&
-                           /<!-- MARKEE:END:0x[0-9a-fA-F]{40} -->/.test(content)
     const verified =
-      (content.includes(startDelimiter(normalizedNew)) && content.includes(endDelimiter(normalizedNew))) ||
-      legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old))) ||
-      anyMarkeeBlock
+      hasDelimiterPair(content, normalizedNew) ||
+      legacyAddrs.some(old => hasDelimiterPair(content, old))
 
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoFullName && e.filePath === filePath)

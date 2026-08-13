@@ -60,9 +60,6 @@ function Hero() {
     <section style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${C.border}` }}>
       <div className="starfield-bg" />
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 1100, margin: '0 auto', padding: '80px 40px 64px', textAlign: 'center' as const }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.muted, marginBottom: 20, padding: '6px 14px', background: 'rgba(248,151,254,0.07)', border: `1px solid rgba(248,151,254,0.2)`, borderRadius: 99 }}>
-          Raise Funding
-        </div>
         <h1 style={{ margin: 0, fontSize: 'clamp(34px,5.5vw,60px)', fontWeight: 800, letterSpacing: -2, lineHeight: 1.04, color: C.text }}>
           Add Markee to your site<br/>and start <span style={{ color: C.pink }}>earning</span>
         </h1>
@@ -96,6 +93,10 @@ function fmtUsd(n: number): string {
 function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
   return (
     <section style={{ maxWidth: 1100, margin: '0 auto', padding: '56px 40px 16px' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 18 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+        Raise Funding
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
         {PLATFORMS.map(p => (
           <div key={p.key} style={{

@@ -61,6 +61,22 @@ interface BuyMessageModalProps {
   messagePlaceholder?: string
 }
 
+// M/B/T-abbreviated, NaN-safe MARKEE amount display — shows extra decimal places for sub-10 and
+// sub-1 amounts instead of collapsing to "0" (e.g. a tiny ETH bid still shows a visible token amount).
+function formatMarkeeAmount(n: number): string {
+  if (n >= 999_999e12) return '>999,999T'
+  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
+  if (n > 0 && n < 10) {
+    let decimals = 3
+    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
+    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
+    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
+  }
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
 function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
@@ -414,8 +430,9 @@ export function BuyMessageModal({
     (title ?? 'BUY A NEW MESSAGE')
 
   // Amount section (create + addFunds)
-  const bidNum = parseFloat(amount || '0')
-  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(bidNum)
+  const parsedBid = parseFloat(amount || '0')
+  const bidNum = Number.isFinite(parsedBid) ? parsedBid : 0
+  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, bidNum))
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 
@@ -622,12 +639,12 @@ export function BuyMessageModal({
                   <div style={{
                     border: `1.5px solid ${PINK}`,
                     borderRadius: 12,
-                    padding: '14px 16px',
+                    padding: '12px 16px',
                     background: BG,
                     boxShadow: '0 0 24px rgba(248,151,254,0.08)',
                   }}>
                     {/* Number + unit inline on left, MIN/MAX on right */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                         <input
                           inputMode="decimal"
@@ -637,7 +654,7 @@ export function BuyMessageModal({
                           disabled={isPending || isConfirming}
                           style={{
                             background: 'transparent', border: 'none', outline: 'none',
-                            color: TEXT, fontFamily: MONO, fontSize: 26, fontWeight: 800,
+                            color: TEXT, fontFamily: MONO, fontSize: 22, fontWeight: 800,
                             padding: 0,
                             width: `${Math.max(5, (amount || minimumAmountFormatted).length + 0.5)}ch`,
                           }}
@@ -654,7 +671,7 @@ export function BuyMessageModal({
                               border: `1px solid ${lastPreset === 'min' ? PINK : BORDER}`,
                               background: 'transparent',
                               color: lastPreset === 'min' ? PINK : TEXT2,
-                              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                              borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
                               fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
                               opacity: isPending || isConfirming ? 0.4 : 1,
                               transition: 'border-color 120ms, color 120ms',
@@ -663,6 +680,22 @@ export function BuyMessageModal({
                             MIN
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted); setLastPreset('max') }}
+                          disabled={spendableBalance <= 0n || isPending || isConfirming}
+                          style={{
+                            border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
+                            background: 'transparent',
+                            color: lastPreset === 'max' ? PINK : TEXT2,
+                            borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
+                            fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
+                            opacity: spendableBalance > 0n && !isPending && !isConfirming ? 1 : 0.4,
+                            transition: 'border-color 120ms, color 120ms',
+                          }}
+                        >
+                          MAX
+                        </button>
                         {hasCompetition && takeFirstAmountFormatted && !userIsTopDawg && (
                           <button
                             type="button"
@@ -672,7 +705,7 @@ export function BuyMessageModal({
                               border: `1px solid ${lastPreset === 'win' ? GOLD : BORDER}`,
                               background: 'transparent',
                               color: lastPreset === 'win' ? GOLD : TEXT2,
-                              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                              borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
                               fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
                               opacity: isPending || isConfirming ? 0.4 : 1,
                               transition: 'border-color 120ms, color 120ms',
@@ -693,7 +726,7 @@ export function BuyMessageModal({
                               border: `1px solid ${lastPreset === '2x' ? GOLD : BORDER}`,
                               background: 'transparent',
                               color: lastPreset === '2x' ? GOLD : TEXT2,
-                              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
+                              borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
                               fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
                               opacity: isPending || isConfirming ? 0.4 : 1,
                               transition: 'border-color 120ms, color 120ms',
@@ -702,27 +735,11 @@ export function BuyMessageModal({
                             2X
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted); setLastPreset('max') }}
-                          disabled={spendableBalance <= 0n || isPending || isConfirming}
-                          style={{
-                            border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
-                            background: 'transparent',
-                            color: lastPreset === 'max' ? PINK : TEXT2,
-                            borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
-                            fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
-                            opacity: spendableBalance > 0n && !isPending && !isConfirming ? 1 : 0.4,
-                            transition: 'border-color 120ms, color 120ms',
-                          }}
-                        >
-                          MAX
-                        </button>
                       </div>
                     </div>
 
                     {/* USD equiv + balance */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 11.5, color: MUTED, marginTop: 6 }}>
                       <span>
                         {ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}` : ' '}
                       </span>
@@ -732,23 +749,20 @@ export function BuyMessageModal({
                     </div>
                   </div>
 
-                  {/* You'll receive — horizontal */}
-                  {bidNum > 0 && (
-                    <div style={{
-                      marginTop: 12, borderRadius: 14, padding: '14px 20px',
-                      background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
-                      border: `1px solid rgba(248,151,254,0.35)`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    }}>
-                      <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                        <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
-                          {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                        </span>
-                        <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
-                      </div>
+                  {/* You'll receive */}
+                  <div style={{
+                    marginTop: 10, boxSizing: 'border-box', borderRadius: 12, padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
+                    border: `1px solid rgba(248,151,254,0.35)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
+                        {formatMarkeeAmount(markeeEarned)}
+                      </span>
                     </div>
-                  )}
+                    <span style={{ color: PINK, fontSize: 11.5, fontWeight: 400, fontFamily: 'Manrope, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}>MARKEE earned</span>
+                  </div>
                 </div>
               )}
 
@@ -787,9 +801,7 @@ export function BuyMessageModal({
               flexShrink: 0,
             }}>
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                {activeTab === 'addFunds'
-                  ? 'Funds are added onchain to this message.'
-                  : activeTab === 'updateMessage'
+                {activeTab === 'updateMessage'
                   ? 'Only the message owner can update their message.'
                   : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       62/38 split

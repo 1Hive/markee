@@ -16,6 +16,33 @@ const BORDER = 'rgba(138,143,191,0.2)'
 // Juicebox v4 uses this sentinel address for native ETH
 const ETH_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
+// Caps each side of the decimal at 9 digits so a pasted/huge value can't blow out the layout.
+function sanitizeAmountInput(raw: string): string {
+  let cleaned = raw.replace(/[^0-9.]/g, '')
+  const dot = cleaned.indexOf('.')
+  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
+  const [intPart, fracPart] = cleaned.split('.')
+  const cappedInt = (intPart ?? '').slice(0, 9)
+  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
+}
+
+// M/B/T-abbreviated, NaN-safe MARKEE amount display -- shows extra decimal places for sub-10 amounts
+// instead of collapsing to "0" (matches MarkeeSignModal's ReceiveCard).
+function formatMarkeeAmount(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0'
+  if (n >= 999_999e12) return '>999,999T'
+  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
+  if (n < 10) {
+    let decimals = 3
+    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
+    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
+    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
+  }
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
 const JB_TERMINAL_PAY_ABI = [
   {
     name: 'pay',
@@ -53,8 +80,9 @@ export function RevnetBuyWidget({ compact = false }: Props) {
     query: { enabled: !!txHash },
   })
 
-  const eth        = parseFloat(amount) || 0
-  const receive    = Math.round(estimateDirectRevnetMarkeeTokens(eth))
+  const parsedEth  = parseFloat(amount)
+  const eth        = Number.isFinite(parsedEth) ? parsedEth : 0
+  const receive    = estimateDirectRevnetMarkeeTokens(Math.max(0, eth))
   const cfg        = REVNET_V6_CONFIG[base.id]
 
   const handleBuy = () => {
@@ -111,7 +139,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
           <input
             value={amount}
             onChange={e => {
-              setAmount(e.target.value.replace(/[^0-9.]/g, ''))
+              setAmount(sanitizeAmountInput(e.target.value))
               if (isSuccess) reset()
             }}
             inputMode="decimal"
@@ -129,7 +157,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 4px 0' }}>
           <span style={{ color: '#8A8FBF', fontSize: 13 }}>You receive</span>
           <span style={{ color: '#F897FE', fontWeight: 800, fontFamily: MONO, fontSize: 18, letterSpacing: -0.3 }}>
-            {receive.toLocaleString('en-US')} MARKEE
+            {formatMarkeeAmount(receive)} MARKEE
           </span>
         </div>
 

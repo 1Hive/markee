@@ -24,9 +24,16 @@ const LEADERBOARD_ABI = [
   },
 ] as const
 
-// Emitted by individual markee contracts when anyone adds funds
+// Emitted by individual markee contracts when anyone adds funds (v1.1+ standalone-markee boards).
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
+)
+
+// Older partner-strategy boards (e.g. Gardens) emit funds-added from the *leaderboard* contract
+// itself, keyed by markee address, rather than from each markee's own contract. Same intent,
+// different shape -- both must be scanned or partner-board contributions silently disappear.
+const LEGACY_FUNDS_ADDED_EVENT = parseAbiItem(
+  'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
 )
 
 function getClient() {
@@ -124,23 +131,41 @@ async function fixedFunded(
   if (entries.length === 0) return []
 
   const allMarkeeAddresses = [...new Set(entries.map(e => e.markeeAddress))]
+  const allLeaderboardAddresses = leaderboards.map(lb => lb.address as `0x${string}`)
 
-  // Query FundsAdded on all markee contracts filtered by addedBy == owner
-  const fundsAddedLogs = await client.getLogs({
-    address: allMarkeeAddresses,
-    event: FUNDS_ADDED_EVENT,
-    args: { addedBy: owner as `0x${string}` },
-    fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
-    toBlock: 'latest',
-  }).catch(() => [])
+  // Query both FundsAdded shapes filtered by addedBy == owner: per-markee-contract (v1.1+ boards)
+  // and per-leaderboard-contract keyed by markeeAddress (older partner-strategy boards).
+  const [fundsAddedLogs, legacyFundsAddedLogs] = await Promise.all([
+    client.getLogs({
+      address: allMarkeeAddresses,
+      event: FUNDS_ADDED_EVENT,
+      args: { addedBy: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+      toBlock: 'latest',
+    }).catch(() => []),
+    client.getLogs({
+      address: allLeaderboardAddresses,
+      event: LEGACY_FUNDS_ADDED_EVENT,
+      args: { addedBy: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+      toBlock: 'latest',
+    }).catch(() => []),
+  ])
 
-  if (fundsAddedLogs.length === 0) return []
+  if (fundsAddedLogs.length === 0 && legacyFundsAddedLogs.length === 0) return []
 
   // Aggregate total contributed by user per markee
   const markeeContribs = new Map<string, bigint>()
   for (const log of fundsAddedLogs) {
     const addr = log.address.toLowerCase()
     const amount = (log.args as { amount: bigint }).amount ?? 0n
+    markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
+  }
+  for (const log of legacyFundsAddedLogs) {
+    const args = log.args as { markeeAddress?: string; amount?: bigint }
+    if (!args.markeeAddress) continue
+    const addr = args.markeeAddress.toLowerCase()
+    const amount = args.amount ?? 0n
     markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
   }
 

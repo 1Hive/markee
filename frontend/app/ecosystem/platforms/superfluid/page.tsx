@@ -8,7 +8,7 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { RewardsModal } from '@/components/modals/RewardsModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { useStreamingRows } from '@/hooks/useStreamingRows'
@@ -788,12 +788,9 @@ export default function SuperfluidPlatformPage() {
       <Footer />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          initialMode="create"
-          strategyAddress={buyModal.address as `0x${string}`}
-          topFundsAdded={buyModal.topFundsAdded}
-          platformId="superfluid"
+          leaderboardAddress={buyModal.address}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />

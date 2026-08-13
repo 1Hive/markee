@@ -74,6 +74,7 @@ type TxHistoryEvent =
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const PINK = '#F897FE'
 const BLUE = '#7C9CFF'
+const PURP = '#7B6AF4'
 const BG = '#060A2A'
 const BG2 = '#0A0F3D'
 const TEXT = '#EDEEFF'
@@ -292,8 +293,15 @@ export function ExpandableMarkeeRow({
           <ChevronRight size={15} style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 140ms' }} />
         </button>
 
-        <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {displayName}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+          </span>
+          {isOwner && (
+            <span style={{ background: `${PURP}33`, color: PURP, fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, borderRadius: 99, padding: '1px 7px', flexShrink: 0 }}>
+              YOU
+            </span>
+          )}
         </span>
 
         <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>

@@ -262,7 +262,7 @@ export function MetricsBar({ address, entry, strategy, topViews, markeeCount, to
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Pricing Strategy', <StrategyBadge strategy={strategy} size="sm" />)}
+      {cell('Pricing Strategy', <StrategyBadge strategy={strategy} size="md" />)}
       {cell('Served on', <ServedOnCell entry={entry} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', <MetricValue text={formatViews(topViews)} color={BLUE} />)}
@@ -373,7 +373,7 @@ export function CopyButton({ text }: { text: string }) {
   )
 }
 
-export function CodeBlock({ code, label, hideCopy }: { code: string; label?: string; hideCopy?: boolean }) {
+export function CodeBlock({ code, label, hideCopy, noWrap }: { code: string; label?: string; hideCopy?: boolean; noWrap?: boolean }) {
   const showHeader = label || !hideCopy
   return (
     <div>
@@ -385,13 +385,30 @@ export function CodeBlock({ code, label, hideCopy }: { code: string; label?: str
           {!hideCopy && <CopyButton text={code} />}
         </div>
       )}
-      <div style={{ background: '#030714', border: `1px solid rgba(138,143,191,0.15)`, borderRadius: 10, padding: '14px 16px', maxHeight: 220, overflowY: 'auto' as const }}>
-        <pre style={{ margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap' as const, wordBreak: 'break-all' as const, lineHeight: 1.65 }}>
+      <div style={{
+        background: '#030714', border: `1px solid rgba(138,143,191,0.15)`, borderRadius: 10, padding: '14px 16px',
+        maxHeight: 220, overflowY: 'auto' as const, overflowX: noWrap ? 'auto' as const : undefined,
+      }}>
+        <pre style={{
+          margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, lineHeight: 1.65,
+          whiteSpace: noWrap ? 'pre' as const : 'pre-wrap' as const,
+          wordBreak: noWrap ? 'normal' as const : 'break-all' as const,
+        }}>
           {code}
         </pre>
       </div>
     </div>
   )
+}
+
+// Wherever GitHubVerify is rendered from (the inline board-detail panel, or EmbedModal opened from
+// /account) -- return to that same page/embed-target after OAuth, not always the board detail page.
+function buildGithubReturnTo(address: string): string {
+  if (typeof window === 'undefined') return `/markee/${address}?embed=1`
+  const url = new URL(window.location.href)
+  url.searchParams.set('embed', '1')
+  url.searchParams.set('embedAddress', address)
+  return url.pathname + url.search
 }
 
 // ── GitHub verify sub-component ───────────────────────────────────────────────
@@ -406,6 +423,11 @@ export function GitHubVerify({ address }: { address: string }) {
   const [selectedFile, setSelectedFile] = useState('')
   const [result,       setResult]       = useState<{ verified: boolean; filePath: string } | null>(null)
   const [error,        setError]        = useState<string | null>(null)
+  const [rechecking,    setRechecking]   = useState(false)
+  const [syncStatus,   setSyncStatus]   = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [syncMessage,  setSyncMessage]  = useState<string | null>(null)
+  const [views,        setViews]        = useState<number | null>(null)
+  const [viewsLoading,  setViewsLoading] = useState(false)
 
   useEffect(() => {
     fetch('/api/github/me')
@@ -454,6 +476,92 @@ export function GitHubVerify({ address }: { address: string }) {
     }
   }
 
+  async function handleDisconnect() {
+    setStep('checking')
+    try { await fetch('/api/github/me', { method: 'DELETE' }) } catch { /* best-effort */ }
+    setLogin(null); setRepos([]); setSelectedRepo(''); setSelectedFile(''); setResult(null); setError(null)
+    setStep('not-connected')
+  }
+
+  // Keeps the connected repo, drops just the file + result so the picker re-opens for a second file.
+  function handleAddAnotherFile() {
+    setSelectedFile(''); setResult(null); setError(null); setStep('ready')
+  }
+
+  // Re-checks the delimiter is now present after the user edits the file post-link.
+  async function handleRecheck() {
+    if (!selectedRepo || !selectedFile) return
+    setRechecking(true); setError(null)
+    try {
+      const res = await fetch('/api/github/verify-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress: address, repoFullName: selectedRepo, filePath: selectedFile }),
+      })
+      const data = await res.json()
+      if (data.success) setResult({ verified: data.verified, filePath: selectedFile })
+      else setError(data.error ?? 'Check failed')
+    } catch {
+      setError('Network error')
+    } finally {
+      setRechecking(false)
+    }
+  }
+
+  // Pushes the current top message into the linked file(s) now.
+  async function handleSync() {
+    setSyncStatus('loading'); setSyncMessage(null)
+    try {
+      const res = await fetch('/api/github/update-markee-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaderboardAddress: address }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        success?: boolean; error?: string
+        results?: Array<{ success: boolean; error?: string }>
+      }
+      if (res.ok && data.success) {
+        const ok = data.results?.filter(r => r.success).length ?? 1
+        const fail = data.results?.filter(r => !r.success).length ?? 0
+        setSyncStatus('success')
+        setSyncMessage(fail > 0 ? `Updated ${ok}, ${fail} failed` : `Updated ${ok} file${ok !== 1 ? 's' : ''}`)
+      } else {
+        setSyncStatus('error')
+        setSyncMessage(data.error ?? 'Sync failed')
+      }
+    } catch {
+      setSyncStatus('error'); setSyncMessage('Network error')
+    }
+  }
+
+  async function handleRefreshViews() {
+    setViewsLoading(true)
+    try {
+      const res = await fetch(`/api/github/traffic?address=${address.toLowerCase()}`)
+      const data = await res.json().catch(() => ({})) as { count?: number }
+      if (res.ok && data.count !== undefined) setViews(data.count)
+    } catch { /* best-effort */ }
+    finally { setViewsLoading(false) }
+  }
+
+  const accountRow = login && (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <GithubIcon size={11} color={MUTED} />
+        <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>{login}</span>
+      </span>
+      <button
+        onClick={handleDisconnect}
+        style={{ background: 'transparent', border: 'none', color: MUTED, fontFamily: MONO, fontSize: 11, cursor: 'pointer', padding: 0 }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED }}
+      >
+        Change account
+      </button>
+    </div>
+  )
+
   const inputStyle = {
     background: '#030714', border: `1px solid ${BORDER}`, borderRadius: 7,
     padding: '7px 10px', fontFamily: MONO, fontSize: 12, color: TEXT,
@@ -461,53 +569,135 @@ export function GitHubVerify({ address }: { address: string }) {
   }
 
   if (step === 'checking') return (
-    <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>Checking connection…</span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '13px 16px' }}>
+      <span
+        aria-hidden
+        style={{
+          width: 15, height: 15, borderRadius: 99, flexShrink: 0,
+          border: `2px solid ${PINK}`, borderTopColor: 'transparent',
+          animation: 'spin 1s linear infinite',
+        }}
+      />
+      <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2 }}>Connecting to GitHub...</span>
+    </div>
   )
 
   if (step === 'not-connected') return (
     <a
-      href={`/api/github/connect?returnTo=${encodeURIComponent(`/markee/${address}?embed=1`)}`}
+      href={`/api/github/connect?returnTo=${encodeURIComponent(buildGithubReturnTo(address))}`}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 7,
-        background: '#030714', border: `1px solid ${BORDER}`,
-        borderRadius: 8, padding: '8px 14px', fontFamily: MONO, fontSize: 12,
-        color: TEXT2, textDecoration: 'none', transition: 'border-color 140ms, color 140ms',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+        background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`,
+        borderRadius: 10, padding: '13px 16px', fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+        color: TEXT, textDecoration: 'none', transition: 'border-color 140ms, background 140ms',
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.background = 'rgba(15,27,107,0.7)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.background = 'rgba(15,27,107,0.5)' }}
     >
-      <GithubIcon size={13} color="currentColor" />
-      Connect GitHub to link a file
+      <GithubIcon size={16} color="currentColor" />
+      Connect GitHub
     </a>
   )
 
   if (step === 'done' && result) return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={result.verified ? GREEN : MUTED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-      </svg>
-      <span style={{ fontFamily: MONO, fontSize: 12, color: result.verified ? GREEN : TEXT2, lineHeight: 1.5 }}>
-        {result.verified
-          ? `Verified — ${result.filePath} is linked`
-          : `Linked — add the delimiter snippet to ${result.filePath}, commit it, then Sync Message`}
-      </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {accountRow}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '11px 14px',
+      }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: TEXT, minWidth: 0 }}>
+          <GithubIcon size={15} color={TEXT2} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRepo}</span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, color: result.verified ? GREEN : MUTED }}>
+          <span style={{ width: 6, height: 6, borderRadius: 99, background: result.verified ? GREEN : MUTED, flexShrink: 0 }} />
+          {result.verified ? 'VERIFIED' : 'LINKED'}
+        </span>
+      </div>
+      {!result.verified && (
+        <span style={{ fontFamily: MONO, fontSize: 11, color: TEXT2, lineHeight: 1.5 }}>
+          Add the delimiter snippet to {result.filePath}, commit it, then check again.
+        </span>
+      )}
+
+      {/* Re-check / sync / views — everything you'd otherwise have to leave this modal to do */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+        <button
+          onClick={handleRecheck}
+          disabled={rechecking}
+          style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: rechecking ? 'wait' : 'pointer', opacity: rechecking ? 0.6 : 1 }}
+        >
+          {rechecking ? 'Checking…' : 'Check now'}
+        </button>
+        <button
+          onClick={handleSync}
+          disabled={syncStatus === 'loading'}
+          style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: syncStatus === 'loading' ? 'wait' : 'pointer', opacity: syncStatus === 'loading' ? 0.6 : 1 }}
+        >
+          {syncStatus === 'loading' ? 'Syncing…' : 'Sync message'}
+        </button>
+        <button
+          onClick={handleRefreshViews}
+          disabled={viewsLoading}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: viewsLoading ? 'wait' : 'pointer', opacity: viewsLoading ? 0.6 : 1 }}
+        >
+          <Eye size={11} />
+          {viewsLoading ? 'Loading…' : views !== null ? `${views.toLocaleString()} views` : 'Check views'}
+        </button>
+      </div>
+      {syncMessage && (
+        <span style={{ fontFamily: MONO, fontSize: 11, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>{syncMessage}</span>
+      )}
+      {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
+
+      <button
+        onClick={handleAddAnotherFile}
+        style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', padding: 0, textAlign: 'left', alignSelf: 'flex-start' }}
+      >
+        + Add another file in this repo
+      </button>
     </div>
   )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {login && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <GithubIcon size={11} color={MUTED} />
-          <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>{login}</span>
+      {accountRow}
+      {selectedRepo && selectedFile ? (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '11px 14px',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: TEXT, minWidth: 0 }}>
+            <GithubIcon size={15} color={TEXT2} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRepo}</span>
+          </span>
+          <button
+            onClick={() => { setSelectedRepo(''); setSelectedFile('') }}
+            style={{ background: 'transparent', border: 'none', color: MUTED, fontFamily: MONO, fontSize: 11, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED }}
+          >
+            Change
+          </button>
         </div>
+      ) : (
+        <select value={selectedRepo} onChange={e => setSelectedRepo(e.target.value)} disabled={step === 'registering'} style={{ ...inputStyle, cursor: 'pointer' }}>
+          <option value="">Select repository…</option>
+          {repos.map(r => <option key={r.fullName} value={r.fullName}>{r.fullName}</option>)}
+        </select>
       )}
-      <select value={selectedRepo} onChange={e => setSelectedRepo(e.target.value)} disabled={step === 'registering'} style={{ ...inputStyle, cursor: 'pointer' }}>
-        <option value="">Select repository…</option>
-        {repos.map(r => <option key={r.fullName} value={r.fullName}>{r.fullName}</option>)}
-      </select>
-      {selectedRepo && (
-        <select value={selectedFile} onChange={e => setSelectedFile(e.target.value)} disabled={loadingFiles || step === 'registering'} style={{ ...inputStyle, cursor: loadingFiles ? 'wait' : 'pointer' }}>
+      {!selectedFile && (
+        <select
+          value={selectedFile}
+          onChange={e => setSelectedFile(e.target.value)}
+          disabled={!selectedRepo || loadingFiles || step === 'registering'}
+          style={{
+            ...inputStyle,
+            cursor: !selectedRepo ? 'default' : loadingFiles ? 'wait' : 'pointer',
+            opacity: !selectedRepo ? 0.45 : 1,
+          }}
+        >
           <option value="">{loadingFiles ? 'Loading files…' : 'Select markdown file…'}</option>
           {files.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
@@ -517,13 +707,16 @@ export function GitHubVerify({ address }: { address: string }) {
         onClick={handleRegister}
         disabled={!selectedRepo || !selectedFile || step === 'registering'}
         style={{
-          alignSelf: 'flex-start', background: PINK, color: BG, border: 'none',
-          borderRadius: 7, padding: '8px 16px', fontFamily: MONO, fontWeight: 700,
-          fontSize: 12, cursor: (!selectedRepo || !selectedFile || step === 'registering') ? 'not-allowed' : 'pointer',
-          opacity: (!selectedRepo || !selectedFile || step === 'registering') ? 0.5 : 1, transition: 'opacity 140ms',
+          background: (!selectedRepo || !selectedFile || step === 'registering') ? 'transparent' : PINK,
+          color: (!selectedRepo || !selectedFile || step === 'registering') ? MUTED : BG,
+          border: (!selectedRepo || !selectedFile || step === 'registering') ? `1px solid ${BORDER}` : 'none',
+          borderRadius: 8, padding: '13px 16px', fontFamily: 'inherit', fontWeight: 700,
+          fontSize: 14, width: '100%',
+          cursor: (!selectedRepo || !selectedFile || step === 'registering') ? 'not-allowed' : 'pointer',
+          opacity: (!selectedRepo || !selectedFile || step === 'registering') ? 0.6 : 1, transition: 'opacity 140ms',
         }}
       >
-        {step === 'registering' ? 'Linking…' : 'Link & Verify File'}
+        {step === 'registering' ? 'Verifying…' : 'Verify'}
       </button>
     </div>
   )
@@ -740,8 +933,6 @@ export function OpenInternetVerify({ address }: { address: string }) {
 }
 
 export function EmbedPanel({ address, name, platform }: { address: string; name?: string; platform?: string }) {
-  const [websiteOpen, setWebsiteOpen] = useState(false)
-
   const isGithub    = platform === 'github'
   const displayName = name || address
   const buyUrl      = `https://markee.xyz/markee/${address}`
@@ -974,33 +1165,11 @@ Please look at this codebase and implement both components. Choose an appropriat
     <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
       {isGithub ? (
             <>
-              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
-                <p style={{ margin: 0, color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-                  Add these delimiters to your markdown file once to mark where the Markee block is rendered. Use the Sync and Refresh buttons above to push the current message and pull traffic stats.
-                </p>
+              <div style={{ padding: '20px 20px 0' }}>
+                <CodeBlock code={delimiterSnippet} label="Add to your markdown file and commit" noWrap />
               </div>
-              <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
-                <CodeBlock code={delimiterSnippet} label="Add to your markdown file and commit" />
-                <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
-                  <button
-                    onClick={() => setWebsiteOpen(v => !v)}
-                    style={{ background: 'transparent', border: 'none', color: TEXT2, fontSize: 13, fontFamily: MONO, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: websiteOpen ? 'rotate(90deg)' : 'none', transition: 'transform 140ms' }}>
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                    Also embed on a website
-                  </button>
-                  {websiteOpen && (
-                    <div style={{ marginTop: 14 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 8 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>Copy this prompt into any AI coding agent with access to your site</span>
-                        <CopyButton text={llmPrompt} />
-                      </div>
-                      <CodeBlock code={llmPrompt} hideCopy />
-                    </div>
-                  )}
-                </div>
+              <div style={{ padding: 20 }}>
+                <GitHubVerify address={address} />
               </div>
             </>
           ) : (
@@ -1014,18 +1183,15 @@ Please look at this codebase and implement both components. Choose an appropriat
               <div style={{ padding: 20 }}>
                 <CodeBlock code={llmPrompt} hideCopy />
               </div>
+              {/* ── Verify Integration ── */}
+              <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 20px' }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, textTransform: 'uppercase' as const, color: MUTED, letterSpacing: '0.08em', marginBottom: 12 }}>
+                  Verify Integration
+                </div>
+                <OpenInternetVerify address={address} />
+              </div>
             </>
           )}
-      {/* ── Verify Integration ── */}
-      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 20px' }}>
-        <div style={{ fontFamily: MONO, fontSize: 10, textTransform: 'uppercase' as const, color: MUTED, letterSpacing: '0.08em', marginBottom: 12 }}>
-          Verify Integration
-        </div>
-        {isGithub
-          ? <GitHubVerify address={address} />
-          : <OpenInternetVerify address={address} />
-        }
-      </div>
     </div>
   )
 }

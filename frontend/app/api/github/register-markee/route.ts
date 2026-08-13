@@ -1,7 +1,7 @@
 // app/api/github/register-markee/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, type LinkedFile } from '@/lib/github/linkedFiles'
 
 async function getGithubToken(uid: string): Promise<string | null> {
   const raw = await kv.get(`github:user:${uid}`)
@@ -24,9 +24,7 @@ async function checkDelimiters(
     if (!res.ok) return false
     const content = await res.text()
     const legacyAddrs = legacyAddressesFor(leaderboardAddress)
-    return (content.includes(startDelimiter(leaderboardAddress)) && content.includes(endDelimiter(leaderboardAddress))) ||
-           legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old))) ||
-           (/<!-- MARKEE:START:0x[0-9a-fA-F]{40} -->/.test(content) && /<!-- MARKEE:END:0x[0-9a-fA-F]{40} -->/.test(content))
+    return hasDelimiterPair(content, leaderboardAddress) || legacyAddrs.some(old => hasDelimiterPair(content, old))
   } catch {
     return false
   }

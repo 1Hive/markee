@@ -18,7 +18,7 @@ import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px'
+const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px 100px'
 const MARKETPLACE_TEASER_ROW_HEIGHT = 36
 
 function extractDomain(url: string): string {
@@ -494,6 +494,7 @@ export default function Home() {
             <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Current message</span>
             <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Views</span>
             <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: 22, textAlign: 'right' }}>Price to change</span>
+            <span />
           </div>
 
           {/* Partner rows */}
@@ -508,6 +509,7 @@ export default function Home() {
                     {[1, 2, 3, 4, 5].map(j => (
                       <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4, animation: 'pulse 1.5s ease-in-out infinite' }} />
                     ))}
+                    <div />
                   </div>
                 ))
               : top5Eco.map((lb) => {
@@ -580,7 +582,6 @@ export default function Home() {
 
                       {/* Current message */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
-                        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
                         <div style={{
                           fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -632,6 +633,11 @@ export default function Home() {
                         ) : (
                           <span style={{ fontSize: 11, color: '#8A8FBF', fontFamily: MONO }}>—</span>
                         )}
+                      </div>
+
+                      {/* Strategy */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
+                        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
                       </div>
                     </a>
                   )

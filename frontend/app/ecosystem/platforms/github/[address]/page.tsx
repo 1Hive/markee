@@ -14,7 +14,8 @@ import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useGithubTraffic } from '@/hooks/useGithubTraffic'
 import { useViews } from '@/hooks/useViews'
 import { NETWORK_PAUSED } from '@/lib/paused'
@@ -416,12 +417,11 @@ export default function GithubLeaderboardPage() {
       <Footer />
 
       {buyModalOpen && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={leaderboardAddress}
-          userMarkee={selectedMarkee}
-          topFundsAdded={markees[0]?.totalFundsAdded}
-          initialMode={initialMode}
+          leaderboardAddress={leaderboardAddress}
+          initialView={initialMode === 'addFunds' ? 'addFunds' : initialMode === 'updateMessage' ? 'edit' : undefined}
+          initialTargetAddress={selectedMarkee?.address}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
           onSuccess={handlePurchaseSuccess}
         />

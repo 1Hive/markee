@@ -7,10 +7,9 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
+import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { ManageStreamModal } from '@/components/modals/ManageStreamModal'
 import { ClaimModal } from '@/components/modals/ClaimModal'
-import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -26,7 +25,7 @@ import { formatUsd } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
-  formatViews, fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, EmbedPanel, BoardDetailSkeleton,
+  formatViews, fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
 } from '@/components/board-detail/shared'
 
 const ETHX = STREAMING_BASE.ethx as Address
@@ -65,15 +64,18 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     : 0
 
   // ── Modal state ─────────────────────────────────────────────────────────────
-  const [target, setTarget] = useState<StreamTarget | null>(null)
+  const [signOpen, setSignOpen] = useState(false)
+  const [signTargetAddress, setSignTargetAddress] = useState<string | null>(null)
+  const [signInitialView, setSignInitialView] = useState<'fund' | 'manage'>('fund')
   const [activateOpen, setActivateOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
-  const [embedOpen, setEmbedOpen] = useState(false)
 
-  const backMarkee = (m: StreamingMarkee) =>
-    setTarget({ address: m.address, message: m.message, name: m.name })
+  // Routes to the Fund sub-view for a message you don't yet back, or Manage for the one you do.
+  const openSign = (m: StreamingMarkee, view: 'fund' | 'manage') => {
+    setSignTargetAddress(m.address); setSignInitialView(view); setSignOpen(true)
+  }
 
   // ── Your position on this board ─────────────────────────────────────────────
   const { data: backedMarkee, refetch: refetchBacked } = useReadContract({
@@ -143,6 +145,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const topMarkee = markees[0] ?? null
   const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
+  const topMonthlyWei = markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined
 
   const isBoardAdmin = !!address && !!meta.admin && address.toLowerCase() === meta.admin.toLowerCase()
 
@@ -197,7 +200,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               ownerAddress={topMarkee.owner}
               views={topViews}
               pillLabel={canStream ? `${formatRate(topMarkee.rate)} to back` : undefined}
-              onClick={() => canStream && backMarkee(topMarkee)}
+              onClick={() => canStream && openSign(topMarkee, backedMarkee && backedMarkee.toLowerCase() === topMarkee.address.toLowerCase() ? 'manage' : 'fund')}
             />
             <div style={{ height: 28 }} />
             <MetricsBar
@@ -239,44 +242,13 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                     <button onClick={() => setClaimOpen(true)} style={posBtn(true)}>Claim</button>
                   )}
                   {myRate && myRate > 0n && backedEntry && (
-                    <button onClick={() => backMarkee(backedEntry)} style={posBtn(false)}>Change rate</button>
+                    <button onClick={() => openSign(backedEntry, 'manage')} style={posBtn(false)}>Change rate</button>
                   )}
                   <button onClick={() => setManageOpen(true)} style={posBtn(false)}>Manage stream</button>
                 </div>
               </div>
             </section>
           )}
-
-          {/* ── Action bar ── */}
-          <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
-              <button
-                onClick={() => setEmbedOpen(v => !v)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  background: 'transparent', border: `1px solid ${BORDER}`,
-                  borderRadius: 9, padding: '9px 16px', cursor: 'pointer',
-                  fontFamily: MONO, fontSize: 13, color: TEXT2,
-                  transition: 'border-color 140ms, color 140ms',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-                </svg>
-                Embed this Markee
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: embedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 160ms', marginLeft: 2 }}>
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-            </div>
-            {embedOpen && (
-              <div style={{ maxWidth: 1100, margin: '14px auto 0' }}>
-                <EmbedPanel address={board} name={meta.name} platform={ecoEntry?.platform} />
-              </div>
-            )}
-          </section>
 
           {/* ── Leaderboard table ── */}
           <section style={{ padding: '8px 40px 20px' }}>
@@ -298,7 +270,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                       featured={i === 0}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
                       isBackedByYou={!!backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase()}
-                      onStream={canStream ? () => backMarkee(m) : undefined}
+                      onStream={canStream ? () => openSign(m, backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase() ? 'manage' : 'fund') : undefined}
                     />
                   ))}
                 </div>
@@ -334,16 +306,14 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
       <Footer />
 
-      {target && (
-        <StreamModal
-          isOpen={true}
-          board={board}
-          markee={target}
-          onClose={() => setTarget(null)}
-          onSuccess={refetchAll}
-          topMonthlyWei={markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined}
-        />
-      )}
+      <StreamSignModal
+        isOpen={signOpen}
+        board={board}
+        initialView={signInitialView}
+        initialTargetAddress={signTargetAddress ?? undefined}
+        onClose={() => setSignOpen(false)}
+        onSuccess={refetchAll}
+      />
 
       <ManageStreamModal
         isOpen={manageOpen}
@@ -362,24 +332,19 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       <StreamActivateModal
         isOpen={activateOpen}
         board={board}
-        topMonthlyWei={markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined}
+        topMonthlyWei={topMonthlyWei}
         onClose={() => setActivateOpen(false)}
         onSuccess={() => { setActivateOpen(false); refetchAll() }}
         messageLabel="SET FIRST MESSAGE"
         messagePlaceholder="Your message here..."
       />
 
-      {createOpen && (
-        <CreateMessageModal
-          board={board}
-          onClose={() => setCreateOpen(false)}
-          onCreated={(addr, message, name) => {
-            setCreateOpen(false)
-            refetch()
-            setTarget({ address: addr, message, name })
-          }}
-        />
-      )}
+      <StreamSignModal
+        isOpen={createOpen}
+        board={board}
+        onClose={() => setCreateOpen(false)}
+        onSuccess={() => { setCreateOpen(false); refetchAll() }}
+      />
     </div>
   )
 }
