@@ -4,13 +4,16 @@
 // streaming detail render the same hero card, metrics bar, embed/verify panel and skeleton from here.
 
 import { useState, useEffect, useRef } from 'react'
-import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { formatEther } from 'viem'
+import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User } from 'lucide-react'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { getAddressUrl } from '@/lib/explorer'
+import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
+import { TxSteps } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
@@ -35,6 +38,64 @@ export function fmtAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
+// ── Stream status icon (green active / yellow pending-not-winning / red cancelled) ─────────────────
+// Shared by /account's tables and the "Manage Your Stream" flow -- both need the same tri-state read
+// of a backer's position on a streaming board.
+export type StreamStatus = 'active' | 'pending' | 'cancelled'
+
+export function streamStatusOf(isTop: boolean, flowRateRaw: string | bigint | undefined): StreamStatus {
+  const rate = typeof flowRateRaw === 'bigint' ? flowRateRaw : BigInt(flowRateRaw ?? '0')
+  if (rate === 0n) return 'cancelled'
+  return isTop ? 'active' : 'pending'
+}
+
+const STREAM_STATUS_GOLD = '#FFD45E'
+export const STREAM_STATUS_META: Record<StreamStatus, { color: string; label: string; tip: string }> = {
+  active:    { color: GREEN,   label: 'Active',    tip: 'This message is winning and your payment is streaming.' },
+  pending:   { color: STREAM_STATUS_GOLD, label: 'Pending',   tip: "This message isn't winning. Your stream is being fully refunded until you take the top spot." },
+  cancelled: { color: '#F87171', label: 'Stopped', tip: 'This stream has been cancelled. Reactivate to get your message featured.' },
+}
+
+export function StreamStatusIcon({ status }: { status: StreamStatus }) {
+  const [open, setOpen] = useState(false)
+  const { color, tip } = STREAM_STATUS_META[status]
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span style={{
+        width: 8, height: 8, borderRadius: 99, background: color, flexShrink: 0,
+        boxShadow: status === 'active' ? `0 0 6px ${color}` : 'none',
+        animation: status === 'active' ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
+      }} />
+      {open && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+          width: 230, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 8,
+          padding: '8px 10px', zIndex: 50, boxShadow: '0 12px 34px rgba(0,0,0,0.5)',
+          color: TEXT2, fontSize: 11.5, lineHeight: 1.45, whiteSpace: 'normal',
+          fontFamily: 'inherit', fontWeight: 400, pointerEvents: 'none',
+        }}>
+          {tip}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// Seconds -> "Xd Xh" (or "Xh Xm" under a day, "Xm" under an hour).
+export function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const days = Math.floor(s / 86400)
+  const hours = Math.floor((s % 86400) / 3600)
+  const minutes = Math.floor((s % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
 
 // ── Platform / served-on info from ecosystem API ──────────────────────────────
 export interface LinkedFile {
@@ -52,29 +113,26 @@ export function useServedOn(leaderboardAddress: string) {
   const [entry, setEntry] = useState<EcoEntry | null>(null)
   useEffect(() => {
     if (!leaderboardAddress) return
-    fetch('/api/ecosystem/leaderboards', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null)
-      .then(async (data) => {
-        if (!data?.leaderboards) return
-        const found = (data.leaderboards as EcoEntry[]).find(
-          lb => lb.address.toLowerCase() === leaderboardAddress.toLowerCase()
-        )
-        if (!found) return
-        if (found.platform === 'github') {
-          try {
-            const ghRes = await fetch('/api/github/leaderboards', { cache: 'no-store' })
-            if (ghRes.ok) {
-              const ghData = await ghRes.json()
-              const ghEntry = (ghData.leaderboards ?? []).find(
-                (lb: EcoEntry) => lb.address.toLowerCase() === leaderboardAddress.toLowerCase()
-              )
-              if (ghEntry?.linkedFiles) found.linkedFiles = ghEntry.linkedFiles
-            }
-          } catch {}
-        }
-        setEntry(found)
+    const addr = leaderboardAddress.toLowerCase()
+    // Website and GitHub integrations are both address-keyed, independent of which platform the
+    // board was originally created/tagged under (a "website"-platform board can still have a
+    // verified linked GitHub file, and vice versa) -- so verification-status is fetched
+    // unconditionally rather than only when the ecosystem listing happens to tag this board 'github'.
+    Promise.all([
+      fetch('/api/ecosystem/leaderboards', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/account/verification-status?addresses=${addr}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([ecoData, verData]) => {
+      const found = (ecoData?.leaderboards as EcoEntry[] | undefined)?.find(
+        lb => lb.address.toLowerCase() === addr
+      )
+      const v = verData?.[addr] as { verifiedUrls?: string[]; linkedFiles?: LinkedFile[] } | undefined
+      if (!found && !v) return
+      setEntry({
+        ...(found ?? { address: leaderboardAddress, platform: 'website' }),
+        verifiedUrls: v?.verifiedUrls?.length ? v.verifiedUrls : found?.verifiedUrls,
+        linkedFiles: v?.linkedFiles,
       })
-      .catch(() => {})
+    })
   }, [leaderboardAddress])
   return entry
 }
@@ -148,20 +206,44 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // Rendered through a portal (see below) so the dropdown isn't clipped by the hero section's
+  // overflow:hidden (needed there for the scanline/background effect) -- position computed from the
+  // trigger's bounding rect since it's no longer a CSS-positioned descendant of it.
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
+
   useEffect(() => {
     if (!open) return
-    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    const close = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    const reposition = () => {
+      if (!ref.current) return
+      const rect = ref.current.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+    }
+    reposition()
     document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
   }, [open])
 
-  const isGithub = entry?.platform === 'github'
-  const files = isGithub ? (entry?.linkedFiles ?? []).filter(f => f.verified) : []
-  const urls = !isGithub ? (entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []) : []
+  // A board can carry both a verified website URL and a verified linked GitHub file at once (they're
+  // independent, address-keyed integrations) -- so both are fetched and rendered together, unioned
+  // and sorted by views, rather than picking one type based on the board's platform tag.
+  const files = (entry?.linkedFiles ?? []).filter(f => f.verified)
+  const urls = entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []
 
   const [repoTraffic, setRepoTraffic] = useState<Record<string, number>>({})
   useEffect(() => {
-    if (!isGithub || !entry?.address || files.length === 0) return
+    if (!entry?.address || files.length === 0) return
     fetch(`/api/github/traffic-multi?address=${entry.address}`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { repos?: Record<string, { count: number }> }) => {
@@ -172,17 +254,17 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
       })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGithub, entry?.address, files.length])
+  }, [entry?.address, files.length])
 
   const [urlViews, setUrlViews] = useState<Record<string, number>>({})
   useEffect(() => {
-    if (isGithub || urls.length === 0 || !markeeAddress) return
+    if (urls.length === 0 || !markeeAddress) return
     fetch(`/api/views?address=${markeeAddress}&urls=${urls.map(encodeURIComponent).join('||')}`)
       .then(r => r.ok ? r.json() : null)
       .then((d: Record<string, number> | null) => { if (d) setUrlViews(d) })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGithub, urls.join('||'), markeeAddress])
+  }, [urls.join('||'), markeeAddress])
 
   if (!entry) {
     return (
@@ -197,13 +279,16 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
   const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
   const host = (u: string) => getLogoDomain(u) ?? clean(u)
 
-  const sortedFiles = [...files].sort((a, b) => (repoTraffic[b.repoFullName] ?? 0) - (repoTraffic[a.repoFullName] ?? 0))
-  const sortedUrls = [...urls].sort((a, b) => (urlViews[b] ?? 0) - (urlViews[a] ?? 0))
-  const hasAny = isGithub ? sortedFiles.length > 0 : sortedUrls.length > 0
-  const extra = (isGithub ? sortedFiles.length : sortedUrls.length) - 1
-  const topFile = sortedFiles[0]
-  const topUrl = sortedUrls[0]
-  const topDomain = topUrl ? getLogoDomain(topUrl) : null
+  type Item = { kind: 'file'; file: LinkedFile; views: number } | { kind: 'url'; url: string; views: number }
+  const items: Item[] = [
+    ...files.map(file => ({ kind: 'file' as const, file, views: repoTraffic[file.repoFullName] ?? 0 })),
+    ...urls.map(url => ({ kind: 'url' as const, url, views: urlViews[url] ?? 0 })),
+  ].sort((a, b) => b.views - a.views)
+
+  const hasAny = items.length > 0
+  const extra = items.length - 1
+  const top = items[0]
+  const topDomain = top?.kind === 'url' ? getLogoDomain(top.url) : null
 
   const dropdownRowStyle: React.CSSProperties = {
     color: TEXT2, textDecoration: 'none', fontSize: 12, padding: '7px 10px', borderRadius: 7,
@@ -216,22 +301,22 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
   return (
     <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
       <span style={{ minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
-        {hasAny ? (
-          isGithub ? (
-            <a href={fileUrl(topFile)} target="_blank" rel="noopener noreferrer"
+        {hasAny && top ? (
+          top.kind === 'file' ? (
+            <a href={fileUrl(top.file)} target="_blank" rel="noopener noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', minWidth: 0, overflow: 'hidden' }}
-              title={`${topFile.repoFullName}/${topFile.filePath}`}
+              title={`${top.file.repoFullName}/${top.file.filePath}`}
             >
               <GithubIcon size={16} color={TEXT2} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{topFile.repoOwner}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{top.file.repoOwner}</span>
             </a>
           ) : (
-            <a href={href(topUrl)} target="_blank" rel="noopener noreferrer"
+            <a href={href(top.url)} target="_blank" rel="noopener noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', minWidth: 0, overflow: 'hidden' }}
-              title={clean(topUrl)}
+              title={clean(top.url)}
             >
               {topDomain ? <SiteLogo domain={topDomain} /> : <span style={{ flexShrink: 0 }}>🪧</span>}
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{host(topUrl)}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{host(top.url)}</span>
             </a>
           )
         ) : (
@@ -253,8 +338,8 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
         <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
       </button>
 
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 260, zIndex: 30, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {open && menuPos && createPortal(
+        <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 260, zIndex: 200, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {onAddToSite && (
             <button
               onClick={() => { setOpen(false); onAddToSite() }}
@@ -263,29 +348,30 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
               + Add to Your Site
             </button>
           )}
-          {isGithub ? sortedFiles.map(f => (
-            <a key={`${f.repoFullName}/${f.filePath}`} href={fileUrl(f)} target="_blank" rel="noopener noreferrer"
+          {items.map(item => item.kind === 'file' ? (
+            <a key={`${item.file.repoFullName}/${item.file.filePath}`} href={fileUrl(item.file)} target="_blank" rel="noopener noreferrer"
               style={dropdownRowStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, overflow: 'hidden' }}>
                 <GithubIcon size={12} color="currentColor" />
-                <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.repoName}/{f.filePath}</span>
+                <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.repoName}/{item.file.filePath}</span>
               </span>
               <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(repoTraffic[f.repoFullName] ?? 0)}
+                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(item.views)}
               </span>
             </a>
-          )) : sortedUrls.map(u => (
-            <a key={u} href={href(u)} target="_blank" rel="noopener noreferrer"
+          ) : (
+            <a key={item.url} href={href(item.url)} target="_blank" rel="noopener noreferrer"
               style={dropdownRowStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
             >
-              <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(u)}</span>
+              <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(item.url)}</span>
               <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(urlViews[u] ?? 0)}
+                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(item.views)}
               </span>
             </a>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
@@ -481,11 +567,15 @@ export function GitHubVerify({ address }: { address: string }) {
   const [selectedFile, setSelectedFile] = useState('')
   const [result,       setResult]       = useState<{ verified: boolean; filePath: string } | null>(null)
   const [error,        setError]        = useState<string | null>(null)
-  const [rechecking,    setRechecking]   = useState(false)
-  const [syncStatus,   setSyncStatus]   = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [syncMessage,  setSyncMessage]  = useState<string | null>(null)
   const [views,        setViews]        = useState<number | null>(null)
-  const [viewsLoading,  setViewsLoading] = useState(false)
+  // Check-now / Sync-message / Check-views used to be three separate manual buttons -- unified into
+  // one fail-fast chain (mirrors the tx-modal step pattern: Create Markee > Approve > Start Stream)
+  // so a single click either completes the whole thing or stops with an error at whichever step failed.
+  const [syncPhase,    setSyncPhase]    = useState<'idle' | 'running' | 'error'>('idle')
+  const [syncStepIdx,  setSyncStepIdx]  = useState(0)
+  const [syncError,    setSyncError]    = useState<string | null>(null)
+  const [syncSummary,  setSyncSummary]  = useState<string | null>(null)
+  const SYNC_STEPS = ['Verify File', 'Sync Message', 'Check Views']
 
   useEffect(() => {
     // no-store: this is the sole "am I connected" gate, checked on every mount -- including right
@@ -528,7 +618,7 @@ export function GitHubVerify({ address }: { address: string }) {
       if (data.success) {
         setResult({ verified: data.verified, filePath: selectedFile })
         setStep('done')
-        if (data.verified) void handleSync()
+        if (data.verified) void runFullSync()
       } else {
         setError(data.error ?? 'Registration failed')
         setStep('ready')
@@ -548,12 +638,16 @@ export function GitHubVerify({ address }: { address: string }) {
   // Keeps the connected repo, drops just the file + result so the picker re-opens for a second file.
   function handleAddAnotherFile() {
     setSelectedFile(''); setResult(null); setError(null); setStep('ready')
+    setSyncPhase('idle'); setSyncError(null); setSyncSummary(null)
   }
 
-  // Re-checks the delimiter is now present after the user edits the file post-link.
-  async function handleRecheck() {
+  // Chains verify -> sync -> views into one fail-fast run, replacing what used to be three separate
+  // manual buttons (Check now / Sync message / Check views) -- any step failing stops the chain and
+  // surfaces that step's error instead of silently leaving the rest undone.
+  async function runFullSync() {
     if (!selectedRepo || !selectedFile) return
-    setRechecking(true); setError(null)
+    setSyncPhase('running'); setSyncStepIdx(0); setSyncError(null); setSyncSummary(null)
+
     try {
       const res = await fetch('/api/github/verify-markee-file', {
         method: 'POST',
@@ -561,23 +655,18 @@ export function GitHubVerify({ address }: { address: string }) {
         body: JSON.stringify({ leaderboardAddress: address, repoFullName: selectedRepo, filePath: selectedFile }),
       })
       const data = await res.json()
-      if (data.success) {
-        setResult({ verified: data.verified, filePath: selectedFile })
-        if (data.verified) void handleSync()
-        else setError(`Not found yet — make sure the delimiter is committed to ${selectedFile} on the default branch.`)
-      } else {
-        setError(data.error ?? 'Check failed')
+      if (!data.success) { setSyncPhase('error'); setSyncError(data.error ?? 'Check failed'); return }
+      setResult({ verified: data.verified, filePath: selectedFile })
+      if (!data.verified) {
+        setSyncPhase('error')
+        setSyncError(`Not found yet — make sure the delimiter is committed to ${selectedFile} on the default branch.`)
+        return
       }
     } catch {
-      setError('Network error')
-    } finally {
-      setRechecking(false)
+      setSyncPhase('error'); setSyncError('Network error'); return
     }
-  }
+    setSyncStepIdx(1)
 
-  // Pushes the current top message into the linked file(s) now.
-  async function handleSync() {
-    setSyncStatus('loading'); setSyncMessage(null)
     try {
       const res = await fetch('/api/github/update-markee-file', {
         method: 'POST',
@@ -588,28 +677,25 @@ export function GitHubVerify({ address }: { address: string }) {
         success?: boolean; error?: string
         results?: Array<{ success: boolean; error?: string }>
       }
-      if (res.ok && data.success) {
-        const ok = data.results?.filter(r => r.success).length ?? 1
-        const fail = data.results?.filter(r => !r.success).length ?? 0
-        setSyncStatus('success')
-        setSyncMessage(fail > 0 ? `Updated ${ok}, ${fail} failed` : `Updated ${ok} file${ok !== 1 ? 's' : ''}`)
-      } else {
-        setSyncStatus('error')
-        setSyncMessage(data.error ?? 'Sync failed')
-      }
+      if (!(res.ok && data.success)) { setSyncPhase('error'); setSyncError(data.error ?? 'Sync failed'); return }
+      const ok = data.results?.filter(r => r.success).length ?? 1
+      const fail = data.results?.filter(r => !r.success).length ?? 0
+      setSyncSummary(fail > 0 ? `Updated ${ok}, ${fail} failed` : `Updated ${ok} file${ok !== 1 ? 's' : ''}`)
     } catch {
-      setSyncStatus('error'); setSyncMessage('Network error')
+      setSyncPhase('error'); setSyncError('Network error'); return
     }
-  }
+    setSyncStepIdx(2)
 
-  async function handleRefreshViews() {
-    setViewsLoading(true)
     try {
       const res = await fetch(`/api/github/traffic?address=${address.toLowerCase()}`)
       const data = await res.json().catch(() => ({})) as { count?: number }
-      if (res.ok && data.count !== undefined) setViews(data.count)
-    } catch { /* best-effort */ }
-    finally { setViewsLoading(false) }
+      if (!(res.ok && data.count !== undefined)) { setSyncPhase('error'); setSyncError('Could not check views'); return }
+      setViews(data.count)
+    } catch {
+      setSyncPhase('error'); setSyncError('Network error'); return
+    }
+    setSyncStepIdx(3)
+    setSyncPhase('idle')
   }
 
   const accountRow = login && (
@@ -688,41 +774,49 @@ export function GitHubVerify({ address }: { address: string }) {
         </span>
       )}
 
-      {/* Before verification: just Check now, so the user stays focused on getting the delimiter
-          committed. Sync/Views (and syncing itself) only make sense once it's actually found --
-          Check now auto-syncs the moment verification succeeds, so this is really a 2-click flow
-          (check, then optionally check views) rather than 3. */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-        {!result.verified ? (
+      {/* Check now / Sync message / Check views used to be three separate manual buttons -- unified
+          into one fail-fast chained run (see runFullSync) with a tx-modal-style step list. */}
+      {syncPhase === 'running' || syncPhase === 'error' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <TxSteps steps={SYNC_STEPS.map((label, i) => ({
+            label,
+            done: i < syncStepIdx,
+            active: i === syncStepIdx && syncPhase === 'running',
+          }))} />
+          {syncPhase === 'error' && (
+            <>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{syncError}</span>
+              <button
+                onClick={runFullSync}
+                style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', padding: 0, textAlign: 'left', alignSelf: 'flex-start' }}
+              >
+                ← Try again
+              </button>
+            </>
+          )}
+        </div>
+      ) : result.verified && views !== null ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 11, color: GREEN }}>
+            ✓ {syncSummary ?? 'Synced'}
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11, color: MUTED }}>
+            <Eye size={11} /> {views.toLocaleString()} views
+          </span>
           <button
-            onClick={handleRecheck}
-            disabled={rechecking}
-            style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: rechecking ? 'wait' : 'pointer', opacity: rechecking ? 0.6 : 1 }}
+            onClick={runFullSync}
+            style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: 'pointer' }}
           >
-            {rechecking ? 'Checking…' : 'Check now'}
+            Re-sync
           </button>
-        ) : (
-          <>
-            <button
-              onClick={handleSync}
-              disabled={syncStatus === 'loading'}
-              style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: syncStatus === 'loading' ? 'wait' : 'pointer', opacity: syncStatus === 'loading' ? 0.6 : 1 }}
-            >
-              {syncStatus === 'loading' ? 'Syncing…' : 'Sync message'}
-            </button>
-            <button
-              onClick={handleRefreshViews}
-              disabled={viewsLoading}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: viewsLoading ? 'wait' : 'pointer', opacity: viewsLoading ? 0.6 : 1 }}
-            >
-              <Eye size={11} />
-              {viewsLoading ? 'Loading…' : views !== null ? `${views.toLocaleString()} views` : 'Check views'}
-            </button>
-          </>
-        )}
-      </div>
-      {syncMessage && (
-        <span style={{ fontFamily: MONO, fontSize: 11, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>{syncMessage}</span>
+        </div>
+      ) : (
+        <button
+          onClick={runFullSync}
+          style={{ alignSelf: 'flex-start', background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: 'pointer' }}
+        >
+          {result.verified ? 'Sync & Check Views' : 'Check Now'}
+        </button>
       )}
       {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
 
@@ -1308,6 +1402,182 @@ export function BoardDetailSkeleton() {
           </div>
         </div>
       </section>
+    </div>
+  )
+}
+
+// ── Per-message transaction history (expand chevron + fetch + list) ────────────
+// Extracted from ExpandableMarkeeRow so the For Rent leaderboard rows can reuse the exact same
+// fetch/render logic instead of a second copy -- /api/markee/history is address-keyed and already
+// strategy-agnostic.
+export type TxHistoryEvent =
+  | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: bigint; newTotal: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+
+type ApiHistoryEvent =
+  | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: string; newTotal: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+
+export function useTxHistory(leaderboardAddress: string, markeeAddress: string, expanded: boolean) {
+  const [history, setHistory] = useState<TxHistoryEvent[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (!expanded || !leaderboardAddress) return
+    let cancelled = false
+
+    async function fetchHistory() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ leaderboardAddress, markeeAddress })
+        const response = await fetch(`/api/markee/history?${params.toString()}`, { cache: 'no-store' })
+        if (!response.ok) throw new Error('Unable to load transaction history')
+        const data = await response.json() as { history?: ApiHistoryEvent[] }
+        const events: TxHistoryEvent[] = (data.history ?? []).map(event => ({
+          ...event,
+          ...(event.kind === 'funds' ? { amount: BigInt(event.amount), newTotal: BigInt(event.newTotal) } : {}),
+          blockNumber: BigInt(event.blockNumber),
+        } as TxHistoryEvent))
+        if (!cancelled) setHistory(events)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load transaction history')
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    fetchHistory()
+    return () => { cancelled = true }
+  }, [expanded, refreshKey, leaderboardAddress, markeeAddress])
+
+  return { history, isLoading, error, refresh: () => setRefreshKey(v => v + 1) }
+}
+
+export function TxHistoryToggle({ expanded, onClick, rank }: { expanded: boolean; onClick: () => void; rank: number }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={expanded ? `Collapse transaction history for row ${rank}` : `Expand transaction history for row ${rank}`}
+      aria-expanded={expanded}
+      style={{
+        width: 28, height: 28, borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent',
+        color: MUTED, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <ChevronRight size={15} style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 140ms' }} />
+    </button>
+  )
+}
+
+function txTimeAgo(ts: number): string {
+  if (!ts) return ''
+  const seconds = Math.floor(Date.now() / 1000 - ts)
+  if (seconds < 60) return 'just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`
+  return `${Math.floor(seconds / 2592000)}mo ago`
+}
+
+function txTimestamp(ts: number): string {
+  if (!ts) return ''
+  return new Date(ts * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function TxEventIcon({ kind }: { kind: TxHistoryEvent['kind'] }) {
+  if (kind === 'funds') return <div className="w-7 h-7 rounded-full bg-[#7C9CFF]/20 flex items-center justify-center flex-shrink-0"><Coins size={13} className="text-[#7C9CFF]" /></div>
+  if (kind === 'message') return <div className="w-7 h-7 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0"><MessageSquare size={13} className="text-[#F897FE]" /></div>
+  return <div className="w-7 h-7 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0"><User size={13} className="text-[#FFA94D]" /></div>
+}
+
+export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured }: {
+  leaderboardAddress: string
+  markeeAddress: string
+  expanded: boolean
+  featured?: boolean
+}) {
+  const { history, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded)
+  if (!expanded) return null
+  const latestTxHash = history[0]?.transactionHash
+
+  return (
+    <div style={{ borderTop: `1px solid ${BORDER}`, background: BG, padding: '12px 16px 14px', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent' }}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF]">Transaction history</p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] disabled:opacity-50 disabled:hover:text-[#8A8FBF] transition-colors"
+          >
+            <RefreshCw size={10} className={isLoading ? 'animate-spin' : undefined} />
+            Refresh
+          </button>
+          {latestTxHash && (
+            <a href={getTxUrl(CANONICAL_CHAIN_ID, latestTxHash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
+              View latest on Basescan <ExternalLink size={10} />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+          <Loader2 size={14} className="animate-spin" /> Loading transaction history...
+        </div>
+      ) : error ? (
+        <p className="text-sm text-red-300 py-3">{error}</p>
+      ) : history.length === 0 ? (
+        <p className="text-sm text-[#8A8FBF] py-3">No on-chain history found for this message yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {history.map(event => (
+            <div key={event.id} className="flex items-start gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+              <TxEventIcon kind={event.kind} />
+              <div className="min-w-0 flex-1">
+                {event.kind === 'funds' ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-[#EDEEFF]">
+                      {event.subKind === 'created' ? 'Bought Message' : event.subKind === 'migrated' ? 'Migrated In' : 'Added Funds'}
+                    </span>
+                    <span className="text-sm font-semibold text-[#7C9CFF]">+{formatEther(event.amount)} ETH</span>
+                    {event.subKind === 'added' && (
+                      <span className="text-xs text-[#8A8FBF]">to {formatEther(event.newTotal)} ETH total</span>
+                    )}
+                  </div>
+                ) : event.kind === 'message' ? (
+                  <div>
+                    <span className="text-sm font-semibold text-[#EDEEFF]">Changed Message</span>
+                    <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#EDEEFF]">
+                    <span className="font-semibold">Updated Name</span> to <span className="font-medium">{event.name || '(cleared)'}</span>
+                  </p>
+                )}
+                {event.actor && (
+                  <a href={getAddressUrl(CANONICAL_CHAIN_ID, event.actor)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] transition-colors mt-1">
+                    by {fmtAddr(event.actor)} <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <p className="text-xs text-[#8A8FBF]" title={txTimestamp(event.timestamp)}>{txTimeAgo(event.timestamp)}</p>
+                <a href={getTxUrl(CANONICAL_CHAIN_ID, event.transactionHash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors mt-1">
+                  tx <ExternalLink size={10} />
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

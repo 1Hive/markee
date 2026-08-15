@@ -115,6 +115,46 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const runId = useRef(0)
 
+  const [repoUrl, setRepoUrl] = useState('')
+  const [detecting, setDetecting] = useState(false)
+  const [detectResult, setDetectResult] = useState<
+    | { kind: 'success'; repoFullName: string; detected: string[] }
+    | { kind: 'partial'; repoFullName: string }
+    | { kind: 'needsAuth' }
+    | { kind: 'error'; message: string }
+    | null
+  >(null)
+
+  async function handleDetect() {
+    if (!repoUrl.trim() || detecting) return
+    setDetecting(true)
+    setDetectResult(null)
+    try {
+      const res = await fetch(`/api/github/detect-repo?url=${encodeURIComponent(repoUrl.trim())}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setDetectResult(
+          res.status === 404 && data.needsAuth
+            ? { kind: 'needsAuth' }
+            : { kind: 'error', message: res.status === 404 ? "Couldn't find that repo." : 'Something went wrong — try again.' }
+        )
+        return
+      }
+      const detected: string[] = []
+      if (data.framework) { setFramework(data.framework); detected.push(FRAMEWORKS.find(f => f.key === data.framework)?.label ?? data.framework) }
+      if (data.wallet) { setWallet(data.wallet); detected.push(WALLETS.find(w => w.key === data.wallet)?.label ?? data.wallet) }
+      setDetectResult(
+        detected.length > 0
+          ? { kind: 'success', repoFullName: data.repoFullName, detected }
+          : { kind: 'partial', repoFullName: data.repoFullName }
+      )
+    } catch {
+      setDetectResult({ kind: 'error', message: 'Network error — try again.' })
+    } finally {
+      setDetecting(false)
+    }
+  }
+
   useEffect(() => {
     if (step === 'questions') onHeaderChange?.({ label: 'Add Markee To Your Site', showBack: true })
     else if (step === 'prompt') onHeaderChange?.({ label: 'Add Markee To Your Site', showBack: false })
@@ -293,6 +333,54 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
         Your coding agent can get you set up with a fully functioning Markee integration in minutes.
         Tell us a bit about your site, and generate a prompt to get your LLM going.
       </p>
+      <QuestionField label="Detect from repo (optional)">
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={repoUrl}
+            onChange={e => { setRepoUrl(e.target.value); setDetectResult(null) }}
+            onKeyDown={e => { if (e.key === 'Enter') handleDetect() }}
+            placeholder="github.com/you/your-repo"
+            style={{
+              flex: 1, minWidth: 0, background: BG, color: TEXT,
+              border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
+              fontFamily: MONO, fontSize: 13, outline: 'none',
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleDetect}
+            disabled={!repoUrl.trim() || detecting}
+            style={{ ...primaryBtnStyle(!!repoUrl.trim() && !detecting), width: 'auto', padding: '10px 16px', fontSize: 13 }}
+          >
+            {detecting ? 'Detecting…' : 'Detect'}
+          </button>
+        </div>
+        {detectResult && (
+          <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 12, lineHeight: 1.5 }}>
+            {detectResult.kind === 'success' && (
+              <span style={{ color: '#7EE787' }}>✓ Detected {detectResult.detected.join(' + ')} from {detectResult.repoFullName}</span>
+            )}
+            {detectResult.kind === 'partial' && (
+              <span style={{ color: MUTED }}>Connected to {detectResult.repoFullName}, but couldn&apos;t detect framework/wallet automatically — select below.</span>
+            )}
+            {detectResult.kind === 'needsAuth' && (
+              <span style={{ color: MUTED, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                This repo looks private (or we don&apos;t have access).
+                <a
+                  href={`/api/github/connect?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname + window.location.search : '')}`}
+                  style={{ color: PINK, fontWeight: 700, textDecoration: 'none' }}
+                >
+                  Connect GitHub and try again →
+                </a>
+              </span>
+            )}
+            {detectResult.kind === 'error' && (
+              <span style={{ color: '#FF8E8E' }}>{detectResult.message}</span>
+            )}
+          </div>
+        )}
+      </QuestionField>
       <QuestionField label="Framework">
         <PillRow options={FRAMEWORKS} value={framework} onChange={setFramework} />
       </QuestionField>

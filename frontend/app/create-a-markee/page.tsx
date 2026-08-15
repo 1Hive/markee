@@ -561,7 +561,14 @@ function CreateWizardInner() {
 
   return (
     <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '48px 24px 80px' }}>
-      <Link href="/raise-funding" style={{ color: C.muted, textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)' }}>← Raise Funding</Link>
+      {stepKey === 'setup' && (
+        <button
+          onClick={() => router.back()}
+          style={{ background: 'transparent', border: 'none', padding: 0, color: C.muted, textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-jetbrains-mono)', cursor: 'pointer' }}
+        >
+          ← Back
+        </button>
+      )}
       <h1 style={{ margin: '14px 0 32px', fontSize: 'clamp(28px,4vw,40px)', fontWeight: 800, letterSpacing: -1, color: C.text }}>
         Create a Markee
       </h1>

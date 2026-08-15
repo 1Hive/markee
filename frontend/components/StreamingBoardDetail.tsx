@@ -3,33 +3,40 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
-import { formatEther, parseEther, type Address, type Hex } from 'viem'
+import { formatEther, type Address, type Hex } from 'viem'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
-import { ManageStreamModal } from '@/components/modals/ManageStreamModal'
 import { ClaimModal } from '@/components/modals/ClaimModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
-import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
+import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { STREAMING_BASE, CFA_FORWARDER_ABI, ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
+import { useTopSince } from '@/hooks/useTopSince'
 import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
+import { Pencil } from 'lucide-react'
 import {
-  MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
-  formatViews, fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
+  MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, HERO_GRAD,
+  formatViews, fmtAddr, formatDuration, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
+  TxHistoryToggle, TxHistoryPanel, useTxHistory,
 } from '@/components/board-detail/shared'
+
+const GOLD = '#FFD700'
+// Streaming's leaderboard needs one more column ("Total Streamed") than the shared BOARD_LB_COLS
+// (For Sale) layout, so it defines its own grid instead of reusing that constant.
+const STREAM_LB_COLS = '42px 150px 110px 120px minmax(220px,1fr) 70px 170px'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -50,6 +57,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const { address } = useAccount()
   const ethPrice = useEthPrice()
   const ecoEntry = useServedOn(board)
+  const topSince = useTopSince(board)
 
   // Live cumulative total: API snapshot ticking forward at the board's aggregate inflow rate.
   const boardTotal = useStreamingBoardTotal(board)
@@ -72,9 +80,9 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const [signInitialView, setSignInitialView] = useState<'fund' | 'manage'>('fund')
   const [activateOpen, setActivateOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [manageOpen, setManageOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
   const [embedOpen, setEmbedOpen] = useState(false)
+  const [messageEditTarget, setMessageEditTarget] = useState<StreamingMarkee | null>(null)
 
   // Routes to the Fund sub-view for a message you don't yet back, or Manage for the one you do.
   const openSign = (m: StreamingMarkee, view: 'fund' | 'manage') => {
@@ -154,8 +162,6 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
   const topMonthlyWei = markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined
 
-  const isBoardAdmin = !!address && !!meta.admin && address.toLowerCase() === meta.admin.toLowerCase()
-
   const streamedEthLabel = `${streamedEth.toFixed(6)} ETH`
   const totalStreamedNode = (
     <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
@@ -209,7 +215,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               ownerAddress={topMarkee.owner}
               views={topViews}
               viewsLoading={viewsLoading}
-              pillLabel={canStream ? `${formatRate(topMarkee.rate)} to back` : undefined}
+              pillLabel={canStream ? `${formatRate(topMarkee.rate)} to rent` : undefined}
               onClick={() => canStream && openSign(topMarkee, backedMarkee && backedMarkee.toLowerCase() === topMarkee.address.toLowerCase() ? 'manage' : 'fund')}
               strategy="streaming"
             />
@@ -228,50 +234,41 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
             />
           </section>
 
-          {/* ── Your position ── */}
-          {hasPosition && (
-            <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}`, background: BG2 }}>
-              <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' as const }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 240 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 99, background: myRate && myRate > 0n ? GREEN : MUTED, flexShrink: 0, animation: myRate && myRate > 0n ? 'glowPulse 1.5s ease-in-out infinite' : 'none' }} />
-                  <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
-                    {myRate && myRate > 0n ? (
-                      <>You stream <span style={{ color: TEXT }}>{formatRate(myRate)}</span>{' '}
-                        to <span style={{ color: PINK }}>{backedEntry?.name || backedEntry?.message || (backedMarkee ? fmtAddr(backedMarkee) : '')}</span></>
-                    ) : (
-                      <>Your stream is stopped{(myDeposit ?? 0n) > 0n ? ', your deposit is ready to withdraw' : ''}</>
-                    )}
-                    {(pendingEthWei > 0n || pending.accruing) && (
-                      <> · earning <span style={{ color: GREEN }}>
-                        {pending.mintsMarkee
-                          ? `~${earnedMarkee.toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE`
-                          : `${Number(formatEther(pendingEthWei)).toFixed(6)} ETH`}
-                      </span></>
-                    )}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-                  {(pendingEthWei > 0n || pending.accruing) && (
-                    <button onClick={() => setClaimOpen(true)} style={posBtn(true)}>Claim</button>
-                  )}
-                  {myRate && myRate > 0n && backedEntry && (
-                    <button onClick={() => openSign(backedEntry, 'manage')} style={posBtn(false)}>Change rate</button>
-                  )}
-                  <button onClick={() => setManageOpen(true)} style={posBtn(false)}>Manage stream</button>
-                </div>
-              </div>
-            </section>
-          )}
-
           {/* ── Leaderboard table ── */}
           <section style={{ padding: '8px 40px 20px' }}>
             <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
-              <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
-              <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 15 }}>The message with the highest stream rate takes the top spot.</p>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' as const, marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
+                  <p style={{ margin: 0, color: TEXT2, fontSize: 15 }}>The message with the highest stream rate takes the top spot.</p>
+                </div>
+                {(pendingEthWei > 0n || pending.accruing) && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20,
+                    borderRadius: 12, padding: '16px 20px', minWidth: 260,
+                    background: 'linear-gradient(135deg, rgba(123,106,244,0.22), rgba(248,151,254,0.14))',
+                    border: '1px solid rgba(248,151,254,0.3)',
+                  }}>
+                    <div>
+                      <div style={{ fontFamily: MONO, fontSize: 11, color: TEXT2, letterSpacing: 0.5 }}>
+                        {pending.mintsMarkee ? 'MARKEE accrued' : 'ETH accrued'}
+                      </div>
+                      <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 800, color: PINK, marginTop: 2 }}>
+                        {pending.mintsMarkee
+                          ? earnedMarkee.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                          : Number(formatEther(pendingEthWei)).toFixed(6)}
+                      </div>
+                    </div>
+                    <button onClick={() => setClaimOpen(true)} style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '10px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Claim
+                    </button>
+                  </div>
+                )}
+              </div>
               <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-                <div style={{ minWidth: 760, background: BG2 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: BOARD_LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
-                    {['', 'Backed by', 'Stream rate', 'Current message', 'Views', ''].map((h, i) => (
+                <div style={{ minWidth: 900, background: BG2 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: STREAM_LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
+                    {['', 'Bought by', 'Total streamed', 'Bid rate', 'Current message', 'Views', ''].map((h, i) => (
                       <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
                     ))}
                   </div>
@@ -281,9 +278,13 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                       markee={m}
                       rank={i + 1}
                       featured={i === 0}
+                      board={board}
+                      topSince={topSince}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
                       viewsLoading={viewsLoading}
                       isBackedByYou={!!backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase()}
+                      isOwner={!!address && m.owner.toLowerCase() === address.toLowerCase()}
+                      onEditMessage={() => setMessageEditTarget(m)}
                       onStream={canStream ? () => openSign(m, backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase() ? 'manage' : 'fund') : undefined}
                     />
                   ))}
@@ -301,7 +302,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 28px rgba(248,151,254,0.45)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 18px rgba(248,151,254,0.3)' }}
               >
-                Add a New Message
+                Buy a New Message
               </button>
             )}
             <Link
@@ -313,8 +314,6 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               Create Your Own Markee
             </Link>
           </section>
-
-          {isBoardAdmin && <BoardAdminPanel board={board} meta={meta} onUpdated={refetch} />}
         </>
       )}
 
@@ -326,13 +325,6 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         initialView={signInitialView}
         initialTargetAddress={signTargetAddress ?? undefined}
         onClose={() => setSignOpen(false)}
-        onSuccess={refetchAll}
-      />
-
-      <ManageStreamModal
-        isOpen={manageOpen}
-        board={board}
-        onClose={() => setManageOpen(false)}
         onSuccess={refetchAll}
       />
 
@@ -365,60 +357,167 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         onClose={() => setEmbedOpen(false)}
         leaderboard={{ address: board, name: meta?.name, strategy: 'streaming' }}
       />
+
+      <StreamMessageEditModal
+        isOpen={!!messageEditTarget}
+        onClose={() => setMessageEditTarget(null)}
+        markeeAddress={messageEditTarget?.address as Address | undefined}
+        currentMessage={messageEditTarget?.message ?? ''}
+        onSuccess={() => { setMessageEditTarget(null); refetchAll() }}
+      />
     </div>
   )
 }
 
-function posBtn(primary: boolean): React.CSSProperties {
-  return {
-    background: primary ? PINK : 'transparent',
-    color: primary ? BG : TEXT2,
-    border: primary ? 'none' : `1px solid ${BORDER}`,
-    borderRadius: 7, padding: '8px 14px',
-    fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-    cursor: 'pointer', whiteSpace: 'nowrap' as const,
+// ── Message edit (streaming markees have no on-chain message-edit path through the leaderboard
+// contract -- MarkeeABI.setMessage is called directly on the markee's own address, gated to its
+// owner by the contract itself) ──────────────────────────────────────────────────────────────────
+function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage, onSuccess }: {
+  isOpen: boolean
+  onClose: () => void
+  markeeAddress?: Address
+  currentMessage: string
+  onSuccess?: () => void
+}) {
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
+  const MAX_LEN = 222
+
+  useEffect(() => {
+    if (!isOpen) { setMessage(''); setError(null); setTxHash(undefined); reset() }
+  }, [isOpen, reset])
+
+  useEffect(() => {
+    if (isSuccess && isOpen) {
+      const t = setTimeout(() => onSuccess?.(), 1500)
+      return () => clearTimeout(t)
+    }
+  }, [isSuccess, isOpen, onSuccess])
+
+  if (!isOpen || !markeeAddress) return null
+
+  const busy = isPending || isConfirming
+  const canSubmit = message.trim().length > 0 && !busy && !isSuccess
+
+  async function handleSubmit() {
+    if (!canSubmit || !markeeAddress) return
+    setError(null)
+    try {
+      const hash = await writeContractAsync({
+        address: markeeAddress, abi: MarkeeABI, functionName: 'setMessage', args: [message], chainId: CANONICAL_CHAIN_ID,
+      })
+      setTxHash(hash)
+    } catch (e: unknown) {
+      logTransactionError(e, 'StreamMessageEditModal.setMessage')
+      setError(formatTransactionError(e))
+    }
   }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'fadeIn 180ms ease forwards' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 500, background: BG2, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 24px 80px rgba(0,0,0,0.5)', color: TEXT, fontFamily: 'Manrope, system-ui, sans-serif', animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards' }}>
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            EDIT MESSAGE
+          </div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4 }}>×</button>
+        </div>
+
+        {busy || isSuccess ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center' }}>
+            <p style={{ color: isSuccess ? GREEN : TEXT2, fontSize: 15 }}>
+              {isSuccess ? '✓ Message updated!' : isPending ? 'Waiting for wallet…' : 'Confirming on Base…'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ padding: '22px 22px 0' }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current Message</div>
+                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                  {currentMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message set</span>}
+                </div>
+              </div>
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Your Message</div>
+                <textarea
+                  value={message}
+                  onChange={e => setMessage(e.target.value.slice(0, MAX_LEN))}
+                  placeholder="Enter your new message..."
+                  rows={3}
+                  style={{ width: '100%', boxSizing: 'border-box', background: BG, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', fontFamily: MONO, fontSize: 13, outline: 'none', resize: 'vertical' }}
+                  disabled={busy}
+                />
+                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{message.length}/{MAX_LEN}</div>
+              </div>
+              {error && <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{error}</p>}
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>As the message owner, only you can update.</span>
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: canSubmit ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap', flexShrink: 0, opacity: canSubmit ? 1 : 0.4, transition: 'opacity 140ms' }}
+              >
+                Update Message
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ── Leaderboard row ────────────────────────────────────────────────────────────
 
-function StreamingRow({ markee, rank, featured, viewCount, viewsLoading, isBackedByYou, onStream }: {
+function StreamingRow({ markee, rank, featured, board, topSince, viewCount, viewsLoading, isBackedByYou, isOwner, onStream, onEditMessage }: {
   markee: StreamingMarkee
   rank: number
   featured: boolean
+  board: Address
+  topSince: { address: string; since: number } | null
   viewCount: number
   viewsLoading?: boolean
   isBackedByYou: boolean
+  isOwner: boolean
   onStream?: () => void
+  onEditMessage: () => void
 }) {
-  const { address } = useAccount()
-  const isOwner = !!address && markee.owner.toLowerCase() === address.toLowerCase()
+  const [historyOpen, setHistoryOpen] = useState(false)
   const displayName = markee.name || fmtAddr(markee.owner)
+
+  // Only the current #1 has a live, self-verified "since when" timestamp (see useTopSince) -- other
+  // rows show "—" rather than a fabricated historical total, since Superfluid streams flow into the
+  // board as one pooled inflow with no per-message cumulative-streamed record on-chain.
+  const isCurrentTop = topSince?.address.toLowerCase() === markee.address.toLowerCase()
+  const liveStreamedWei = useFlowingAmount(0n, isCurrentTop ? topSince!.since : 0, isCurrentTop ? markee.rate : 0n)
 
   return (
     <div style={{ borderBottom: `1px solid ${BORDER}`, background: featured ? `${PINK}0A` : 'transparent' }}>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: BOARD_LB_COLS,
+          gridTemplateColumns: STREAM_LB_COLS,
           gap: 16,
           padding: '13px 16px',
           alignItems: 'center',
           borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent',
         }}
       >
-        <span style={{
-          width: 28, height: 28, borderRadius: 99, border: `1px solid ${featured ? 'rgba(248,151,254,0.4)' : BORDER}`,
-          color: featured ? PINK : MUTED, background: featured ? 'rgba(248,151,254,0.08)' : 'transparent',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: MONO, fontSize: 11, fontWeight: 700,
-        }}>
-          {rank}
-        </span>
+        <TxHistoryToggle expanded={historyOpen} onClick={() => setHistoryOpen(v => !v)} rank={rank} />
 
         <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {displayName}
           {isOwner && <span style={{ color: PINK }}> · yours</span>}
+        </span>
+
+        <span style={{ fontSize: 12.5, color: GREEN, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          {isCurrentTop ? `${parseFloat(formatEther(liveStreamedWei)).toFixed(5)} ETH` : '—'}
         </span>
 
         <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
@@ -435,7 +534,19 @@ function StreamingRow({ markee, rank, featured, viewCount, viewsLoading, isBacke
           )}
         </span>
 
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={onEditMessage}
+              title="Edit message"
+              style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 6px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
+              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = PINK; el.style.borderColor = `${PINK}66` }}
+              onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
+            >
+              <Pencil size={11} />
+            </button>
+          )}
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {markee.message || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>No message</span>}
           </p>
@@ -452,9 +563,9 @@ function StreamingRow({ markee, rank, featured, viewCount, viewsLoading, isBacke
               type="button"
               onClick={onStream}
               style={{
-                background: isBackedByYou ? 'transparent' : PINK,
-                color: isBackedByYou ? TEXT2 : BG,
-                border: isBackedByYou ? `1px solid ${BORDER}` : 'none',
+                background: isBackedByYou ? PINK : 'transparent',
+                color: isBackedByYou ? BG : TEXT2,
+                border: isBackedByYou ? 'none' : `1px solid ${BORDER}`,
                 borderRadius: 7,
                 padding: '8px 14px',
                 fontFamily: MONO,
@@ -464,127 +575,16 @@ function StreamingRow({ markee, rank, featured, viewCount, viewsLoading, isBacke
                 whiteSpace: 'nowrap',
               }}
             >
-              {isBackedByYou ? 'Change rate' : 'Stream'}
+              {isBackedByYou ? 'Manage Your Stream' : 'Fund this instead'}
             </button>
           )}
         </div>
       </div>
+
+      <TxHistoryPanel leaderboardAddress={board} markeeAddress={markee.address} expanded={historyOpen} featured={featured} />
     </div>
   )
 }
 
-// ── Board settings (admin only) ────────────────────────────────────────────────
-
-function BoardAdminPanel({ board, meta, onUpdated }: {
-  board: Address
-  meta: StreamingBoardMeta
-  onUpdated: () => void
-}) {
-  const [minMonthly, setMinMonthly] = useState('')
-  const [beneficiary, setBeneficiary] = useState('')
-  const [newAdmin, setNewAdmin] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-
-  const { writeContractAsync, isPending } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
-  const busy = isPending || isConfirming
-
-  useEffect(() => {
-    if (!isSuccess) return
-    setMinMonthly(''); setBeneficiary(''); setNewAdmin(''); setTxHash(undefined)
-    onUpdated()
-  }, [isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function submitMinimum() {
-    setError(null)
-    let wei: bigint
-    try { wei = parseEther(minMonthly) } catch { setError('Enter a valid amount in ETH.'); return }
-    try {
-      setTxHash(await writeContractAsync({
-        address: board, abi: StreamingLeaderboardABI, functionName: 'setMinimumMonthlyRate', args: [wei], chainId: CANONICAL_CHAIN_ID,
-      }))
-    } catch (e: unknown) {
-      logTransactionError(e, 'BoardAdminPanel.setMinimumMonthlyRate')
-      setError(formatTransactionError(e))
-    }
-  }
-
-  // A zero beneficiary is legal on-chain: it credits backers the full top rate instead of streaming a
-  // share out, so it is a real choice rather than an unset field, and the input asks for it explicitly.
-  async function submitBeneficiary() {
-    setError(null)
-    const v = beneficiary.trim()
-    if (!/^0x[0-9a-fA-F]{40}$/.test(v)) { setError('Enter a valid address.'); return }
-    try {
-      setTxHash(await writeContractAsync({
-        address: board, abi: StreamingLeaderboardABI, functionName: 'setBeneficiaryAddress', args: [v as Address], chainId: CANONICAL_CHAIN_ID,
-      }))
-    } catch (e: unknown) {
-      logTransactionError(e, 'BoardAdminPanel.setBeneficiaryAddress')
-      setError(formatTransactionError(e))
-    }
-  }
-
-  async function submitAdmin() {
-    setError(null)
-    const v = newAdmin.trim()
-    if (!/^0x[0-9a-fA-F]{40}$/.test(v)) { setError('Enter a valid address.'); return }
-    if (/^0x0{40}$/.test(v)) { setError('The board rejects a zero admin.'); return }
-    try {
-      setTxHash(await writeContractAsync({
-        address: board, abi: StreamingLeaderboardABI, functionName: 'setAdmin', args: [v as Address], chainId: CANONICAL_CHAIN_ID,
-      }))
-    } catch (e: unknown) {
-      logTransactionError(e, 'BoardAdminPanel.setAdmin')
-      setError(formatTransactionError(e))
-    }
-  }
-
-  const field = 'w-full bg-[#060A2A] border border-[#8A8FBF]/20 rounded-lg px-3 py-2.5 text-[#EDEEFF] text-sm outline-none focus:border-[#F897FE]/40'
-  const label = 'block text-[10px] uppercase tracking-wider text-[#8A8FBF] mb-2'
-  const action = 'px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
-
-  return (
-    <section className="py-10 border-t border-[#8A8FBF]/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-[#EDEEFF] font-semibold mb-1">Board settings</h2>
-        <p className="text-[#8A8FBF] text-sm mb-6">Only you, the board admin, see this.</p>
-
-        <div className="grid gap-5 md:grid-cols-3">
-          <div>
-            <span className={label}>
-              Minimum monthly rate
-              {meta.minimumMonthlyRate !== undefined && ` (now ${formatEther(meta.minimumMonthlyRate)} ETH)`}
-            </span>
-            <div className="flex gap-2">
-              <input value={minMonthly} onChange={e => setMinMonthly(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.001" className={field} />
-              <button onClick={submitMinimum} disabled={busy || !minMonthly} className={`${action} bg-[#F897FE] text-[#060A2A] hover:bg-[#7C9CFF]`}>Set</button>
-            </div>
-          </div>
-
-          <div>
-            <span className={label}>Beneficiary{meta.beneficiary && ` (${meta.beneficiary.slice(0, 6)}…${meta.beneficiary.slice(-4)})`}</span>
-            <div className="flex gap-2">
-              <input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} placeholder="0x…" className={`${field} font-mono`} />
-              <button onClick={submitBeneficiary} disabled={busy || !beneficiary} className={`${action} bg-[#F897FE] text-[#060A2A] hover:bg-[#7C9CFF]`}>Set</button>
-            </div>
-            <p className="text-[10px] text-[#8A8FBF] mt-2 leading-relaxed">Moves the live outflow: the old stream closes and the new beneficiary starts receiving at the same rate.</p>
-          </div>
-
-          <div>
-            <span className={label}>Transfer admin</span>
-            <div className="flex gap-2">
-              <input value={newAdmin} onChange={e => setNewAdmin(e.target.value)} placeholder="0x…" className={`${field} font-mono`} />
-              <button onClick={submitAdmin} disabled={busy || !newAdmin} className={`${action} border border-[#8A8FBF]/30 text-[#EDEEFF] hover:border-[#F897FE]/40`}>Transfer</button>
-            </div>
-            <p className="text-[10px] text-[#8A8FBF] mt-2 leading-relaxed">One way: after this, only the new address can change these settings.</p>
-          </div>
-        </div>
-
-        {error && <p className="text-[#F897FE] text-sm mt-4">{error}</p>}
-        {busy && <p className="text-[#8A8FBF] text-sm mt-4">Confirming on Base…</p>}
-      </div>
-    </section>
-  )
-}
+// Board settings (min rate / beneficiary / admin transfer) removed from this page -- these will be
+// set up in /account instead. The admin-only reads/writes above were purely for that panel.

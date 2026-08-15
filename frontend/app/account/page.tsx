@@ -21,6 +21,7 @@ import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { COOPERATIVE_MULTISIG } from '@/lib/contracts/addresses'
+import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -987,49 +988,8 @@ function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; on
   )
 }
 
-// ── Stream status icon ────────────────────────────────────────────────────────
-type StreamStatus = 'active' | 'pending' | 'cancelled'
-
-function streamStatusOf(isTop: boolean, flowRateRaw: string | undefined): StreamStatus {
-  const rate = BigInt(flowRateRaw ?? '0')
-  if (rate === 0n) return 'cancelled'
-  return isTop ? 'active' : 'pending'
-}
-
-const STREAM_STATUS_META: Record<StreamStatus, { color: string; label: string; tip: string }> = {
-  active:    { color: GREEN,   label: 'Active',    tip: 'This message is winning and your payment is streaming.' },
-  pending:   { color: GOLD,    label: 'Pending',   tip: "This message isn't winning. Your stream is being fully refunded until you take the top spot." },
-  cancelled: { color: '#F87171', label: 'Stopped', tip: 'This stream has been cancelled. Reactivate to get your message featured.' },
-}
-
-function StreamStatusIcon({ status }: { status: StreamStatus }) {
-  const [open, setOpen] = useState(false)
-  const { color, tip } = STREAM_STATUS_META[status]
-  return (
-    <span
-      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <span style={{
-        width: 8, height: 8, borderRadius: 99, background: color, flexShrink: 0,
-        boxShadow: status === 'active' ? `0 0 6px ${color}` : 'none',
-        animation: status === 'active' ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
-      }} />
-      {open && (
-        <span style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
-          width: 230, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 8,
-          padding: '8px 10px', zIndex: 50, boxShadow: '0 12px 34px rgba(0,0,0,0.5)',
-          color: TEXT2, fontSize: 11.5, lineHeight: 1.45, whiteSpace: 'normal',
-          fontFamily: SANS, fontWeight: 400, pointerEvents: 'none',
-        }}>
-          {tip}
-        </span>
-      )}
-    </span>
-  )
-}
+// Stream status type/icon now live in board-detail/shared.tsx (also used by StreamSignModal's
+// "Manage Your Stream" view) -- imported at the top of this file.
 
 // ── Flow rate cell (wei/sec → ETH/mo blue top, $USD/mo grey bottom) ──────────
 function FlowRateCell({ weiPerSec, ethPrice, streamStatus }: {
@@ -1074,14 +1034,12 @@ function rankTierColor(r: number): string {
   return MUTED
 }
 
-function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
+function RankingCell({ isTop, rank }: {
   isTop: boolean; rank: number | null | undefined
-  isStreaming: boolean; streamStatus?: StreamStatus
 }) {
   const effectiveRank = isTop ? 1 : (rank ?? null)
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-      {isStreaming && streamStatus && <StreamStatusIcon status={streamStatus} />}
       {effectiveRank != null
         ? <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -1132,7 +1090,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
@@ -1174,7 +1132,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
                   }
                 </div>
               </div>
-              <RankingCell isTop={m.isTop} rank={m.rank} isStreaming={isStreaming} streamStatus={streamStatus} />
+              <RankingCell isTop={m.isTop} rank={m.rank} />
             </div>
           )
         })}
@@ -1219,7 +1177,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
@@ -1250,7 +1208,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
                   }
                 </div>
               </div>
-              <RankingCell isTop={m.isTop} rank={m.rank} isStreaming={isStreaming} streamStatus={streamStatus} />
+              <RankingCell isTop={m.isTop} rank={m.rank} />
             </div>
           )
         })}
