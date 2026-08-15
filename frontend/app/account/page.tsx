@@ -662,7 +662,7 @@ function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderb
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
     })
-  }, [markees, sortKey, sortDir])
+  }, [markees, sortDir]) // sortKey omitted: only one sortable column (raised) exists here, so it never changes the comparator
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -905,7 +905,7 @@ function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
     })
-  }, [markees, sortKey, sortDir])
+  }, [markees, sortDir]) // sortKey omitted: only one sortable column (raised) exists here, so it never changes the comparator
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -947,7 +947,7 @@ function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; on
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
     })
-  }, [markees, sortKey, sortDir])
+  }, [markees, sortDir]) // sortKey omitted: only one sortable column (raised) exists here, so it never changes the comparator
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
