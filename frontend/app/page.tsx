@@ -15,6 +15,8 @@ import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -69,7 +71,9 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
           {formatViews(views.totalViews)}
         </span>
       )}
-      <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={fixedMarkee.strategyAddress}>
+        <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
+      </ModeratedContent>
       {hasPrice && (
         <div className="reader-pill">
           {formatEthCompact(fixedMarkee.priceWei)} ETH to change
@@ -229,7 +233,7 @@ const PLATFORMS = [
 function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
   const [hover, setHover] = useState(false)
   return (
-    <a
+    <Link
       href={p.href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -271,7 +275,7 @@ function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { mar
           <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
         )}
       </div>
-    </a>
+    </Link>
   )
 }
 
@@ -279,7 +283,7 @@ function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { mar
 function PrimaryButton({ href, children }: { href: string; children: React.ReactNode }) {
   const [hover, setHover] = useState(false)
   return (
-    <a
+    <Link
       href={href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -294,14 +298,14 @@ function PrimaryButton({ href, children }: { href: string; children: React.React
       }}
     >
       {children}
-    </a>
+    </Link>
   )
 }
 
 function GhostButton({ href, children }: { href: string; children: React.ReactNode }) {
   const [hover, setHover] = useState(false)
   return (
-    <a
+    <Link
       href={href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -315,7 +319,7 @@ function GhostButton({ href, children }: { href: string; children: React.ReactNo
       }}
     >
       {children}
-    </a>
+    </Link>
   )
 }
 
@@ -416,7 +420,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="home" useRegularLinks />
+      <Header activePage="home" />
 
       {/* ── Hero: 3 reader signs ──────────────────────────────────────────── */}
       <section
@@ -532,7 +536,7 @@ export default function Home() {
                       : (lb.name || lb.address.slice(0, 8))
 
                   return (
-                    <a
+                    <Link
                       key={lb.address}
                       href={`/markee/${lb.address}`}
                       style={{
@@ -639,7 +643,7 @@ export default function Home() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
                         <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
                       </div>
-                    </a>
+                    </Link>
                   )
                 })
             }

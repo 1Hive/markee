@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { CreditCard } from 'lucide-react'
-import { useFundWallet } from '@privy-io/react-auth'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
@@ -59,6 +57,18 @@ interface BuyMessageModalProps {
   title?: string
   messageLabel?: string
   messagePlaceholder?: string
+}
+
+// Keeps only digits and the first decimal point, capped at 9 digits on each side of the decimal —
+// matches MarkeeSignModal's sanitizeAmountInput. The amount input here had no sanitization at all
+// (relying only on inputMode="decimal", a mobile keyboard hint with no actual validation).
+function sanitizeAmountInput(raw: string): string {
+  let cleaned = raw.replace(/[^0-9.]/g, '')
+  const dot = cleaned.indexOf('.')
+  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
+  const [intPart, fracPart] = cleaned.split('.')
+  const cappedInt = (intPart ?? '').slice(0, 9)
+  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
 // M/B/T-abbreviated, NaN-safe MARKEE amount display — shows extra decimal places for sub-10 and
@@ -151,7 +161,7 @@ export function BuyMessageModal({
   messageLabel = 'Set Your Message',
   messagePlaceholder = 'Your message here...',
 }: BuyMessageModalProps) {
-  const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
+  const { activeAddress, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
@@ -168,13 +178,9 @@ export function BuyMessageModal({
 
   const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({
+  const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined,
     chainId: CANONICAL_CHAIN.id,
-  })
-
-  const { fundWallet } = useFundWallet({
-    onUserExited: () => { refetchBalance() },
   })
 
   const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
@@ -649,7 +655,7 @@ export function BuyMessageModal({
                         <input
                           inputMode="decimal"
                           value={amount}
-                          onChange={e => { setHasUserEdited(true); setAmount(e.target.value); setLastPreset(null) }}
+                          onChange={e => { setHasUserEdited(true); setAmount(sanitizeAmountInput(e.target.value)); setLastPreset(null) }}
                           placeholder={minimumAmountFormatted}
                           disabled={isPending || isConfirming}
                           style={{
@@ -763,25 +769,6 @@ export function BuyMessageModal({
                     </div>
                     <span style={{ color: PINK, fontSize: 11.5, fontWeight: 400, fontFamily: 'Manrope, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}>MARKEE earned</span>
                   </div>
-                </div>
-              )}
-
-              {/* Insufficient balance + fund card */}
-              {insufficientBalance && balanceWarning && (
-                <div style={{ borderRadius: 10, border: '1px solid rgba(255,165,0,0.3)', background: 'rgba(255,165,0,0.08)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
-                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
-                  </div>
-                  {authenticated && activeAddress && (
-                    <button
-                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount } })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      <CreditCard size={13} />
-                      Fund with card
-                    </button>
-                  )}
                 </div>
               )}
 

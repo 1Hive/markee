@@ -246,7 +246,7 @@ function BoostedTableRow({
   const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
   return (
-    <a
+    <Link
       href={`/markee/${lb.address}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -292,7 +292,7 @@ function BoostedTableRow({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
       </div>
-    </a>
+    </Link>
   )
 }
 
@@ -323,7 +323,7 @@ function RegularTableRow({
   const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
   return (
-    <a
+    <Link
       href={`/markee/${lb.address}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -369,7 +369,7 @@ function RegularTableRow({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
       </div>
-    </a>
+    </Link>
   )
 }
 
@@ -504,7 +504,7 @@ export default function SuperfluidPlatformPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
 
       {/* ── Hero ── */}
       <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>

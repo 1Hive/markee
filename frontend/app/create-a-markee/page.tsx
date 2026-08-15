@@ -9,10 +9,11 @@ import { Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
-import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN, FACTORIES as V13_FACTORIES } from '@/lib/contracts/addresses'
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -22,15 +23,19 @@ const C = {
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const
+const DEPLOYED_STORAGE_KEY = 'markee:create:deployed'
 
 // (strategy x vertical) -> factory. Fixed price has a factory per vertical; streaming has one factory
 // serving every vertical (the placement is a per-board platform tag), so all verticals map to it.
 const STREAMING_FACTORY_ADDR = (STREAMING_FACTORY || ZERO_ADDRESS) as `0x${string}`
+// Fixed price ("For Sale") now shares one vertical-agnostic factory too, same as streaming --
+// FACTORIES.FOR_SALE in lib/contracts/addresses.ts, not the old per-vertical factories below (those
+// stay defined only so existing boards created through them keep reading correctly elsewhere).
 const FACTORIES: Record<Strategy, Record<Vertical, `0x${string}`>> = {
   fixed: {
-    openinternet: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c',
-    github:       '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2',
-    superfluid:   '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad',
+    openinternet: V13_FACTORIES.FOR_SALE,
+    github:       V13_FACTORIES.FOR_SALE,
+    superfluid:   V13_FACTORIES.FOR_SALE,
   },
   streaming: {
     openinternet: STREAMING_FACTORY_ADDR,
@@ -269,7 +274,7 @@ function StrategyPreviewCard({
         <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
         </svg>
-        {viewCount != null ? fmtViews(viewCount) : '…'}
+        {viewCount != null ? fmtViews(viewCount) : <ViewsSpinner size={9} />}
       </div>
 
       {/* Label + icon — centered, gradient text */}
@@ -420,24 +425,48 @@ function CreateWizardInner() {
   const [streamActivateOpen, setStreamActivateOpen] = useState(false)
   const [values, setValuesRaw] = useState<Record<string, string>>({})
   const [newLeaderboardAddress, setNewLeaderboardAddress] = useState<string | null>(null)
+  // Separate from useWriteContract's own `hash` -- that resets to undefined on any remount, so the
+  // Basescan link needs its own state that the URL/sessionStorage restore path can populate too.
+  const [deployedTxHash, setDeployedTxHash] = useState<`0x${string}` | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
   const [setupTouched, setSetupTouched] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  // Restore activate step from URL (survives tab reload after clicking Basescan link).
-  // Also handles ?strategy= deep-link pre-selecting a strategy.
+  // Restore activate step after clicking the Basescan tx link: normally that opens in a new tab and
+  // leaves this one untouched, but some browsers/wallet in-app browsers don't honor target="_blank"
+  // and navigate the same tab instead -- then the Basescan back button lands on whatever URL was in
+  // history *before* this wizard's own router.replace() calls (replace doesn't add a back-able entry
+  // per step), which can skip all the way back past this page's own progress. Restored from the URL
+  // first; sessionStorage is a fallback for when that back-navigation also drops the query string.
   useEffect(() => {
     const deployed = searchParams.get('deployed')
     const strategyParam = searchParams.get('strategy') as Strategy | null
+    const hashParam = searchParams.get('hash')
     if (deployed && /^0x[0-9a-fA-F]{40}$/.test(deployed)) {
       const s: Strategy = strategyParam === 'streaming' && STREAMING_ENABLED ? 'streaming' : 'fixed'
       setStrategy(s)
       setNewLeaderboardAddress(deployed)
+      if (hashParam && /^0x[0-9a-fA-F]{64}$/.test(hashParam)) setDeployedTxHash(hashParam as `0x${string}`)
       setStep(2) // 'activate' is index 2 in ['setup','review','activate']
       return
     }
+    try {
+      const saved = sessionStorage.getItem(DEPLOYED_STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as { address?: string; strategy?: Strategy; hash?: string }
+        if (parsed.address && /^0x[0-9a-fA-F]{40}$/.test(parsed.address)) {
+          const s: Strategy = parsed.strategy === 'streaming' && STREAMING_ENABLED ? 'streaming' : 'fixed'
+          setStrategy(s)
+          setNewLeaderboardAddress(parsed.address)
+          if (parsed.hash) setDeployedTxHash(parsed.hash as `0x${string}`)
+          setStep(2)
+          router.replace(`/create-a-markee?deployed=${parsed.address}&strategy=${s}${parsed.hash ? `&hash=${parsed.hash}` : ''}`)
+          return
+        }
+      }
+    } catch { /* ignore */ }
     if (strategyParam === 'streaming' && STREAMING_ENABLED) setStrategy('streaming')
     else if (strategyParam === 'fixed') setStrategy('fixed')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -455,7 +484,12 @@ function CreateWizardInner() {
     }
     if (!found) return
     setNewLeaderboardAddress(found)
-    router.replace(`/create-a-markee?deployed=${found}&strategy=${strategy}`)
+    if (hash) setDeployedTxHash(hash)
+    const hashQuery = hash ? `&hash=${hash}` : ''
+    router.replace(`/create-a-markee?deployed=${found}&strategy=${strategy}${hashQuery}`)
+    try {
+      sessionStorage.setItem(DEPLOYED_STORAGE_KEY, JSON.stringify({ address: found, strategy, hash: hash ?? null }))
+    } catch { /* ignore */ }
     if (strategy === 'streaming') {
       fetch('/api/streaming/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -468,6 +502,8 @@ function CreateWizardInner() {
   useEffect(() => {
     if (writeError) logTransactionError(writeError, 'CreateMarkeeWizard')
   }, [writeError])
+
+  const clearDeployedStorage = () => { try { sessionStorage.removeItem(DEPLOYED_STORAGE_KEY) } catch { /* ignore */ } }
 
   const setValue = (k: string, v: string) => setValuesRaw(prev => ({ ...prev, [k]: v }))
 
@@ -578,9 +614,9 @@ function CreateWizardInner() {
               <div style={{ color: C.text, fontWeight: 700 as const, fontSize: 17 }}>Transaction confirmed</div>
               <p style={{ color: C.text2, fontSize: 14, margin: '4px 0 0', lineHeight: 1.55 }}>
                 Your Markee was deployed onchain.{' '}
-                {hash && (
-                  <a href={`https://basescan.org/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'var(--font-jetbrains-mono)', color: C.blue, textDecoration: 'none', borderBottom: `1px dotted ${C.blue}` }}>
-                    {hash.slice(0, 6)}…{hash.slice(-4)} ↗
+                {(deployedTxHash ?? hash) && (
+                  <a href={`https://basescan.org/tx/${deployedTxHash ?? hash}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'var(--font-jetbrains-mono)', color: C.blue, textDecoration: 'none', borderBottom: `1px dotted ${C.blue}` }}>
+                    {(deployedTxHash ?? hash)!.slice(0, 6)}…{(deployedTxHash ?? hash)!.slice(-4)} ↗
                   </a>
                 )}
               </p>
@@ -599,7 +635,7 @@ function CreateWizardInner() {
               Activate Markee →
             </button>
             <div style={{ marginTop: 16 }}>
-              <Link href="/account" style={{ color: C.muted, fontSize: 13, textDecoration: 'none' }}>
+              <Link href="/account" onClick={clearDeployedStorage} style={{ color: C.muted, fontSize: 13, textDecoration: 'none' }}>
                 Skip for now →
               </Link>
             </div>
@@ -614,7 +650,7 @@ function CreateWizardInner() {
             messageLabel="SET FIRST MESSAGE"
             messagePlaceholder="Your message here..."
             ctaLabel="Activate Markee"
-            onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
+            onSuccess={() => { clearDeployedStorage(); router.push(`/markee/${newLeaderboardAddress}`) }}
           />
 
           {/* Streaming activation: single modal handles create + approve + stream */}
@@ -622,7 +658,7 @@ function CreateWizardInner() {
             isOpen={streamActivateOpen}
             board={newLeaderboardAddress as `0x${string}`}
             onClose={() => setStreamActivateOpen(false)}
-            onSuccess={() => router.push(`/markee/${newLeaderboardAddress}`)}
+            onSuccess={() => { clearDeployedStorage(); router.push(`/markee/${newLeaderboardAddress}`) }}
             messageLabel="SET FIRST MESSAGE"
             messagePlaceholder="Your message here..."
           />
@@ -636,7 +672,7 @@ function CreateWizardInner() {
 export default function CreateAMarkee() {
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
       <Suspense>
         <CreateWizardInner />
       </Suspense>

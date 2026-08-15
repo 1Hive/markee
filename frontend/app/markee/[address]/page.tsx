@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatEther } from 'viem'
 import { useAccount, useReadContract } from 'wagmi'
@@ -9,6 +10,7 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
+import { EmbedModal } from '@/components/modals/EmbedModal'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { formatUsd } from '@/lib/utils'
@@ -36,8 +38,10 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
 
   // Views for all markees
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
+  const [viewsFetching, setViewsFetching] = useState(true)
+  const viewsLoading = isLoading || viewsFetching
   useEffect(() => {
-    if (!markees.length) return
+    if (!markees.length) { setViewsFetching(false); return }
     const addrs = markees.map(m => m.address.toLowerCase()).join(',')
     fetch(`/api/views?addresses=${addrs}`)
       .then(r => r.ok ? r.json() : null)
@@ -50,6 +54,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
         setViewsMap(map)
       })
       .catch(() => {})
+      .finally(() => setViewsFetching(false))
   }, [markees.map(m => m.address).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track + increment view for top markee
@@ -70,6 +75,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const [buyOpen,      setBuyOpen]      = useState(false)
   const [addFundsOpen, setAddFundsOpen] = useState(false)
   const [editOpen,     setEditOpen]     = useState(false)
+  const [embedOpen,    setEmbedOpen]    = useState(false)
   const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
   const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [syncResult,    setSyncResult]    = useState<string | null>(null)
@@ -146,13 +152,14 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const totalFunds = meta?.totalLeaderboardFunds ?? 0n
 
   const totalFundsEth   = parseFloat(formatEther(totalFunds))
-  const totalFundsLabel = ethPrice ? formatUsd(totalFundsEth * ethPrice) : `${totalFundsEth.toFixed(3)} ETH`
+  const totalFundsEthLabel = `${totalFundsEth.toFixed(4)} ETH`
+  const totalFundsLabel = ethPrice ? formatUsd(totalFundsEth * ethPrice) : totalFundsEthLabel
   const topPriceEth     = topMarkee ? parseFloat(formatEther(priceToOvertake(topMarkee.totalFundsAdded))) : 0
   const topPriceLabel   = ethPrice ? formatUsd(topPriceEth * ethPrice) : `${topPriceEth.toFixed(3)} ETH`
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="marketplace" useRegularLinks />
+      <Header activePage="marketplace" />
 
       {isLoading ? (
         <BoardDetailSkeleton />
@@ -161,7 +168,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
         <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
           <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Leaderboard not found</h1>
           <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>We couldn't find a Markee leaderboard at that address.</p>
-          <a href="/marketplace" style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>← Back to Marketplace</a>
+          <Link href="/marketplace" style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>← Back to Marketplace</Link>
         </section>
       ) : !topMarkee ? (
         // Leaderboard exists but no messages yet
@@ -178,7 +185,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
             Activate Markee →
           </button>
           <div style={{ marginTop: 20 }}>
-            <a href="/account" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Your Dashboard</a>
+            <Link href="/account" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Your Dashboard</Link>
           </div>
         </section>
       ) : (
@@ -195,18 +202,22 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
               displayName={topMarkee.name || undefined}
               ownerAddress={topMarkee.owner}
               views={topViews}
+              viewsLoading={viewsLoading}
               pillLabel={`${topPriceLabel} to change`}
               onClick={openBuy}
+              strategy="fixed"
             />
             <div style={{ height: 28 }} />
             <MetricsBar
               address={leaderboardAddress}
               entry={ecoEntry}
-              strategy="fixed"
               topViews={topViews}
+              viewsLoading={viewsLoading}
               markeeCount={markees.length}
               totalLabel="Total funds added"
-              totalNode={<MetricValue text={totalFundsLabel} color={GREEN} />}
+              totalNode={<MetricValue text={totalFundsLabel} color={GREEN} title={ethPrice ? totalFundsEthLabel : undefined} />}
+              topMarkeeAddress={topMarkee.address}
+              onAddToSite={() => setEmbedOpen(true)}
             />
           </section>
 
@@ -301,6 +312,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
                       }}
                       leaderboardAddress={leaderboardAddress as `0x${string}`}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
+                      viewsLoading={viewsLoading}
                       onAddFunds={() => openAddFunds(m)}
                       actionLabel="Add Funds"
                       onEditMessage={!!connectedAddress && m.owner.toLowerCase() === connectedAddress.toLowerCase() ? () => openEdit(m) : undefined}
@@ -321,14 +333,14 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
             >
               Buy a New Message
             </button>
-            <a
+            <Link
               href="/create-a-markee"
               style={{ display: 'inline-flex', alignItems: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '13px 24px', fontWeight: 600, fontSize: 15, fontFamily: MONO, textDecoration: 'none', letterSpacing: 0.3, transition: 'border-color 120ms, color 120ms' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
             >
               Create Your Own Markee
-            </a>
+            </Link>
           </section>
         </>
       )}
@@ -377,6 +389,12 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
           initialTargetAddress={modalTarget.address}
         />
       )}
+
+      <EmbedModal
+        isOpen={embedOpen}
+        onClose={() => setEmbedOpen(false)}
+        leaderboard={{ address: leaderboardAddress, name: meta?.leaderboardName, strategy: 'fixed' }}
+      />
 
     </div>
   )

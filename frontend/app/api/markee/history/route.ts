@@ -97,6 +97,7 @@ export async function GET(request: NextRequest) {
       ...createdLogs.map(log => ({
         id: `${log.transactionHash}-${log.logIndex}`,
         kind: 'funds' as const,
+        subKind: 'created' as const,
         amount: log.args.amount?.toString() ?? '0',
         newTotal: log.args.amount?.toString() ?? '0',
         actor: log.args.owner ?? '',
@@ -107,6 +108,7 @@ export async function GET(request: NextRequest) {
       ...migratedLogs.map(log => ({
         id: `${log.transactionHash}-${log.logIndex}`,
         kind: 'funds' as const,
+        subKind: 'migrated' as const,
         amount: log.args.historicalFunds?.toString() ?? '0',
         newTotal: log.args.historicalFunds?.toString() ?? '0',
         actor: log.args.owner ?? '',
@@ -117,6 +119,7 @@ export async function GET(request: NextRequest) {
       ...fundsLogs.map(log => ({
         id: `${log.transactionHash}-${log.logIndex}`,
         kind: 'funds' as const,
+        subKind: 'added' as const,
         amount: log.args.amount?.toString() ?? '0',
         newTotal: log.args.newMarkeeTotal?.toString() ?? '0',
         actor: log.args.addedBy ?? '',

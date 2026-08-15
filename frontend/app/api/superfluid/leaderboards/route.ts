@@ -1,6 +1,6 @@
 // app/api/superfluid/leaderboards/route.ts
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther } from 'viem'
+import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
@@ -20,6 +20,12 @@ const CACHE_TTL = 60 // seconds
 const SUPERFLUID_FACTORY_ADDRESS = '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const
 // v1.3 Superfluid leaderboard (migrated from v1.2 via migrate-to-v13.sh)
 const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as `0x${string}`
+
+// Scopes getLogs to just creation events instead of every log the factory has ever emitted
+// (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
+const LEADERBOARD_CREATED_EVENT = parseAbiItem(
+  'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
+)
 
 // Leaderboards excluded from totalPlatformFunds — clearly gamed with recycled ETH
 const GAMED_LEADERBOARD_ADDRESSES = new Set([
@@ -68,6 +74,7 @@ async function resolveCreators(
   try {
     const logs = await client.getLogs({
       address: SUPERFLUID_FACTORY_ADDRESS,
+      event: LEADERBOARD_CREATED_EVENT,
       fromBlock: 0n,
       toBlock: 'latest',
     })

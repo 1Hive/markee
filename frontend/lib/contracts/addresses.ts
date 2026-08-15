@@ -34,6 +34,11 @@ export const FACTORIES = {
   SUPERFLUID: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
   OPEN_INTERNET: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
+  // Shared, vertical-agnostic factory for all fixed-price ("For Sale") creation going forward —
+  // mirrors how streaming ("For Rent") boards already aren't split by platform. New boards from here
+  // are verification-gated in /account (see verification-status route) since, unlike the three
+  // factories above, there's no legacy-migration reason to exempt them.
+  FOR_SALE: '0x861D9897eC47421aAFB6321Ee219E88ab485121f' as const,
 } as const
 
 // StreamingLeaderboardFactory — deployment is gated on the Superfluid governance setAppRegistrationKey.

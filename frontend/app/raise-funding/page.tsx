@@ -360,7 +360,7 @@ export default function RaiseFunding() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
       <Hero />
       <PlatformPicker stats={platStats} />
       <HowItWorks />

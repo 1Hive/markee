@@ -239,7 +239,7 @@ export async function POST(req: Request) {
 }
 \`\`\`
 
-Fire this once per session, the first time the top message renders:
+Fire this once per session, the first time the top message renders. Include \`url: window.location.origin\` so markee.xyz can show which of your verified sites is actually getting traffic:
 \`\`\`ts
 const viewTracked = useRef(false)
 useEffect(() => {
@@ -248,7 +248,7 @@ useEffect(() => {
   fetch('/api/markee/views', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ address: topMarkeeAddress, message: topMessage }),
+    body: JSON.stringify({ address: topMarkeeAddress, message: topMessage, url: window.location.origin }),
   }).catch(() => {})
 }, [topMessage, topMarkeeAddress])
 \`\`\`

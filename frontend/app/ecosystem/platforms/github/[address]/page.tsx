@@ -798,7 +798,7 @@ function RepoFileManager({
             <span>
               {trafficError}
               {trafficError.includes('reconnect') && (
-                <> - <a href="/ecosystem/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</a></>
+                <> - <Link href="/ecosystem/platforms/github" className="text-[#7C9CFF] underline hover:text-[#F897FE]">reconnect GitHub</Link></>
               )}
             </span>
           </div>

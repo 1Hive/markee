@@ -101,6 +101,14 @@ const inputStyle = {
   fontFamily: MONO, fontSize: 14.5, outline: 'none',
 }
 
+// The message field is the emphasized input now (was the amount card) — same glow AmountCard used to
+// carry, moved here so attention lands on what you're saying before what you're paying.
+const messageBoxStyle = {
+  ...inputStyle,
+  border: `1.5px solid ${PINK}`,
+  boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+}
+
 // ── Amount card (shared shape between "buy new" and "add funds") ──────────────
 // Compact 2-line layout: line 1 is [amount input | presets], line 2 is [USD equiv | balance].
 function AmountCard({
@@ -134,8 +142,8 @@ function AmountCard({
   } as const)
   return (
     <div style={{
-      border: `1.5px solid ${PINK}`, borderRadius: 12, padding: '12px 16px',
-      background: BG, boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+      border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 16px',
+      background: BG,
     }}>
       {/* Line 1: amount (left) / presets (right) */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -665,9 +673,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       }}
                       placeholder={`Your message here... (${maxLen} max)`}
                       rows={2}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={busy}
                     />
                     {isMessageFieldError(error) && (
@@ -800,9 +806,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       }}
                       placeholder="Enter your new message..."
                       rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={busy}
                     />
                     {isMessageFieldError(error) && (

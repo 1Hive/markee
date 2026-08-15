@@ -1,6 +1,6 @@
 // app/api/github/leaderboards/route.ts
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther } from 'viem'
+import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { getLinkedFiles } from '@/lib/github/linkedFiles'
@@ -8,6 +8,12 @@ import { getLinkedFiles } from '@/lib/github/linkedFiles'
 export const dynamic = 'force-dynamic'
 
 const LEADERBOARD_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const
+
+// Scopes getLogs to just creation events instead of every log the factory has ever emitted
+// (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
+const LEADERBOARD_CREATED_EVENT = parseAbiItem(
+  'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
+)
 
 function getClient() {
   return createPublicClient({
@@ -52,6 +58,7 @@ async function resolveCreators(
   try {
     const logs = await client.getLogs({
       address: LEADERBOARD_FACTORY_ADDRESS,
+      event: LEADERBOARD_CREATED_EVENT,
       fromBlock: 0n,
       toBlock: 'latest',
     })

@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
-import { CreditCard } from 'lucide-react'
-import { useFundWallet } from '@privy-io/react-auth'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -64,13 +62,12 @@ interface FixedPriceModalProps {
 }
 
 export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
-  const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
+  const { activeAddress, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
-  const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
+  const { data: balanceData } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
 
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
@@ -317,25 +314,6 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                     </span>
                     <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
                   </div>
-                </div>
-              )}
-
-              {/* Insufficient balance + fund card */}
-              {insufficientBalance && balanceWarning && (
-                <div style={{ borderRadius: 10, border: '1px solid rgba(255,165,0,0.3)', background: 'rgba(255,165,0,0.08)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 14 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
-                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
-                  </div>
-                  {authenticated && activeAddress && (
-                    <button
-                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      <CreditCard size={13} />
-                      Fund with card
-                    </button>
-                  )}
                 </div>
               )}
 

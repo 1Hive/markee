@@ -113,7 +113,7 @@ function TableRow({
   }
 
   return (
-    <a
+    <Link
       href={`/markee/${lb.address}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -212,7 +212,7 @@ function TableRow({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
       </div>
-    </a>
+    </Link>
   )
 }
 
@@ -264,7 +264,7 @@ export default function GithubPlatformPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
 
       {/* ── Hero ── */}
       <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>

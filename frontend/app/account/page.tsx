@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -19,6 +20,7 @@ import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
+import { COOPERATIVE_MULTISIG } from '@/lib/contracts/addresses'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -51,6 +53,15 @@ interface BaseLeaderboard {
   topRateRaw?: string
   minimumPriceRaw?: string
   strategy?: 'fixed' | 'streaming'
+  // Verification is address-based, not platform-based -- a streaming board can be integrated on a
+  // website, GitHub, both, or neither, independent of its on-chain platform tag. Populated for every
+  // board (any platform) from /api/account/verification-status, not just website/github-tagged ones.
+  verifiedUrls?: string[]
+  linkedFiles?: LinkedFile[]
+  // Set on boards from the shared "For Sale" factory (see /api/forsale/leaderboards) -- unlike the
+  // three legacy per-vertical factories, there's no migration history to exempt these from needing a
+  // verified integration to reach "Active Markees".
+  verificationGated?: boolean
 }
 interface SuperfluidLeaderboard extends BaseLeaderboard { platform: 'superfluid' }
 interface LinkedFile {
@@ -197,12 +208,6 @@ function detailUrl(lb: AnyLeaderboard) {
 // Fixed-price website boards: go through the URL verify/integrate/edit management flows.
 function isFixedWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
   return lb.platform === 'website' && lb.strategy !== 'streaming'
-}
-
-// All website boards (fixed + streaming): need to be embedded somewhere.
-// Used to decide whether a board belongs in "Ready to Embed" rather than "Active Markees".
-function isWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
-  return lb.platform === 'website'
 }
 
 // Extract hostname from a URL for use with logo.dev. Returns null if unparseable.
@@ -367,12 +372,12 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
                   </button>
                 )
               })}
-              <a
+              <Link
                 href="/create-a-markee"
                 style={{ display: 'block', padding: '12px 16px', borderTop: `1px solid ${BORDER}`, color: PINK, fontWeight: 700, fontSize: 14, fontFamily: SANS, textDecoration: 'none' }}
               >
                 + Create a New Markee
-              </a>
+              </Link>
             </div>
           </>
         )}
@@ -393,9 +398,9 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
           )
         })}
       </div>
-      <a href="/create-a-markee" style={{ flexShrink: 0, marginLeft: 16, marginRight: 4, padding: '8px 16px', background: PINK, color: BG, borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+      <Link href="/create-a-markee" style={{ flexShrink: 0, marginLeft: 16, marginRight: 4, padding: '8px 16px', background: PINK, color: BG, borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
         + Create a New Markee
-      </a>
+      </Link>
     </div>
   )
 }
@@ -469,7 +474,7 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
             <button onClick={onIntegrate || onVerify} style={{ flex: 1, background: BLUE, color: BG, border: 'none', borderRadius: 8, padding: 11, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: SANS }}>Finish Setup</button>
           )}
           {!onIntegrate && !onVerify && (
-            <a href={`/markee/${lb.address}`} style={{ flex: 1, display: 'block', textAlign: 'center', background: BLUE, color: BG, border: 'none', borderRadius: 8, padding: 11, fontWeight: 700, fontSize: 14, textDecoration: 'none', fontFamily: SANS }}>Buy First Message</a>
+            <Link href={`/markee/${lb.address}`} style={{ flex: 1, display: 'block', textAlign: 'center', background: BLUE, color: BG, border: 'none', borderRadius: 8, padding: 11, fontWeight: 700, fontSize: 14, textDecoration: 'none', fontFamily: SANS }}>Buy First Message</Link>
           )}
           {onArchive && (
             <button onClick={onArchive} title="Archive" style={{ flexShrink: 0, background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '11px 14px', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: SANS }}>Archive</button>
@@ -477,7 +482,7 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8 }}>
-          <a href={`/markee/${lb.address}`} style={{ flex: 1, textAlign: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 10, fontSize: 13, textDecoration: 'none', fontFamily: SANS }}>View</a>
+          <Link href={`/markee/${lb.address}`} style={{ flex: 1, textAlign: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 10, fontSize: 13, textDecoration: 'none', fontFamily: SANS }}>View</Link>
           {onEdit && <button onClick={onEdit} style={{ flex: 1, background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 10, fontSize: 13, cursor: 'pointer', fontFamily: SANS }}>Edit</button>}
         </div>
       )}
@@ -596,7 +601,7 @@ function ActivationTable({ markees, onActivate, onArchive }: {
 
 // ── Ready to Embed table (website boards with active message but no verified URL) ──
 const EMBED_COLS = '180px 1fr 90px 130px 160px 150px'
-const EMBED_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Latest Spend', '']
+const EMBED_HEADERS_LEFT = ['Board Name', 'Current Message', 'Strategy'] as const
 
 function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
   const isStreaming = lb.strategy === 'streaming'
@@ -639,15 +644,39 @@ function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbe
 }
 
 function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderboard[]; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
+  const [sortKey, setSortKey] = useState('raised')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const onSort = useCallback((col: string) => {
+    setSortKey(prev => {
+      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : 'desc')
+      return col
+    })
+  }, [])
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...markees].sort((a, b) => {
+      const at = BigInt(a.totalFundsRaw || '0')
+      const bt = BigInt(b.totalFundsRaw || '0')
+      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
+    })
+  }, [markees, sortKey, sortDir])
+
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 760, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {EMBED_HEADERS.map((h, i) => (
+          {EMBED_HEADERS_LEFT.map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </div>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
+          <span />
         </div>
-        {markees.map(lb => (
+        {sorted.map(lb => (
           <ReadyToEmbedRow key={lb.address} lb={lb} onEmbed={onEmbed} ethPrice={ethPrice} />
         ))}
       </div>
@@ -705,7 +734,11 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
     </div>
   )
 
-  if (lb.platform === 'github') {
+  // GitHub-platform boards always render this way; other-platform boards (e.g. a "For Sale" factory
+  // board, which carries no inherent platform tag) render it too once they have a verified linked
+  // file -- Served On is derived from actual verification, not a rigid creation-time tag.
+  const hasVerifiedGithubFile = (lb.linkedFiles ?? []).some(f => f.verified)
+  if (lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile)) {
     const gh = lb as GithubLeaderboard
     const files = gh.linkedFiles ?? []
     const first = files[0] ?? null
@@ -786,7 +819,7 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
 }
 
 const ACTIVE_COLS = '180px 1fr 90px 130px 160px 110px'
-const ACTIVE_HEADERS = ['Board Name', 'Current Message', 'Strategy', 'Total Raised', 'Streaming', '']
+const ACTIVE_HEADERS_LEFT = ['Board Name', 'Current Message', 'Strategy'] as const
 
 function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
   const eth = Number(balance) / 1e18
@@ -829,7 +862,7 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
       <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
         {lb.topMessage || 'No message yet'}
       </span>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
       </div>
       <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
@@ -854,15 +887,39 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
 }
 
 function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[]; onManage: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
+  const [sortKey, setSortKey] = useState('raised')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const onSort = useCallback((col: string) => {
+    setSortKey(prev => {
+      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : 'desc')
+      return col
+    })
+  }, [])
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...markees].sort((a, b) => {
+      const at = BigInt(a.totalFundsRaw || '0')
+      const bt = BigInt(b.totalFundsRaw || '0')
+      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
+    })
+  }, [markees, sortKey, sortDir])
+
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 760, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {ACTIVE_HEADERS.map((h, i) => (
+          {ACTIVE_HEADERS_LEFT.map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </div>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Streaming</span>
+          <span />
         </div>
-        {markees.map(lb => (
+        {sorted.map(lb => (
           <ActiveTableRow key={lb.address} lb={lb} onManage={onManage} ethPrice={ethPrice} />
         ))}
       </div>
@@ -872,15 +929,37 @@ function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[
 
 // ── Archived Markees table ────────────────────────────────────────────────────
 function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
+  const [sortKey, setSortKey] = useState('raised')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const onSort = useCallback((col: string) => {
+    setSortKey(prev => {
+      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : 'desc')
+      return col
+    })
+  }, [])
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...markees].sort((a, b) => {
+      const at = BigInt(a.totalFundsRaw || '0')
+      const bt = BigInt(b.totalFundsRaw || '0')
+      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
+    })
+  }, [markees, sortKey, sortDir])
+
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 600, background: BG2, opacity: 0.8 }}>
         <div style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Served on', 'Total raised', 'Current message', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Served on</span>
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <SortHead label="Total raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="left" />
+          </div>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current message</span>
+          <span />
         </div>
-        {markees.map(lb => (
+        {sorted.map(lb => (
           <div
             key={lb.address}
             onClick={() => window.location.href = `/markee/${lb.address}`}
@@ -1021,8 +1100,8 @@ function RankingCell({ isTop, rank, isStreaming, streamStatus }: {
 const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
 
 function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void }) {
-  const [sortKey, setSortKey] = useState('rank')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortKey, setSortKey] = useState('spent')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const onSort = useCallback((col: string) => {
     setSortKey(prev => {
@@ -1047,9 +1126,13 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Markee Name', 'Your Message', 'Strategy', 'Total Spent', 'Latest Spend'] as const).map((h, i) => (
+          {(['Markee Name', 'Your Message', 'Strategy'] as const).map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </div>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
@@ -1104,8 +1187,8 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
 const FUNDED_COLS = '160px 1fr 90px 120px 170px 100px'
 
 function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void }) {
-  const [sortKey, setSortKey] = useState('rank')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortKey, setSortKey] = useState('spent')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const onSort = useCallback((col: string) => {
     setSortKey(prev => {
@@ -1130,9 +1213,13 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Markee Name', 'Current Message', 'Strategy', 'Total Spent', 'Latest Spend'] as const).map((h, i) => (
+          {(['Markee Name', 'Current Message', 'Strategy'] as const).map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </div>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
@@ -1190,9 +1277,9 @@ function ManageModal({ lb, onClose, onEmbed, onEdit }: { lb: AnyLeaderboard; onC
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}><X size={20} /></button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <a href={detailUrl(lb)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', textDecoration: 'none', color: TEXT, fontSize: 14, fontWeight: 600 }}>
+          <Link href={detailUrl(lb)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', textDecoration: 'none', color: TEXT, fontSize: 14, fontWeight: 600 }}>
             <ExternalLink size={15} style={{ color: BLUE }} /> View leaderboard
-          </a>
+          </Link>
           {onEdit && (
             <button onClick={() => { onClose(); onEdit() }} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, textAlign: 'left' }}>
               <Pencil size={15} style={{ color: MUTED }} /> Edit website info
@@ -1216,7 +1303,7 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
       <div style={{ fontSize: 30, marginBottom: 12 }}>{icon}</div>
       <p style={{ margin: '0 0 6px', color: TEXT, fontWeight: 700, fontSize: 17 }}>{title}</p>
       <p style={{ margin: '0 auto 20px', color: MUTED, fontSize: 14, maxWidth: '42ch', lineHeight: 1.55 }}>{body}</p>
-      <a href={ctaHref} style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>{ctaLabel}</a>
+      <Link href={ctaHref} style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>{ctaLabel}</Link>
     </div>
   )
 }
@@ -1268,11 +1355,12 @@ export default function AccountPage() {
   const fetchAll = useCallback(async (addr: string) => {
     setIsLoading(true)
     try {
-      const [sfRes, ghRes, oiRes, strRes] = await Promise.all([
+      const [sfRes, ghRes, oiRes, strRes, fsRes] = await Promise.all([
         fetch('/api/superfluid/leaderboards?bust=1',   { cache: 'no-store' }),
         fetch('/api/github/leaderboards?bust=1',       { cache: 'no-store' }),
         fetch('/api/openinternet/leaderboards?bust=1', { cache: 'no-store' }),
         fetch('/api/streaming/leaderboards?bust=1',    { cache: 'no-store' }),
+        fetch('/api/forsale/leaderboards?bust=1',      { cache: 'no-store' }),
       ])
       if (sfRes.ok) {
         const data = await sfRes.json()
@@ -1290,17 +1378,18 @@ export default function AccountPage() {
             .map((lb: any) => ({ ...lb, platform: 'github' as const, linkedFiles: lb.linkedFiles ?? [] }))
         )
       }
-      if (oiRes.ok) {
-        const data = await oiRes.json()
-        setWebsiteBoards(
-          (data.leaderboards ?? [])
-            .filter((lb: any) => {
-              if (lb.isLegacy) return false
-              const c = lb.creator ?? lb.admin
-              return c && c.toLowerCase() === addr.toLowerCase()
-            })
-            .map((lb: any) => ({ ...lb, platform: 'website' as const }))
-        )
+      if (oiRes.ok || fsRes.ok) {
+        const oiData = oiRes.ok ? await oiRes.json() : { leaderboards: [] }
+        const fsData = fsRes.ok ? await fsRes.json() : { leaderboards: [] }
+        const byCreator = (lb: any) => {
+          if (lb.isLegacy) return false
+          const c = lb.creator ?? lb.admin
+          return c && c.toLowerCase() === addr.toLowerCase()
+        }
+        setWebsiteBoards([
+          ...(oiData.leaderboards ?? []).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(fsData.leaderboards ?? []).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+        ])
       }
       if (strRes.ok) {
         const data = await strRes.json()
@@ -1413,6 +1502,38 @@ export default function AccountPage() {
       return d > 0n ? 1 : d < 0n ? -1 : 0
     }), [superfluidBoards, githubBoards, websiteBoards, streamingBoards])
 
+  // Verification is address-based, not platform-based (see BaseLeaderboard comment) -- fetched once
+  // for every board regardless of platform, since the per-platform listing routes only reliably know
+  // about their own vertical's integration data.
+  const [verificationMap, setVerificationMap] = useState<Record<string, { verifiedUrls: string[]; linkedFiles: LinkedFile[] }>>({})
+  const allBoardAddrsKey = allBoards.map(b => b.address.toLowerCase()).join(',')
+  useEffect(() => {
+    if (!allBoardAddrsKey) return
+    fetch(`/api/account/verification-status?addresses=${allBoardAddrsKey}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setVerificationMap(data) })
+      .catch(() => {})
+  }, [allBoardAddrsKey])
+
+  const isVerified = useCallback((lb: AnyLeaderboard): boolean => {
+    const v = verificationMap[lb.address.toLowerCase()]
+    const verifiedUrls = v?.verifiedUrls ?? lb.verifiedUrls ?? []
+    const linkedFiles = v?.linkedFiles ?? lb.linkedFiles ?? []
+    return verifiedUrls.length > 0 || linkedFiles.some(f => f.verified)
+  }, [verificationMap])
+
+  // Streaming boards always need a verified integration to reach Active -- they've never been split
+  // by platform, so there's no "migrated, creator can't fix it" history to exempt. Fixed ("For Sale")
+  // boards are exempt only when admin was reassigned to the Coop multisig during migration -- that's
+  // the actual "creator can't reach it anymore" case (confirmed on the known migrated partner boards:
+  // Cooperative/Gardens/Clawchemy all carry admin === COOPERATIVE_MULTISIG). A board whose admin is
+  // still a normal wallet -- even one from a legacy per-vertical factory -- was created directly by
+  // someone who can act on it, so it's gated like everything else.
+  const needsVerificationGate = useCallback((lb: AnyLeaderboard): boolean => {
+    if (lb.strategy === 'streaming') return true
+    return lb.admin?.toLowerCase() !== COOPERATIVE_MULTISIG.toLowerCase()
+  }, [])
+
   // Reopen the embed modal after a GitHub OAuth round-trip initiated from here (see
   // buildGithubReturnTo in board-detail/shared.tsx) -- ?embed=1&embedAddress=<leaderboard>.
   // Searches every board type, not just GitHub-platform ones: "Connect GitHub" is reachable from
@@ -1436,8 +1557,11 @@ export default function AccountPage() {
     window.history.replaceState(null, '', clean.toString())
   }, [allBoards])
 
+  // Every funded, verification-gated board sits in "Add to Your Site" until it has at least one
+  // verified integration (website or GitHub) -- see needsVerificationGate for which boards that is.
   const awaitingVerification = useMemo(() =>
-    allBoards.filter(lb => isWebsiteBoard(lb) && BigInt(lb.topFundsAddedRaw ?? '0') > 0n && (lb.verifiedUrls?.length ?? 0) === 0) as WebsiteLeaderboard[], [allBoards])
+    allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n && needsVerificationGate(lb) && !isVerified(lb)),
+    [allBoards, isVerified, needsVerificationGate])
   const awaitingVerificationAddrs = useMemo(() => new Set(awaitingVerification.map(lb => lb.address)), [awaitingVerification])
 
   const activeBoards = useMemo(() =>
@@ -1472,7 +1596,7 @@ export default function AccountPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG, display: 'flex', flexDirection: 'column' }}>
-      <Header activePage="account" useRegularLinks />
+      <Header activePage="account" />
 
       {/* Hero */}
       <section
@@ -1551,7 +1675,7 @@ export default function AccountPage() {
                       </div>
                     )}
 
-                    {/* Ready to Add to Your Site — website boards with active messages/streams but no verified URL */}
+                    {/* Ready to Add to Your Site — any funded board (any platform/strategy) without a verified website or GitHub integration yet */}
                     {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -1570,7 +1694,7 @@ export default function AccountPage() {
                     {activeBoards.length > 0 && (
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Active Markees</h2>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Live Markee Signs</h2>
                           <CountBadge n={activeBoards.length} />
                         </div>
                         <ActiveTable markees={activeBoards} onManage={handleManage} ethPrice={ethPrice} />

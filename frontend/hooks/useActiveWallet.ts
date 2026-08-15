@@ -5,7 +5,11 @@ import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { isAddress } from 'viem'
 
 export function useActiveWallet() {
-  const { authenticated } = usePrivy()
+  // Privy's `ready` flips true once it's finished checking for a stored session -- until then,
+  // `authenticated` just defaults to false, which reads identically to "genuinely logged out."
+  // Consumers that want to distinguish "still checking" from "actually disconnected" (e.g. to show a
+  // loading state instead of a Connect button) should gate on `privyReady`.
+  const { authenticated, ready: privyReady } = usePrivy()
   const { address, isConnected } = useAccount()
   const { wallets } = useWallets()
 
@@ -17,5 +21,5 @@ export function useActiveWallet() {
   const hasActiveWalletConnection = isConnected && !!address
   const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
 
-  return { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending }
+  return { activeAddress, authenticated, privyReady, hasWallet, hasActiveWalletConnection, isWalletConnectionPending }
 }

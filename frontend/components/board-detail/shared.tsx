@@ -4,12 +4,13 @@
 // streaming detail render the same hero card, metrics bar, embed/verify panel and skeleton from here.
 
 import { useState, useEffect, useRef } from 'react'
-import { Eye, ExternalLink } from 'lucide-react'
+import { Eye, ExternalLink, ChevronDown } from 'lucide-react'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 export const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -125,19 +126,36 @@ export function PlatformCell({ entry }: { entry: EcoEntry | null }) {
 }
 
 // ── Served On cell ────────────────────────────────────────────────────────────
-const NO_INTEGRATIONS = (
-  <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' as const }}>
-    No Verified URLs
-  </span>
-)
+// Root domain (or GitHub org) with logo, ranked by actual traffic where it's trackable (GitHub's own
+// per-repo traffic API; website via the per-URL view counts the embed's tracking snippet reports --
+// see lib/embedPrompt/fragments.ts). The expand chevron is always available, not just when there's
+// more than one integration, since it's also the only entry point to "+ Add to Your Site" here.
+function getLogoDomain(url: string): string | null {
+  try { return new URL(url.startsWith('http') ? url : `https://${url}`).hostname.replace(/^www\./, '') } catch { return null }
+}
 
-function DropdownLinks({ items, renderItem, renderDropdownItem }: {
-  items: string[]
-  renderItem: (first: string) => React.ReactNode
-  renderDropdownItem: (item: string, idx: number) => React.ReactNode
+function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return <span style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.75, flexShrink: 0, lineHeight: 1 }}>🪧</span>
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=32`}
+      alt="" width={size} height={size}
+      style={{ objectFit: 'contain', borderRadius: 3, flexShrink: 0 }}
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
+  entry: EcoEntry | null
+  /** Top markee's address -- view counts are tracked per-markee, not per-leaderboard. */
+  markeeAddress?: string
+  onAddToSite?: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
     const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
@@ -145,109 +163,156 @@ function DropdownLinks({ items, renderItem, renderDropdownItem }: {
     return () => document.removeEventListener('mousedown', close)
   }, [open])
 
-  return (
-    <span ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-      <span style={{ minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
-        {renderItem(items[0])}
-      </span>
-      {items.length > 1 && (
-        <>
-          <button onClick={() => setOpen(v => !v)} style={{ flexShrink: 0, background: `${PINK}22`, border: `1px solid rgba(248,151,254,0.3)`, color: PINK, borderRadius: 99, padding: '2px 7px', fontFamily: MONO, fontSize: 11, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>
-            +{items.length - 1}
-          </button>
-          {open && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 220, zIndex: 30, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {items.map((item, idx) => renderDropdownItem(item, idx))}
-            </div>
-          )}
-        </>
-      )}
-    </span>
-  )
-}
+  const isGithub = entry?.platform === 'github'
+  const files = isGithub ? (entry?.linkedFiles ?? []).filter(f => f.verified) : []
+  const urls = !isGithub ? (entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []) : []
 
-export function ServedOnCell({ entry }: { entry: EcoEntry | null }) {
-  if (!entry) return NO_INTEGRATIONS
+  const [repoTraffic, setRepoTraffic] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!isGithub || !entry?.address || files.length === 0) return
+    fetch(`/api/github/traffic-multi?address=${entry.address}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { repos?: Record<string, { count: number }> }) => {
+        if (!d?.repos) return
+        const m: Record<string, number> = {}
+        for (const [repo, t] of Object.entries(d.repos)) m[repo] = t.count
+        setRepoTraffic(m)
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGithub, entry?.address, files.length])
 
-  if (entry.platform === 'github') {
-    const files = (entry.linkedFiles ?? []).filter(f => f.verified)
-    if (files.length === 0) return NO_INTEGRATIONS
+  const [urlViews, setUrlViews] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (isGithub || urls.length === 0 || !markeeAddress) return
+    fetch(`/api/views?address=${markeeAddress}&urls=${urls.map(encodeURIComponent).join('||')}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: Record<string, number> | null) => { if (d) setUrlViews(d) })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGithub, urls.join('||'), markeeAddress])
 
-    const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
-    const fileLabel = (f: LinkedFile) => f.filePath.split('/').pop() ?? f.filePath
-
+  if (!entry) {
     return (
-      <DropdownLinks
-        items={files.map(f => f.repoFullName + '::' + f.filePath)}
-        renderItem={() => (
-          <a href={fileUrl(files[0])} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}`, minWidth: 0, overflow: 'hidden' }}
-            title={`${files[0].repoFullName}/${files[0].filePath}`}
-          >
-            <span style={{ flexShrink: 0, display: 'flex' }}><GithubIcon size={12} color={TEXT2} /></span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {files[0].repoName}/{fileLabel(files[0])}
-            </span>
-          </a>
-        )}
-        renderDropdownItem={(_, idx) => {
-          const f = files[idx]
-          return (
-            <a key={`${f.repoFullName}/${f.filePath}`} href={fileUrl(f)} target="_blank" rel="noopener noreferrer"
-              style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, padding: '7px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 7, transition: 'background 100ms, color 100ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-            >
-              <GithubIcon size={12} color="currentColor" />
-              <span style={{ fontFamily: MONO }}>{f.repoName}/{f.filePath}</span>
-            </a>
-          )
-        }}
-      />
+      <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' as const }}>
+        No Verified URLs
+      </span>
     )
   }
 
-  const urls = entry.verifiedUrls?.length ? entry.verifiedUrls : entry.verifiedUrl ? [entry.verifiedUrl] : []
-  if (urls.length === 0) return NO_INTEGRATIONS
-
+  const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
   const clean = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/$/, '')
   const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
-  const host = (u: string) => { try { return new URL(href(u)).hostname } catch { return clean(u) } }
+  const host = (u: string) => getLogoDomain(u) ?? clean(u)
+
+  const sortedFiles = [...files].sort((a, b) => (repoTraffic[b.repoFullName] ?? 0) - (repoTraffic[a.repoFullName] ?? 0))
+  const sortedUrls = [...urls].sort((a, b) => (urlViews[b] ?? 0) - (urlViews[a] ?? 0))
+  const hasAny = isGithub ? sortedFiles.length > 0 : sortedUrls.length > 0
+  const extra = (isGithub ? sortedFiles.length : sortedUrls.length) - 1
+  const topFile = sortedFiles[0]
+  const topUrl = sortedUrls[0]
+  const topDomain = topUrl ? getLogoDomain(topUrl) : null
+
+  const dropdownRowStyle: React.CSSProperties = {
+    color: TEXT2, textDecoration: 'none', fontSize: 12, padding: '7px 10px', borderRadius: 7,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+    transition: 'background 100ms, color 100ms',
+  }
+  const hoverIn = (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }
+  const hoverOut = (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }
 
   return (
-    <DropdownLinks
-      items={urls}
-      renderItem={(u) => (
-        <a href={href(u)} target="_blank" rel="noopener noreferrer"
-          style={{ display: 'block', fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          title={clean(u)}
-        >
-          {host(u)}
-        </a>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <span style={{ minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
+        {hasAny ? (
+          isGithub ? (
+            <a href={fileUrl(topFile)} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', minWidth: 0, overflow: 'hidden' }}
+              title={`${topFile.repoFullName}/${topFile.filePath}`}
+            >
+              <GithubIcon size={16} color={TEXT2} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{topFile.repoOwner}</span>
+            </a>
+          ) : (
+            <a href={href(topUrl)} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 7, fontFamily: MONO, fontSize: 13, color: TEXT, textDecoration: 'none', minWidth: 0, overflow: 'hidden' }}
+              title={clean(topUrl)}
+            >
+              {topDomain ? <SiteLogo domain={topDomain} /> : <span style={{ flexShrink: 0 }}>🪧</span>}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{host(topUrl)}</span>
+            </a>
+          )
+        ) : (
+          <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>No Verified URLs</span>
+        )}
+      </span>
+
+      {extra > 0 && (
+        <span style={{ flexShrink: 0, background: 'rgba(138,143,191,0.15)', border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 99, padding: '2px 7px', fontFamily: MONO, fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
+          +{extra}
+        </span>
       )}
-      renderDropdownItem={(u, idx) => (
-        <a key={idx} href={href(u)} target="_blank" rel="noopener noreferrer"
-          style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, padding: '7px 10px', borderRadius: 7, display: 'block', fontFamily: MONO, transition: 'background 100ms, color 100ms' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-        >{clean(u)}</a>
+
+      <button
+        onClick={() => setOpen(v => !v)}
+        aria-label={open ? 'Hide integrations' : 'Show all integrations'}
+        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer' }}
+      >
+        <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+      </button>
+
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 260, zIndex: 30, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {onAddToSite && (
+            <button
+              onClick={() => { setOpen(false); onAddToSite() }}
+              style={{ color: PINK, background: `${PINK}14`, border: `1px solid rgba(248,151,254,0.3)`, textDecoration: 'none', fontSize: 12, fontWeight: 700, fontFamily: MONO, padding: '8px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: hasAny ? 6 : 0 }}
+            >
+              + Add to Your Site
+            </button>
+          )}
+          {isGithub ? sortedFiles.map(f => (
+            <a key={`${f.repoFullName}/${f.filePath}`} href={fileUrl(f)} target="_blank" rel="noopener noreferrer"
+              style={dropdownRowStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, overflow: 'hidden' }}>
+                <GithubIcon size={12} color="currentColor" />
+                <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.repoName}/{f.filePath}</span>
+              </span>
+              <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
+                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(repoTraffic[f.repoFullName] ?? 0)}
+              </span>
+            </a>
+          )) : sortedUrls.map(u => (
+            <a key={u} href={href(u)} target="_blank" rel="noopener noreferrer"
+              style={dropdownRowStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
+            >
+              <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(u)}</span>
+              <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
+                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(urlViews[u] ?? 0)}
+              </span>
+            </a>
+          ))}
+        </div>
       )}
-    />
+    </div>
   )
 }
 
 // ── Metrics bar ───────────────────────────────────────────────────────────────
-export function MetricValue({ text, color = TEXT }: { text: string; color?: string }) {
+export function MetricValue({ text, color = TEXT, title }: { text: string; color?: string; title?: string }) {
   return (
-    <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>{text}</span>
+    <span title={title} style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums', cursor: title ? 'default' : undefined }}>{text}</span>
   )
 }
 
-export function MetricsBar({ address, entry, strategy, topViews, markeeCount, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topViews, viewsLoading, markeeCount, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
-  strategy: 'fixed' | 'streaming'
+  topMarkeeAddress?: string
+  onAddToSite?: () => void
   topViews: number
+  viewsLoading?: boolean
   markeeCount: number
   totalLabel: string
   totalNode: React.ReactNode
@@ -262,10 +327,9 @@ export function MetricsBar({ address, entry, strategy, topViews, markeeCount, to
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Pricing Strategy', <StrategyBadge strategy={strategy} size="md" />)}
-      {cell('Served on', <ServedOnCell entry={entry} />)}
+      {cell('Served on', <ServedOnCell entry={entry} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
       {cell(totalLabel, totalNode)}
-      {cell('Total views', <MetricValue text={formatViews(topViews)} color={BLUE} />)}
+      {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(topViews)} color={BLUE} />)}
       {cell(messagesLabel, <MetricValue text={markeeCount.toLocaleString()} />)}
       {cell('Contract address',
         <a href={getAddressUrl(CANONICAL_CHAIN_ID, address)} target="_blank" rel="noopener noreferrer"
@@ -278,22 +342,24 @@ export function MetricsBar({ address, entry, strategy, topViews, markeeCount, to
 }
 
 // ── Featured top-message card ─────────────────────────────────────────────────
-export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress, views, pillLabel, onClick }: {
+export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress, views, viewsLoading, pillLabel, onClick, strategy }: {
   markeeAddress: string
   message: string
   displayName?: string
   ownerAddress?: string
   views: number
+  viewsLoading?: boolean
   pillLabel?: string
   onClick: () => void
+  strategy: 'fixed' | 'streaming'
 }) {
   const [hover, setHover] = useState(false)
 
   return (
     <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase' as const }}>
-        <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, boxShadow: `0 0 12px ${PINK}` }} />
-        <span>Top Message</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, boxShadow: `0 0 12px ${PINK}`, flexShrink: 0 }} />
+        <StrategyBadge strategy={strategy} size="md" />
         <span style={{ flex: 1, height: 1, background: BORDER, marginLeft: 8 }} />
       </div>
 
@@ -317,7 +383,7 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
-              <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(views)}
+              <Eye size={10} style={{ opacity: 0.7 }} /> {viewsLoading ? <ViewsSpinner size={10} /> : formatViews(views)}
             </span>
           </div>
 
@@ -430,12 +496,15 @@ export function GitHubVerify({ address }: { address: string }) {
   const [viewsLoading,  setViewsLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/api/github/me')
+    // no-store: this is the sole "am I connected" gate, checked on every mount -- including right
+    // after the OAuth redirect back. A cached "connected: false" from before the user authenticated
+    // would otherwise look identical to GitHub never actually connecting.
+    fetch('/api/github/me', { cache: 'no-store' })
       .then(r => r.json())
       .then((me: { connected: boolean; login?: string }) => {
         if (!me.connected) { setStep('not-connected'); return }
         setLogin(me.login ?? null)
-        return fetch('/api/github/my-repos').then(r => r.json())
+        return fetch('/api/github/my-repos', { cache: 'no-store' }).then(r => r.json())
       })
       .then((data?: { repos?: Array<{ fullName: string; name: string }> }) => {
         if (data?.repos) { setRepos(data.repos); setStep('ready') }
@@ -467,6 +536,7 @@ export function GitHubVerify({ address }: { address: string }) {
       if (data.success) {
         setResult({ verified: data.verified, filePath: selectedFile })
         setStep('done')
+        if (data.verified) void handleSync()
       } else {
         setError(data.error ?? 'Registration failed')
         setStep('ready')
@@ -499,8 +569,13 @@ export function GitHubVerify({ address }: { address: string }) {
         body: JSON.stringify({ leaderboardAddress: address, repoFullName: selectedRepo, filePath: selectedFile }),
       })
       const data = await res.json()
-      if (data.success) setResult({ verified: data.verified, filePath: selectedFile })
-      else setError(data.error ?? 'Check failed')
+      if (data.success) {
+        setResult({ verified: data.verified, filePath: selectedFile })
+        if (data.verified) void handleSync()
+        else setError(`Not found yet — make sure the delimiter is committed to ${selectedFile} on the default branch.`)
+      } else {
+        setError(data.error ?? 'Check failed')
+      }
     } catch {
       setError('Network error')
     } finally {
@@ -621,42 +696,52 @@ export function GitHubVerify({ address }: { address: string }) {
         </span>
       )}
 
-      {/* Re-check / sync / views — everything you'd otherwise have to leave this modal to do */}
+      {/* Before verification: just Check now, so the user stays focused on getting the delimiter
+          committed. Sync/Views (and syncing itself) only make sense once it's actually found --
+          Check now auto-syncs the moment verification succeeds, so this is really a 2-click flow
+          (check, then optionally check views) rather than 3. */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-        <button
-          onClick={handleRecheck}
-          disabled={rechecking}
-          style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: rechecking ? 'wait' : 'pointer', opacity: rechecking ? 0.6 : 1 }}
-        >
-          {rechecking ? 'Checking…' : 'Check now'}
-        </button>
-        <button
-          onClick={handleSync}
-          disabled={syncStatus === 'loading'}
-          style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: syncStatus === 'loading' ? 'wait' : 'pointer', opacity: syncStatus === 'loading' ? 0.6 : 1 }}
-        >
-          {syncStatus === 'loading' ? 'Syncing…' : 'Sync message'}
-        </button>
-        <button
-          onClick={handleRefreshViews}
-          disabled={viewsLoading}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: viewsLoading ? 'wait' : 'pointer', opacity: viewsLoading ? 0.6 : 1 }}
-        >
-          <Eye size={11} />
-          {viewsLoading ? 'Loading…' : views !== null ? `${views.toLocaleString()} views` : 'Check views'}
-        </button>
+        {!result.verified ? (
+          <button
+            onClick={handleRecheck}
+            disabled={rechecking}
+            style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: rechecking ? 'wait' : 'pointer', opacity: rechecking ? 0.6 : 1 }}
+          >
+            {rechecking ? 'Checking…' : 'Check now'}
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={handleSync}
+              disabled={syncStatus === 'loading'}
+              style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: syncStatus === 'loading' ? 'wait' : 'pointer', opacity: syncStatus === 'loading' ? 0.6 : 1 }}
+            >
+              {syncStatus === 'loading' ? 'Syncing…' : 'Sync message'}
+            </button>
+            <button
+              onClick={handleRefreshViews}
+              disabled={viewsLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: viewsLoading ? 'wait' : 'pointer', opacity: viewsLoading ? 0.6 : 1 }}
+            >
+              <Eye size={11} />
+              {viewsLoading ? 'Loading…' : views !== null ? `${views.toLocaleString()} views` : 'Check views'}
+            </button>
+          </>
+        )}
       </div>
       {syncMessage && (
         <span style={{ fontFamily: MONO, fontSize: 11, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>{syncMessage}</span>
       )}
       {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
 
-      <button
-        onClick={handleAddAnotherFile}
-        style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', padding: 0, textAlign: 'left', alignSelf: 'flex-start' }}
-      >
-        + Add another file in this repo
-      </button>
+      {result.verified && (
+        <button
+          onClick={handleAddAnotherFile}
+          style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', padding: 0, textAlign: 'left', alignSelf: 'flex-start' }}
+        >
+          + Add another file in this repo
+        </button>
+      )}
     </div>
   )
 

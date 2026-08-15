@@ -239,7 +239,7 @@ export default function Owners() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
-      <Header activePage="own" useRegularLinks />
+      <Header activePage="own" />
       {/* Hero */}
       <section style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(123,106,244,0.10), rgba(6,10,42,0))' }}>
         <div className="starfield-bg" />

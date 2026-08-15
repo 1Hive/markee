@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
+import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import type { Markee } from '@/types'
 
 export interface ExpandableMarkeeRowSlot {
@@ -31,6 +32,7 @@ interface ExpandableMarkeeRowProps {
   formatFunds: (wei: bigint) => string
   leaderboardAddress: `0x${string}`
   viewCount?: number
+  viewsLoading?: boolean
   featured?: boolean
   onAddFunds?: () => void
   actionLabel?: string
@@ -42,6 +44,7 @@ type TxHistoryEvent =
   | {
       id: string
       kind: 'funds'
+      subKind: 'created' | 'migrated' | 'added'
       amount: bigint
       newTotal: bigint
       actor: string
@@ -87,6 +90,7 @@ type ApiHistoryEvent =
   | {
       id: string
       kind: 'funds'
+      subKind: 'created' | 'migrated' | 'added'
       amount: string
       newTotal: string
       actor: string
@@ -182,6 +186,7 @@ export function ExpandableMarkeeRow({
   formatFunds,
   leaderboardAddress,
   viewCount,
+  viewsLoading = false,
   featured = false,
   onAddFunds,
   actionLabel = 'Add Funds',
@@ -316,7 +321,7 @@ export function ExpandableMarkeeRow({
 
         <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
           <Eye size={10} style={{ opacity: 0.7 }} />
-          {viewCount !== undefined && viewCount > 0 ? viewCount.toLocaleString() : '-'}
+          {viewsLoading ? <ViewsSpinner size={9} /> : viewCount !== undefined && viewCount > 0 ? viewCount.toLocaleString() : '-'}
         </span>
 
         <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
@@ -414,20 +419,28 @@ export function ExpandableMarkeeRow({
                   <div className="min-w-0 flex-1">
                     {event.kind === 'funds' ? (
                       <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-[#EDEEFF]">
+                          {event.subKind === 'created' ? 'Bought Message' : event.subKind === 'migrated' ? 'Migrated In' : 'Added Funds'}
+                        </span>
                         <span className="text-sm font-semibold text-[#7C9CFF]">
                           +{formatEther(event.amount)} ETH
                         </span>
-                        <span className="text-xs text-[#8A8FBF]">
-                          to {formatEther(event.newTotal)} ETH total
-                        </span>
+                        {event.subKind === 'added' && (
+                          <span className="text-xs text-[#8A8FBF]">
+                            to {formatEther(event.newTotal)} ETH total
+                          </span>
+                        )}
                       </div>
                     ) : event.kind === 'message' ? (
-                      <p className="text-sm text-[#EDEEFF] font-mono break-words">
-                        {event.message || '(empty message)'}
-                      </p>
+                      <div>
+                        <span className="text-sm font-semibold text-[#EDEEFF]">Changed Message</span>
+                        <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">
+                          {event.message || '(empty message)'}
+                        </p>
+                      </div>
                     ) : (
                       <p className="text-sm text-[#EDEEFF]">
-                        Name changed to <span className="font-medium">{event.name || '(cleared)'}</span>
+                        <span className="font-semibold">Updated Name</span> to <span className="font-medium">{event.name || '(cleared)'}</span>
                       </p>
                     )}
                     {event.actor && (

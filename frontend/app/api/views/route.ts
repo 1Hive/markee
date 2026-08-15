@@ -15,6 +15,19 @@ function hashMessage(message: string): string {
   return createHash('md5').update(message.trim().toLowerCase()).digest('hex').slice(0, 8)
 }
 
+// Bare hostname, lowercased, no protocol/path/www — the key both the POST increment and the GET
+// per-URL lookup normalize to, so "https://Example.com/blog" and "example.com" count together.
+function normalizeHost(raw: string): string | null {
+  const trimmed = raw.trim().slice(0, 253) // longest valid hostname
+  if (!trimmed) return null
+  try {
+    const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`
+    return new URL(withProtocol).hostname.replace(/^www\./, '').toLowerCase() || null
+  } catch {
+    return null
+  }
+}
+
 function getClientIp(req: NextRequest): string {
   return (
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -55,6 +68,25 @@ export async function GET(req: NextRequest) {
     const result: Record<string, number> = {}
     messages.forEach((msg, i) => {
       result[msg] = counts[i] ?? 0
+    })
+    return NextResponse.json(result, { headers: corsHeaders(origin) })
+  }
+
+  // Per-URL view counts (which of a board's verified sites is actually getting traffic) —
+  // callers pass the exact verifiedUrls list, mirroring the `messages` param above.
+  const urlsParam = searchParams.get('urls')
+  if (singleAddress && urlsParam) {
+    const address = singleAddress.toLowerCase().trim()
+    const urls = urlsParam.split('||').filter(Boolean)
+    if (urls.length === 0) {
+      return NextResponse.json({}, { headers: corsHeaders(origin) })
+    }
+    const hosts = urls.map(u => normalizeHost(u))
+    const keys = hosts.map(h => h ? `views:url:${address}:${h}` : null)
+    const counts = await kv.mget<(number | null)[]>(...keys.map(k => k ?? 'views:url:__invalid__'))
+    const result: Record<string, number> = {}
+    urls.forEach((url, i) => {
+      result[url] = keys[i] ? (counts[i] ?? 0) : 0
     })
     return NextResponse.json(result, { headers: corsHeaders(origin) })
   }
@@ -104,6 +136,11 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
+  // Optional: which verified site the view came from, reported by that site's own view-tracking
+  // proxy (see lib/embedPrompt/fragments.ts). Same trust model as the rest of this endpoint --
+  // unauthenticated, self-reported -- so this is a "which of your own sites gets traffic" signal
+  // for the board owner, not a hardened analytics source.
+  const host = typeof body.url === 'string' ? normalizeHost(body.url) : null
 
   // Deliberately unguarded by environment: previews and local dev increment the same shared
   // counters as production, trading a little noise in the totals for staging that behaves real.
@@ -129,7 +166,8 @@ export async function POST(req: NextRequest) {
   pipeline.incr(`views:msg:${address}:${msgHash}`)
   pipeline.set(dedupeKey, '1', { ex: 3600 })
   pipeline.incr('views:network:total')
-  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number]>()
+  if (host) pipeline.incr(`views:url:${address}:${host}`)
+  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number, number?]>()
 
   return NextResponse.json(
     { totalViews, messageViews, counted: true },

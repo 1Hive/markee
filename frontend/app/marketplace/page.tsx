@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import Image from 'next/image'
 import { formatEther } from 'viem'
 import { Eye, Zap, Tag } from 'lucide-react'
@@ -16,8 +17,8 @@ import { StrategyBadge } from '@/components/StrategyBadge'
 import { SECONDS_IN_MONTH, STRATEGIES, type Strategy } from '@/lib/strategy'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
-import { useLeaderboardDetail } from '@/lib/contracts/useLeaderboardDetail'
-import { useStreamingMarkees } from '@/lib/contracts/useStreamingMarkees'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -56,6 +57,9 @@ interface Leaderboard {
   logoUrl?: string
   status?: string
   isLegacy?: boolean
+  // Populated for boards with no inherent platform tag (the shared "For Sale" factory) so Served On
+  // can be derived from actual verification instead of a creation-time tag.
+  linkedFiles?: { verified: boolean }[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,6 +81,7 @@ function servedOnLabel(lb: Leaderboard): string {
     const extra = (lb.verifiedUrls?.length ?? 1) - 1
     return extra > 0 ? `${domain} +${extra}` : domain
   }
+  if ((lb.linkedFiles ?? []).some(f => f.verified)) return 'GitHub'
   return lb.leaderboardName || lb.address.slice(0, 8) + '...'
 }
 
@@ -197,7 +202,11 @@ function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: n
 function ServedLogo({ lb }: { lb: Leaderboard }) {
   const [failed, setFailed] = useState(false)
   const box: React.CSSProperties = { width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${BORDER}`, overflow: 'hidden' }
-  if (lb.platform === 'github') {
+  // GitHub-platform boards always render this way; other-platform boards (e.g. a "For Sale" factory
+  // board, which carries no inherent platform tag) render it too once they have a verified linked
+  // file -- Served On is derived from actual verification, not a rigid creation-time tag.
+  const hasVerifiedGithubFile = (lb.linkedFiles ?? []).some(f => f.verified)
+  if (lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile)) {
     return <span style={{ ...box, background: 'rgba(237,238,255,0.08)' }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill={TEXT2}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
     </span>
@@ -313,7 +322,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
     >
       <HeroBackground />
       <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-        <a
+        <Link
           href={detailHref(lb)}
           onClick={e => {
             if (isStreaming) return
@@ -341,15 +350,17 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           </div>
 
           {/* message text */}
-          <div style={{
-            fontFamily: MONO, fontWeight: 700,
-            fontSize: 'clamp(19px, 2.6vw, 30px)', lineHeight: 1.12, letterSpacing: '-0.02em',
-            textWrap: 'balance' as any,
-            background: `linear-gradient(120deg, ${TEXT} 0%, ${PINK} 100%)`,
-            WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>
-            {lb.topMessage || lb.leaderboardName || '—'}
-          </div>
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address}>
+            <div style={{
+              fontFamily: MONO, fontWeight: 700,
+              fontSize: 'clamp(19px, 2.6vw, 30px)', lineHeight: 1.12, letterSpacing: '-0.02em',
+              textWrap: 'balance' as any,
+              background: `linear-gradient(120deg, ${TEXT} 0%, ${PINK} 100%)`,
+              WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            }}>
+              {lb.topMessage || lb.leaderboardName || '—'}
+            </div>
+          </ModeratedContent>
 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
@@ -375,7 +386,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           }}>
             {lb.strategy === 'streaming' ? `${monthlyRateLabel(lb, ethPrice)} to back` : `${priceLabel} to change`}
           </span>
-        </a>
+        </Link>
       </div>
       {!isStreaming && (
         <MarkeeSignModal
@@ -416,30 +427,15 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 // ── Dense table row ───────────────────────────────────────────────────────────
-function TableRow({ lb, views, viewsLoading, ethPrice, onBuy, onStream }: { lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null; onBuy: (opts?: RowOpenOpts) => void; onStream: (opts?: RowOpenOpts) => void }) {
+interface RowPosition { rank: number; address: string; fundedRaw: bigint | null }
+
+function TableRow({ lb, views, viewsLoading, ethPrice, position, onBuy, onStream }: {
+  lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null
+  position: RowPosition | null
+  onBuy: (opts?: RowOpenOpts) => void; onStream: (opts?: RowOpenOpts) => void
+}) {
   const [hover, setHover] = useState(false)
   const isStreaming = lb.strategy === 'streaming'
-  const { activeAddress } = useActiveWallet()
-
-  // Wallet's own standing on this board, if any. Reuses the same on-chain readers the buy modals
-  // already use (useLeaderboardDetail / useStreamingMarkees) rather than a bespoke ranking fetch.
-  // Fixed boards can have multiple messages funded by the same wallet -- getTopMarkees already
-  // orders by funds, so the first match is their highest-ranked one. Streaming boards cap a wallet
-  // at one backed message.
-  const { markees: fixedMarkees } = useLeaderboardDetail(!isStreaming && activeAddress ? lb.address : undefined)
-  const { markees: streamMarkees } = useStreamingMarkees(isStreaming && activeAddress ? (lb.address as `0x${string}`) : undefined)
-
-  const position = useMemo(() => {
-    if (!activeAddress) return null
-    const addr = activeAddress.toLowerCase()
-    if (isStreaming) {
-      const idx = streamMarkees.findIndex(m => m.owner.toLowerCase() === addr)
-      return idx === -1 ? null : { rank: idx + 1, address: streamMarkees[idx].address as string, fundedRaw: null as bigint | null }
-    }
-    const idx = fixedMarkees.findIndex(m => m.owner.toLowerCase() === addr)
-    return idx === -1 ? null : { rank: idx + 1, address: fixedMarkees[idx].address, fundedRaw: fixedMarkees[idx].totalFundsAdded }
-  }, [activeAddress, isStreaming, fixedMarkees, streamMarkees])
-
   const isTop = position?.rank === 1
 
   // Streaming totals tick up live from the API snapshot; fixed boards pass rate 0 → static base.
@@ -480,7 +476,7 @@ function TableRow({ lb, views, viewsLoading, ethPrice, onBuy, onStream }: { lb: 
   }
 
   return (
-    <a
+    <Link
       href={detailHref(lb)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -535,7 +531,7 @@ function TableRow({ lb, views, viewsLoading, ethPrice, onBuy, onStream }: { lb: 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
       </div>
-    </a>
+    </Link>
   )
 }
 
@@ -569,6 +565,23 @@ export default function MarketplacePage() {
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
   const [viewsLoading, setViewsLoading] = useState(true)
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
+
+  // Wallet's rank on every board, fetched in bulk (not per-row) so sorting by rank can happen before
+  // pagination -- see app/api/marketplace/positions.
+  const { activeAddress } = useActiveWallet()
+  const [positionsMap, setPositionsMap] = useState<Record<string, { rank: number; markeeAddress: string; fundedRaw?: string }>>({})
+  useEffect(() => {
+    if (!activeAddress) { setPositionsMap({}); return }
+    fetch(`/api/marketplace/positions?wallet=${activeAddress.toLowerCase()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.positions) setPositionsMap(data.positions) })
+      .catch(() => {})
+  }, [activeAddress])
+  const positionFor = useCallback((lb: Leaderboard): RowPosition | null => {
+    const p = positionsMap[lb.address.toLowerCase()]
+    if (!p) return null
+    return { rank: p.rank, address: p.markeeAddress, fundedRaw: p.fundedRaw !== undefined ? BigInt(p.fundedRaw) : null }
+  }, [positionsMap])
 
   const [buyModal, setBuyModal] = useState<({ lb: Leaderboard } & RowOpenOpts) | null>(null)
   const [streamCreate, setStreamCreate] = useState<({ lb: Leaderboard } & RowOpenOpts) | null>(null)
@@ -648,9 +661,15 @@ export default function MarketplacePage() {
         return (av - bv) * dir
       }
       if (sortKey === 'rank') {
-        const at = BigInt(a.totalFundsRaw || '0')
-        const bt = BigInt(b.totalFundsRaw || '0')
-        return (at > bt ? 1 : at < bt ? -1 : 0) * dir
+        // Unranked rows always sort last, in either direction. Among ranked rows, the default click
+        // (dir starts 'desc') shows the wallet's best rank first -- the inverse of the raw numeric
+        // order 'desc' means for every other column -- so it's inverted here.
+        const ar = positionsMap[a.address.toLowerCase()]?.rank
+        const br = positionsMap[b.address.toLowerCase()]?.rank
+        if (ar == null && br == null) return 0
+        if (ar == null) return 1
+        if (br == null) return -1
+        return (ar - br) * -dir
       }
       if (sortKey === 'price') {
         // Sort each row by the number its price button actually shows: streaming rows a monthly
@@ -666,7 +685,7 @@ export default function MarketplacePage() {
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
     })
-  }, [filtered, sortKey, sortDir, viewsMap])
+  }, [filtered, sortKey, sortDir, viewsMap, positionsMap])
 
   // Reset page on filter/sort changes
   useEffect(() => { setPage(0) }, [search, strategyFilter, sortKey, sortDir])
@@ -702,7 +721,7 @@ export default function MarketplacePage() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="marketplace" useRegularLinks />
+      <Header activePage="marketplace" />
 
       {/* ── Featured hero ── */}
       {featured && <FeaturedHero lb={featured} views={featuredViews} viewsLoading={viewsLoading} ethPrice={ethPrice} />}
@@ -726,7 +745,7 @@ export default function MarketplacePage() {
               Find and buy messages from any Markee on the internet.
             </p>
           </div>
-          <a
+          <Link
             href="/raise-funding"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
@@ -738,7 +757,7 @@ export default function MarketplacePage() {
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = TEXT2; (e.currentTarget as HTMLElement).style.borderColor = BORDER }}
           >
             Create Your Own Markee →
-          </a>
+          </Link>
         </div>
 
         {/* filters */}
@@ -817,6 +836,7 @@ export default function MarketplacePage() {
                 views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
                 viewsLoading={viewsLoading}
                 ethPrice={ethPrice}
+                position={positionFor(lb)}
                 onBuy={(opts) => setBuyModal({ lb, ...opts })}
                 onStream={(opts) => setStreamCreate({ lb, ...opts })}
               />

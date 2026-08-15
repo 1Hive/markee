@@ -96,6 +96,14 @@ const inputStyle = {
   fontFamily: MONO, fontSize: 14.5, outline: 'none',
 }
 
+// The message field is the emphasized input now (was the rate card) — same glow RateCard used to
+// carry, moved here so attention lands on what you're saying before what you're paying.
+const messageBoxStyle = {
+  ...inputStyle,
+  border: `1.5px solid ${PINK}`,
+  boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+}
+
 // ── Rate card ────────────────────────────────────────────────────────────────
 // Matches AmountCard's exact chrome, with ETH/mo unit plus the two streaming-specific pieces kept
 // from the old RatePriceCard: the 1/2/3-month duration pills and the "X.XXXX ETH total" line.
@@ -130,8 +138,8 @@ function RateCard({
   } as const)
   return (
     <div style={{
-      border: `1.5px solid ${PINK}`, borderRadius: 12, padding: '12px 16px',
-      background: BG, boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+      border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 16px',
+      background: BG,
     }}>
       {/* Line 1: monthly rate (left) / presets (right) */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -656,9 +664,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)); if (error) setError(null) }}
                       placeholder={`Your message here... (${maxLen} max)`}
                       rows={2}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={busy}
                     />
                   </div>

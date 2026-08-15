@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { Eye } from 'lucide-react'
 import { formatEther, parseEther, type Address, type Hex } from 'viem'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
@@ -11,6 +12,7 @@ import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { ManageStreamModal } from '@/components/modals/ManageStreamModal'
 import { ClaimModal } from '@/components/modals/ClaimModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
+import { EmbedModal } from '@/components/modals/EmbedModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -23,6 +25,7 @@ import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
+import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
   formatViews, fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
@@ -71,6 +74,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const [createOpen, setCreateOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
+  const [embedOpen, setEmbedOpen] = useState(false)
 
   // Routes to the Fund sub-view for a message you don't yet back, or Manage for the one you do.
   const openSign = (m: StreamingMarkee, view: 'fund' | 'manage') => {
@@ -107,9 +111,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   // ── Views ───────────────────────────────────────────────────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
+  const [viewsFetching, setViewsFetching] = useState(true)
+  const viewsLoading = isLoading || viewsFetching
   const markeeAddrKey = markees.map(m => m.address.toLowerCase()).join(',')
   useEffect(() => {
-    if (!markeeAddrKey) return
+    if (!markeeAddrKey) { setViewsFetching(false); return }
     fetch(`/api/views?addresses=${markeeAddrKey}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -121,6 +127,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         setViewsMap(map)
       })
       .catch(() => {})
+      .finally(() => setViewsFetching(false))
   }, [markeeAddrKey])
 
   // Track + increment a view for the top message, mirroring the fixed reader. The POST both
@@ -149,19 +156,21 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const isBoardAdmin = !!address && !!meta.admin && address.toLowerCase() === meta.admin.toLowerCase()
 
+  const streamedEthLabel = `${streamedEth.toFixed(6)} ETH`
   const totalStreamedNode = (
     <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
       <span style={{ width: 8, height: 8, borderRadius: 99, background: GREEN, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-      <MetricValue text={`${streamedEth.toFixed(6)} ETH`} color={GREEN} />
-      {ethPrice && streamedEth > 0 ? (
-        <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>≈ {formatUsd(streamedEth * ethPrice)}</span>
-      ) : null}
+      <MetricValue
+        text={ethPrice ? formatUsd(streamedEth * ethPrice) : streamedEthLabel}
+        color={GREEN}
+        title={ethPrice ? streamedEthLabel : undefined}
+      />
     </span>
   )
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="marketplace" useRegularLinks />
+      <Header activePage="marketplace" />
 
       {isLoading ? (
         <BoardDetailSkeleton />
@@ -182,7 +191,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
             </button>
           )}
           <div style={{ marginTop: 20 }}>
-            <a href="/account" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Your Dashboard</a>
+            <Link href="/account" style={{ color: MUTED, fontSize: 14, textDecoration: 'none', fontFamily: MONO }}>← Back to Your Dashboard</Link>
           </div>
         </section>
       ) : (
@@ -199,19 +208,23 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               displayName={topMarkee.name || undefined}
               ownerAddress={topMarkee.owner}
               views={topViews}
+              viewsLoading={viewsLoading}
               pillLabel={canStream ? `${formatRate(topMarkee.rate)} to back` : undefined}
               onClick={() => canStream && openSign(topMarkee, backedMarkee && backedMarkee.toLowerCase() === topMarkee.address.toLowerCase() ? 'manage' : 'fund')}
+              strategy="streaming"
             />
             <div style={{ height: 28 }} />
             <MetricsBar
               address={board}
               entry={ecoEntry}
-              strategy="streaming"
               topViews={topViews}
+              viewsLoading={viewsLoading}
               markeeCount={messageCount}
               totalLabel="Total streamed"
               totalNode={totalStreamedNode}
               messagesLabel="Messages"
+              topMarkeeAddress={topMarkee.address}
+              onAddToSite={() => setEmbedOpen(true)}
             />
           </section>
 
@@ -269,6 +282,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                       rank={i + 1}
                       featured={i === 0}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
+                      viewsLoading={viewsLoading}
                       isBackedByYou={!!backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase()}
                       onStream={canStream ? () => openSign(m, backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase() ? 'manage' : 'fund') : undefined}
                     />
@@ -290,14 +304,14 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                 Add a New Message
               </button>
             )}
-            <a
+            <Link
               href="/create-a-markee"
               style={{ display: 'inline-flex', alignItems: 'center', background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '13px 24px', fontWeight: 600, fontSize: 15, fontFamily: MONO, textDecoration: 'none', letterSpacing: 0.3, transition: 'border-color 120ms, color 120ms' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
             >
               Create Your Own Markee
-            </a>
+            </Link>
           </section>
 
           {isBoardAdmin && <BoardAdminPanel board={board} meta={meta} onUpdated={refetch} />}
@@ -345,6 +359,12 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         onClose={() => setCreateOpen(false)}
         onSuccess={() => { setCreateOpen(false); refetchAll() }}
       />
+
+      <EmbedModal
+        isOpen={embedOpen}
+        onClose={() => setEmbedOpen(false)}
+        leaderboard={{ address: board, name: meta?.name, strategy: 'streaming' }}
+      />
     </div>
   )
 }
@@ -362,11 +382,12 @@ function posBtn(primary: boolean): React.CSSProperties {
 
 // ── Leaderboard row ────────────────────────────────────────────────────────────
 
-function StreamingRow({ markee, rank, featured, viewCount, isBackedByYou, onStream }: {
+function StreamingRow({ markee, rank, featured, viewCount, viewsLoading, isBackedByYou, onStream }: {
   markee: StreamingMarkee
   rank: number
   featured: boolean
   viewCount: number
+  viewsLoading?: boolean
   isBackedByYou: boolean
   onStream?: () => void
 }) {
@@ -422,7 +443,7 @@ function StreamingRow({ markee, rank, featured, viewCount, isBackedByYou, onStre
 
         <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
           <Eye size={10} style={{ opacity: 0.7 }} />
-          {viewCount > 0 ? formatViews(viewCount) : '-'}
+          {viewsLoading ? <ViewsSpinner size={9} /> : viewCount > 0 ? formatViews(viewCount) : '-'}
         </span>
 
         <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>

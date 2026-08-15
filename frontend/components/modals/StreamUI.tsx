@@ -34,11 +34,15 @@ export function btnStyle(primary: boolean, disabled = false): React.CSSPropertie
 }
 
 // ── Input helpers ──────────────────────────────────────────────────────────────
-// Keeps only digits and the first decimal point, so ".1" stays typable.
+// Keeps only digits and the first decimal point (so ".1" stays typable), capped at 9 digits on
+// each side of the decimal — matches MarkeeSignModal's sanitizeAmountInput.
 export function sanitizeDecimalInput(raw: string): string {
-  const cleaned = raw.replace(/[^0-9.]/g, '')
+  let cleaned = raw.replace(/[^0-9.]/g, '')
   const i = cleaned.indexOf('.')
-  return i === -1 ? cleaned : cleaned.slice(0, i + 1) + cleaned.slice(i + 1).replace(/\./g, '')
+  if (i !== -1) cleaned = cleaned.slice(0, i + 1) + cleaned.slice(i + 1).replace(/\./g, '')
+  const [intPart, fracPart] = cleaned.split('.')
+  const cappedInt = (intPart ?? '').slice(0, 9)
+  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
 // Parses what the sanitizer lets through, including ".1" and "1.", to wei. 0n on anything invalid.

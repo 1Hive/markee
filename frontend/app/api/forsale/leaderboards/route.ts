@@ -1,30 +1,34 @@
-// app/api/openinternet/leaderboards/route.ts
+// app/api/forsale/leaderboards/route.ts
 //
-// Returns a unified list of "website" leaderboards:
-//   1. LeaderboardFactory contracts (OpenInternet factory) — fetched via RPC
-//   2. Legacy TopDawg partner strategy contracts — fetched via subgraph
+// Enumerates the shared "For Sale" LeaderboardFactory -- the vertical-agnostic factory all future
+// fixed-price creation goes through (mirrors how streaming/"For Rent" boards already aren't split by
+// platform). Since this factory bakes no per-board platform tag (unlike streaming's boardPlatform),
+// "Served On" for these boards is derived by the consumer from verification data (verifiedUrls /
+// linkedFiles), both fetched here per address so the response is self-contained.
 //
 // KV keys used:
-//   creator:oi:{address}   — creator address for factory leaderboards (permanent)
-//   oi:meta:{address}      — { logoUrl, siteUrl, verifiedUrl, status } for factory leaderboards
+//   creator:fs:{address}   — creator address for factory leaderboards (permanent)
+//   oi:meta:{address}      — { logoUrl, siteUrl, verifiedUrl, verifiedUrls, status } (shared KV
+//                             namespace with the OpenInternet route -- verification is address-based,
+//                             not factory-based)
+//   github:markee:{address} — linked GitHub files (via getLinkedFiles), same shared namespace
 
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
+import { FACTORIES } from '@/lib/contracts/addresses'
+import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
-const CACHE_KEY = 'cache:openinternet:leaderboards'
+const CACHE_KEY = 'cache:forsale:leaderboards'
 const CACHE_TTL = 60 // seconds
 
-const OI_FACTORY_ADDRESSES = [
-  '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c', // v1.3 — all OI leaderboards
-] as const
+const FOR_SALE_FACTORY_ADDRESS = FACTORIES.FOR_SALE
 
-// Scopes getLogs to just creation events instead of every log the factory has ever emitted
-// (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
+// Scopes getLogs to just creation events instead of every log the factory has ever emitted.
 const LEADERBOARD_CREATED_EVENT = parseAbiItem(
   'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
 )
@@ -36,43 +40,6 @@ const NO_CACHE = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-// ─── Hardcoded partner meta ───────────────────────────────────────────────────
-// These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
-// They live in the legacy OI factory but have no KV meta, so we hardcode
-// verified status here rather than requiring a one-time KV write.
-
-const PARTNER_META: Record<string, {
-  logoUrl: string | null
-  siteUrl: string
-  verifiedUrl: string
-  verifiedUrls: string[]
-  status: 'verified'
-}> = {
-  '0x0590b56430426a38d0fa065b839c10d542e75ccd': { // Markee Cooperative (v1.3)
-    logoUrl: '/markee-logo.png',
-    siteUrl: 'https://markee.xyz',
-    verifiedUrl: 'https://markee.xyz',
-    verifiedUrls: ['https://markee.xyz'],
-    status: 'verified',
-  },
-  '0x2768bc6e90266248bd8bcf5401c36d8049cdf671': { // Gardens (v1.3)
-    logoUrl: '/partners/gardens.png',
-    siteUrl: 'https://app.gardens.fund',
-    verifiedUrl: 'https://app.gardens.fund',
-    verifiedUrls: ['https://app.gardens.fund'],
-    status: 'verified',
-  },
-  '0xdf4769a9593cb8e40d0409def2645651412a8a97': { // Clawchemy (v1.3)
-    logoUrl: '/partners/clawchemy.png',
-    siteUrl: 'https://clawchemy.xyz',
-    verifiedUrl: 'https://clawchemy.xyz',
-    verifiedUrls: ['https://clawchemy.xyz'],
-    status: 'verified',
-  },
-}
-
-// ─── Client ───────────────────────────────────────────────────────────────────
-
 function getClient() {
   return createPublicClient({
     chain: base,
@@ -83,23 +50,23 @@ function getClient() {
   })
 }
 
-// ─── Creator resolution for factory leaderboards ──────────────────────────────
-
 async function resolveCreators(
   client: ReturnType<typeof getClient>,
   addresses: readonly `0x${string}`[],
 ): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:oi:${a.toLowerCase()}`)
+  const keys = addresses.map(a => `creator:fs:${a.toLowerCase()}`)
   const cached = await kv.mget<(string | null)[]>(...keys)
 
   const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
   if (missingIndices.length === 0) return cached
 
   try {
-    const logsPerFactory = await Promise.all(
-      OI_FACTORY_ADDRESSES.map(addr => client.getLogs({ address: addr, event: LEADERBOARD_CREATED_EVENT, fromBlock: 0n, toBlock: 'latest' }))
-    )
-    const logs = logsPerFactory.flat()
+    const logs = await client.getLogs({
+      address: FOR_SALE_FACTORY_ADDRESS,
+      event: LEADERBOARD_CREATED_EVENT,
+      fromBlock: 0n,
+      toBlock: 'latest',
+    })
 
     const lbToTxHash = new Map<string, `0x${string}`>()
     for (const log of logs) {
@@ -123,13 +90,11 @@ async function resolveCreators(
       }
     }))
   } catch (e: any) {
-    console.error('[openinternet/leaderboards] creator lookup error:', e.message)
+    console.error('[forsale/leaderboards] creator lookup error:', e.message)
   }
 
   return cached
 }
-
-// ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: NO_CACHE })
@@ -156,13 +121,12 @@ export async function GET(request: Request) {
     }
 
     const addresses = await client.readContract({
-      address: OI_FACTORY_ADDRESSES[0],
+      address: FOR_SALE_FACTORY_ADDRESS,
       abi: LeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
 
-    // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },
       { address: addr, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const },
@@ -176,7 +140,6 @@ export async function GET(request: Request) {
       ? await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
       : []
 
-    // Top markee addresses for fetching messages
     const topMarkeeAddresses: (`0x${string}` | null)[] = addresses.map((_, i) => {
       const topResult = metaResults[i * 6 + 5]?.result as [string[], bigint[]] | undefined
       return (topResult?.[0]?.[0] ?? null) as `0x${string}` | null
@@ -190,9 +153,8 @@ export async function GET(request: Request) {
       ] : []
     )
 
-    // Resolve creators, fetch markee messages, and read KV meta in parallel
     const metaKeys = addresses.map(a => `oi:meta:${a.toLowerCase()}`)
-    const [markeeResults, creators, kvMetas] = await Promise.all([
+    const [markeeResults, creators, kvMetas, linkedFilesPerAddr] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
@@ -200,11 +162,12 @@ export async function GET(request: Request) {
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),
+      Promise.all(addresses.map(addr => getLinkedFiles(addr))),
     ])
 
     let markeeCallIndex = 0
 
-    const allLeaderboards = addresses.map((addr, i) => {
+    const leaderboards = addresses.map((addr, i) => {
       const b = i * 6
       const name          = (metaResults[b]?.result as string) ?? addr
       const totalFunds    = (metaResults[b + 1]?.result as bigint) ?? 0n
@@ -224,9 +187,9 @@ export async function GET(request: Request) {
         markeeCallIndex += 3
       }
 
-      const kvMeta = kvMetas[i]
-      const partnerMeta = PARTNER_META[addr.toLowerCase()]
-      const meta = partnerMeta ?? kvMeta
+      const meta = kvMetas[i]
+      const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
+
       return {
         address: addr,
         name,
@@ -249,26 +212,20 @@ export async function GET(request: Request) {
         verifiedUrl: meta?.verifiedUrl ?? null,
         verifiedUrls: Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [],
         status: (meta?.status as 'pending' | 'verified') ?? 'pending',
+        linkedFiles,
+        // Signals to /account and marketplace that this board needs a verified integration to count
+        // as Active -- unlike the legacy per-vertical factories, there's no migration history to
+        // exempt here since everything from this factory is a genuinely new creation.
+        verificationGated: true,
       }
     })
-
-    // Deduplicate: concurrent migration runs may have created identical copies.
-    // Among entries sharing the same (name, admin), keep the first (canonical).
-    const dedupeKey = new Set<string>()
-    const leaderboards = allLeaderboards.filter(l => {
-      const k = `${l.name.toLowerCase().trim()}|${l.admin.toLowerCase()}`
-      if (dedupeKey.has(k)) return false
-      dedupeKey.add(k)
-      return true
-    })
-
-    let totalFundsRaw = 0n
-    for (const l of leaderboards) totalFundsRaw += BigInt(l.totalFundsRaw)
 
     leaderboards.sort((a, b) => {
       const diff = BigInt(b.totalFundsRaw) - BigInt(a.totalFundsRaw)
       return diff > 0n ? 1 : diff < 0n ? -1 : 0
     })
+
+    const totalFundsRaw = leaderboards.reduce((sum, l) => sum + BigInt(l.totalFundsRaw), 0n)
 
     const payload = {
       leaderboards,
@@ -277,7 +234,7 @@ export async function GET(request: Request) {
     await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
-    console.error('[openinternet/leaderboards] error:', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('[forsale/leaderboards] error:', err)
+    return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
   }
 }

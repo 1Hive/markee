@@ -53,17 +53,19 @@ export async function GET(request: Request) {
     // Add bypass header so internal fetches work on protected preview deployments
     const headers = internalHeaders()
 
-    // Fetch all three platform APIs in parallel
-    const [oiRes, githubRes, sfRes] = await Promise.all([
+    // Fetch all platform APIs in parallel
+    const [oiRes, githubRes, sfRes, fsRes] = await Promise.all([
       fetch(`${origin}/api/openinternet/leaderboards${bustParam}`, { cache: 'no-store', headers }),
       fetch(`${origin}/api/github/leaderboards${bustParam}`, { cache: 'no-store', headers }),
       fetch(`${origin}/api/superfluid/leaderboards${bustParam}`, { cache: 'no-store', headers }),
+      fetch(`${origin}/api/forsale/leaderboards${bustParam}`, { cache: 'no-store', headers }),
     ])
 
-    const [oiData, githubData, sfData] = await Promise.all([
+    const [oiData, githubData, sfData, fsData] = await Promise.all([
       oiRes.ok ? oiRes.json() : { leaderboards: [] },
       githubRes.ok ? githubRes.json() : { leaderboards: [] },
       sfRes.ok ? sfRes.json() : { leaderboards: [] },
+      fsRes.ok ? fsRes.json() : { leaderboards: [] },
     ])
 
     // Streaming boards (vertical-agnostic) are already tagged with their platform + strategy by the
@@ -112,10 +114,14 @@ export async function GET(request: Request) {
 
     const streamLeaderboards = (streamData.leaderboards ?? [])
 
+    // Already fully tagged by /api/forsale/leaderboards (platform: 'website', verificationGated: true,
+    // verifiedUrls + linkedFiles both populated) -- no per-entry re-tagging needed here.
+    const forsaleLeaderboards = (fsData.leaderboards ?? [])
+
     // Every row carries a strategy (fixed-price unless the streaming API tagged it) and an
     // effectiveRateRaw (wei/sec) yardstick: streaming reads it on-chain, fixed-price imputes it from
     // cumulative funds so both strategies rank on one axis.
-    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards, ...streamLeaderboards]
+    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards, ...streamLeaderboards, ...forsaleLeaderboards]
       .map((l: any) => {
         const strategy = l.strategy === 'streaming' ? 'streaming' : 'fixed'
         const effectiveRateRaw = strategy === 'streaming'
@@ -153,6 +159,7 @@ export async function GET(request: Request) {
         website: oiLeaderboards.length,
         github: githubLeaderboards.length,
         superfluid: sfLeaderboards.length,
+        forsale: forsaleLeaderboards.length,
       },
     }
 

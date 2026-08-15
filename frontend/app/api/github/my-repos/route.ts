@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 
+export const dynamic = 'force-dynamic'
+
 interface GitHubRepo {
   id: number
   full_name: string
