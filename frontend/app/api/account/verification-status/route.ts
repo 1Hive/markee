@@ -22,7 +22,7 @@ interface OiMeta {
 export async function GET(request: NextRequest) {
   try {
     const raw = new URL(request.url).searchParams.get('addresses') ?? ''
-    const addresses = [...new Set(raw.split(',').map(a => a.trim().toLowerCase()).filter(Boolean))]
+    const addresses = [...new Set(raw.split(',').map(a => a.trim().toLowerCase()).filter(Boolean))].slice(0, 200)
     if (addresses.length === 0) return NextResponse.json({}, { headers: NO_CACHE })
 
     const oiMetaKeys = addresses.map(a => `oi:meta:${a}`)

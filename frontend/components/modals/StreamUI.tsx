@@ -5,15 +5,8 @@ import { parseEther, formatEther } from 'viem'
 import { formatUsd } from '@/lib/utils'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
-export const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-export const BG = '#060A2A'
-export const BG2 = '#0A0F3D'
-export const PINK = '#F897FE'
-export const BLUE = '#7C9CFF'
-export const BORDER = 'rgba(138,143,191,0.2)'
-export const MUTED = '#8A8FBF'
-export const TEXT = '#EDEEFF'
-export const TEXT2 = '#B8B6D9'
+import { MONO, BG, BG2, PINK, BLUE, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
+export { MONO, BG, BG2, PINK, BLUE, BORDER, MUTED, TEXT, TEXT2 }
 export const GOLD = '#FFD700'
 
 export const inputStyle = {

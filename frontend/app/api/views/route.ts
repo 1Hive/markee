@@ -82,11 +82,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({}, { headers: corsHeaders(origin) })
     }
     const hosts = urls.map(u => normalizeHost(u))
-    const keys = hosts.map(h => h ? `views:url:${address}:${h}` : null)
-    const counts = await kv.mget<(number | null)[]>(...keys.map(k => k ?? 'views:url:__invalid__'))
+    const validIdx = hosts.map((h, i) => (h ? i : -1)).filter(i => i !== -1)
+    const validKeys = validIdx.map(i => `views:url:${address}:${hosts[i]}`)
+    const counts = validKeys.length ? await kv.mget<(number | null)[]>(...validKeys) : []
     const result: Record<string, number> = {}
-    urls.forEach((url, i) => {
-      result[url] = keys[i] ? (counts[i] ?? 0) : 0
+    urls.forEach(url => { result[url] = 0 })
+    validIdx.forEach((urlIdx, keyIdx) => {
+      result[urls[urlIdx]] = counts[keyIdx] ?? 0
     })
     return NextResponse.json(result, { headers: corsHeaders(origin) })
   }

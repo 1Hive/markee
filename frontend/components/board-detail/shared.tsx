@@ -13,16 +13,8 @@ import { StrategyBadge } from '@/components/StrategyBadge'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-export const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-export const PINK  = '#F897FE'
-export const BLUE  = '#7C9CFF'
-export const GREEN = '#1DB227'
-export const BG    = '#060A2A'
-export const BG2   = '#0A0F3D'
-export const TEXT  = '#EDEEFF'
-export const TEXT2 = '#B8B6D9'
-export const MUTED = '#8A8FBF'
-export const BORDER = 'rgba(138,143,191,0.2)'
+import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
+export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
 export const BOARD_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
 export const HERO_GRAD = [

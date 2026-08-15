@@ -7,15 +7,7 @@ import {
   buildEmbedPrompt,
   type EmbedFramework, type EmbedWallet, type EmbedAgent, type EmbedStrategy,
 } from '@/lib/embedPrompt/fragments'
-
-// ── Design tokens (mirrors the modal shell this renders inside) ────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG     = '#060A2A'
-const PINK   = '#F897FE'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
-const MUTED  = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
+import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 
 const FRAMEWORKS: { key: EmbedFramework; label: string }[] = [
   { key: 'nextjs', label: 'Next.js' },

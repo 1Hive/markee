@@ -5,16 +5,7 @@ import { Globe2, Github as GithubIconLucide } from 'lucide-react'
 import { EmbedPanel } from '@/components/board-detail/shared'
 import { WebsiteEmbedWizard } from '@/components/modals/WebsiteEmbedWizard'
 import type { EmbedStrategy } from '@/lib/embedPrompt/fragments'
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG     = '#060A2A'
-const BG2    = '#0A0F3D'
-const PINK   = '#F897FE'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
-const MUTED  = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
+import { MONO, BG, BG2, PINK, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 
 type Platform = 'website' | 'github'
 

@@ -41,6 +41,10 @@ export const FACTORIES = {
   FOR_SALE: '0x861D9897eC47421aAFB6321Ee219E88ab485121f' as const,
 } as const
 
+// Block the "For Sale" factory was deployed at — scopes its creation-event getLogs scan instead of
+// walking the whole chain from genesis (tx 0x769a81d4f2be60a9e2dbb278358cf7d19abfcfe2d0a56187c5d7aa21f151c983).
+export const FOR_SALE_FACTORY_DEPLOY_BLOCK = 49_981_127n
+
 // StreamingLeaderboardFactory — deployment is gated on the Superfluid governance setAppRegistrationKey.
 // Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed factory address to light up the streaming listing +
 // create flow; unset/invalid keeps the feature hidden.

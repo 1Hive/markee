@@ -18,7 +18,7 @@ import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
-import { FACTORIES } from '@/lib/contracts/addresses'
+import { FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK } from '@/lib/contracts/addresses'
 import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
@@ -64,7 +64,7 @@ async function resolveCreators(
     const logs = await client.getLogs({
       address: FOR_SALE_FACTORY_ADDRESS,
       event: LEADERBOARD_CREATED_EVENT,
-      fromBlock: 0n,
+      fromBlock: FOR_SALE_FACTORY_DEPLOY_BLOCK,
       toBlock: 'latest',
     })
 
