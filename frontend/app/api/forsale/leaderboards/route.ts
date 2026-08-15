@@ -211,7 +211,7 @@ export async function GET(request: Request) {
         siteUrl: meta?.siteUrl ?? null,
         verifiedUrl: meta?.verifiedUrl ?? null,
         verifiedUrls: Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [],
-        status: (meta?.status as 'pending' | 'verified') ?? 'pending',
+        status: meta?.status === 'verified' ? 'verified' as const : 'pending' as const,
         linkedFiles,
         // Signals to /account and marketplace that this board needs a verified integration to count
         // as Active -- unlike the legacy per-vertical factories, there's no migration history to
