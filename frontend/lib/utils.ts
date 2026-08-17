@@ -41,3 +41,7 @@ export function getDisplayName(markee: Markee, ensName?: string | null): string 
 // ETH held back from "max" spend calculations so the user can still pay gas for the transaction
 // they are about to send.
 export const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH
+
+export function logoDevUrl(domain: string, size = 32): string {
+  return `https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=${size}`
+}

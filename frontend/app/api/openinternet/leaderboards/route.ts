@@ -90,6 +90,7 @@ async function resolveCreators(
   addresses: readonly `0x${string}`[],
 ): Promise<(string | null)[]> {
   const keys = addresses.map(a => `creator:oi:${a.toLowerCase()}`)
+  if (keys.length === 0) return []
   const cached = await kv.mget<(string | null)[]>(...keys)
 
   const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])

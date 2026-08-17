@@ -10,9 +10,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+
+// Unauthenticated and uncached, and each call fans out to a strong-consistency KV read. Generous
+// enough that a real account page (one call per mount) never sees it, tight enough to bound a script.
+const RATE_WINDOW = 60
+const RATE_MAX = 60
 
 interface OiMeta {
   verifiedUrl?: string
@@ -41,8 +47,13 @@ async function statusFor(addresses: string[]) {
   return result
 }
 
+function rateLimited() {
+  return NextResponse.json({}, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
+}
+
 export async function GET(request: NextRequest) {
   try {
+    if (!await underRateLimit('verification-status', clientIp(request), RATE_MAX, RATE_WINDOW)) return rateLimited()
     const raw = new URL(request.url).searchParams.get('addresses') ?? ''
     return NextResponse.json(await statusFor(parseAddresses(raw.split(','))), { headers: NO_CACHE })
   } catch (err) {
@@ -55,6 +66,7 @@ export async function GET(request: NextRequest) {
 // past the point where CDNs and proxies start dropping the request URL.
 export async function POST(request: NextRequest) {
   try {
+    if (!await underRateLimit('verification-status', clientIp(request), RATE_MAX, RATE_WINDOW)) return rateLimited()
     const body = await request.json().catch(() => ({}))
     const raw: unknown = body?.addresses
     if (!Array.isArray(raw)) return NextResponse.json({}, { headers: NO_CACHE })

@@ -19,6 +19,7 @@ import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 
 export const dynamic = 'force-dynamic'
@@ -74,11 +75,7 @@ export async function GET(request: NextRequest) {
     const cached = await kv.get<{ positions: Record<string, Position> }>(cacheKey)
     if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
 
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-    const rateKey = `ratelimit:marketplace:positions:${ip}`
-    const misses = await kv.incr(rateKey)
-    if (misses === 1) await kv.expire(rateKey, RATE_WINDOW)
-    if (misses > RATE_MAX_MISSES) {
+    if (!await underRateLimit('marketplace:positions', clientIp(request), RATE_MAX_MISSES, RATE_WINDOW)) {
       return NextResponse.json(
         { positions: {}, error: 'rate_limited' },
         { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } },

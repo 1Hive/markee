@@ -23,6 +23,7 @@ import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { COOPERATIVE_MULTISIG } from '@/lib/contracts/addresses'
 import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { logoDevUrl } from '@/lib/utils'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const SANS   = 'Manrope, system-ui, sans-serif'
@@ -214,7 +215,7 @@ function LogoIcon({ domain, size = 14 }: { domain: string; size?: number }) {
   if (failed) return <span style={{ fontSize: size, lineHeight: 1 }}>🪧</span>
   return (
     <Image
-      src={`https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=32`}
+      src={logoDevUrl(domain)}
       alt={`${domain} logo`}
       width={size}
       height={size}

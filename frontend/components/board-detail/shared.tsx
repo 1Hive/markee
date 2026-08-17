@@ -18,6 +18,7 @@ import { TxSteps } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
+import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
 export const BOARD_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
@@ -191,7 +192,7 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=32`}
+      src={logoDevUrl(domain)}
       alt="" width={size} height={size}
       style={{ objectFit: 'contain', borderRadius: 3, flexShrink: 0 }}
       onError={() => setFailed(true)}
