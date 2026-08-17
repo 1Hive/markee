@@ -60,3 +60,7 @@ export function formatMarkeeAmount(n: number): string {
   }
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
+
+// Shared by /api/views and its callers so the client never builds a query string the route would
+// truncate anyway. 100 addresses is ~4.3KB of URL, well inside what CDNs will carry.
+export const VIEWS_ADDRESS_LIMIT = 100

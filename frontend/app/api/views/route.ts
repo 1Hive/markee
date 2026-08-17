@@ -2,6 +2,7 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
+import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 
 function corsHeaders(_origin: string | null): Record<string, string> {
   return {
@@ -106,7 +107,7 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((a) => a.toLowerCase().trim())
     .filter(Boolean)
-    .slice(0, 100)
+    .slice(0, VIEWS_ADDRESS_LIMIT)
 
   if (addresses.length === 0) {
     return NextResponse.json({}, { headers: corsHeaders(origin) })

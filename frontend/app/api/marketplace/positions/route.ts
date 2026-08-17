@@ -137,6 +137,9 @@ export async function GET(request: NextRequest) {
       const ownerCalls = perBoardAddrs.flatMap(addrs =>
         addrs.map(a => ({ address: a as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const }))
       )
+      // Relies on multicall's default allowFailure: true. A markee whose owner() reverts comes back
+      // as { status: 'failure' } and drops out of the rank below, rather than throwing and costing
+      // every other board its position.
       const ownerResults = ownerCalls.length > 0
         ? await chunkedMulticall(client, ownerCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : []

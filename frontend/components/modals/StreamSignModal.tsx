@@ -20,7 +20,7 @@ import {
 } from '@/lib/superfluid/streaming'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
+import { formatUsd, formatMarkeeAmount, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded } from '@/components/modals/StreamUI'
@@ -551,7 +551,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   // ── Views (batched, per-markee + summed for the header) ────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
-  const markeeAddrKey = markees.map(m => m.address.toLowerCase()).join(',')
+  const markeeAddrKey = markees.slice(0, VIEWS_ADDRESS_LIMIT).map(m => m.address.toLowerCase()).join(',')
   useEffect(() => {
     if (!isOpen || !markeeAddrKey) return
     fetch(`/api/views?addresses=${markeeAddrKey}`)

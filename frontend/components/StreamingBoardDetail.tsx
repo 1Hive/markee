@@ -23,7 +23,7 @@ import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import { useTopSince } from '@/hooks/useTopSince'
 import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatUsd } from '@/lib/utils'
+import { formatUsd, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { Pencil } from 'lucide-react'
@@ -120,7 +120,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
   const [viewsFetching, setViewsFetching] = useState(true)
   const viewsLoading = isLoading || viewsFetching
-  const markeeAddrKey = useMemo(() => markees.map(m => m.address.toLowerCase()).join(','), [markees])
+  const markeeAddrKey = useMemo(() => markees.slice(0, VIEWS_ADDRESS_LIMIT).map(m => m.address.toLowerCase()).join(','), [markees])
   useEffect(() => {
     if (!markeeAddrKey) { setViewsFetching(false); return }
     fetch(`/api/views?addresses=${markeeAddrKey}`)

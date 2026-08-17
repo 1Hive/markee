@@ -51,6 +51,9 @@ export function useLiveBalance(
 
 // Format a live wei balance to a fixed number of decimal places without float precision loss.
 export function formatLiveEth(wei: bigint, decimals = 10): string {
+  // The zero-padding below assumes an unsigned digit string. A negative snapshot (stale balance plus
+  // clock skew) would otherwise leave the sign mid-string and round small deficits away to "0".
+  if (wei < 0n) return `-${formatLiveEth(-wei, decimals)}`
   const weiStr = wei.toString()
   const totalDigits = 18
   const padded = weiStr.padStart(totalDigits + 1, '0')
