@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
 import { formatEther, type Address, type Hex } from 'viem'
@@ -390,12 +390,16 @@ function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage
     if (!isOpen) { setMessage(''); setError(null); setTxHash(undefined); reset() }
   }, [isOpen, reset])
 
+  // The parent re-renders ~10x/sec (useFlowingAmount tick) with a fresh inline onSuccess each time;
+  // depending on it would clear this timer every tick and the callback would never fire.
+  const onSuccessRef = useRef(onSuccess)
+  onSuccessRef.current = onSuccess
   useEffect(() => {
     if (isSuccess && isOpen) {
-      const t = setTimeout(() => onSuccess?.(), 1500)
+      const t = setTimeout(() => onSuccessRef.current?.(), 1500)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onSuccess])
+  }, [isSuccess, isOpen])
 
   if (!isOpen || !markeeAddress) return null
 
@@ -417,7 +421,7 @@ function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'fadeIn 180ms ease forwards' }}>
+    <div onClick={() => { if (!busy) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'fadeIn 180ms ease forwards' }}>
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 500, background: BG2, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 24px 80px rgba(0,0,0,0.5)', color: TEXT, fontFamily: 'Manrope, system-ui, sans-serif', animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards' }}>
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
@@ -581,7 +585,7 @@ function StreamingRow({ markee, rank, featured, board, topSince, viewCount, view
         </div>
       </div>
 
-      <TxHistoryPanel leaderboardAddress={board} markeeAddress={markee.address} expanded={historyOpen} featured={featured} />
+      <TxHistoryPanel leaderboardAddress={board} markeeAddress={markee.address} expanded={historyOpen} featured={featured} strategy="streaming" />
     </div>
   )
 }

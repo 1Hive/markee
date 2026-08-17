@@ -998,7 +998,14 @@ function FlowRateCell({ weiPerSec, ethPrice, streamStatus }: {
   streamStatus?: StreamStatus
 }) {
   const rate = BigInt(weiPerSec ?? '0')
-  if (rate === 0n) return <span style={{ color: MUTED }}>—</span>
+  if (rate === 0n) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        {streamStatus && <StreamStatusIcon status={streamStatus} />}
+        <span style={{ color: MUTED }}>—</span>
+      </div>
+    )
+  }
   const ethPerMonth = Number(rate) / 1e18 * 60 * 60 * 24 * 30
   const ethStr = ethPerMonth < 0.001 ? '< 0.001 ETH/mo' : `${ethPerMonth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
   const usd = ethPrice ? ethPerMonth * ethPrice : null
@@ -1125,9 +1132,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                 <div style={{ textAlign: 'right' }}>
                   {isStreaming
-                    ? (m.flowRateRaw && m.flowRateRaw !== '0'
-                        ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                        : <span style={{ color: MUTED }}>—</span>)
+                    ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
                     : <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
                   }
                 </div>
@@ -1201,9 +1206,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                 <div style={{ textAlign: 'right' }}>
                   {isStreaming
-                    ? (m.flowRateRaw && m.flowRateRaw !== '0'
-                        ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                        : <span style={{ color: MUTED }}>—</span>)
+                    ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
                     : <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
                   }
                 </div>

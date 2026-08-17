@@ -110,6 +110,21 @@ const CFA_UPDATE_FLOW_ABI = [
   },
 ] as const
 
+const CFA_DELETE_FLOW_ABI = [
+  {
+    type: 'function',
+    name: 'deleteFlow',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'sender', type: 'address' },
+      { name: 'receiver', type: 'address' },
+      { name: 'ctx', type: 'bytes' },
+    ],
+    outputs: [{ name: '', type: 'bytes' }],
+  },
+] as const
+
 const GDA_CONNECT_POOL_ABI = [
   {
     type: 'function',
@@ -190,42 +205,66 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
   return [wrap, deposit, flow, connect]
 }
 
-// Same as buildOpenStreamOps but uses updateFlow — for when the backer already has a CFA stream to
-// this board (e.g. from a prior partial activation). Keeps markee in userData so the board's SuperApp
-// callback can re-associate the flow with the new markee.
-export function buildReopenStreamOps(p: OpenStreamParams): Operation[] {
-  const wrap: Operation = {
+export interface MoveStreamOpsParams extends OpenStreamParams {
+  // Extra deposit the board must hold for the new rate (0 when the existing deposit already covers it).
+  depositTopUp: bigint
+}
+
+// Retargets an existing stream to a different markee on the same board: deleteFlow + createFlow in
+// one batch. updateFlow CANNOT retarget — the board's onFlowUpdated ignores userData and applies the
+// rate to backerMarkee[sender] (the old markee); only onFlowCreated decodes userData. The delete
+// clears backerMarkee and the old markee's units, then the create re-tags the flow to the new markee.
+// backerDeposit survives the delete, so only the top-up over the held deposit is pulled.
+export function buildMoveStreamOps(p: MoveStreamOpsParams): Operation[] {
+  const ops: Operation[] = [{
     operationType: OP_SIMPLE_FORWARD_CALL,
     target: p.ethx,
     data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
+  }]
+
+  if (p.depositTopUp > 0n) {
+    ops.push({
+      operationType: OP_SIMPLE_FORWARD_CALL,
+      target: p.board,
+      data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.depositTopUp] }),
+    })
   }
-  const deposit: Operation = {
-    operationType: OP_SIMPLE_FORWARD_CALL,
-    target: p.board,
-    data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.buffer] }),
-  }
-  const callData = encodeFunctionData({
-    abi: CFA_UPDATE_FLOW_ABI,
-    functionName: 'updateFlow',
+
+  const deleteCallData = encodeFunctionData({
+    abi: CFA_DELETE_FLOW_ABI,
+    functionName: 'deleteFlow',
+    args: [p.ethx, p.backer, p.board, '0x'],
+  })
+  ops.push({
+    operationType: OP_CALL_AGREEMENT,
+    target: p.cfaAgreement,
+    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [deleteCallData, '0x']),
+  })
+
+  const createCallData = encodeFunctionData({
+    abi: CFA_CREATE_FLOW_ABI,
+    functionName: 'createFlow',
     args: [p.ethx, p.board, p.ratePerSec, '0x'],
   })
   const userData = encodeAbiParameters([{ type: 'address' }], [p.markee])
-  const flow: Operation = {
+  ops.push({
     operationType: OP_CALL_AGREEMENT,
     target: p.cfaAgreement,
-    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [callData, userData]),
-  }
+    data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [createCallData, userData]),
+  })
+
   const connectData = encodeFunctionData({
     abi: GDA_CONNECT_POOL_ABI,
     functionName: 'connectPool',
     args: [p.pool, '0x'],
   })
-  const connect: Operation = {
+  ops.push({
     operationType: OP_CALL_AGREEMENT,
     target: p.gdaAgreement,
     data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [connectData, '0x']),
-  }
-  return [wrap, deposit, flow, connect]
+  })
+
+  return ops
 }
 
 // Native ETH to send with the batch: the buffer (pulled back into the board as the SuperApp deposit)

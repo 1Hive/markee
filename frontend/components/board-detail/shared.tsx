@@ -9,6 +9,7 @@ import { formatEther } from 'viem'
 import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User } from 'lucide-react'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -130,7 +131,7 @@ export function useServedOn(leaderboardAddress: string) {
       setEntry({
         ...(found ?? { address: leaderboardAddress, platform: 'website' }),
         verifiedUrls: v?.verifiedUrls?.length ? v.verifiedUrls : found?.verifiedUrls,
-        linkedFiles: v?.linkedFiles,
+        linkedFiles: v?.linkedFiles ?? found?.linkedFiles,
       })
     })
   }, [leaderboardAddress])
@@ -686,14 +687,14 @@ export function GitHubVerify({ address }: { address: string }) {
     }
     setSyncStepIdx(2)
 
+    // Views are best-effort: a traffic-API blip after a successful verify+sync must not flip the
+    // panel into the error state (whose "Try again" would re-run the mutating file sync just to
+    // retry this read-only fetch).
     try {
       const res = await fetch(`/api/github/traffic?address=${address.toLowerCase()}`)
       const data = await res.json().catch(() => ({})) as { count?: number }
-      if (!(res.ok && data.count !== undefined)) { setSyncPhase('error'); setSyncError('Could not check views'); return }
-      setViews(data.count)
-    } catch {
-      setSyncPhase('error'); setSyncError('Network error'); return
-    }
+      if (res.ok && data.count !== undefined) setViews(data.count)
+    } catch { /* keep whatever views value we already had */ }
     setSyncStepIdx(3)
     setSyncPhase('idle')
   }
@@ -795,14 +796,16 @@ export function GitHubVerify({ address }: { address: string }) {
             </>
           )}
         </div>
-      ) : result.verified && views !== null ? (
+      ) : result.verified && (syncSummary !== null || views !== null) ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 11, color: GREEN }}>
             ✓ {syncSummary ?? 'Synced'}
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11, color: MUTED }}>
-            <Eye size={11} /> {views.toLocaleString()} views
-          </span>
+          {views !== null && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11, color: MUTED }}>
+              <Eye size={11} /> {views.toLocaleString()} views
+            </span>
+          )}
           <button
             onClick={runFullSync}
             style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 11px', fontFamily: MONO, fontSize: 11, color: TEXT2, cursor: 'pointer' }}
@@ -1412,15 +1415,17 @@ export function BoardDetailSkeleton() {
 // strategy-agnostic.
 export type TxHistoryEvent =
   | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: bigint; newTotal: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'stream'; rate: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
   | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
   | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
 
 type ApiHistoryEvent =
   | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: string; newTotal: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'stream'; rate: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
 
-export function useTxHistory(leaderboardAddress: string, markeeAddress: string, expanded: boolean) {
+export function useTxHistory(leaderboardAddress: string, markeeAddress: string, expanded: boolean, strategy?: 'streaming') {
   const [history, setHistory] = useState<TxHistoryEvent[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1435,12 +1440,14 @@ export function useTxHistory(leaderboardAddress: string, markeeAddress: string, 
       setError(null)
       try {
         const params = new URLSearchParams({ leaderboardAddress, markeeAddress })
+        if (strategy) params.set('strategy', strategy)
         const response = await fetch(`/api/markee/history?${params.toString()}`, { cache: 'no-store' })
         if (!response.ok) throw new Error('Unable to load transaction history')
         const data = await response.json() as { history?: ApiHistoryEvent[] }
         const events: TxHistoryEvent[] = (data.history ?? []).map(event => ({
           ...event,
           ...(event.kind === 'funds' ? { amount: BigInt(event.amount), newTotal: BigInt(event.newTotal) } : {}),
+          ...(event.kind === 'stream' ? { rate: BigInt(event.rate) } : {}),
           blockNumber: BigInt(event.blockNumber),
         } as TxHistoryEvent))
         if (!cancelled) setHistory(events)
@@ -1453,7 +1460,7 @@ export function useTxHistory(leaderboardAddress: string, markeeAddress: string, 
 
     fetchHistory()
     return () => { cancelled = true }
-  }, [expanded, refreshKey, leaderboardAddress, markeeAddress])
+  }, [expanded, refreshKey, leaderboardAddress, markeeAddress, strategy])
 
   return { history, isLoading, error, refresh: () => setRefreshKey(v => v + 1) }
 }
@@ -1492,17 +1499,19 @@ function txTimestamp(ts: number): string {
 
 function TxEventIcon({ kind }: { kind: TxHistoryEvent['kind'] }) {
   if (kind === 'funds') return <div className="w-7 h-7 rounded-full bg-[#7C9CFF]/20 flex items-center justify-center flex-shrink-0"><Coins size={13} className="text-[#7C9CFF]" /></div>
+  if (kind === 'stream') return <div className="w-7 h-7 rounded-full bg-[#7EE787]/20 flex items-center justify-center flex-shrink-0"><Coins size={13} className="text-[#7EE787]" /></div>
   if (kind === 'message') return <div className="w-7 h-7 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0"><MessageSquare size={13} className="text-[#F897FE]" /></div>
   return <div className="w-7 h-7 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0"><User size={13} className="text-[#FFA94D]" /></div>
 }
 
-export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured }: {
+export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured, strategy }: {
   leaderboardAddress: string
   markeeAddress: string
   expanded: boolean
   featured?: boolean
+  strategy?: 'streaming'
 }) {
-  const { history, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded)
+  const { history, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded, strategy)
   if (!expanded) return null
   const latestTxHash = history[0]?.transactionHash
 
@@ -1547,9 +1556,20 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                     <span className="text-sm font-semibold text-[#EDEEFF]">
                       {event.subKind === 'created' ? 'Bought Message' : event.subKind === 'migrated' ? 'Migrated In' : 'Added Funds'}
                     </span>
-                    <span className="text-sm font-semibold text-[#7C9CFF]">+{formatEther(event.amount)} ETH</span>
+                    {event.amount > 0n && (
+                      <span className="text-sm font-semibold text-[#7C9CFF]">+{formatEther(event.amount)} ETH</span>
+                    )}
                     {event.subKind === 'added' && (
                       <span className="text-xs text-[#8A8FBF]">to {formatEther(event.newTotal)} ETH total</span>
+                    )}
+                  </div>
+                ) : event.kind === 'stream' ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-[#EDEEFF]">
+                      {event.rate === 0n ? 'Stream Stopped' : 'Stream Rate Set'}
+                    </span>
+                    {event.rate > 0n && (
+                      <span className="text-sm font-semibold text-[#7EE787]">{parseFloat(formatEther(ratePerSecToMonthly(event.rate))).toFixed(4).replace(/\.?0+$/, '')} ETH/mo</span>
                     )}
                   </div>
                 ) : event.kind === 'message' ? (

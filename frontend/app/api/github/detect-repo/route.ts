@@ -19,7 +19,11 @@ async function getGithubToken(uid: string | undefined): Promise<string | null> {
   return data?.accessToken ?? null
 }
 
-// Accepts a full GitHub URL, "github.com/owner/repo", or bare "owner/repo".
+// Accepts a full GitHub URL, "github.com/owner/repo", or bare "owner/repo". The shape checks keep
+// user input from reshaping the outbound api.github.com path (query strings, "..", encoded slashes).
+const GITHUB_OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/
+const GITHUB_REPO_RE = /^[A-Za-z0-9._-]{1,100}$/
+
 function parseRepo(input: string): { owner: string; repo: string } | null {
   let s = input.trim()
   if (!s) return null
@@ -28,7 +32,7 @@ function parseRepo(input: string): { owner: string; repo: string } | null {
   if (parts.length < 2) return null
   const owner = parts[0]
   const repo = parts[1].replace(/\.git$/, '')
-  if (!owner || !repo) return null
+  if (!GITHUB_OWNER_RE.test(owner) || !GITHUB_REPO_RE.test(repo)) return null
   return { owner, repo }
 }
 
@@ -56,34 +60,37 @@ export async function GET(request: NextRequest) {
   const repoFullName = `${owner}/${repo}`
 
   const uid = request.cookies.get('github_uid')?.value
-  const token = await getGithubToken(uid)
-  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
-
-  const repoRes = await fetch(`https://api.github.com/repos/${repoFullName}`, {
-    headers: { Accept: 'application/vnd.github+json', ...authHeaders },
-  })
-
-  if (!repoRes.ok) {
-    if (repoRes.status === 404) {
-      // GitHub deliberately can't distinguish "doesn't exist" from "private, no access" here.
-      return NextResponse.json({ error: 'not_found_or_private', needsAuth: !token }, { status: 404 })
-    }
-    return NextResponse.json({ error: `GitHub error (${repoRes.status})` }, { status: 502 })
-  }
-
-  const repoData = await repoRes.json()
-  const defaultBranch: string = repoData.default_branch ?? 'main'
-
-  const pkgRes = await fetch(
-    `https://api.github.com/repos/${repoFullName}/contents/package.json?ref=${encodeURIComponent(defaultBranch)}`,
-    { headers: { Accept: 'application/vnd.github.v3.raw', ...authHeaders } },
-  )
-
-  if (!pkgRes.ok) {
-    return NextResponse.json({ repoFullName, defaultBranch, framework: null, wallet: null, packageJsonFound: false })
-  }
 
   try {
+    const token = await getGithubToken(uid)
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+    const encodedRepoPath = `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+
+    const repoRes = await fetch(`https://api.github.com/repos/${encodedRepoPath}`, {
+      headers: { Accept: 'application/vnd.github+json', ...authHeaders },
+      signal: AbortSignal.timeout(10_000),
+    })
+
+    if (!repoRes.ok) {
+      if (repoRes.status === 404) {
+        // GitHub deliberately can't distinguish "doesn't exist" from "private, no access" here.
+        return NextResponse.json({ error: 'not_found_or_private', needsAuth: !token }, { status: 404 })
+      }
+      return NextResponse.json({ error: `GitHub error (${repoRes.status})` }, { status: 502 })
+    }
+
+    const repoData = await repoRes.json()
+    const defaultBranch: string = repoData.default_branch ?? 'main'
+
+    const pkgRes = await fetch(
+      `https://api.github.com/repos/${encodedRepoPath}/contents/package.json?ref=${encodeURIComponent(defaultBranch)}`,
+      { headers: { Accept: 'application/vnd.github.v3.raw', ...authHeaders }, signal: AbortSignal.timeout(10_000) },
+    )
+
+    if (!pkgRes.ok) {
+      return NextResponse.json({ repoFullName, defaultBranch, framework: null, wallet: null, packageJsonFound: false })
+    }
+
     const pkg = JSON.parse(await pkgRes.text())
     const deps: Record<string, string> = { ...pkg.dependencies, ...pkg.devDependencies }
     return NextResponse.json({
@@ -93,7 +100,10 @@ export async function GET(request: NextRequest) {
       wallet: detectWallet(deps),
       packageJsonFound: true,
     })
-  } catch {
-    return NextResponse.json({ repoFullName, defaultBranch, framework: null, wallet: null, packageJsonFound: false })
+  } catch (err) {
+    // Malformed package.json lands here too -- indistinguishable from "nothing to detect" for the
+    // wizard, which falls back to manual selection either way.
+    console.error('[github/detect-repo] error:', err)
+    return NextResponse.json({ repoFullName, defaultBranch: 'main', framework: null, wallet: null, packageJsonFound: false })
   }
 }

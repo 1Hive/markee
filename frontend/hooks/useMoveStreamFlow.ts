@@ -2,10 +2,9 @@
 
 // Retargeting an existing stream to a different message on the same board (the "Fund this instead"
 // flow when the backer already has an active/pending stream elsewhere). Near-identical to
-// useOpenStreamFlow -- same batch shape, same reads -- but calls buildReopenStreamOps (updateFlow)
-// instead of buildOpenStreamOps (createFlow), since the backer already has a live CFA stream to this
-// board and only the markee it's tagged for (via userData) and the target's own GDA pool connection
-// need to change.
+// useOpenStreamFlow but calls buildMoveStreamOps (deleteFlow + createFlow, since only onFlowCreated
+// re-tags the markee) and pulls only the deposit top-up over what the board already holds for this
+// backer, not a second full buffer.
 
 import { useState, useEffect, useRef } from 'react'
 import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
@@ -13,7 +12,7 @@ import { erc20Abi, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
-  STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, buildReopenStreamOps,
+  STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, buildMoveStreamOps,
 } from '@/lib/superfluid/streaming'
 import { retryUntilLoaded } from '@/components/modals/StreamUI'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -56,9 +55,13 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
     address: ETHX, abi: erc20Abi, functionName: 'allowance', args: address ? [address, board] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled, refetchInterval: retryUntilLoaded },
   })
+  const { data: deposit } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled, refetchInterval: retryUntilLoaded },
+  })
 
   const poolReady = !!refundPool && refundPool !== ZERO_ADDRESS
-  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && !!publicClient
+  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && deposit !== undefined && !!publicClient
 
   useEffect(() => {
     if (!isOpen) {
@@ -77,13 +80,16 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
     try {
       setSubmitting(true)
 
-      if ((allowance ?? 0n) < calc.buffer) {
+      const held = deposit ?? 0n
+      const depositTopUp = calc.buffer > held ? calc.buffer - held : 0n
+
+      if (depositTopUp > 0n && (allowance ?? 0n) < depositTopUp) {
         setApproving(true)
         const approveHash = await writeContractAsync({
           address: ETHX,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [board, calc.buffer],
+          args: [board, depositTopUp],
           chainId: CANONICAL_CHAIN.id,
         })
         const approveReceipt = await publicClient!.waitForTransactionReceipt({ hash: approveHash })
@@ -93,13 +99,14 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
         setApproving(false)
       }
 
-      const ops = buildReopenStreamOps({
+      const ops = buildMoveStreamOps({
         ethx: ETHX,
         board,
         markee: markeeAddress,
         backer: address,
         ratePerSec: calc.ratePerSec,
         buffer: calc.buffer,
+        depositTopUp,
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: refundPool as Address,
@@ -110,7 +117,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
         abi: SUPERFLUID_HOST_ABI,
         functionName: 'batchCall',
         args: [ops],
-        value: calc.value,
+        value: depositTopUp + calc.prefund,
         chainId: CANONICAL_CHAIN.id,
       })
       if (!openRef.current) return
@@ -124,5 +131,5 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
     }
   }
 
-  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, moveStream }
+  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, deposit, moveStream }
 }

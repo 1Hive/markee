@@ -26,6 +26,23 @@ const LEADERBOARD_NAME_UPDATED = parseAbiItem(
   'event NameUpdated(address indexed markeeAddress, address indexed updatedBy, string newName)'
 )
 
+// StreamingLeaderboard variants: its MarkeeCreated has no trailing amount (different topic0 than the
+// lump-sum event above), funding history lives in BackerUpdated (stream rate changes), and message
+// edits go through Markee.setMessage directly, which emits MessageChanged/NameChanged on the markee
+// contract itself rather than through the leaderboard.
+const STREAMING_MARKEE_CREATED = parseAbiItem(
+  'event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name)'
+)
+const STREAMING_BACKER_UPDATED = parseAbiItem(
+  'event BackerUpdated(address indexed backer, address indexed markee, uint256 flowRate, uint256 newAggregate)'
+)
+const MARKEE_MESSAGE_CHANGED = parseAbiItem(
+  'event MessageChanged(string newMessage, address indexed changedBy)'
+)
+const MARKEE_NAME_CHANGED = parseAbiItem(
+  'event NameChanged(string newName, address indexed changedBy)'
+)
+
 function getClient() {
   // Prefer the RPC the rest of the app reads from, so this server-side scan sees the same chain
   // the client-side hooks do; fall back to Alchemy/default.
@@ -53,8 +70,94 @@ export async function GET(request: NextRequest) {
   const client = getClient()
   const leaderboard = leaderboardAddress as `0x${string}`
   const markee = markeeAddress as `0x${string}`
+  const isStreaming = searchParams.get('strategy') === 'streaming'
 
   try {
+    if (isStreaming) {
+      const [createdLogs, backerLogs, messageLogs, nameLogs] = await Promise.all([
+        client.getLogs({
+          address: leaderboard,
+          event: STREAMING_MARKEE_CREATED,
+          args: { markeeAddress: markee },
+          fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+          toBlock: 'latest',
+        }),
+        client.getLogs({
+          address: leaderboard,
+          event: STREAMING_BACKER_UPDATED,
+          args: { markee },
+          fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+          toBlock: 'latest',
+        }),
+        client.getLogs({
+          address: markee,
+          event: MARKEE_MESSAGE_CHANGED,
+          fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+          toBlock: 'latest',
+        }),
+        client.getLogs({
+          address: markee,
+          event: MARKEE_NAME_CHANGED,
+          fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+          toBlock: 'latest',
+        }),
+      ])
+
+      const streamingEvents = [
+        ...createdLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          kind: 'funds' as const,
+          subKind: 'created' as const,
+          amount: '0',
+          newTotal: '0',
+          actor: log.args.owner ?? '',
+          blockNumber: (log.blockNumber ?? 0n).toString(),
+          logIndex: Number(log.logIndex ?? 0),
+          transactionHash: log.transactionHash ?? '',
+        })),
+        ...backerLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          kind: 'stream' as const,
+          rate: (log.args.flowRate ?? 0n).toString(),
+          actor: log.args.backer ?? '',
+          blockNumber: (log.blockNumber ?? 0n).toString(),
+          logIndex: Number(log.logIndex ?? 0),
+          transactionHash: log.transactionHash ?? '',
+        })),
+        ...messageLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          kind: 'message' as const,
+          message: log.args.newMessage ?? '',
+          actor: log.args.changedBy ?? '',
+          blockNumber: (log.blockNumber ?? 0n).toString(),
+          logIndex: Number(log.logIndex ?? 0),
+          transactionHash: log.transactionHash ?? '',
+        })),
+        ...nameLogs.map(log => ({
+          id: `${log.transactionHash}-${log.logIndex}`,
+          kind: 'name' as const,
+          name: log.args.newName ?? '',
+          actor: log.args.changedBy ?? '',
+          blockNumber: (log.blockNumber ?? 0n).toString(),
+          logIndex: Number(log.logIndex ?? 0),
+          transactionHash: log.transactionHash ?? '',
+        })),
+      ].sort((a, b) => {
+        if (a.blockNumber === b.blockNumber) return b.logIndex - a.logIndex
+        return BigInt(b.blockNumber) > BigInt(a.blockNumber) ? 1 : -1
+      }).slice(0, MAX_HISTORY_EVENTS)
+
+      const streamingBlockNumbers = [...new Set(streamingEvents.map(e => e.blockNumber).filter(bn => bn !== '0'))].map(BigInt)
+      const streamingBlocks = await Promise.all(streamingBlockNumbers.map(blockNumber => client.getBlock({ blockNumber })))
+      const streamingTimestamps = new Map(streamingBlocks.map(block => [block.number.toString(), Number(block.timestamp)]))
+      const history = streamingEvents.map(event => ({
+        ...event,
+        timestamp: streamingTimestamps.get(event.blockNumber) ?? 0,
+      }))
+
+      return NextResponse.json({ history, limit: MAX_HISTORY_EVENTS }, { headers: NO_CACHE })
+    }
+
     const [createdLogs, migratedLogs, fundsLogs, messageLogs, nameLogs] = await Promise.all([
       client.getLogs({
         address: leaderboard,

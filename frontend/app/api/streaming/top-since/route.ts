@@ -10,7 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { createPublicClient, http } from 'viem'
+import { createPublicClient, http, isAddress } from 'viem'
 import { base } from 'viem/chains'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 
@@ -26,7 +26,7 @@ function getClient() {
 
 export async function GET(request: Request) {
   const board = new URL(request.url).searchParams.get('board')?.toLowerCase().trim()
-  if (!board) return NextResponse.json({ error: 'Missing board' }, { status: 400, headers: NO_CACHE })
+  if (!board || !isAddress(board)) return NextResponse.json({ error: 'Valid board address required' }, { status: 400, headers: NO_CACHE })
 
   try {
     const client = getClient()
