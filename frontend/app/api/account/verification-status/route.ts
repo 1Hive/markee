@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
@@ -19,26 +19,46 @@ interface OiMeta {
   verifiedUrls?: string[]
 }
 
+function parseAddresses(raw: string[]): string[] {
+  return [...new Set(raw.map(a => a.trim().toLowerCase()).filter(Boolean))].slice(0, 200)
+}
+
+async function statusFor(addresses: string[]) {
+  if (addresses.length === 0) return {}
+
+  const oiMetaKeys = addresses.map(a => `oi:meta:${a}`)
+  const [linkedFilesPerAddr, oiMetas] = await Promise.all([
+    getLinkedFilesBatch(addresses),
+    kv.mget<(OiMeta | null)[]>(...oiMetaKeys),
+  ])
+
+  const result: Record<string, { verifiedUrls: string[]; linkedFiles: LinkedFile[] }> = {}
+  addresses.forEach((addr, i) => {
+    const meta = oiMetas[i]
+    const verifiedUrls = Array.isArray(meta?.verifiedUrls) ? meta!.verifiedUrls! : meta?.verifiedUrl ? [meta.verifiedUrl] : []
+    result[addr] = { verifiedUrls, linkedFiles: linkedFilesPerAddr[i] }
+  })
+  return result
+}
+
 export async function GET(request: NextRequest) {
   try {
     const raw = new URL(request.url).searchParams.get('addresses') ?? ''
-    const addresses = [...new Set(raw.split(',').map(a => a.trim().toLowerCase()).filter(Boolean))].slice(0, 200)
-    if (addresses.length === 0) return NextResponse.json({}, { headers: NO_CACHE })
+    return NextResponse.json(await statusFor(parseAddresses(raw.split(','))), { headers: NO_CACHE })
+  } catch (err) {
+    console.error('[account/verification-status] error:', err)
+    return NextResponse.json({}, { headers: NO_CACHE })
+  }
+}
 
-    const oiMetaKeys = addresses.map(a => `oi:meta:${a}`)
-    const [linkedFilesPerAddr, oiMetas] = await Promise.all([
-      Promise.all(addresses.map(addr => getLinkedFiles(addr))),
-      kv.mget<(OiMeta | null)[]>(...oiMetaKeys),
-    ])
-
-    const result: Record<string, { verifiedUrls: string[]; linkedFiles: LinkedFile[] }> = {}
-    addresses.forEach((addr, i) => {
-      const meta = oiMetas[i]
-      const verifiedUrls = Array.isArray(meta?.verifiedUrls) ? meta!.verifiedUrls! : meta?.verifiedUrl ? [meta.verifiedUrl] : []
-      result[addr] = { verifiedUrls, linkedFiles: linkedFilesPerAddr[i] }
-    })
-
-    return NextResponse.json(result, { headers: NO_CACHE })
+// POST form for callers with many boards: a comma-joined query string of 200 addresses is ~8.4KB,
+// past the point where CDNs and proxies start dropping the request URL.
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const raw: unknown = body?.addresses
+    if (!Array.isArray(raw)) return NextResponse.json({}, { headers: NO_CACHE })
+    return NextResponse.json(await statusFor(parseAddresses(raw.filter((a): a is string => typeof a === 'string'))), { headers: NO_CACHE })
   } catch (err) {
     console.error('[account/verification-status] error:', err)
     return NextResponse.json({}, { headers: NO_CACHE })

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles } from '@/lib/github/linkedFiles'
+import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -210,7 +210,7 @@ export async function GET(request: Request) {
 
     // Read KV linked files, last-known GitHub traffic counts, and resolved creators in parallel
     const [linkedFilesMap, trafficCounts, creators] = await Promise.all([
-      Promise.all(addresses.map(addr => getLinkedFiles(addr))),
+      getLinkedFilesBatch(addresses),
       kv.mget<({ count: number } | null)[]>(
         ...addresses.map(addr => `views:github:last:${addr.toLowerCase()}`)
       ),

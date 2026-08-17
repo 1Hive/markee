@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
   const repoFullName = `${owner}/${repo}`
 
   const uid = request.cookies.get('github_uid')?.value
+  let defaultBranch = 'main'
 
   try {
     const token = await getGithubToken(uid)
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
     }
 
     const repoData = await repoRes.json()
-    const defaultBranch: string = repoData.default_branch ?? 'main'
+    defaultBranch = repoData.default_branch ?? 'main'
 
     const pkgRes = await fetch(
       `https://api.github.com/repos/${encodedRepoPath}/contents/package.json?ref=${encodeURIComponent(defaultBranch)}`,
@@ -104,6 +105,6 @@ export async function GET(request: NextRequest) {
     // Malformed package.json lands here too -- indistinguishable from "nothing to detect" for the
     // wizard, which falls back to manual selection either way.
     console.error('[github/detect-repo] error:', err)
-    return NextResponse.json({ repoFullName, defaultBranch: 'main', framework: null, wallet: null, packageJsonFound: false })
+    return NextResponse.json({ repoFullName, defaultBranch, framework: null, wallet: null, packageJsonFound: false })
   }
 }

@@ -1470,7 +1470,12 @@ export default function AccountPage() {
   const allBoardAddrsKey = allBoards.map(b => b.address.toLowerCase()).join(',')
   useEffect(() => {
     if (!allBoardAddrsKey) return
-    fetch(`/api/account/verification-status?addresses=${allBoardAddrsKey}`)
+    // POST, not a query string: 200 boards join to ~8.4KB, past what CDNs will carry in a URL.
+    fetch('/api/account/verification-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addresses: allBoardAddrsKey.split(',') }),
+    })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setVerificationMap(data) })
       .catch(() => {})

@@ -28,6 +28,13 @@ const CACHE_TTL = 60 // seconds
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 const MAX_MARKEES_PER_BOARD = 500
 
+// The per-wallet cache above bounds repeat cost for one wallet, but the endpoint is unauthenticated
+// and the wallet is caller-supplied, so cycling addresses walks straight past it into a full RPC
+// fan-out every time (every board's getTopMarkees, plus owner() on every markee of every fixed
+// board). Cache misses are therefore also metered per IP.
+const RATE_WINDOW = 60 // seconds
+const RATE_MAX_MISSES = 10
+
 interface EcosystemLeaderboard {
   address: string
   strategy?: 'fixed' | 'streaming'
@@ -66,6 +73,17 @@ export async function GET(request: NextRequest) {
     const cacheKey = `cache:marketplace:positions:${wallet}`
     const cached = await kv.get<{ positions: Record<string, Position> }>(cacheKey)
     if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    const rateKey = `ratelimit:marketplace:positions:${ip}`
+    const misses = await kv.incr(rateKey)
+    if (misses === 1) await kv.expire(rateKey, RATE_WINDOW)
+    if (misses > RATE_MAX_MISSES) {
+      return NextResponse.json(
+        { positions: {}, error: 'rate_limited' },
+        { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } },
+      )
+    }
 
     const origin = internalOrigin()
     const headers = internalHeaders()

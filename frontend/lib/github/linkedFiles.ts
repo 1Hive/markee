@@ -28,7 +28,7 @@ export function endDelimiter(leaderboardAddress: string): string {
 // (or a typo'd/wrong address) as valid verification for this leaderboard. Legacy migration aliases
 // are handled by the caller via legacyAddressesFor(), not by this function.
 export function hasDelimiterPair(content: string, leaderboardAddress: string): boolean {
-  const addr = leaderboardAddress.toLowerCase()
+  const addr = leaderboardAddress.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const start = new RegExp(`<!--\\s*MARKEE:START:${addr}\\s*-->`, 'i')
   const end = new RegExp(`<!--\\s*MARKEE:END:${addr}\\s*-->`, 'i')
   return start.test(content) && end.test(content)
@@ -71,30 +71,10 @@ export function legacyAddressesFor(newAddress: string): string[] {
 
 // ── KV helpers ────────────────────────────────────────────────────────────────
 
-async function readLinkedFilesFromKV(addr: string): Promise<LinkedFile[]> {
-  const kvKey = `github:markee:${addr}`
-  // Use Upstash REST API directly with strong consistency to avoid
-  // read replica lag causing verified status to flicker on page refresh
-  const url = `${process.env.KV_REST_API_URL}/get/${encodeURIComponent(kvKey)}`
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      'Upstash-Consistency': 'strong',
-    },
-    cache: 'no-store',
-  })
-
-  if (!res.ok) {
-    console.error(`[getLinkedFiles] Upstash REST error ${res.status} for key ${kvKey}`)
-    return []
-  }
-
-  const json = await res.json()
-  const raw = json.result
-
+function normalize(raw: unknown): LinkedFile[] {
   if (!raw) return []
   if (Array.isArray(raw)) return raw as LinkedFile[]
-  if (typeof raw === 'object' && raw !== null) return legacyToArray(raw as Record<string, unknown>)
+  if (typeof raw === 'object') return legacyToArray(raw as Record<string, unknown>)
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw)
@@ -105,25 +85,64 @@ async function readLinkedFilesFromKV(addr: string): Promise<LinkedFile[]> {
   return []
 }
 
-export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
-  const addr = leaderboardAddress.toLowerCase()
+// One MGET for many addresses. Goes through the Upstash REST API rather than kv.mget so the
+// strong-consistency header is preserved -- read replica lag makes verified status flicker on
+// page refresh, which is why this path never used the pooled client in the first place.
+async function readLinkedFilesFromKV(addrs: string[]): Promise<LinkedFile[][]> {
+  if (addrs.length === 0) return []
+  try {
+    const res = await fetch(`${process.env.KV_REST_API_URL}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
+        'Upstash-Consistency': 'strong',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['MGET', ...addrs.map(a => `github:markee:${a}`)]),
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error(`[getLinkedFiles] Upstash REST error ${res.status} for ${addrs.length} key(s)`)
+      return addrs.map(() => [])
+    }
+    const json = await res.json()
+    const results: unknown[] = Array.isArray(json.result) ? json.result : []
+    return addrs.map((_, i) => normalize(results[i]))
+  } catch (err) {
+    console.error('[getLinkedFiles] Upstash REST fetch failed:', err)
+    return addrs.map(() => [])
+  }
+}
 
-  // Try current address first
-  const files = await readLinkedFilesFromKV(addr)
-  if (files.length > 0) return files
+// Batched form of getLinkedFiles. Two round trips regardless of address count (one for the current
+// keys, one more only if some addresses missed and have legacy predecessors) instead of one per
+// address, which mattered once callers started passing 200 boards at a time.
+export async function getLinkedFilesBatch(leaderboardAddresses: readonly string[]): Promise<LinkedFile[][]> {
+  const addrs = leaderboardAddresses.map(a => a.toLowerCase())
+  const current = await readLinkedFilesFromKV(addrs)
 
   // Fall back to legacy predecessor addresses (v1.0→v1.1 and v1.2→v1.3 migrations).
   // On first hit, lazily migrate the data to the current address key so future
   // reads are fast and don't need to check legacy keys.
-  for (const legacyAddr of legacyAddressesFor(addr)) {
-    const legacyFiles = await readLinkedFilesFromKV(legacyAddr)
-    if (legacyFiles.length > 0) {
-      await saveLinkedFiles(addr, legacyFiles)
-      return legacyFiles
-    }
-  }
+  const legacyLookups = addrs.flatMap((addr, i) =>
+    current[i].length > 0 ? [] : legacyAddressesFor(addr).map(legacyAddr => ({ i, addr, legacyAddr })),
+  )
+  if (legacyLookups.length === 0) return current
 
-  return []
+  const legacyFiles = await readLinkedFilesFromKV(legacyLookups.map(l => l.legacyAddr))
+  const migrations: Promise<void>[] = []
+  legacyLookups.forEach(({ i, addr }, j) => {
+    if (current[i].length > 0 || legacyFiles[j].length === 0) return
+    current[i] = legacyFiles[j]
+    migrations.push(saveLinkedFiles(addr, legacyFiles[j]))
+  })
+  await Promise.all(migrations)
+
+  return current
+}
+
+export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
+  return (await getLinkedFilesBatch([leaderboardAddress]))[0]
 }
 
 function legacyToArray(obj: Record<string, unknown>): LinkedFile[] {

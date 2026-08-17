@@ -19,7 +19,7 @@ import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK } from '@/lib/contracts/addresses'
-import { getLinkedFiles, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),
-      Promise.all(addresses.map(addr => getLinkedFiles(addr))),
+      getLinkedFilesBatch(addresses),
     ])
 
     let markeeCallIndex = 0
