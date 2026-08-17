@@ -10,7 +10,7 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd, FAST_TX_GAS_RESERVE } from '@/lib/utils'
+import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
@@ -47,19 +47,6 @@ function sanitizeAmountInput(raw: string): string {
   return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
-function formatMarkeeAmount(n: number): string {
-  if (n >= 999_999e12) return '>999,999T'
-  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
-  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
-  if (n > 0 && n < 10) {
-    let decimals = 3
-    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
-    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
-    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
-  }
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
-}
 
 function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
   const [visible, setVisible] = useState(false)

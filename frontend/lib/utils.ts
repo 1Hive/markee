@@ -45,3 +45,18 @@ export const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH
 export function logoDevUrl(domain: string, size = 32): string {
   return `https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=${size}`
 }
+
+// Compact MARKEE token amounts. Small values keep enough decimals to stay non-zero.
+export function formatMarkeeAmount(n: number): string {
+  if (n >= 999_999e12) return '>999,999T'
+  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
+  if (n > 0 && n < 10) {
+    let decimals = 3
+    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
+    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
+    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
+  }
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}

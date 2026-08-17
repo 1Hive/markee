@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 
@@ -76,7 +77,7 @@ async function resolveCreators(
     const logs = await client.getLogs({
       address: SUPERFLUID_FACTORY_ADDRESS,
       event: LEADERBOARD_CREATED_EVENT,
-      fromBlock: 0n,
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
       toBlock: 'latest',
     })
 

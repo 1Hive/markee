@@ -20,6 +20,7 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { logoDevUrl } from '@/lib/utils'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const PURP  = '#7B6AF4'
@@ -214,7 +215,7 @@ function ServedLogo({ lb }: { lb: Leaderboard }) {
     return (
       <span style={box}>
         <Image
-          src={`https://img.logo.dev/${hostname}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=32`}
+          src={logoDevUrl(hostname)}
           alt={`${hostname} logo`}
           width={22}
           height={22}

@@ -20,7 +20,7 @@ import {
 } from '@/lib/superfluid/streaming'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatUsd } from '@/lib/utils'
+import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded } from '@/components/modals/StreamUI'
@@ -54,19 +54,6 @@ function formatViewsShort(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`
 }
 
-function formatMarkeeAmount(n: number): string {
-  if (n >= 999_999e12) return '>999,999T'
-  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
-  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
-  if (n > 0 && n < 10) {
-    let decimals = 3
-    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
-    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
-    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
-  }
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
-}
 
 function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
   const [visible, setVisible] = useState(false)

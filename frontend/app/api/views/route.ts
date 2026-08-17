@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
   const urlsParam = searchParams.get('urls')
   if (singleAddress && urlsParam) {
     const address = singleAddress.toLowerCase().trim()
-    const urls = urlsParam.split('||').filter(Boolean)
+    const urls = urlsParam.split('||').filter(Boolean).slice(0, 100)
     if (urls.length === 0) {
       return NextResponse.json({}, { headers: corsHeaders(origin) })
     }

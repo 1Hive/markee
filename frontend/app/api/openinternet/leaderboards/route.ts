@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 
 export const dynamic = 'force-dynamic'
@@ -98,7 +99,7 @@ async function resolveCreators(
 
   try {
     const logsPerFactory = await Promise.all(
-      OI_FACTORY_ADDRESSES.map(addr => client.getLogs({ address: addr, event: LEADERBOARD_CREATED_EVENT, fromBlock: 0n, toBlock: 'latest' }))
+      OI_FACTORY_ADDRESSES.map(addr => client.getLogs({ address: addr, event: LEADERBOARD_CREATED_EVENT, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }))
     )
     const logs = logsPerFactory.flat()
 

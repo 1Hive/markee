@@ -10,7 +10,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd } from '@/lib/utils'
+import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip } from '@/components/modals/StreamUI'
 import type { Markee } from '@/types'
@@ -65,19 +65,6 @@ function sanitizeAmountInput(raw: string): string {
 
 // M/B/T-abbreviated, NaN-safe MARKEE amount display — shows extra decimal places for sub-10 and
 // sub-1 amounts instead of collapsing to "0" (e.g. a tiny ETH bid still shows a visible token amount).
-function formatMarkeeAmount(n: number): string {
-  if (n >= 999_999e12) return '>999,999T'
-  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
-  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
-  if (n > 0 && n < 10) {
-    let decimals = 3
-    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
-    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
-    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
-  }
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
-}
 
 function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
