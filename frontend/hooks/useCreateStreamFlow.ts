@@ -65,9 +65,14 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
   const mountedRef = useRef(isOpen)
   mountedRef.current = isOpen
 
+  // createMarkee clones unconditionally -- there is no per-owner uniqueness check on-chain. So if tx 1
+  // lands and a later step fails, retrying must resume from the markee that already exists rather than
+  // minting a second orphan one. Cleared with the rest of the state when the modal closes.
+  const createdRef = useRef<{ markee: Address; pool: Address } | null>(null)
+
   useEffect(() => {
     if (!isOpen) {
-      setPhase('idle'); setError(null); setTxHash(undefined); reset()
+      setPhase('idle'); setError(null); setTxHash(undefined); createdRef.current = null; reset()
     }
   }, [isOpen, reset])
 
@@ -105,44 +110,47 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         return
       }
 
-      // ── Tx 1: Create Markee ──────────────────────────────────────────────
-      setPhase('creating')
-      const createHash = await writeContractAsync({
-        address: board,
-        abi: StreamingLeaderboardABI,
-        functionName: 'createMarkee',
-        args: [message, ''],
-        chainId: CANONICAL_CHAIN.id,
-      })
-      if (!mountedRef.current) return
-      const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash })
-      if (createReceipt.status !== 'success') throw new Error('Create Markee transaction reverted.')
-      if (!mountedRef.current) return
+      // ── Tx 1: Create Markee (skipped when resuming a partly-finished attempt) ──
+      if (!createdRef.current) {
+        setPhase('creating')
+        const createHash = await writeContractAsync({
+          address: board,
+          abi: StreamingLeaderboardABI,
+          functionName: 'createMarkee',
+          args: [message, ''],
+          chainId: CANONICAL_CHAIN.id,
+        })
+        if (!mountedRef.current) return
+        const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash })
+        if (createReceipt.status !== 'success') throw new Error('Create Markee transaction reverted.')
+        if (!mountedRef.current) return
 
-      // Decode markee address from MarkeeCreated event
-      let markeeAddress: Address | null = null
-      for (const log of createReceipt.logs) {
-        if (log.address.toLowerCase() !== board.toLowerCase()) continue
-        try {
-          const ev = decodeEventLog({ abi: MARKEE_CREATED_ABI, data: log.data, topics: log.topics })
-          if (ev.eventName === 'MarkeeCreated') { markeeAddress = ev.args.markeeAddress; break }
-        } catch { /* not the right event, keep scanning */ }
+        // Decode markee address from MarkeeCreated event
+        let created: Address | null = null
+        for (const log of createReceipt.logs) {
+          if (log.address.toLowerCase() !== board.toLowerCase()) continue
+          try {
+            const ev = decodeEventLog({ abi: MARKEE_CREATED_ABI, data: log.data, topics: log.topics })
+            if (ev.eventName === 'MarkeeCreated') { created = ev.args.markeeAddress; break }
+          } catch { /* not the right event, keep scanning */ }
+        }
+        if (!created) throw new Error('Could not find new Markee address in receipt.')
+
+        // Pool is created inside createMarkee but the RPC may lag behind chain state.
+        const createdPool = await waitForPool(
+          (addr) => publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [addr] }),
+          created,
+        )
+        if (!mountedRef.current) return
+        createdRef.current = { markee: created, pool: createdPool }
       }
-      if (!markeeAddress) throw new Error('Could not find new Markee address in receipt.')
+      const { markee: markeeAddress, pool } = createdRef.current
 
-      // Read stable Superfluid addresses and allowance, then poll for pool
-      // (pool is created inside createMarkee but RPC may lag behind chain state)
       const [cfaAgreement, gdaAgreement, currentAllowance] = await Promise.all([
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID] }),
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID] }),
         publicClient.readContract({ address: ETHX, abi: erc20Abi, functionName: 'allowance', args: [address, board] }),
       ])
-      if (!mountedRef.current) return
-
-      const pool = await waitForPool(
-        (addr) => publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [addr] }),
-        markeeAddress,
-      )
       if (!mountedRef.current) return
 
       // ── Tx 2: Approve (if needed) ────────────────────────────────────────

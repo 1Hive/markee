@@ -33,20 +33,12 @@ import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { useTopSince } from '@/hooks/useTopSince'
 import { formatDuration, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
+import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
 
 // ── Design tokens (matches MarkeeSignModal's theme) ─────────────────────────────
-const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG   = '#060A2A'
-const BG2  = '#0A0F3D'
-const PINK = '#F897FE'
-const BLUE = '#7C9CFF'
-const BORDER = 'rgba(138,143,191,0.2)'
-const MUTED  = '#8A8FBF'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
 const PURP   = '#7B6AF4'
 const GOLD   = '#FFD700'
 const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH

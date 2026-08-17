@@ -22,23 +22,14 @@ import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { COOPERATIVE_MULTISIG } from '@/lib/contracts/addresses'
 import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const SANS   = 'Manrope, system-ui, sans-serif'
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
 const PURP   = '#7B6AF4'
-const GREEN  = '#1DB227'
 const GOLD   = '#FFD45E'
 const SILVER = '#C7CCD6'
 const BRONZE = '#CD7F32'
-const BG     = '#060A2A'
-const BG2    = '#0A0F3D'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
-const MUTED  = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BaseLeaderboard {

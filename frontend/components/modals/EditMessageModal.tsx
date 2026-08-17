@@ -8,14 +8,8 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { TxProgress } from '@/components/modals/StreamUI'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { formatTransactionError } from '@/lib/transactionErrors'
+import { MONO, PINK, BG2, BG, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
-const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG   = '#060A2A'
-const BG2  = '#0A0F3D'
-const PINK = '#F897FE'
-const BORDER = 'rgba(138,143,191,0.2)'
-const MUTED  = '#8A8FBF'
-const TEXT   = '#EDEEFF'
 const MAX_LEN = 222
 
 interface EditMessageModalProps {

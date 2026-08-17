@@ -321,8 +321,8 @@ function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onS
 
   useEffect(() => {
     fetch('/api/views/strategy-totals')
-      .then(r => r.json())
-      .then(setStrategyViews)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && typeof d.fixed === 'number') setStrategyViews(d) })
       .catch(() => {})
   }, [])
 

@@ -37,3 +37,7 @@ export function getDisplayName(markee: Markee, ensName?: string | null): string 
   // Priority 3: Shortened address
   return formatAddress(markee.owner)
 }
+
+// ETH held back from "max" spend calculations so the user can still pay gas for the transaction
+// they are about to send.
+export const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH

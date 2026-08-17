@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useBalance, useReadContract, useSwitchChain } from 'wagmi'
 import { formatEther, type Address } from 'viem'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
@@ -13,6 +13,7 @@ import {
   InfoTip, ModalField, ModalShell, TxProgress, RatePriceCard,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { FAST_TX_GAS_RESERVE } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -20,8 +21,6 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 const ADMIN_ABI = [
   { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
-
-const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
 
 interface StreamActivateModalProps {
   isOpen: boolean
@@ -119,16 +118,21 @@ export function StreamActivateModal({
   }, [minMonthlyWei]) // eslint-disable-line
 
   // ── Success → close ───────────────────────────────────────────────────────
+  // Held in a ref: the board page re-renders ~10x/sec (useFlowingAmount tick) with fresh inline
+  // callbacks, and depending on them would clear the close timer every tick so it never fires.
+  const closeRef = useRef({ onClose, onSuccess })
+  closeRef.current = { onClose, onSuccess }
   useEffect(() => {
     if (isSuccess && isOpen) {
       const isFirstOnBoard = !topMonthlyWei || topMonthlyWei === 0n
       const tookTop = isFirstOnBoard || calc.monthlyWei > topMonthlyWei
       const additionalMonthlyWei = !tookTop && topMonthlyWei ? topMonthlyWei + 1n - calc.monthlyWei : null
       setSuccessSnap({ tookTop, additionalMonthlyWei, isFirstOnBoard })
-      const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
+      const t = setTimeout(() => { closeRef.current.onClose(); closeRef.current.onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, isOpen])
 
   const handleActivate = () => activate(message, calc, { maxLen, belowMin, minMonthlyEth })
 

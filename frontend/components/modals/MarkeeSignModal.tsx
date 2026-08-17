@@ -10,23 +10,15 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd } from '@/lib/utils'
+import { formatUsd, FAST_TX_GAS_RESERVE } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
+import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
-const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG   = '#060A2A'
-const BG2  = '#0A0F3D'
-const PINK = '#F897FE'
-const BLUE = '#7C9CFF'
-const BORDER = 'rgba(138,143,191,0.2)'
-const MUTED  = '#8A8FBF'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
 const PURP   = '#7B6AF4'
-const FAST_TX_GAS_RESERVE = parseEther('0.0002')
+
 const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
 
 function fmtAddr(a: string): string {

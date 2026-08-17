@@ -13,18 +13,9 @@ import { RewardsModal } from '@/components/modals/RewardsModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { useStreamingRows } from '@/hooks/useStreamingRows'
 import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
-const GREEN  = '#1DB227'
-const BG     = '#060A2A'
-const BG2    = '#0A0F3D'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
-const MUTED  = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SuperfluidLeaderboard {

@@ -7,11 +7,8 @@ import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchCh
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
+import { MONO, PINK, BLUE, BORDER } from '@/lib/design-tokens'
 
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 // Juicebox v4 uses this sentinel address for native ETH
 const ETH_TOKEN = '0x000000000000000000000000000000000000EEEe' as const

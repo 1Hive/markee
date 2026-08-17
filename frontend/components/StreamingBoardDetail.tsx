@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
-import { formatEther, type Address, type Hex } from 'viem'
+import { formatEther, zeroAddress, type Address, type Hex } from 'viem'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -40,7 +40,6 @@ const STREAM_LB_COLS = '42px 150px 110px 120px minmax(220px,1fr) 70px 170px'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
-const ZERO = '0x0000000000000000000000000000000000000000'
 
 // Effective rate (wei/sec) → human "X ETH/mo".
 function formatRate(weiPerSec: bigint): string {
@@ -102,13 +101,13 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
     query: { enabled: !!address },
   })
-  const hasPosition = (!!backedMarkee && backedMarkee !== ZERO) || (myDeposit ?? 0n) > 0n
+  const hasPosition = (!!backedMarkee && backedMarkee !== zeroAddress) || (myDeposit ?? 0n) > 0n
 
   const pending = usePendingMarkee(hasPosition ? board : undefined, address)
   const pendingEthWei = useFlowingAmount(pending.pendingWei, pending.snapshotAt, pending.ratePerSec)
   const earnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(pendingEthWei)), pending.feeBps)
 
-  const backedEntry = backedMarkee && backedMarkee !== ZERO
+  const backedEntry = backedMarkee && backedMarkee !== zeroAddress
     ? markees.find(m => m.address.toLowerCase() === backedMarkee.toLowerCase()) ?? null
     : null
 
@@ -121,7 +120,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
   const [viewsFetching, setViewsFetching] = useState(true)
   const viewsLoading = isLoading || viewsFetching
-  const markeeAddrKey = markees.map(m => m.address.toLowerCase()).join(',')
+  const markeeAddrKey = useMemo(() => markees.map(m => m.address.toLowerCase()).join(','), [markees])
   useEffect(() => {
     if (!markeeAddrKey) { setViewsFetching(false); return }
     fetch(`/api/views?addresses=${markeeAddrKey}`)

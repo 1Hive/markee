@@ -19,20 +19,11 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK  = '#F897FE'
-const BLUE  = '#7C9CFF'
 const PURP  = '#7B6AF4'
-const GREEN = '#1DB227'
 const GOLD  = '#FFD700'
-const BG    = '#060A2A'
-const BG2   = '#0A0F3D'
-const TEXT  = '#EDEEFF'
-const TEXT2 = '#B8B6D9'
-const MUTED = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 const PAGE_SIZE = 25
 

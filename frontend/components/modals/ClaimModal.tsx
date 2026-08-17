@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   useAccount,
   useWriteContract,
@@ -49,13 +49,17 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
     if (!isOpen) { setError(null); setTxHash(undefined); reset() }
   }, [isOpen, reset])
 
+  // Held in a ref: the board page re-renders ~10x/sec (useFlowingAmount tick) with fresh inline
+  // callbacks, and depending on them would clear this timer every tick so it never fires.
+  const closeRef = useRef({ onClose, onSuccess })
+  closeRef.current = { onClose, onSuccess }
   useEffect(() => {
     if (isSuccess && isOpen) {
       refetchPending()
-      const t = setTimeout(() => { onClose(); onSuccess?.() }, 2200)
+      const t = setTimeout(() => { closeRef.current.onClose(); closeRef.current.onSuccess?.() }, 2200)
       return () => clearTimeout(t)
     }
-  }, [isSuccess, isOpen, onClose, onSuccess, refetchPending])
+  }, [isSuccess, isOpen, refetchPending])
 
   async function handleClaim() {
     setError(null)

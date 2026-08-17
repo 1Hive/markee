@@ -7,6 +7,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { TxHistoryToggle, TxHistoryPanel } from '@/components/board-detail/shared'
 import type { Markee } from '@/types'
+import { MONO, PINK, BLUE, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 export interface ExpandableMarkeeRowSlot {
   address: string
@@ -30,15 +31,7 @@ interface ExpandableMarkeeRowProps {
   trackView?: (m: Markee) => void
 }
 
-const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK = '#F897FE'
-const BLUE = '#7C9CFF'
 const PURP = '#7B6AF4'
-const BG = '#060A2A'
-const TEXT = '#EDEEFF'
-const TEXT2 = '#B8B6D9'
-const MUTED = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
 const LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
 function slotToMarkee(slot: ExpandableMarkeeRowSlot): Markee {
