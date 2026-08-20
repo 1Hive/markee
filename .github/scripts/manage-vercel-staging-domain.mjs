@@ -1,3 +1,5 @@
+import { appendFileSync } from "fs";
+
 const requiredEnvironment = [
   "GITHUB_REPOSITORY",
   "GITHUB_TOKEN",
@@ -156,8 +158,14 @@ const existingAssignment = stagingDomains.find(
   (domain) => domain.gitBranch === branchName,
 );
 
+function setOutput(domain) {
+  const outputFile = process.env.GITHUB_OUTPUT;
+  if (outputFile) appendFileSync(outputFile, `assigned_domain=${domain}\n`);
+}
+
 if (existingAssignment) {
   console.log(`${branchName} already uses https://${existingAssignment.name}`);
+  setOutput(existingAssignment.name);
   process.exit(0);
 }
 
@@ -194,3 +202,5 @@ if (existingDomain) {
   }
   console.log(`Assigned new domain https://${domainName} to ${branchName}`);
 }
+
+setOutput(domainName);
