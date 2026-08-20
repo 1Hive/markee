@@ -1091,7 +1091,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
           </div>
           <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
         </div>
         {sorted.map(m => {
@@ -1176,7 +1176,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
           </div>
           <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Ranking" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
         </div>
         {sorted.map(m => {

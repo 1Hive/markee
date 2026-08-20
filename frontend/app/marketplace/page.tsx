@@ -800,7 +800,7 @@ export default function MarketplacePage() {
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
             <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <SortHead label="Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             </div>
             <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" title="Fixed boards: one-time price. Streaming boards: monthly rate to hold the top." />
             <span />

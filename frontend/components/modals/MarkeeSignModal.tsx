@@ -807,7 +807,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
               <div style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {view === 'edit'
-                  ? 'As the message owner, only you can update.'
+                  ? 'As the message owner, only you can change this.'
                   : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       62/38 split
                       <InfoTip>

@@ -6,10 +6,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
-import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User } from 'lucide-react'
+import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
+import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User, Zap } from 'lucide-react'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -54,7 +54,7 @@ export function streamStatusOf(isTop: boolean, flowRateRaw: string | bigint | un
 const STREAM_STATUS_GOLD = '#FFD45E'
 export const STREAM_STATUS_META: Record<StreamStatus, { color: string; label: string; tip: string }> = {
   active:    { color: GREEN,   label: 'Active',    tip: 'This message is winning and your payment is streaming.' },
-  pending:   { color: STREAM_STATUS_GOLD, label: 'Pending',   tip: "This message isn't winning. Your stream is being fully refunded until you take the top spot." },
+  pending:   { color: STREAM_STATUS_GOLD, label: 'Not Winning', tip: "This message isn't winning. Your stream is being fully refunded until you take the top spot." },
   cancelled: { color: '#F87171', label: 'Stopped', tip: 'This stream has been cancelled. Reactivate to get your message featured.' },
 }
 
@@ -87,15 +87,39 @@ export function StreamStatusIcon({ status }: { status: StreamStatus }) {
   )
 }
 
+// How many decimal places a live-ticking value needs so its last digit visibly moves about once a
+// second, given how fast it's accruing per second. Used to size both useLiveBalance's re-render
+// resolution and the display formatting -- picking too few decimals (e.g. a fixed 4dp) makes a
+// slow, real accrual look frozen for tens of seconds at a time.
+export function decimalsForRate(perSecond: number, min: number, max: number): number {
+  if (!isFinite(perSecond) || perSecond <= 0) return max
+  const needed = Math.ceil(-Math.log10(perSecond)) + 1
+  return Math.min(max, Math.max(min, needed))
+}
+
+// Wei/sec convenience wrapper (perSecond is in wei, decimals are for the ETH-denominated display).
+export function decimalsForWeiRate(weiPerSecond: bigint, min = 4, max = 14): number {
+  return decimalsForRate(Number(weiPerSecond) / 1e18, min, max)
+}
+
+// formatUsd (lib/utils) caps at 2dp -- too coarse to show a live-ticking $ total moving at typical
+// stream rates. Pass decimalsForRate(usdPerSecond, 2, N) as `decimals`.
+export function formatLiveUsd(usd: number, decimals: number): string {
+  return `$${usd.toFixed(decimals)}`
+}
+
 // Seconds -> "Xd Xh" (or "Xh Xm" under a day, "Xm" under an hour).
-export function formatDuration(seconds: number): string {
+// includeSeconds: for a duration that's actively ticking on screen (e.g. "time featured" while a
+// message is currently #1), so the display visibly grows instead of only updating once a minute.
+export function formatDuration(seconds: number, includeSeconds = false): string {
   const s = Math.max(0, Math.floor(seconds))
   const days = Math.floor(s / 86400)
   const hours = Math.floor((s % 86400) / 3600)
   const minutes = Math.floor((s % 3600) / 60)
+  const secs = s % 60
   if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  if (hours > 0) return includeSeconds ? `${hours}h ${minutes}m ${secs}s` : `${hours}h ${minutes}m`
+  return includeSeconds ? `${minutes}m ${secs}s` : `${minutes}m`
 }
 
 
@@ -386,7 +410,7 @@ export function MetricValue({ text, color = TEXT, title }: { text: string; color
   )
 }
 
-export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topViews, viewsLoading, markeeCount, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
   topMarkeeAddress?: string
@@ -394,6 +418,7 @@ export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topV
   topViews: number
   viewsLoading?: boolean
   markeeCount: number
+  messagesLoading?: boolean
   totalLabel: string
   totalNode: React.ReactNode
   messagesLabel?: string
@@ -410,7 +435,7 @@ export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topV
       {cell('Served on', <ServedOnCell entry={entry} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(topViews)} color={BLUE} />)}
-      {cell(messagesLabel, <MetricValue text={markeeCount.toLocaleString()} />)}
+      {cell(messagesLabel, messagesLoading ? <ViewsSpinner size={16} color={TEXT} /> : <MetricValue text={markeeCount.toLocaleString()} />)}
       {cell('Contract address',
         <a href={getAddressUrl(CANONICAL_CHAIN_ID, address)} target="_blank" rel="noopener noreferrer"
           style={{ alignSelf: 'flex-start', fontFamily: MONO, fontSize: 15, color: PINK, textDecoration: 'none', borderBottom: `1px dotted ${PINK}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -1416,18 +1441,27 @@ export function BoardDetailSkeleton() {
 // strategy-agnostic.
 export type TxHistoryEvent =
   | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: bigint; newTotal: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
-  | { id: string; kind: 'stream'; rate: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
   | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
   | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+  // Streaming-only: the creator's MarkeeCreated + their own first BackerUpdated are two separate txs
+  // but one user action, merged server-side into a single "Bought Message" entry (flowRate is from
+  // the paired stream-open, for display). Other rate events distinguish a brand new backer's first
+  // stream from an existing backer changing/stopping theirs.
+  | { id: string; kind: 'bought'; flowRate: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'rate'; subKind: 'added' | 'changed' | 'stopped'; flowRate: bigint; newAggregate: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
 
 type ApiHistoryEvent =
   | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: string; newTotal: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
-  | { id: string; kind: 'stream'; rate: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'bought'; flowRate: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'rate'; subKind: 'added' | 'changed' | 'stopped'; flowRate: string; newAggregate: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
 
-export function useTxHistory(leaderboardAddress: string, markeeAddress: string, expanded: boolean, strategy?: 'streaming') {
+export interface TxHistoryBidder { address: string; flowRateRaw: string }
+
+export function useTxHistory(leaderboardAddress: string, markeeAddress: string, expanded: boolean, strategy?: 'fixed' | 'streaming') {
   const [history, setHistory] = useState<TxHistoryEvent[]>([])
+  const [bidders, setBidders] = useState<TxHistoryBidder[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -1440,18 +1474,18 @@ export function useTxHistory(leaderboardAddress: string, markeeAddress: string, 
       setIsLoading(true)
       setError(null)
       try {
-        const params = new URLSearchParams({ leaderboardAddress, markeeAddress })
-        if (strategy) params.set('strategy', strategy)
+        const params = new URLSearchParams({ leaderboardAddress, markeeAddress, ...(strategy ? { strategy } : {}) })
         const response = await fetch(`/api/markee/history?${params.toString()}`, { cache: 'no-store' })
         if (!response.ok) throw new Error('Unable to load transaction history')
-        const data = await response.json() as { history?: ApiHistoryEvent[] }
+        const data = await response.json() as { history?: ApiHistoryEvent[]; bidders?: TxHistoryBidder[] }
         const events: TxHistoryEvent[] = (data.history ?? []).map(event => ({
           ...event,
           ...(event.kind === 'funds' ? { amount: BigInt(event.amount), newTotal: BigInt(event.newTotal) } : {}),
-          ...(event.kind === 'stream' ? { rate: BigInt(event.rate) } : {}),
+          ...(event.kind === 'rate' ? { flowRate: BigInt(event.flowRate), newAggregate: BigInt(event.newAggregate) } : {}),
+          ...(event.kind === 'bought' ? { flowRate: BigInt(event.flowRate) } : {}),
           blockNumber: BigInt(event.blockNumber),
         } as TxHistoryEvent))
-        if (!cancelled) setHistory(events)
+        if (!cancelled) { setHistory(events); setBidders(data.bidders ?? []) }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load transaction history')
       } finally {
@@ -1463,7 +1497,7 @@ export function useTxHistory(leaderboardAddress: string, markeeAddress: string, 
     return () => { cancelled = true }
   }, [expanded, refreshKey, leaderboardAddress, markeeAddress, strategy])
 
-  return { history, isLoading, error, refresh: () => setRefreshKey(v => v + 1) }
+  return { history, bidders, isLoading, error, refresh: () => setRefreshKey(v => v + 1) }
 }
 
 export function TxHistoryToggle({ expanded, onClick, rank }: { expanded: boolean; onClick: () => void; rank: number }) {
@@ -1499,9 +1533,9 @@ function txTimestamp(ts: number): string {
 }
 
 function TxEventIcon({ kind }: { kind: TxHistoryEvent['kind'] }) {
-  if (kind === 'funds') return <div className="w-7 h-7 rounded-full bg-[#7C9CFF]/20 flex items-center justify-center flex-shrink-0"><Coins size={13} className="text-[#7C9CFF]" /></div>
-  if (kind === 'stream') return <div className="w-7 h-7 rounded-full bg-[#7EE787]/20 flex items-center justify-center flex-shrink-0"><Coins size={13} className="text-[#7EE787]" /></div>
+  if (kind === 'funds' || kind === 'bought') return <div className="w-7 h-7 rounded-full bg-[#7C9CFF]/20 flex items-center justify-center flex-shrink-0"><Coins size={13} className="text-[#7C9CFF]" /></div>
   if (kind === 'message') return <div className="w-7 h-7 rounded-full bg-[#F897FE]/20 flex items-center justify-center flex-shrink-0"><MessageSquare size={13} className="text-[#F897FE]" /></div>
+  if (kind === 'rate') return <div className="w-7 h-7 rounded-full bg-[#1DB227]/20 flex items-center justify-center flex-shrink-0"><Zap size={13} className="text-[#1DB227]" /></div>
   return <div className="w-7 h-7 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0"><User size={13} className="text-[#FFA94D]" /></div>
 }
 
@@ -1510,14 +1544,29 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
   markeeAddress: string
   expanded: boolean
   featured?: boolean
-  strategy?: 'streaming'
+  strategy?: 'fixed' | 'streaming'
 }) {
-  const { history, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded, strategy)
+  const { history, bidders, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded, strategy)
   if (!expanded) return null
   const latestTxHash = history[0]?.transactionHash
 
   return (
     <div style={{ borderTop: `1px solid ${BORDER}`, background: BG, padding: '12px 16px 14px', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent' }}>
+      {bidders.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bidders</p>
+          <div className="space-y-2">
+            {bidders.map(b => (
+              <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
+                  {fmtAddr(b.address)} <ExternalLink size={10} />
+                </a>
+                <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatEther(ratePerSecToMonthly(BigInt(b.flowRateRaw)))} ETH/mo</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 mb-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF]">Transaction history</p>
         <div className="flex items-center gap-3">
@@ -1564,19 +1613,26 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                       <span className="text-xs text-[#8A8FBF]">to {formatEther(event.newTotal)} ETH total</span>
                     )}
                   </div>
-                ) : event.kind === 'stream' ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-[#EDEEFF]">
-                      {event.rate === 0n ? 'Stream Stopped' : 'Stream Rate Set'}
-                    </span>
-                    {event.rate > 0n && (
-                      <span className="text-sm font-semibold text-[#7EE787]">{parseFloat(formatEther(ratePerSecToMonthly(event.rate))).toFixed(4).replace(/\.?0+$/, '')} ETH/mo</span>
-                    )}
-                  </div>
                 ) : event.kind === 'message' ? (
                   <div>
                     <span className="text-sm font-semibold text-[#EDEEFF]">Changed Message</span>
                     <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
+                  </div>
+                ) : event.kind === 'bought' ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-[#EDEEFF]">Bought Message</span>
+                    {event.flowRate > 0n && (
+                      <span className="text-sm font-semibold text-[#7C9CFF]">{formatEther(ratePerSecToMonthly(event.flowRate))} ETH/mo</span>
+                    )}
+                  </div>
+                ) : event.kind === 'rate' ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-[#EDEEFF]">
+                      {event.subKind === 'stopped' ? 'Stream Stopped' : event.subKind === 'added' ? 'Added a Stream' : 'Stream Rate Changed'}
+                    </span>
+                    {event.flowRate > 0n && (
+                      <span className="text-sm font-semibold text-[#1DB227]">{formatEther(ratePerSecToMonthly(event.flowRate))} ETH/mo</span>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-[#EDEEFF]">

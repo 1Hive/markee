@@ -149,7 +149,7 @@ export function EditMessageModal({
 
             {/* Footer */}
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>As the message owner, only you can update.</span>
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>As the message owner, only you can change this.</span>
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}

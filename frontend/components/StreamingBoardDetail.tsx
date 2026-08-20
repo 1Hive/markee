@@ -19,6 +19,7 @@ import { STREAMING_BASE, CFA_FORWARDER_ABI, ratePerSecToMonthly } from '@/lib/su
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
+import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import { useTopSince } from '@/hooks/useTopSince'
 import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
@@ -29,7 +30,7 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { Pencil } from 'lucide-react'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, HERO_GRAD,
-  formatViews, fmtAddr, formatDuration, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
+  formatViews, fmtAddr, formatDuration, decimalsForRate, decimalsForWeiRate, formatLiveUsd, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
   TxHistoryToggle, TxHistoryPanel, useTxHistory,
 } from '@/components/board-detail/shared'
 
@@ -76,7 +77,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   // ── Modal state ─────────────────────────────────────────────────────────────
   const [signOpen, setSignOpen] = useState(false)
   const [signTargetAddress, setSignTargetAddress] = useState<string | null>(null)
-  const [signInitialView, setSignInitialView] = useState<'fund' | 'manage'>('fund')
+  const [signInitialView, setSignInitialView] = useState<'fund' | 'manage' | undefined>(undefined)
   const [activateOpen, setActivateOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
@@ -87,6 +88,10 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const openSign = (m: StreamingMarkee, view: 'fund' | 'manage') => {
     setSignTargetAddress(m.address); setSignInitialView(view); setSignOpen(true)
   }
+  // Hero card opens the general "Change the Markee Sign" screen (matches the For Sale page's hero
+  // click), not straight into Add Funds for the top message -- explicitly clears any target/view
+  // left over from a previous row-level Fund/Manage click, so the modal actually lands on 'list'.
+  const openSignList = () => { setSignTargetAddress(null); setSignInitialView(undefined); setSignOpen(true) }
 
   // ── Your position on this board ─────────────────────────────────────────────
   const { data: backedMarkee, refetch: refetchBacked } = useReadContract({
@@ -104,8 +109,15 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const hasPosition = (!!backedMarkee && backedMarkee !== zeroAddress) || (myDeposit ?? 0n) > 0n
 
   const pending = usePendingMarkee(hasPosition ? board : undefined, address)
-  const pendingEthWei = useFlowingAmount(pending.pendingWei, pending.snapshotAt, pending.ratePerSec)
+  // Decimal count is derived from the actual accrual rate (not a fixed guess) so the last digit
+  // visibly ticks about once a second regardless of how slow or fast the stream is.
+  const ethDecimals = decimalsForWeiRate(pending.ratePerSec)
+  const pendingEthWei = useLiveBalance(pending.pendingWei, pending.ratePerSec, ethDecimals)
   const earnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(pendingEthWei)), pending.feeBps)
+  const markeeRatePerSec = pending.mintsMarkee
+    ? estimateStreamingSettlementMarkeeTokens(Number(formatEther(pending.ratePerSec)), pending.feeBps)
+    : 0
+  const markeeDecimals = decimalsForRate(markeeRatePerSec, 2, 12)
 
   const backedEntry = backedMarkee && backedMarkee !== zeroAddress
     ? markees.find(m => m.address.toLowerCase() === backedMarkee.toLowerCase()) ?? null
@@ -123,6 +135,10 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const markeeAddrKey = useMemo(() => markees.slice(0, VIEWS_ADDRESS_LIMIT).map(m => m.address.toLowerCase()).join(','), [markees])
   useEffect(() => {
     if (!markeeAddrKey) { setViewsFetching(false); return }
+    // Re-arm the loading flag for this run -- the very first run (before markees has loaded) hits
+    // the branch above and clears it, so without this the spinner never shows once the real fetch
+    // below actually starts.
+    setViewsFetching(true)
     fetch(`/api/views?addresses=${markeeAddrKey}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -162,11 +178,17 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const topMonthlyWei = markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined
 
   const streamedEthLabel = `${streamedEth.toFixed(6)} ETH`
-  const totalStreamedNode = (
+  // Same "digit visibly ticks ~1x/sec" derivation as the claim card, applied to the USD display --
+  // formatUsd alone rounds to whole cents, which looks frozen at typical stream rates.
+  const usdRatePerSec = ethPrice ? (Number(boardTotal?.rateRaw ?? 0n) / 1e18) * ethPrice : 0
+  const usdStreamedDecimals = decimalsForRate(usdRatePerSec, 2, 10)
+  const totalStreamedNode = boardTotal === null ? (
+    <ViewsSpinner size={16} color={GREEN} />
+  ) : (
     <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
       <span style={{ width: 8, height: 8, borderRadius: 99, background: GREEN, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
       <MetricValue
-        text={ethPrice ? formatUsd(streamedEth * ethPrice) : streamedEthLabel}
+        text={ethPrice ? formatLiveUsd(streamedEth * ethPrice, usdStreamedDecimals) : streamedEthLabel}
         color={GREEN}
         title={ethPrice ? streamedEthLabel : undefined}
       />
@@ -215,7 +237,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               views={topViews}
               viewsLoading={viewsLoading}
               pillLabel={canStream ? `${formatRate(topMarkee.rate)} to rent` : undefined}
-              onClick={() => canStream && openSign(topMarkee, backedMarkee && backedMarkee.toLowerCase() === topMarkee.address.toLowerCase() ? 'manage' : 'fund')}
+              onClick={() => canStream && openSignList()}
               strategy="streaming"
             />
             <div style={{ height: 28 }} />
@@ -225,6 +247,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               topViews={topViews}
               viewsLoading={viewsLoading}
               markeeCount={messageCount}
+              messagesLoading={isLoading}
               totalLabel="Total streamed"
               totalNode={totalStreamedNode}
               messagesLabel="Messages"
@@ -249,13 +272,16 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                     border: '1px solid rgba(248,151,254,0.3)',
                   }}>
                     <div>
-                      <div style={{ fontFamily: MONO, fontSize: 11, color: TEXT2, letterSpacing: 0.5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 11, color: TEXT2, letterSpacing: 0.5 }}>
+                        {pending.accruing && (
+                          <span style={{ width: 6, height: 6, borderRadius: 99, background: GREEN, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+                        )}
                         {pending.mintsMarkee ? 'MARKEE accrued' : 'ETH accrued'}
                       </div>
                       <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 800, color: PINK, marginTop: 2 }}>
                         {pending.mintsMarkee
-                          ? earnedMarkee.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                          : Number(formatEther(pendingEthWei)).toFixed(6)}
+                          ? earnedMarkee.toLocaleString(undefined, { minimumFractionDigits: markeeDecimals, maximumFractionDigits: markeeDecimals })
+                          : `${formatLiveEth(pendingEthWei, ethDecimals)} ETH`}
                       </div>
                     </div>
                     <button onClick={() => setClaimOpen(true)} style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '10px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -267,7 +293,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
                 <div style={{ minWidth: 900, background: BG2 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: STREAM_LB_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center', borderLeft: '3px solid transparent' }}>
-                    {['', 'Bought by', 'Total streamed', 'Bid rate', 'Current message', 'Views', ''].map((h, i) => (
+                    {['', 'Bought by', 'Total streamed', 'Total Bid Rate', 'Current message', 'Views', ''].map((h, i) => (
                       <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
                     ))}
                   </div>
@@ -279,9 +305,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                       featured={i === 0}
                       board={board}
                       topSince={topSince}
+                      ethPrice={ethPrice}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
                       viewsLoading={viewsLoading}
                       isBackedByYou={!!backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase()}
+                      hasAnyPosition={!!backedMarkee && backedMarkee !== zeroAddress}
                       isOwner={!!address && m.owner.toLowerCase() === address.toLowerCase()}
                       onEditMessage={() => setMessageEditTarget(m)}
                       onStream={canStream ? () => openSign(m, backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase() ? 'manage' : 'fund') : undefined}
@@ -323,6 +351,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         board={board}
         initialView={signInitialView}
         initialTargetAddress={signTargetAddress ?? undefined}
+        topMonthlyWeiHint={topMonthlyWei}
+        minMonthlyWeiHint={meta.minimumMonthlyRate}
         onClose={() => setSignOpen(false)}
         onSuccess={refetchAll}
       />
@@ -347,6 +377,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       <StreamSignModal
         isOpen={createOpen}
         board={board}
+        topMonthlyWeiHint={topMonthlyWei}
+        minMonthlyWeiHint={meta.minimumMonthlyRate}
         onClose={() => setCreateOpen(false)}
         onSuccess={() => { setCreateOpen(false); refetchAll() }}
       />
@@ -460,7 +492,7 @@ function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage
               {error && <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{error}</p>}
             </div>
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>As the message owner, only you can update.</span>
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>As the message owner, only you can change this.</span>
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
@@ -478,15 +510,19 @@ function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage
 
 // ── Leaderboard row ────────────────────────────────────────────────────────────
 
-function StreamingRow({ markee, rank, featured, board, topSince, viewCount, viewsLoading, isBackedByYou, isOwner, onStream, onEditMessage }: {
+function StreamingRow({ markee, rank, featured, board, topSince, ethPrice, viewCount, viewsLoading, isBackedByYou, hasAnyPosition, isOwner, onStream, onEditMessage }: {
   markee: StreamingMarkee
   rank: number
   featured: boolean
   board: Address
   topSince: { address: string; since: number } | null
+  ethPrice: number | null
   viewCount: number
   viewsLoading?: boolean
   isBackedByYou: boolean
+  // Whether the connected wallet streams to ANY message on this board (not necessarily this one) --
+  // "instead" only makes sense if there's an existing stream to move away from.
+  hasAnyPosition: boolean
   isOwner: boolean
   onStream?: () => void
   onEditMessage: () => void
@@ -496,9 +532,19 @@ function StreamingRow({ markee, rank, featured, board, topSince, viewCount, view
 
   // Only the current #1 has a live, self-verified "since when" timestamp (see useTopSince) -- other
   // rows show "—" rather than a fabricated historical total, since Superfluid streams flow into the
-  // board as one pooled inflow with no per-message cumulative-streamed record on-chain.
+  // board as one pooled inflow with no per-message cumulative-streamed record on-chain. topSince
+  // itself is null only while that first fetch is in flight (a spinner shows then, not "—", so a
+  // brand-new page load doesn't look like every row lacks a total).
+  const topSinceLoading = topSince === null
   const isCurrentTop = topSince?.address.toLowerCase() === markee.address.toLowerCase()
   const liveStreamedWei = useFlowingAmount(0n, isCurrentTop ? topSince!.since : 0, isCurrentTop ? markee.rate : 0n)
+  const streamedEth = parseFloat(formatEther(liveStreamedWei))
+  // $ to match the green $ total at the top of the page, rather than ETH.
+  const usdRatePerSec = ethPrice ? (Number(isCurrentTop ? markee.rate : 0n) / 1e18) * ethPrice : 0
+  const liveStreamedDecimals = decimalsForRate(usdRatePerSec, 2, 10)
+  // No active stream/bid on this message -- still shown (not dropped from the board) but dimmed, so
+  // it stays easy to find and re-activate by moving a stream here.
+  const isInactive = markee.rate === 0n
 
   return (
     <div style={{ borderBottom: `1px solid ${BORDER}`, background: featured ? `${PINK}0A` : 'transparent' }}>
@@ -510,6 +556,7 @@ function StreamingRow({ markee, rank, featured, board, topSince, viewCount, view
           padding: '13px 16px',
           alignItems: 'center',
           borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent',
+          opacity: isInactive ? 0.5 : 1,
         }}
       >
         <TxHistoryToggle expanded={historyOpen} onClick={() => setHistoryOpen(v => !v)} rank={rank} />
@@ -520,7 +567,9 @@ function StreamingRow({ markee, rank, featured, board, topSince, viewCount, view
         </span>
 
         <span style={{ fontSize: 12.5, color: GREEN, fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
-          {isCurrentTop ? `${parseFloat(formatEther(liveStreamedWei)).toFixed(5)} ETH` : '—'}
+          {isCurrentTop
+            ? (ethPrice ? formatLiveUsd(streamedEth * ethPrice, liveStreamedDecimals) : `${formatLiveEth(liveStreamedWei, decimalsForWeiRate(markee.rate))} ETH`)
+            : topSinceLoading ? <ViewsSpinner size={10} color={GREEN} /> : '—'}
         </span>
 
         <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
@@ -578,7 +627,7 @@ function StreamingRow({ markee, rank, featured, board, topSince, viewCount, view
                 whiteSpace: 'nowrap',
               }}
             >
-              {isBackedByYou ? 'Manage Your Stream' : 'Fund this instead'}
+              {isBackedByYou ? 'Manage Your Stream' : isInactive ? 'Reactivate' : hasAnyPosition ? 'Fund this instead' : 'Fund this Message'}
             </button>
           )}
         </div>

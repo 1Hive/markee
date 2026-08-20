@@ -42,6 +42,10 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const viewsLoading = isLoading || viewsFetching
   useEffect(() => {
     if (!markees.length) { setViewsFetching(false); return }
+    // Re-arm the loading flag for this run -- the very first run (before markees has loaded) hits
+    // the branch above and clears it, so without this the spinner never shows once the real fetch
+    // below actually starts.
+    setViewsFetching(true)
     const addrs = markees.map(m => m.address.toLowerCase()).join(',')
     fetch(`/api/views?addresses=${addrs}`)
       .then(r => r.ok ? r.json() : null)
@@ -214,6 +218,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
               topViews={topViews}
               viewsLoading={viewsLoading}
               markeeCount={markees.length}
+              messagesLoading={isLoading}
               totalLabel="Total funds added"
               totalNode={<MetricValue text={totalFundsLabel} color={GREEN} title={ethPrice ? totalFundsEthLabel : undefined} />}
               topMarkeeAddress={topMarkee.address}

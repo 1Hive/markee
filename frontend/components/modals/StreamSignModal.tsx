@@ -32,8 +32,9 @@ import { useUpdateStreamRateFlow } from '@/hooks/useUpdateStreamRateFlow'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { useTopSince } from '@/hooks/useTopSince'
-import { formatDuration, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
+import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -101,6 +102,7 @@ const messageBoxStyle = {
 function RateCard({
   monthly, setMonthly, fundMonths, setFundMonths, lastPreset, setLastPreset, setHasUserEdited,
   minMonthlyWei, minMonthlyEth, minLoaded, spendableBalance, topMonthlyWei,
+  isAlreadyTop = false, twoXMonthlyEth = null,
   ethPrice, balanceData, busy, calc,
 }: {
   monthly: string
@@ -115,6 +117,10 @@ function RateCard({
   minLoaded: boolean
   spendableBalance: bigint
   topMonthlyWei: bigint | undefined
+  // Funding a message that's already #1: "beat the current top" is meaningless when you already are
+  // it, so the WIN preset becomes "2X your own current rate" instead.
+  isAlreadyTop?: boolean
+  twoXMonthlyEth?: string | null
   ethPrice: number | null
   balanceData: { value: bigint } | undefined
   busy: boolean
@@ -171,18 +177,31 @@ function RateCard({
           >
             MAX
           </button>
-          {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && (
-            <button
-              type="button"
-              onClick={() => {
-                const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
-                setHasUserEdited(true); setMonthly(formatEther(winWei)); setLastPreset('win')
-              }}
-              disabled={busy}
-              style={presetBtnStyle(lastPreset === 'win', GOLD, busy)}
-            >
-              WIN
-            </button>
+          {isAlreadyTop ? (
+            twoXMonthlyEth && (
+              <button
+                type="button"
+                onClick={() => { setHasUserEdited(true); setMonthly(twoXMonthlyEth); setLastPreset('win') }}
+                disabled={busy}
+                style={presetBtnStyle(lastPreset === 'win', GOLD, busy)}
+              >
+                2X
+              </button>
+            )
+          ) : (
+            topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && (
+              <button
+                type="button"
+                onClick={() => {
+                  const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
+                  setHasUserEdited(true); setMonthly(formatEther(winWei)); setLastPreset('win')
+                }}
+                disabled={busy}
+                style={presetBtnStyle(lastPreset === 'win', GOLD, busy)}
+              >
+                WIN
+              </button>
+            )
           )}
         </div>
       </div>
@@ -352,11 +371,16 @@ interface StreamSignModalProps {
   initialView?: 'fund' | 'manage'
   initialTargetAddress?: string
   onSuccess?: () => void
+  // The board page already has these loaded by the time this modal can be opened -- passing them in
+  // lets the Win/2X default apply immediately instead of waiting on this modal's own fresh
+  // useStreamingMarkees fetch (a full per-markee multicall) to complete from scratch.
+  topMonthlyWeiHint?: bigint
+  minMonthlyWeiHint?: bigint
 }
 
 type View = 'list' | 'fund' | 'manage'
 
-export function StreamSignModal({ isOpen, onClose, board, initialView, initialTargetAddress, onSuccess }: StreamSignModalProps) {
+export function StreamSignModal({ isOpen, onClose, board, initialView, initialTargetAddress, onSuccess, topMonthlyWeiHint, minMonthlyWeiHint }: StreamSignModalProps) {
   const boardAddress = board as Address
   const { activeAddress, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
@@ -374,11 +398,11 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
-  const [manageLastPreset, setManageLastPreset] = useState<'current' | 'min' | 'win' | null>(null)
+  const [manageLastPreset, setManageLastPreset] = useState<'min' | 'win' | null>(null)
 
   const { data: balanceData } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
 
-  const { data: minMonthlyWei } = useReadContract({
+  const { data: minMonthlyWeiFetched } = useReadContract({
     address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'minimumMonthlyRate', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen, refetchInterval: retryUntilLoaded },
   })
@@ -392,7 +416,11 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const topMarkee = markees[0] ?? null
-  const topMonthlyWei = topMarkee ? ratePerSecToMonthly(topMarkee.rate) : undefined
+  // Prefer this modal's own fresh reads once they land, but fall back to the caller's hint (the
+  // board page's already-loaded data) so Win/2X can apply on the very first render instead of
+  // waiting on a redundant fetch this modal would otherwise have to do from scratch.
+  const minMonthlyWei = minMonthlyWeiFetched ?? minMonthlyWeiHint
+  const topMonthlyWei = (topMarkee ? ratePerSecToMonthly(topMarkee.rate) : undefined) ?? topMonthlyWeiHint
   const minLoaded = minMonthlyWei !== undefined
   const minMonthlyEth = minMonthlyWei ? formatEther(minMonthlyWei) : '0'
 
@@ -415,6 +443,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   })
   const manageRank = target ? markees.findIndex(m => m.address.toLowerCase() === target.address.toLowerCase()) + 1 : 0
   const fundTargetRank = manageRank
+  const fundTargetIsTop = fundTargetRank === 1
+  const fundTwoXMonthlyEth = target ? formatEther(ratePerSecToMonthly(target.rate) * 2n) : null
   const manageIsTop = manageRank === 1
   const manageStatus = streamStatusOf(manageIsTop, rateFlow.currentRate ?? 0n)
   const manageRunwayDays = rateFlow.currentRate && rateFlow.currentRate > 0n
@@ -424,9 +454,32 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const topSince = useTopSince(view === 'manage' ? boardAddress : undefined)
   const managePending = usePendingMarkee(view === 'manage' ? boardAddress : undefined, view === 'manage' ? (activeAddress as Address | undefined) : undefined)
-  const managePendingEthWei = useFlowingAmount(managePending.pendingWei, managePending.snapshotAt, managePending.ratePerSec)
+  // Decimals derived from the actual accrual rate so the last digit visibly ticks about once a
+  // second, instead of a fixed decimal count that looks frozen at typical low stream rates.
+  const manageEthDecimals = decimalsForWeiRate(managePending.ratePerSec)
+  const managePendingEthWei = useLiveBalance(managePending.pendingWei, managePending.ratePerSec, manageEthDecimals)
   const manageEarnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePendingEthWei)), managePending.feeBps)
+  const manageMarkeeRatePerSec = managePending.mintsMarkee
+    ? estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePending.ratePerSec)), managePending.feeBps)
+    : 0
+  const manageMarkeeDecimals = decimalsForRate(manageMarkeeRatePerSec, 2, 12)
   const manageTopSinceMine = manageIsTop && topSince?.address.toLowerCase() === target?.address.toLowerCase()
+  // Nothing accrued, ever settled, and not currently top -- this backer's stream has never actually
+  // been the winning one, so the usual stat grid (which is all zero/dash in that case) is replaced
+  // with an explanation instead.
+  const manageNeverWon = !manageIsTop && managePending.pendingWei === 0n && managePending.settledBalance === 0n
+  // Ticks "featured for" forward every second (only while it's actually shown) so it visibly grows
+  // instead of only updating whenever something else happens to re-render the modal.
+  const [featuredNow, setFeaturedNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!isOpen || view !== 'manage' || !manageTopSinceMine) return
+    const id = setInterval(() => setFeaturedNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [isOpen, view, manageTopSinceMine])
+  // useFlowingAmount (not useLiveBalance) here specifically: this needs to tick up from
+  // topSince.since, a timestamp that can be well in the past -- useLiveBalance always re-anchors to
+  // "now", which would silently reset this to a since-page-load total instead of since-became-top.
+  const manageStreamedDecimals = decimalsForWeiRate(manageTopSinceMine ? (rateFlow.currentRate ?? 0n) : 0n)
   const manageStreamedWei = useFlowingAmount(0n, manageTopSinceMine ? topSince!.since : 0, manageTopSinceMine ? (rateFlow.currentRate ?? 0n) : 0n)
 
   // Cancels the stream/bid outright (view === 'manage' only) — same setFlowrate(...,0) call
@@ -618,28 +671,54 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, view, hasUserEdited, minMonthlyWei, minMonthlyEth, topMonthlyWei])
 
-  // Pre-selects "Your bid" (the current rate) the moment it loads, so Manage Your Stream opens with
-  // a concrete, highlighted starting point instead of an empty field.
+  // Default the "add funds to an existing message" rate the same way as buying new: enough to win
+  // #1, or 2x your own current rate if you're funding the message that's already #1 (since "beat the
+  // current top" is meaningless when you already are it).
   useEffect(() => {
-    if (!isOpen || view !== 'manage' || hasUserEdited) return
-    if (rateFlow.currentRate && rateFlow.currentRate > 0n) {
-      setNewMonthly(formatEther(ratePerSecToMonthly(rateFlow.currentRate))); setManageLastPreset('current')
+    if (!isOpen || view !== 'fund' || !target || hasUserEdited || !minMonthlyWei) return
+    if (fundTargetIsTop && fundTwoXMonthlyEth) {
+      setMonthly(fundTwoXMonthlyEth); setLastPreset('win')
+    } else if (topMonthlyWei && topMonthlyWei > 0n) {
+      const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
+      setMonthly(formatEther(winWei)); setLastPreset('win')
+    } else {
+      setMonthly(minMonthlyEth); setLastPreset('min')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, view, hasUserEdited, rateFlow.currentRate])
+  }, [isOpen, view, target, hasUserEdited, minMonthlyWei, minMonthlyEth, topMonthlyWei, fundTargetIsTop, fundTwoXMonthlyEth])
+
+  // Pre-selects Win (or 2x your own current rate if you're already #1) the moment it loads, same as
+  // the fund/list views, so Manage Your Stream opens with a concrete, useful starting point instead
+  // of an empty field.
+  useEffect(() => {
+    if (!isOpen || view !== 'manage' || hasUserEdited || !minMonthlyWei) return
+    if (manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n) {
+      setNewMonthly(formatEther(ratePerSecToMonthly(rateFlow.currentRate) * 2n)); setManageLastPreset('win')
+    } else if (topMonthlyWei && topMonthlyWei > 0n) {
+      const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
+      setNewMonthly(formatEther(winWei)); setManageLastPreset('win')
+    } else {
+      setNewMonthly(minMonthlyEth); setManageLastPreset('min')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, view, hasUserEdited, minMonthlyWei, minMonthlyEth, topMonthlyWei, manageIsTop, rateFlow.currentRate])
 
   // ── Reset on open/close ──────────────────────────────────────────────────────
   const appliedInitialTargetRef = useRef(false)
   useEffect(() => {
     if (!isOpen) return
     appliedInitialTargetRef.current = false
-    setView('list'); setTarget(null); setMessage(''); setMonthly(''); setFundMonths('1'); setNewMonthly('')
+    // Land directly on the target view (when the caller knows one) instead of always resetting to
+    // 'list' and waiting for markees to load before the separate "jump to target" effect below can
+    // correct it -- that gap was a visible flash of the wrong screen (e.g. Reactivate briefly showing
+    // "Change the Markee Sign" before snapping to "Add Funds").
+    setView(initialView ?? 'list'); setTarget(null); setMessage(''); setMonthly(''); setFundMonths('1'); setNewMonthly('')
     setError(null); setHasUserEdited(false); setLastPreset(null)
     setCancelTxHash(undefined); setCancelError(null)
     setWithdrawTxHash(undefined); setWithdrawError(null)
     setTopUp(''); setTopUpError(null); setTopUpTxHash(undefined)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
-  }, [isOpen])
+  }, [isOpen, initialView])
 
   useEffect(() => {
     if (!isOpen) return
@@ -661,9 +740,11 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const openFund = (m: StreamingMarkee) => {
     setTarget(m); setView('fund'); setMonthly(''); setFundMonths('1'); setLastPreset(null)
     setError(null); setHasUserEdited(false)
+    setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
   const openManage = (m: StreamingMarkee) => {
     setTarget(m); setView('manage'); setNewMonthly(''); setError(null); setHasUserEdited(false)
+    setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
 
   // Jump straight into a specific message's fund/manage sub-view, same pattern as MarkeeSignModal.
@@ -679,6 +760,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const backToList = () => {
     setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false)
+    setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
 
   // ── Success → refetch + close ────────────────────────────────────────────────
@@ -721,6 +803,15 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     { label: 'Approve Deposit', done: createFlow.phase === 'streaming' || createFlow.isSuccess, active: createFlow.phase === 'approving' },
     { label: 'Start Stream', done: createFlow.isSuccess, active: createFlow.phase === 'streaming' },
   ]
+
+  // Same 2-step shape as createSteps' last two steps, just without "Create Markee Message" (the
+  // message already exists) -- openFlow/moveFlow expose approving/submitting flags instead of a
+  // phase enum, so the step boundary is "no longer approving" rather than a named phase.
+  const fundFlowSteps = (flow: { approving: boolean; submitting: boolean; isSuccess: boolean }, actionLabel: string) => [
+    { label: 'Approve Deposit', done: (flow.submitting && !flow.approving) || flow.isSuccess, active: flow.approving },
+    { label: actionLabel, done: flow.isSuccess, active: flow.submitting && !flow.approving && !flow.isSuccess },
+  ]
+  const fundSteps = view === 'fund' ? fundFlowSteps(backsOther ? moveFlow : openFlow, backsOther ? 'Move Stream' : 'Start Stream') : undefined
 
   const txHeadline = view === 'list'
     ? (createFlow.isSuccess ? 'Success! Your message is live'
@@ -781,7 +872,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
             isSuccess={activeIsSuccess}
             headline={txHeadline}
             detail={activeIsSuccess ? 'The sign will refresh in a moment.' : 'Usually under 2 seconds on Base.'}
-            steps={view === 'list' ? createSteps : undefined}
+            steps={view === 'list' ? createSteps : view === 'fund' ? fundSteps : undefined}
           />
 
         ) : isWalletConnectionPending ? (
@@ -946,33 +1037,62 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       {fundTargetRank || '—'}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase() && (
-                          <Pencil size={12} style={{ color: MUTED, flexShrink: 0 }} />
-                        )}
-                        <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || '—'}</div>
-                      </div>
-                      <div style={{ marginTop: 6 }}>
-                        <MessageMeta
-                          views={viewsMap.get(target.address.toLowerCase()) ?? 0}
-                          isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                          authorLabel={target.name || fmtAddr(target.owner)}
-                        />
-                      </div>
+                      {editingMessage ? (
+                        <div>
+                          <textarea
+                            value={editMessageText}
+                            onChange={e => setEditMessageText(e.target.value.slice(0, maxLen))}
+                            rows={2}
+                            style={{ ...inputStyle, resize: 'vertical' as const }}
+                            disabled={editMessageBusy}
+                          />
+                          {editMessageError && <p style={{ fontSize: 11, color: '#FF8E8E', margin: '6px 0 0' }}>{editMessageError}</p>}
+                          {editMessageSuccess ? (
+                            <p style={{ fontSize: 11, color: '#7EE787', margin: '6px 0 0' }}>✓ Message updated</p>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                              <button onClick={handleSaveMessage} disabled={editMessageBusy || !editMessageText.trim()} style={{ background: PINK, color: BG, border: 'none', borderRadius: 6, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', opacity: editMessageBusy || !editMessageText.trim() ? 0.5 : 1 }}>
+                                {editMessageBusy ? 'Saving…' : 'Save'}
+                              </button>
+                              <button onClick={() => setEditingMessage(false)} disabled={editMessageBusy} style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 6, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer' }}>
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase() && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingMessage(true); setEditMessageText(target.message || '') }}
+                                title="Edit message"
+                                style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 6px', cursor: 'pointer', color: MUTED, lineHeight: 0 }}
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            )}
+                            <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || '—'}</div>
+                          </div>
+                          <div style={{ marginTop: 6 }}>
+                            <MessageMeta
+                              views={viewsMap.get(target.address.toLowerCase()) ?? 0}
+                              isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
+                              authorLabel={target.name || fmtAddr(target.owner)}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {backsOther && (
-                    <p style={{ fontSize: 12.5, color: TEXT2, lineHeight: 1.6, margin: '0 0 14px' }}>
-                      You already stream to another message on this board. Funding this one moves your
-                      existing stream here in a single transaction — no need to cancel it first.
-                    </p>
-                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <RateCard
                       monthly={monthly} setMonthly={setMonthly} fundMonths={fundMonths} setFundMonths={setFundMonths}
                       lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
                       minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
                       spendableBalance={spendableBalance} topMonthlyWei={topMonthlyWei}
+                      isAlreadyTop={fundTargetIsTop} twoXMonthlyEth={fundTwoXMonthlyEth}
                       ethPrice={ethPrice} balanceData={balanceData} busy={busy} calc={fundCalc}
                     />
                     <ReceiveCard monthly={monthly} compact={false} />
@@ -998,38 +1118,44 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </span>
                       {manageTopSinceMine && (
                         <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>
-                          featured {formatDuration(Date.now() / 1000 - topSince!.since)}
+                          featured {formatDuration(featuredNow / 1000 - topSince!.since, true)}
                         </span>
                       )}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
-                      <div>
-                        <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Total streamed</div>
-                        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>
-                          {manageTopSinceMine ? `${parseFloat(formatEther(manageStreamedWei)).toFixed(5)} ETH` : '—'}
+                    {manageNeverWon ? (
+                      <p style={{ margin: 0, fontFamily: MONO, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                        Your payment stream will start if this message starts winning.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Total streamed</div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>
+                            {manageTopSinceMine ? `${formatLiveEth(manageStreamedWei, manageStreamedDecimals)} ETH` : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>ETHx balance</div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>{Number(formatEther(ethxBalance ?? 0n)).toFixed(5)} ETH</div>
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Runs for</div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: manageLowRunway ? '#FF8E8E' : TEXT, fontWeight: manageLowRunway ? 700 : 400, marginTop: 2 }}>
+                            {manageStatus !== 'cancelled' ? `~${manageRunwayDays.toFixed(1)} days` : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                            {managePending.mintsMarkee ? 'MARKEE earned' : 'ETH earned'}
+                          </div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, marginTop: 2 }}>
+                            {managePending.mintsMarkee
+                              ? manageEarnedMarkee.toLocaleString(undefined, { minimumFractionDigits: manageMarkeeDecimals, maximumFractionDigits: manageMarkeeDecimals })
+                              : `${formatLiveEth(managePendingEthWei, manageEthDecimals)} ETH`}
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>ETHx balance</div>
-                        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>{Number(formatEther(ethxBalance ?? 0n)).toFixed(5)} ETH</div>
-                      </div>
-                      <div>
-                        <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Runs for</div>
-                        <div style={{ fontFamily: MONO, fontSize: 13, color: manageLowRunway ? '#FF8E8E' : TEXT, fontWeight: manageLowRunway ? 700 : 400, marginTop: 2 }}>
-                          {manageStatus !== 'cancelled' ? `~${manageRunwayDays.toFixed(1)} days` : '—'}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                          {managePending.mintsMarkee ? 'MARKEE earned' : 'ETH earned'}
-                        </div>
-                        <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, marginTop: 2 }}>
-                          {managePending.mintsMarkee
-                            ? manageEarnedMarkee.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                            : `${Number(formatEther(managePendingEthWei)).toFixed(5)} ETH`}
-                        </div>
-                      </div>
-                    </div>
+                    )}
                     {manageLowRunway && (
                       <div style={{ fontFamily: MONO, fontSize: 11, color: '#FF8E8E', lineHeight: 1.5 }}>
                         Your funding runs out in ~{manageRunwayDays.toFixed(1)} days. If it runs dry the stream is
@@ -1117,52 +1243,71 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     )}
                   </div>
 
-                  {/* ── Bid amount ── */}
+                  {/* ── Bid amount (same container/typography as RateCard on the other For Rent modals) ── */}
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>New monthly rate</span>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          type="button"
-                          onClick={() => { setHasUserEdited(true); setNewMonthly(currentMonthlyEth); setManageLastPreset('current') }}
-                          disabled={busy}
-                          style={{ border: `1px solid ${manageLastPreset === 'current' ? PINK : BORDER}`, background: 'transparent', color: manageLastPreset === 'current' ? PINK : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          YOUR BID
-                        </button>
-                        {minMonthlyWei && (
-                          <button
-                            type="button"
-                            onClick={() => { setHasUserEdited(true); setNewMonthly(minMonthlyEth); setManageLastPreset('min') }}
-                            disabled={busy}
-                            style={{ border: `1px solid ${manageLastPreset === 'min' ? PINK : BORDER}`, background: 'transparent', color: manageLastPreset === 'min' ? PINK : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
-                          >
-                            MIN
-                          </button>
-                        )}
-                        {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && !manageIsTop && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
-                              setHasUserEdited(true); setNewMonthly(formatEther(winWei)); setManageLastPreset('win')
-                            }}
-                            disabled={busy}
-                            style={{ border: `1px solid ${manageLastPreset === 'win' ? GOLD : BORDER}`, background: 'transparent', color: manageLastPreset === 'win' ? GOLD : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
-                          >
-                            WIN
-                          </button>
-                        )}
+                    <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>New monthly rate</div>
+                    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 16px', background: BG }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap', width: 'max-content' }}>
+                            <input
+                              inputMode="decimal"
+                              value={newMonthly}
+                              onChange={e => { setHasUserEdited(true); setNewMonthly(sanitizeDecimalInput(e.target.value)); setManageLastPreset(null); if (error) setError(null) }}
+                              placeholder={currentMonthlyEth}
+                              disabled={busy}
+                              style={{
+                                background: 'transparent', border: 'none', outline: 'none', textAlign: 'left',
+                                color: TEXT, fontFamily: MONO, fontSize: 22, fontWeight: 800, padding: 0,
+                                width: `${Math.max(5, (newMonthly || currentMonthlyEth).length + 0.5)}ch`,
+                              }}
+                            />
+                            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          {minMonthlyWei && (
+                            <button
+                              type="button"
+                              onClick={() => { setHasUserEdited(true); setNewMonthly(minMonthlyEth); setManageLastPreset('min') }}
+                              disabled={busy}
+                              style={{ border: `1px solid ${manageLastPreset === 'min' ? PINK : BORDER}`, background: 'transparent', color: manageLastPreset === 'min' ? PINK : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              MIN
+                            </button>
+                          )}
+                          {manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setHasUserEdited(true); setNewMonthly(formatEther(ratePerSecToMonthly(rateFlow.currentRate!) * 2n)); setManageLastPreset('win')
+                              }}
+                              disabled={busy}
+                              style={{ border: `1px solid ${manageLastPreset === 'win' ? GOLD : BORDER}`, background: 'transparent', color: manageLastPreset === 'win' ? GOLD : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              2X
+                            </button>
+                          )}
+                          {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && !manageIsTop && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
+                                setHasUserEdited(true); setNewMonthly(formatEther(winWei)); setManageLastPreset('win')
+                              }}
+                              disabled={busy}
+                              style={{ border: `1px solid ${manageLastPreset === 'win' ? GOLD : BORDER}`, background: 'transparent', color: manageLastPreset === 'win' ? GOLD : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              WIN
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
+                        <span>{ethPrice && parseFloat(newMonthly || '0') > 0 ? `≈ ${formatUsd(parseFloat(newMonthly) * ethPrice)}/mo` : ' '}</span>
+                        <span>{balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}</span>
                       </div>
                     </div>
-                    <input
-                      inputMode="decimal"
-                      value={newMonthly}
-                      onChange={e => { setHasUserEdited(true); setNewMonthly(sanitizeDecimalInput(e.target.value)); setManageLastPreset(null); if (error) setError(null) }}
-                      placeholder={currentMonthlyEth}
-                      style={inputStyle}
-                      disabled={busy}
-                    />
                     {nextBelowMin ? (
                       <div style={{ fontFamily: MONO, fontSize: 11, color: PINK, marginTop: 6 }}>
                         The minimum on this board is {minMonthlyEth} ETH / month.
@@ -1182,34 +1327,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </div>
                     )}
                   </div>
-
-                  {/* ── Cancel / withdraw ── */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
-                    {withdrawSuccess ? (
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: '#7EE787' }}>✓ Deposit withdrawn</span>
-                    ) : manageStreamGone && (rateFlow.deposit ?? 0n) > 0n ? (
-                      <button
-                        type="button"
-                        onClick={handleWithdraw}
-                        disabled={withdrawBusy || busy}
-                        style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', opacity: withdrawBusy || busy ? 0.5 : 1 }}
-                      >
-                        {withdrawBusy ? 'Withdrawing…' : 'Withdraw Deposit'}
-                      </button>
-                    ) : cancelSuccess ? (
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: '#7EE787' }}>✓ Cancelled</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleCancel}
-                        disabled={cancelBusy || busy}
-                        style={{ background: 'transparent', color: '#FF8E8E', border: '1px solid rgba(255,142,142,0.4)', borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', opacity: cancelBusy || busy ? 0.5 : 1 }}
-                      >
-                        {cancelBusy ? 'Cancelling…' : manageStatus === 'active' ? 'Cancel Stream' : 'Cancel Bid'}
-                      </button>
-                    )}
-                  </div>
-                  {(cancelError || withdrawError) && <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0, textAlign: 'right' as const }}>{cancelError || withdrawError}</p>}
+                  {(cancelError || withdrawError) && <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0 }}>{cancelError || withdrawError}</p>}
                 </div>
               )}
 
@@ -1223,7 +1341,29 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
               <div style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {view === 'manage'
-                  ? 'As the current backer, only you can change your rate.'
+                  ? (withdrawSuccess ? (
+                      <span style={{ color: '#7EE787' }}>✓ Deposit withdrawn</span>
+                    ) : manageStatus === 'cancelled' && (rateFlow.deposit ?? 0n) > 0n ? (
+                      <button
+                        type="button"
+                        onClick={handleWithdraw}
+                        disabled={withdrawBusy || busy}
+                        style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', opacity: withdrawBusy || busy ? 0.5 : 1 }}
+                      >
+                        {withdrawBusy ? 'Withdrawing…' : 'Withdraw Deposit'}
+                      </button>
+                    ) : cancelSuccess ? (
+                      <span style={{ color: '#7EE787' }}>✓ Cancelled</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleCancel}
+                        disabled={cancelBusy || busy}
+                        style={{ background: 'transparent', color: '#FF8E8E', border: '1px solid rgba(255,142,142,0.4)', borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', opacity: cancelBusy || busy ? 0.5 : 1 }}
+                      >
+                        {cancelBusy ? 'Cancelling…' : manageStatus === 'active' ? 'Cancel Stream' : 'Cancel Bid'}
+                      </button>
+                    ))
                   : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       62/38 split
                       <InfoTip>
@@ -1243,7 +1383,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     transition: 'opacity 140ms',
                   }}
                 >
-                  {view === 'fund' ? (fundReadsLoading ? 'Loading…' : backsOther ? 'Move Your Stream' : 'Fund Message') : 'Change Bid'}
+                  {view === 'fund' ? (fundReadsLoading ? 'Loading…' : backsOther ? 'Fund This Message' : 'Fund Message') : 'Update Stream'}
                 </button>
               </BtnTooltip>
             </div>

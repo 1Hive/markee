@@ -34,7 +34,13 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
     setStep('platform')
     setPlatform(initialPlatform ?? 'website')
     setHeader(DEFAULT_HEADER)
-  }, [isOpen, leaderboard, initialPlatform])
+  // Depends on leaderboard?.address (a stable primitive), not the leaderboard object itself: callers
+  // pass it as an inline object literal, a new reference on every parent render. On pages with
+  // rAF-driven live-ticking values (e.g. the streaming board detail page) the parent re-renders
+  // constantly, so depending on the object reference re-ran this effect right after every click,
+  // snapping step back to 'platform' before the user could ever reach the embed step.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, leaderboard?.address, initialPlatform])
 
   useEffect(() => {
     if (!isOpen) return
