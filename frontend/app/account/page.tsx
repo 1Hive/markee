@@ -538,6 +538,60 @@ function SortHead({ label, col, sortKey, sortDir, onSort, align = 'right' }: { l
   )
 }
 
+// ── Shared table-sort state machine ───────────────────────────────────────────
+// Every table below (Active/Archived/ReadyToEmbed/Bought/Funded) had its own copy of this exact
+// sortKey/sortDir/onSort/sorted state -- pulled out once so the five don't drift independently.
+// compareAscending should return the same sign convention as Array.sort's comparator when sorting
+// ascending; direction (and the desc-vs-asc default when a column is first clicked) is applied here.
+function useSortableTable<T>(
+  items: T[],
+  initialKey: string,
+  compareAscending: (key: string, a: T, b: T) => number,
+  opts: { initialDir?: 'asc' | 'desc'; ascByDefault?: (key: string) => boolean } = {},
+) {
+  const { initialDir = 'desc', ascByDefault } = opts
+  const [sortKey, setSortKey] = useState(initialKey)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(initialDir)
+
+  const onSort = useCallback((col: string) => {
+    setSortKey(prev => {
+      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : (ascByDefault?.(col) ? 'asc' : 'desc'))
+      return col
+    })
+  }, [ascByDefault])
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...items].sort((a, b) => compareAscending(sortKey, a, b) * dir)
+  // compareAscending intentionally omitted: callers pass an inline function (a fresh reference every
+  // render), and it only ever closes over field-accessor logic, never over changing outer state --
+  // including it would re-sort on every render instead of only when the data or sort actually change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, sortKey, sortDir])
+
+  return { sortKey, sortDir, onSort, sorted }
+}
+
+function compareByRaised<T extends { totalFundsRaw: string }>(_key: string, a: T, b: T): number {
+  const at = BigInt(a.totalFundsRaw || '0')
+  const bt = BigInt(b.totalFundsRaw || '0')
+  return at > bt ? 1 : at < bt ? -1 : 0
+}
+
+const ascByDefaultRank = (col: string) => col === 'rank'
+
+function compareBySpentOrRank<T extends { isTop: boolean; rank?: number | null }>(
+  key: string, a: T, b: T, spent: (x: T) => bigint,
+): number {
+  if (key === 'rank') {
+    const ar = (a.isTop ? 1 : a.rank) ?? Infinity
+    const br = (b.isTop ? 1 : b.rank) ?? Infinity
+    return ar - br
+  }
+  const as = spent(a), bs = spent(b)
+  return as > bs ? -1 : as < bs ? 1 : 0
+}
+
 // ── Awaiting Activation table ─────────────────────────────────────────────────
 const ACTIVATION_COLS = '1fr 150px 220px 160px'
 
@@ -637,24 +691,7 @@ function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbe
 }
 
 function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderboard[]; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
-  const [sortKey, setSortKey] = useState('raised')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
-  const onSort = useCallback((col: string) => {
-    setSortKey(prev => {
-      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : 'desc')
-      return col
-    })
-  }, [])
-
-  const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...markees].sort((a, b) => {
-      const at = BigInt(a.totalFundsRaw || '0')
-      const bt = BigInt(b.totalFundsRaw || '0')
-      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
-    })
-  }, [markees, sortDir]) // sortKey omitted: only one sortable column (raised) exists here, so it never changes the comparator
+  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -880,24 +917,7 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
 }
 
 function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[]; onManage: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
-  const [sortKey, setSortKey] = useState('raised')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
-  const onSort = useCallback((col: string) => {
-    setSortKey(prev => {
-      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : 'desc')
-      return col
-    })
-  }, [])
-
-  const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...markees].sort((a, b) => {
-      const at = BigInt(a.totalFundsRaw || '0')
-      const bt = BigInt(b.totalFundsRaw || '0')
-      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
-    })
-  }, [markees, sortDir]) // sortKey omitted: only one sortable column (raised) exists here, so it never changes the comparator
+  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -922,24 +942,7 @@ function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[
 
 // ── Archived Markees table ────────────────────────────────────────────────────
 function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
-  const [sortKey, setSortKey] = useState('raised')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
-  const onSort = useCallback((col: string) => {
-    setSortKey(prev => {
-      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : 'desc')
-      return col
-    })
-  }, [])
-
-  const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...markees].sort((a, b) => {
-      const at = BigInt(a.totalFundsRaw || '0')
-      const bt = BigInt(b.totalFundsRaw || '0')
-      return (at > bt ? 1 : at < bt ? -1 : 0) * dir
-    })
-  }, [markees, sortDir]) // sortKey omitted: only one sortable column (raised) exists here, so it never changes the comparator
+  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -1057,27 +1060,11 @@ function RankingCell({ isTop, rank }: {
 const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
 
 function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void }) {
-  const [sortKey, setSortKey] = useState('spent')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
-  const onSort = useCallback((col: string) => {
-    setSortKey(prev => {
-      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : (col === 'rank' ? 'asc' : 'desc'))
-      return col
-    })
-  }, [])
-
-  const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...items].sort((a, b) => {
-      if (sortKey === 'rank') {
-        const ar = (a.isTop ? 1 : a.rank) ?? Infinity
-        const br = (b.isTop ? 1 : b.rank) ?? Infinity
-        return (ar - br) * dir
-      }
-      return (a.totalFundsAdded > b.totalFundsAdded ? -1 : a.totalFundsAdded < b.totalFundsAdded ? 1 : 0) * dir
-    })
-  }, [items, sortKey, sortDir])
+  const { sortKey, sortDir, onSort, sorted } = useSortableTable(
+    items, 'spent',
+    (key, a, b) => compareBySpentOrRank(key, a, b, x => x.totalFundsAdded),
+    { ascByDefault: ascByDefaultRank },
+  )
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -1142,27 +1129,11 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
 const FUNDED_COLS = '160px 1fr 90px 120px 170px 100px'
 
 function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void }) {
-  const [sortKey, setSortKey] = useState('spent')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
-  const onSort = useCallback((col: string) => {
-    setSortKey(prev => {
-      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : (col === 'rank' ? 'asc' : 'desc'))
-      return col
-    })
-  }, [])
-
-  const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...items].sort((a, b) => {
-      if (sortKey === 'rank') {
-        const ar = (a.isTop ? 1 : a.rank) ?? Infinity
-        const br = (b.isTop ? 1 : b.rank) ?? Infinity
-        return (ar - br) * dir
-      }
-      return (BigInt(a.totalContributed) > BigInt(b.totalContributed) ? -1 : BigInt(a.totalContributed) < BigInt(b.totalContributed) ? 1 : 0) * dir
-    })
-  }, [items, sortKey, sortDir])
+  const { sortKey, sortDir, onSort, sorted } = useSortableTable(
+    items, 'spent',
+    (key, a, b) => compareBySpentOrRank(key, a, b, x => BigInt(x.totalContributed)),
+    { ascByDefault: ascByDefaultRank },
+  )
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
@@ -1259,6 +1230,20 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
       <Link href={ctaHref} style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>{ctaLabel}</Link>
     </div>
   )
+}
+
+// Cheap FNV-1a fingerprint of a board-address list, used only as a useEffect dependency -- avoids
+// allocating an ~8.4KB comma-joined string of every address (up to 200 boards) on every render just
+// to compare it for change.
+function fingerprintAddresses(addrs: string[]): string {
+  let hash = 2166136261
+  for (const addr of addrs) {
+    for (let i = 0; i < addr.length; i++) {
+      hash ^= addr.charCodeAt(i)
+      hash = Math.imul(hash, 16777619)
+    }
+  }
+  return `${addrs.length}:${(hash >>> 0).toString(36)}`
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -1459,19 +1444,24 @@ export default function AccountPage() {
   // for every board regardless of platform, since the per-platform listing routes only reliably know
   // about their own vertical's integration data.
   const [verificationMap, setVerificationMap] = useState<Record<string, { verifiedUrls: string[]; linkedFiles: LinkedFile[] }>>({})
-  const allBoardAddrsKey = allBoards.map(b => b.address.toLowerCase()).join(',')
+  const allBoardAddrs = useMemo(() => allBoards.map(b => b.address.toLowerCase()), [allBoards])
+  const allBoardAddrsFingerprint = fingerprintAddresses(allBoardAddrs)
   useEffect(() => {
-    if (!allBoardAddrsKey) return
+    if (allBoardAddrs.length === 0) return
     // POST, not a query string: 200 boards join to ~8.4KB, past what CDNs will carry in a URL.
     fetch('/api/account/verification-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addresses: allBoardAddrsKey.split(',') }),
+      body: JSON.stringify({ addresses: allBoardAddrs }),
     })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setVerificationMap(data) })
       .catch(() => {})
-  }, [allBoardAddrsKey])
+  // allBoardAddrs re-derives to an equal array whenever the fingerprint does (both come from
+  // allBoards); keying on the fingerprint instead of the array reference avoids re-fetching on every
+  // render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allBoardAddrsFingerprint])
 
   const isVerified = useCallback((lb: AnyLeaderboard): boolean => {
     const v = verificationMap[lb.address.toLowerCase()]

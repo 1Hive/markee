@@ -58,7 +58,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(await statusFor(parseAddresses(raw.split(','))), { headers: NO_CACHE })
   } catch (err) {
     console.error('[account/verification-status] error:', err)
-    return NextResponse.json({}, { headers: NO_CACHE })
+    // 500, not {} with 200 -- the caller needs to tell "nothing is verified" apart from "we couldn't
+    // check", since the latter would otherwise flash every board into "Ready to Add to Your Site".
+    return NextResponse.json({ error: 'Unable to load verification status' }, { status: 500, headers: NO_CACHE })
   }
 }
 
@@ -73,6 +75,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(await statusFor(parseAddresses(raw.filter((a): a is string => typeof a === 'string'))), { headers: NO_CACHE })
   } catch (err) {
     console.error('[account/verification-status] error:', err)
-    return NextResponse.json({}, { headers: NO_CACHE })
+    return NextResponse.json({ error: 'Unable to load verification status' }, { status: 500, headers: NO_CACHE })
   }
 }
