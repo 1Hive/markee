@@ -502,10 +502,11 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
             fontFamily: 'Manrope, system-ui, sans-serif',
           }}
         >
-          {/* Brand watermark — small, unassuming, top-left on every Markee card with a hover price
-              badge (see also FeaturedHero on /marketplace and the home page hero cards). */}
+          {/* Brand watermark — small, unassuming, top-left corner, only on hover, on every Markee
+              card with a hover price badge (see also FeaturedHero on /marketplace and the home
+              page hero cards). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/markee-light.png" alt="" aria-hidden width={22} height={22} style={{ position: 'absolute', top: 14, left: 18, borderRadius: 5, opacity: 0.4, pointerEvents: 'none' }} />
+          <img src="/markee-light.png" alt="" aria-hidden width={20} height={20} style={{ position: 'absolute', top: 8, left: 8, borderRadius: 4, opacity: hover ? 0.4 : 0, transition: 'opacity 180ms', pointerEvents: 'none' }} />
 
           {/* top-right: views + flag */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
@@ -1292,11 +1293,12 @@ modal), restyled in my site's own colors and theme. Specifically:
   approximate that with your own palette). On hover, a pill badge slides up from the bottom edge
   showing the price/action ("X.XXX ETH to change", or "be first!" if no messages yet).
 - Logo watermark: render the Markee logo (fetch the SVG/PNG from https://markee.xyz/markee-light.png,
-  or inline equivalent letterforms) small (~20-24px) and unassuming in the top-left corner of the
-  trigger card, at reduced opacity (~0.4). Recolor it to whatever reads best against your card's
-  background (a CSS filter like invert()/brightness() on the light asset works for light backgrounds;
-  use it as-is on dark ones). This is a Markee brand requirement, not optional styling -- every
-  integration should carry it.
+  or inline equivalent letterforms) small (~20px) tucked right into the top-left corner of the
+  trigger card (a few px inset, not centered with margin). Hidden by default (opacity 0), fading in
+  to ~0.4 opacity only on hover, same trigger as the price pill -- it should not be visible on the
+  card at rest. Recolor it to whatever reads best against your card's background (a CSS filter like
+  invert()/brightness() on the light asset works for light backgrounds; use it as-is on dark ones).
+  This is a Markee brand requirement, not optional styling -- every integration should carry it.
 - Loading states never show a blank or "0" value while data is still in flight -- use a small
   spinner (a simple CSS-animated ring is fine) in place of the number/text until the real value
   loads, exactly like the price badge and message text above.
