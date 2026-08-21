@@ -69,6 +69,40 @@ export function legacyAddressesFor(newAddress: string): string[] {
   return GITHUB_NEW_TO_OLD[newAddress.toLowerCase()] ?? []
 }
 
+// ── GitHub content fetch (with timeout) ─────────────────────────────────────
+// Both register-markee and verify-markee-file fetch the file's raw content to check for the
+// delimiter pair. Neither had a timeout, so a slow/hanging GitHub response surfaced only as a
+// generic "Network error" after however long the platform's own function timeout took to kill it --
+// this bounds it to a few seconds and lets the caller tell "GitHub took too long" apart from "the
+// file/repo genuinely doesn't exist or isn't accessible."
+export type GithubFileFetchResult =
+  | { ok: true; content: string }
+  | { ok: false; reason: 'timeout' }
+  | { ok: false; reason: 'not_found'; status: number }
+
+export async function fetchGithubFileContent(
+  repoFullName: string,
+  filePath: string,
+  token: string,
+  timeoutMs = 8000,
+): Promise<GithubFileFetchResult> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' }, signal: controller.signal },
+    )
+    if (!res.ok) return { ok: false, reason: 'not_found', status: res.status }
+    return { ok: true, content: await res.text() }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return { ok: false, reason: 'timeout' }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ── KV helpers ────────────────────────────────────────────────────────────────
 
 function normalize(raw: unknown): LinkedFile[] {

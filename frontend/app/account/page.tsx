@@ -19,6 +19,7 @@ import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
+import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { COOPERATIVE_MULTISIG } from '@/lib/contracts/addresses'
 import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
@@ -1252,6 +1253,7 @@ export default function AccountPage() {
   const ethPrice = useEthPrice()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  const [depositManagerOpen, setDepositManagerOpen] = useState(false)
 
   // Platform leaderboards
   const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
@@ -1575,6 +1577,21 @@ export default function AccountPage() {
             {mounted && !hasWallet && (
               <div style={{ marginLeft: 'auto' }}><ConnectButton /></div>
             )}
+            {mounted && hasWallet && (
+              <button
+                onClick={() => setDepositManagerOpen(true)}
+                style={{
+                  marginLeft: 'auto', flexShrink: 0,
+                  background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10,
+                  padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  transition: 'border-color 120ms, color 120ms',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+              >
+                Deposit Manager
+              </button>
+            )}
           </div>
 
           {mounted && hasWallet && (
@@ -1861,6 +1878,8 @@ export default function AccountPage() {
           onSuccess={() => { setStreamEditTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
         />
       )}
+
+      <DepositManagerModal isOpen={depositManagerOpen} onClose={() => setDepositManagerOpen(false)} />
     </div>
   )
 }

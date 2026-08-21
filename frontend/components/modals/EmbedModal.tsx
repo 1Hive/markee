@@ -66,7 +66,7 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 640,
+          width: '100%', maxWidth: 720,
           background: BG2, borderRadius: 16,
           border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',

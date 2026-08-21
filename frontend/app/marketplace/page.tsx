@@ -334,6 +334,11 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
             boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
           }}
         >
+          {/* Brand watermark — small, unassuming, top-left on every Markee card with a hover price
+              badge (see also FeaturedCard on /markee/[address] and the home page hero cards). */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/markee-light.png" alt="" aria-hidden width={22} height={22} style={{ position: 'absolute', top: 14, left: 18, borderRadius: 5, opacity: 0.4, pointerEvents: 'none' }} />
+
           {/* top row: views */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>

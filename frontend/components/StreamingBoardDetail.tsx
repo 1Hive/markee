@@ -56,7 +56,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const { meta, markees, isLoading, refetch } = useStreamingMarkees(board)
   const { address } = useAccount()
   const ethPrice = useEthPrice()
-  const ecoEntry = useServedOn(board)
+  const { entry: ecoEntry, loading: ecoEntryLoading } = useServedOn(board)
   const topSince = useTopSince(board)
 
   // Live cumulative total: API snapshot ticking forward at the board's aggregate inflow rate.
@@ -70,9 +70,10 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const canStream = !NETWORK_PAUSED && meta.version !== undefined
 
-  const messageCount = meta.markeeCount !== undefined
-    ? Number(meta.markeeCount > 0n ? meta.markeeCount - 1n : 0n)
-    : 0
+  // meta.markeeCount is every Markee ever created on this board, including ones that were created
+  // but never actually backed with a bid -- markees.length (useStreamingMarkees' own filtered list,
+  // the same set the leaderboard rows below render from) only counts ones that were ever funded.
+  const messageCount = markees.length
 
   // ── Modal state ─────────────────────────────────────────────────────────────
   const [signOpen, setSignOpen] = useState(false)
@@ -224,7 +225,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       ) : (
         <>
           {/* ── Hero ── */}
-          <section style={{ position: 'relative', zIndex: 2, borderBottom: `1px solid ${BORDER}`, background: HERO_GRAD, padding: '44px 40px 30px', overflow: 'hidden' }}>
+          <section style={{ position: 'relative', zIndex: 2, borderBottom: `1px solid ${BORDER}`, background: HERO_GRAD, padding: '44px 40px 20px', overflow: 'hidden' }}>
             <HeroBackground />
             {/* scanlines */}
             <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px)', mixBlendMode: 'overlay' }} />
@@ -244,6 +245,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
             <MetricsBar
               address={board}
               entry={ecoEntry}
+              entryLoading={ecoEntryLoading}
               topViews={topViews}
               viewsLoading={viewsLoading}
               markeeCount={messageCount}
@@ -262,7 +264,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' as const, marginBottom: 20 }}>
                 <div>
                   <h2 style={{ margin: '0 0 4px', fontSize: 'clamp(22px,3vw,30px)', fontWeight: 800, letterSpacing: -0.6, color: TEXT }}>Leaderboard</h2>
-                  <p style={{ margin: 0, color: TEXT2, fontSize: 15 }}>The message with the highest stream rate takes the top spot.</p>
+                  <p style={{ margin: 0, color: TEXT2, fontSize: 15 }}>Top message wins, and only payments to the top message are streamed</p>
                 </div>
                 {(pendingEthWei > 0n || pending.accruing) && (
                   <div style={{

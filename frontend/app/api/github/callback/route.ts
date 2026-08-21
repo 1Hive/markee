@@ -2,6 +2,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 
+// Popup-mode response: postMessage the result back to the window that opened us, then close --
+// used instead of a redirect so the host page (which may have this open from inside a modal) never
+// navigates away. targetOrigin is set explicitly (not '*') since this carries the connected login.
+function popupResponse(payload: { success: boolean; login?: string; error?: string }, targetOrigin: string) {
+  const html = `<!DOCTYPE html><html><body style="background:#060A2A;color:#8A8FBF;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<p>${payload.success ? 'Connected — you can close this window.' : 'Something went wrong — you can close this window.'}</p>
+<script>
+  (function () {
+    var payload = ${JSON.stringify({ source: 'markee-github-oauth', ...payload })};
+    var targetOrigin = ${JSON.stringify(targetOrigin)};
+    if (window.opener) { window.opener.postMessage(payload, targetOrigin); window.close(); }
+  })();
+</script>
+</body></html>`
+  return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } })
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
@@ -19,12 +36,14 @@ export async function GET(request: NextRequest) {
   }
 
   let returnTo = ''
+  let popup = false
   // Use the origin that initiated the flow so staging/preview deploys redirect back
   // to themselves rather than to production.
   let siteOrigin = process.env.NEXT_PUBLIC_SITE_URL ?? ''
   try {
     const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
     returnTo = payload.returnTo ?? ''
+    popup = payload.popup === true
     if (payload.origin) siteOrigin = payload.origin
   } catch {
     // state was stored as plain '1' by old connect route — treat as no returnTo
@@ -44,7 +63,9 @@ export async function GET(request: NextRequest) {
   })
   const tokenData = await tokenRes.json()
   if (tokenData.error || !tokenData.access_token) {
-    return NextResponse.redirect(`${base}?error=token_exchange_failed`)
+    return popup
+      ? popupResponse({ success: false, error: 'GitHub sign-in failed.' }, siteOrigin)
+      : NextResponse.redirect(`${base}?error=token_exchange_failed`)
   }
 
   const userRes = await fetch('https://api.github.com/user', {
@@ -52,7 +73,9 @@ export async function GET(request: NextRequest) {
   })
   const user = await userRes.json()
   if (!user.id) {
-    return NextResponse.redirect(`${base}?error=user_fetch_failed`)
+    return popup
+      ? popupResponse({ success: false, error: 'Could not read your GitHub account.' }, siteOrigin)
+      : NextResponse.redirect(`${base}?error=user_fetch_failed`)
   }
 
   await kv.set(
@@ -66,13 +89,15 @@ export async function GET(request: NextRequest) {
     { ex: 60 * 60 * 24 * 365 }
   )
 
-  const response = NextResponse.redirect(
-    returnTo === 'modal'
-      ? `${base}?modal=create`
-      : returnTo
-        ? `${siteOrigin}${returnTo}`
-        : base
-  )
+  const response = popup
+    ? popupResponse({ success: true, login: user.login }, siteOrigin)
+    : NextResponse.redirect(
+        returnTo === 'modal'
+          ? `${base}?modal=create`
+          : returnTo
+            ? `${siteOrigin}${returnTo}`
+            : base
+      )
 
   const callbackHostname = new URL(request.url).hostname
   const cookieDomain = callbackHostname === 'markee.xyz' || callbackHostname.endsWith('.markee.xyz')

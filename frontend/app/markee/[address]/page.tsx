@@ -8,7 +8,6 @@ import { useAccount, useReadContract } from 'wagmi'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
@@ -34,7 +33,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
 
   const { meta, markees: allMarkees, isLoading, refetch: refetchLeaderboard } = useLeaderboardDetail(leaderboardAddress)
   const markees = allMarkees.filter(m => m.totalFundsAdded > 0n)
-  const ecoEntry = useServedOn(leaderboardAddress)
+  const { entry: ecoEntry, loading: ecoEntryLoading } = useServedOn(leaderboardAddress)
 
   // Views for all markees
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -195,7 +194,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
       ) : (
         <>
           {/* ── Hero ── */}
-          <section style={{ position: 'relative', zIndex: 2, borderBottom: `1px solid ${BORDER}`, background: HERO_GRAD, padding: '44px 40px 30px', overflow: 'hidden' }}>
+          <section style={{ position: 'relative', zIndex: 2, borderBottom: `1px solid ${BORDER}`, background: HERO_GRAD, padding: '44px 40px 20px', overflow: 'hidden' }}>
             <HeroBackground />
             {/* scanlines */}
             <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px)', mixBlendMode: 'overlay' }} />
@@ -215,6 +214,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
             <MetricsBar
               address={leaderboardAddress}
               entry={ecoEntry}
+              entryLoading={ecoEntryLoading}
               topViews={topViews}
               viewsLoading={viewsLoading}
               markeeCount={markees.length}
@@ -354,20 +354,11 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
 
       {/* Buy modal — works even when leaderboard is empty */}
       {meta && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={buyOpen}
           onClose={() => setBuyOpen(false)}
           onSuccess={handleBuySuccess}
-          initialMode="create"
-          strategyAddress={leaderboardAddress as `0x${string}`}
-          topFundsAdded={topMarkee?.totalFundsAdded ?? 0n}
-          allMarkees={markees}
-          {...(!topMarkee ? {
-            title: 'ACTIVATE MARKEE',
-            messageLabel: 'SET FIRST MESSAGE',
-            messagePlaceholder: 'Set the text your newly activated Markee will display...',
-            ctaLabel: 'Activate Markee',
-          } : {})}
+          leaderboardAddress={leaderboardAddress}
         />
       )}
 

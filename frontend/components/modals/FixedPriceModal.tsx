@@ -158,6 +158,13 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
     fontFamily: MONO, fontSize: 13, outline: 'none',
   }
+  // The message field is the emphasized input (matches MarkeeSignModal/StreamSignModal/
+  // BuyMessageModal's convention) -- attention lands on what you're saying before what you're paying.
+  const messageBoxStyle = {
+    ...inputStyle,
+    border: `1.5px solid ${PINK}`,
+    boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+  }
 
   return (
     <div
@@ -259,9 +266,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
                   placeholder="Your message here..."
                   rows={2}
-                  style={{ ...inputStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : BORDER }}
-                  onFocus={e => { if (!isOverLimit) e.target.style.borderColor = PINK }}
-                  onBlur={e => { e.target.style.borderColor = isOverLimit ? '#FF8E8E' : BORDER }}
+                  style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
                   disabled={isPending || isConfirming}
                 />
                 <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
@@ -271,11 +276,10 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
               {/* Price card — fixed price, no MIN/MAX/WIN presets */}
               <div style={{
-                border: `1.5px solid ${PINK}`,
+                border: `1px solid ${BORDER}`,
                 borderRadius: 12,
                 padding: '14px 16px',
                 background: BG,
-                boxShadow: '0 0 24px rgba(248,151,254,0.08)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
                   <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 800, color: TEXT }}>{priceEth}</span>

@@ -426,6 +426,13 @@ export function BuyMessageModal({
     border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
     fontFamily: MONO, fontSize: 13, outline: 'none',
   }
+  // The message field is the emphasized input (matches MarkeeSignModal/StreamSignModal's
+  // convention) -- attention lands on what you're saying before what you're paying.
+  const messageBoxStyle = {
+    ...inputStyle,
+    border: `1.5px solid ${PINK}`,
+    boxShadow: '0 0 24px rgba(248,151,254,0.08)',
+  }
 
   return (
     <div
@@ -560,9 +567,7 @@ export function BuyMessageModal({
                       onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder={messagePlaceholder}
                       rows={2}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
                     />
                     <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
@@ -597,9 +602,7 @@ export function BuyMessageModal({
                       onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder="Enter your new message..."
                       rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
                     />
                   </ModalField>
@@ -622,11 +625,10 @@ export function BuyMessageModal({
 
                   {/* Price card */}
                   <div style={{
-                    border: `1.5px solid ${PINK}`,
+                    border: `1px solid ${BORDER}`,
                     borderRadius: 12,
                     padding: '12px 16px',
                     background: BG,
-                    boxShadow: '0 0 24px rgba(248,151,254,0.08)',
                   }}>
                     {/* Number + unit inline on left, MIN/MAX on right */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

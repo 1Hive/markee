@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useBalance, useReadContract, useSwitchChain } from 'wagmi'
-import { formatEther, type Address } from 'viem'
+import { formatEther, erc20Abi, type Address } from 'viem'
 import { usePrivy, useFundWallet } from '@privy-io/react-auth'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import { monthlyToRatePerSec, bufferFor, openStreamValue } from '@/lib/superfluid/streaming'
+import { monthlyToRatePerSec, bufferFor, computeAutoDeposit, roundUpToNearestThousandth, STREAMING_BASE } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
-  inputStyle, parseEthInput, retryUntilLoaded,
+  messageBoxStyle, parseEthInput, retryUntilLoaded,
   InfoTip, ModalField, ModalShell, TxProgress, RatePriceCard,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
@@ -17,6 +18,9 @@ import { FAST_TX_GAS_RESERVE } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
+import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
+
+const ETHX = STREAMING_BASE.ethx as Address
 
 const ADMIN_ABI = [
   { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
@@ -48,20 +52,25 @@ export function StreamActivateModal({
   ctaLabel = 'Activate Markee',
 }: StreamActivateModalProps) {
   const { authenticated } = usePrivy()
-  const { address, isConnected, chain } = useAccount()
+  const { chain } = useAccount()
+  // wagmi's own useAccount().address can lag or miss Privy-embedded wallets entirely -- this pulls
+  // in Privy's own wallet list as a fallback (same pattern StreamSignModal/DepositManagerModal use),
+  // which is what was causing the ETH balance read below to silently come back empty/stale and the
+  // auto-deposit to compute a 0 wrap amount even for wallets that do hold ETH.
+  const { activeAddress, hasWallet, hasActiveWalletConnection } = useActiveWallet()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
   const [message, setMessage] = useState('')
   const [monthly, setMonthly] = useState('')
-  const [fundMonths, setFundMonths] = useState('1')
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
   const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
+  const [depositManagerOpen, setDepositManagerOpen] = useState(false)
 
   const { phase, error, setError, isPending, isConfirming, isSuccess, activate } = useCreateStreamFlow(board, isOpen)
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({ address, chainId: CANONICAL_CHAIN.id })
+  const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
 
   const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
@@ -81,21 +90,28 @@ export function StreamActivateModal({
     query: { enabled: isOpen },
   })
   const maxLen = Number(maxMessageLength || 223)
+  const { data: ethxBalance } = useReadContract({
+    address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: activeAddress ? [activeAddress] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!activeAddress, refetchInterval: retryUntilLoaded },
+  })
 
   const minLoaded = minMonthlyWei !== undefined
-  const minMonthlyEth = minMonthlyWei ? formatEther(minMonthlyWei) : '0'
+  // Rounded up to the nearest 0.001 ETH for display/MIN-preset purposes -- the raw on-chain minimum
+  // is sometimes deliberately a hair under a round number (see monthlyToRatePerSec), which would
+  // otherwise show up as an ugly "0.000999999997884" placeholder.
+  const minMonthlyEth = minMonthlyWei ? formatEther(roundUpToNearestThousandth(minMonthlyWei)) : '0'
 
   // ── Amount derivations ────────────────────────────────────────────────────
+  // calc.value is what actually gets wrapped fresh this tx (0 when the wallet's existing ETHx
+  // balance already covers the rate's buffer + a healthy runway) -- replaces the old flat
+  // 1/2/3-month picker.
   const calc = useMemo(() => {
     const monthlyWei = parseEthInput(monthly)
-    const ratePerSec = monthlyToRatePerSec(monthlyWei)
+    const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
-    const monthsMilli = BigInt(Math.max(0, Math.round((Number(fundMonths) || 0) * 1000)))
-    const prefund = (monthlyWei * monthsMilli) / 1000n
-    const value = openStreamValue(buffer, prefund)
-    const runwayDays = ratePerSec > 0n ? Number(prefund / ratePerSec) / 86400 : 0
-    return { monthlyWei, ratePerSec, buffer, prefund, value, runwayDays }
-  }, [monthly, fundMonths])
+    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n)
+    return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue, runwaySecs: auto.runwaySeconds }
+  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei])
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
@@ -104,7 +120,7 @@ export function StreamActivateModal({
   // ── Reset on close (UI-only state; the hook resets its own tx state) ───────
   useEffect(() => {
     if (!isOpen) {
-      setMessage(''); setMonthly(''); setFundMonths('1')
+      setMessage(''); setMonthly('')
       setLastPreset(null); setSuccessSnap(null)
     }
   }, [isOpen])
@@ -144,7 +160,7 @@ export function StreamActivateModal({
   const activationSteps = [
     { label: 'Create Markee Message', done: phase !== 'creating' && phase !== 'idle', active: phase === 'creating' },
     { label: 'Approve Deposit', done: phase === 'streaming' || done, active: phase === 'approving' },
-    { label: 'Start Stream', done: done, active: phase === 'streaming' },
+    { label: calc.value > 0n ? 'Deposit ETH & Start Stream' : 'Start Stream', done: done, active: phase === 'streaming' },
   ]
 
   const txHeadline = done
@@ -173,7 +189,11 @@ export function StreamActivateModal({
           ? 'Last step — sign to open your stream.'
           : 'Usually under 2 seconds on Base.'
 
-  const btnDisabled = !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded
+  // Guards the race where clicking Activate before the wallet ETH / ETHx balance reads resolve
+  // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH", surfacing
+  // as "Fund the stream for longer" even for a wallet that genuinely holds ETH).
+  const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
+  const btnDisabled = !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
 
   const footer = !txActive ? (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
@@ -185,9 +205,9 @@ export function StreamActivateModal({
           </InfoTip>
         )}
       </div>
-      {insufficientBalance && authenticated && address ? (
+      {insufficientBalance && authenticated && activeAddress ? (
         <button
-          onClick={() => fundWallet({ address, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } })}
+          onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } })}
           style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: 'pointer', flexShrink: 0 }}
         >
           Add funds
@@ -198,22 +218,23 @@ export function StreamActivateModal({
           disabled={btnDisabled}
           style={{
             background: PINK, color: BG, border: 'none', borderRadius: 8,
-            padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+            padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: calc.value > 0n ? 12.5 : 14,
             cursor: btnDisabled ? 'not-allowed' : 'pointer', flexShrink: 0,
             opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
           }}
         >
-          {!minLoaded ? 'Loading…' : ctaLabel}
+          {!minLoaded || !balancesLoaded ? 'Loading…' : calc.value > 0n ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and ${ctaLabel}` : ctaLabel}
         </button>
       )}
     </div>
   ) : undefined
 
   return (
+    <>
     <ModalShell stepLabel={txActive ? txHeadline.replace(/[🎉✓]/g, '').trim().toUpperCase() : title} onClose={onClose} footer={footer}>
       {txActive ? (
         <TxProgress isSuccess={done} headline={txHeadline} detail={txDetail} steps={activationSteps} />
-      ) : !isConnected ? (
+      ) : !hasActiveWalletConnection ? (
         <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
           <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
           <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
@@ -235,7 +256,7 @@ export function StreamActivateModal({
               onChange={e => { if (e.target.value.length <= maxLen) setMessage(e.target.value) }}
               placeholder={messagePlaceholder}
               rows={2}
-              style={{ ...inputStyle, resize: 'vertical' }}
+              style={{ ...messageBoxStyle, resize: 'vertical' }}
             />
             <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
               {message.length}/{maxLen}
@@ -245,11 +266,11 @@ export function StreamActivateModal({
           {/* Price card */}
           <RatePriceCard
             monthly={monthly} setMonthly={setMonthly}
-            fundMonths={fundMonths} setFundMonths={setFundMonths}
             minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded} belowMin={belowMin}
-            ethPrice={ethPrice} balanceData={balanceData} spendableBalance={spendableBalance}
+            ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} spendableBalance={spendableBalance}
             calc={calc} topMonthlyWei={topMonthlyWei}
             lastPreset={lastPreset} setLastPreset={setLastPreset}
+            runwaySecs={calc.runwaySecs} onOpenDepositManager={() => setDepositManagerOpen(true)}
           />
 
           {/* You'll receive — horizontal */}
@@ -274,5 +295,7 @@ export function StreamActivateModal({
         </div>
       )}
     </ModalShell>
+    <DepositManagerModal isOpen={depositManagerOpen} onClose={() => setDepositManagerOpen(false)} />
+    </>
   )
 }

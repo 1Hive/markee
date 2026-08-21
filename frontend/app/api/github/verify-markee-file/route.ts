@@ -1,7 +1,7 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent } from '@/lib/github/linkedFiles'
 
 async function getGithubToken(uid: string): Promise<string | null> {
   const raw = await kv.get(`github:user:${uid}`)
@@ -25,14 +25,17 @@ export async function POST(request: NextRequest) {
     if (!leaderboardAddress || !repoFullName || !filePath)
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
-    const fileRes = await fetch(
-      `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
-      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' } }
-    )
-    if (!fileRes.ok)
-      return NextResponse.json({ error: `Could not fetch file from GitHub (${fileRes.status})` }, { status: 400 })
+    const fileResult = await fetchGithubFileContent(repoFullName, filePath, token)
+    if (!fileResult.ok) {
+      return NextResponse.json(
+        { error: fileResult.reason === 'timeout'
+          ? 'GitHub took too long to respond — try again in a moment.'
+          : `Could not fetch ${filePath} from GitHub (${fileResult.status}) — check the file still exists at that path.` },
+        { status: 400 },
+      )
+    }
 
-    const content = await fileRes.text()
+    const content = fileResult.content
     const normalizedNew = leaderboardAddress.toLowerCase()
     const legacyAddrs = legacyAddressesFor(normalizedNew)
     const verified =

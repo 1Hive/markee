@@ -37,11 +37,35 @@ export const GDA_AGREEMENT_ID = keccak256(
 
 // ── Rate helpers ────────────────────────────────────────────────────────────
 
-export function monthlyToRatePerSec(weiPerMonth: bigint): bigint {
-  // Ceiling division: floor(weiPerMonth) rounds down, causing rate*SECONDS_IN_MONTH < weiPerMonth,
-  // which triggers BelowMinimumRate on the board. Ceiling guarantees the recovered monthly value
-  // always meets the on-chain minimum.
+// Floor(weiPerMonth) rounds down, so rate*SECONDS_IN_MONTH < weiPerMonth -- if that recovered value
+// falls below the board's minimum, the board reverts with BelowMinimumRate. Ceiling avoids that
+// unconditionally (recovered >= weiPerMonth always), at the cost of a tiny built-in overage on any
+// weiPerMonth that isn't an exact multiple of SECONDS_IN_MONTH (e.g. 0.001 ETH/mo recovers as
+// 0.001000000000512 ETH/mo).
+//
+// When the caller knows the board's actual on-chain minimumMonthlyRate, floor first and only fall
+// back to ceiling if the floor-recovered value would actually undershoot *that* minimum -- this is
+// what lets an exact 0.001 ETH/mo entry land as-typed on a board whose minimum was deliberately set
+// just below it, while still guaranteeing success (via the ceiling fallback) on any board whose
+// minimum wasn't adjusted.
+export function monthlyToRatePerSec(weiPerMonth: bigint, minimumMonthlyRate?: bigint): bigint {
+  const floorRate = weiPerMonth / SECONDS_IN_MONTH
+  if (minimumMonthlyRate !== undefined && floorRate * SECONDS_IN_MONTH >= minimumMonthlyRate) {
+    return floorRate
+  }
   return (weiPerMonth + SECONDS_IN_MONTH - 1n) / SECONDS_IN_MONTH
+}
+
+const THOUSANDTH_ETH = 1_000_000_000_000_000n // 0.001 ETH
+
+// A board's on-chain minimumMonthlyRate is often deliberately set a hair under a round number (e.g.
+// 999999997884000 wei instead of exactly 0.001 ETH, so 0.001 floor-rounds instead of overshooting --
+// see monthlyToRatePerSec above). That's the right on-chain value, but showing it verbatim as the MIN
+// preset/placeholder ("0.000999999997884") reads as a bug, not a feature. Round up to the nearest
+// 0.001 ETH for display/input purposes instead -- always >= the real minimum, so it still passes.
+export function roundUpToNearestThousandth(weiPerMonth: bigint): bigint {
+  if (weiPerMonth <= 0n) return 0n
+  return ((weiPerMonth + THOUSANDTH_ETH - 1n) / THOUSANDTH_ETH) * THOUSANDTH_ETH
 }
 
 export function ratePerSecToMonthly(ratePerSec: bigint): bigint {
@@ -56,6 +80,93 @@ export function bufferFor(ratePerSec: bigint): bigint {
 export function runwaySeconds(balance: bigint, ratePerSec: bigint): bigint {
   if (ratePerSec === 0n) return 0n
   return balance / ratePerSec
+}
+
+const SECONDS_IN_DAY = 86_400n
+const SECONDS_IN_WEEK = 604_800n
+
+// "2mo 14d 06h 42m 09s" -- the Deposit Manager's "runs out in" countdown format. Hours/minutes/
+// seconds are zero-padded (matches a clock reading), months/days aren't (there's no fixed width to
+// pad to). Seconds are what make the countdown visibly tick on screen, not just when a whole minute
+// rolls over.
+export function formatRunway(seconds: bigint): string {
+  const s = seconds > 0n ? seconds : 0n
+  const months = s / SECONDS_IN_MONTH
+  const days = (s % SECONDS_IN_MONTH) / SECONDS_IN_DAY
+  const hours = (s % SECONDS_IN_DAY) / 3600n
+  const minutes = (s % 3600n) / 60n
+  const secs = s % 60n
+  const pad = (n: bigint) => n.toString().padStart(2, '0')
+  const parts: string[] = []
+  if (months > 0n) parts.push(`${months}mo`)
+  if (months > 0n || days > 0n) parts.push(`${days}d`)
+  parts.push(`${pad(hours)}h`, `${pad(minutes)}m`, `${pad(secs)}s`)
+  return parts.join(' ')
+}
+
+// "2mo 0d 1h" -- the compact form used inline on the rate cards (RateCard/RatePriceCard), next to
+// the Deposit Manager link. Always all three units, unpadded, no minutes -- there's no room for the
+// full clock-style formatRunway there.
+export function formatRunwayShort(seconds: bigint): string {
+  const s = seconds > 0n ? seconds : 0n
+  const months = s / SECONDS_IN_MONTH
+  const days = (s % SECONDS_IN_MONTH) / SECONDS_IN_DAY
+  const hours = (s % SECONDS_IN_DAY) / 3600n
+  return `${months}mo ${days}d ${hours}h`
+}
+
+// Runway progress bar: full at 3 months or more (matches the auto-deposit default), so a freshly
+// funded stream always starts the bar full.
+export function runwayProgressPct(seconds: bigint): number {
+  const cap = SECONDS_IN_MONTH * 3n
+  if (seconds >= cap) return 100
+  if (seconds <= 0n) return 0
+  return Number((seconds * 100n) / cap)
+}
+
+export type RunwayTier = 'normal' | 'warning' | 'danger'
+
+// Yellow under a week, red under a day -- the two thresholds the Deposit Manager's progress bar
+// color-codes against.
+export function runwayTier(seconds: bigint): RunwayTier {
+  if (seconds < SECONDS_IN_DAY) return 'danger'
+  if (seconds < SECONDS_IN_WEEK) return 'warning'
+  return 'normal'
+}
+
+// ── Auto-computed deposit (replaces the old 1/2/3-month picker) ────────────
+
+export interface AutoDeposit {
+  // Native ETH to wrap fresh this tx. 0 when the wallet's existing ETHx balance already clears what
+  // this rate needs.
+  wrapValue: bigint
+  // ETHx left in the wallet after the board's buffer pull -- what actually funds the stream over
+  // time. Combines any pre-existing balance with wrapValue.
+  prefund: bigint
+  // How long that prefund sustains the stream at ratePerSec.
+  runwaySeconds: bigint
+}
+
+const ETHX_AUTO_WRAP_RESERVE = 1_000_000_000_000_000n // 0.001 ETH kept unwrapped for gas
+
+// The CFA requires the backer's own wallet balance to clear the flow's buffer too, on top of what
+// the board's depositBuffer pulls out of it -- so "already enough" means the existing balance clears
+// more than 2x the buffer, not just enough to cover the pull. Below that, default to wrapping 3
+// months' worth of ETH at this rate, capped at what's actually spendable (wallet balance minus a
+// small reserve for gas).
+export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, walletEthBalance: bigint): AutoDeposit {
+  if (ratePerSec <= 0n) return { wrapValue: 0n, prefund: 0n, runwaySeconds: 0n }
+  const buffer = bufferFor(ratePerSec)
+  if (ethxBalance > buffer * 2n) {
+    const prefund = ethxBalance - buffer
+    return { wrapValue: 0n, prefund, runwaySeconds: runwaySeconds(prefund, ratePerSec) }
+  }
+  const threeMonths = ratePerSecToMonthly(ratePerSec) * 3n
+  const affordable = walletEthBalance > ETHX_AUTO_WRAP_RESERVE ? walletEthBalance - ETHX_AUTO_WRAP_RESERVE : 0n
+  const wrapValue = threeMonths < affordable ? threeMonths : affordable
+  const prefundRaw = ethxBalance + wrapValue - buffer
+  const prefund = prefundRaw > 0n ? prefundRaw : 0n
+  return { wrapValue, prefund, runwaySeconds: prefund > 0n ? runwaySeconds(prefund, ratePerSec) : 0n }
 }
 
 // ── Batched open: wrap → depositBuffer → createFlow (host.batchCall). The depositBuffer pull is
@@ -383,6 +494,8 @@ export const CFA_FORWARDER_ABI = [
 // funds a live stream (the CFA drains this balance, not the wallet's native ETH).
 export const ETHX_WRAP_ABI = [
   { type: 'function', name: 'upgradeByETH', stateMutability: 'payable', inputs: [], outputs: [] },
+  // The reverse: burns ETHx and returns the underlying ETH 1:1, for the Deposit Manager's Withdraw.
+  { type: 'function', name: 'downgrade', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
 ] as const
 
 // The per-Markee GDA refund pool: units are the backer's share of that Markee's aggregate rate, which

@@ -158,6 +158,7 @@ async function fetchStreamingHistory(client: ReturnType<typeof getClient>, leade
   const boughtEvents: RawEvent[] = createdLog ? [{
     id: `${createdLog.transactionHash}-${createdLog.logIndex}`, kind: 'bought',
     flowRate: (boughtPairLog?.args.flowRate ?? 0n).toString(),
+    message: createdLog.args.message ?? '',
     actor: createdLog.args.owner ?? '', blockNumber: (createdLog.blockNumber ?? 0n).toString(), logIndex: Number(createdLog.logIndex ?? 0), transactionHash: createdLog.transactionHash ?? '',
   }] : []
 
@@ -169,14 +170,21 @@ async function fetchStreamingHistory(client: ReturnType<typeof getClient>, leade
     .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
     .map(([address, flowRateRaw]) => ({ address, flowRateRaw: flowRateRaw.toString() }))
 
+  // The Markee constructor sets the initial message/name directly (not via setMessage/setName), but
+  // still emits MessageChanged/NameChanged -- with changedBy set to msg.sender, which is the
+  // leaderboard contract that deployed it, not the human backer. That fires in the exact same tx as
+  // MarkeeCreated, so it's not a distinct user action; skip it here since boughtEvents already
+  // carries the initial message.
+  const creationTxHash = createdLog?.transactionHash
+
   const events = [
     ...boughtEvents,
     ...rateEvents,
-    ...messageLogs.map(log => ({
+    ...messageLogs.filter(log => log.transactionHash !== creationTxHash).map(log => ({
       id: `${log.transactionHash}-${log.logIndex}`, kind: 'message' as const,
       message: log.args.newMessage ?? '', actor: log.args.changedBy ?? '', blockNumber: (log.blockNumber ?? 0n).toString(), logIndex: Number(log.logIndex ?? 0), transactionHash: log.transactionHash ?? '',
     })),
-    ...nameLogs.map(log => ({
+    ...nameLogs.filter(log => log.transactionHash !== creationTxHash).map(log => ({
       id: `${log.transactionHash}-${log.logIndex}`, kind: 'name' as const,
       name: log.args.newName ?? '', actor: log.args.changedBy ?? '', blockNumber: (log.blockNumber ?? 0n).toString(), logIndex: Number(log.logIndex ?? 0), transactionHash: log.transactionHash ?? '',
     })),

@@ -14,7 +14,7 @@ import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
-import { TxSteps } from '@/components/modals/StreamUI'
+import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
@@ -137,8 +137,10 @@ export interface EcoEntry {
 
 export function useServedOn(leaderboardAddress: string) {
   const [entry, setEntry] = useState<EcoEntry | null>(null)
+  const [loading, setLoading] = useState(true)
   useEffect(() => {
     if (!leaderboardAddress) return
+    setLoading(true)
     const addr = leaderboardAddress.toLowerCase()
     // Website and GitHub integrations are both address-keyed, independent of which platform the
     // board was originally created/tagged under (a "website"-platform board can still have a
@@ -158,9 +160,9 @@ export function useServedOn(leaderboardAddress: string) {
         verifiedUrls: v?.verifiedUrls?.length ? v.verifiedUrls : found?.verifiedUrls,
         linkedFiles: v?.linkedFiles ?? found?.linkedFiles,
       })
-    })
+    }).finally(() => setLoading(false))
   }, [leaderboardAddress])
-  return entry
+  return { entry, loading }
 }
 
 // ── Shared SVG icons ──────────────────────────────────────────────────────────
@@ -224,8 +226,10 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
   )
 }
 
-export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
+export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
   entry: EcoEntry | null
+  /** Still resolving useServedOn -- distinguishes "not verified yet" from "genuinely nothing linked". */
+  loading?: boolean
   /** Top markee's address -- view counts are tracked per-markee, not per-leaderboard. */
   markeeAddress?: string
   onAddToSite?: () => void
@@ -236,7 +240,7 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
   // overflow:hidden (needed there for the scanline/background effect) -- position computed from the
   // trigger's bounding rect since it's no longer a CSS-positioned descendant of it.
   const menuRef = useRef<HTMLDivElement>(null)
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -248,7 +252,7 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
     const reposition = () => {
       if (!ref.current) return
       const rect = ref.current.getBoundingClientRect()
-      setMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+      setMenuPos({ top: rect.bottom + 8, left: rect.left })
     }
     reposition()
     document.addEventListener('mousedown', close)
@@ -268,8 +272,10 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
   const urls = entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []
 
   const [repoTraffic, setRepoTraffic] = useState<Record<string, number>>({})
+  const [repoTrafficLoaded, setRepoTrafficLoaded] = useState(false)
   useEffect(() => {
-    if (!entry?.address || files.length === 0) return
+    if (!entry?.address || files.length === 0) { setRepoTrafficLoaded(true); return }
+    setRepoTrafficLoaded(false)
     fetch(`/api/github/traffic-multi?address=${entry.address}`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { repos?: Record<string, { count: number }> }) => {
@@ -279,20 +285,25 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
         setRepoTraffic(m)
       })
       .catch(() => {})
+      .finally(() => setRepoTrafficLoaded(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.address, files.length])
 
   const [urlViews, setUrlViews] = useState<Record<string, number>>({})
+  const [urlViewsLoaded, setUrlViewsLoaded] = useState(false)
   useEffect(() => {
-    if (urls.length === 0 || !markeeAddress) return
+    if (urls.length === 0 || !markeeAddress) { setUrlViewsLoaded(true); return }
+    setUrlViewsLoaded(false)
     fetch(`/api/views?address=${markeeAddress}&urls=${urls.map(encodeURIComponent).join('||')}`)
       .then(r => r.ok ? r.json() : null)
       .then((d: Record<string, number> | null) => { if (d) setUrlViews(d) })
       .catch(() => {})
+      .finally(() => setUrlViewsLoaded(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urls.join('||'), markeeAddress])
 
   if (!entry) {
+    if (loading) return <ViewsSpinner size={14} color={MUTED} />
     return (
       <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' as const }}>
         No Verified URLs
@@ -305,10 +316,10 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
   const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
   const host = (u: string) => getLogoDomain(u) ?? clean(u)
 
-  type Item = { kind: 'file'; file: LinkedFile; views: number } | { kind: 'url'; url: string; views: number }
+  type Item = { kind: 'file'; file: LinkedFile; views: number; viewsLoaded: boolean } | { kind: 'url'; url: string; views: number; viewsLoaded: boolean }
   const items: Item[] = [
-    ...files.map(file => ({ kind: 'file' as const, file, views: repoTraffic[file.repoFullName] ?? 0 })),
-    ...urls.map(url => ({ kind: 'url' as const, url, views: urlViews[url] ?? 0 })),
+    ...files.map(file => ({ kind: 'file' as const, file, views: repoTraffic[file.repoFullName] ?? 0, viewsLoaded: repoTrafficLoaded })),
+    ...urls.map(url => ({ kind: 'url' as const, url, views: urlViews[url] ?? 0, viewsLoaded: urlViewsLoaded })),
   ].sort((a, b) => b.views - a.views)
 
   const hasAny = items.length > 0
@@ -326,6 +337,14 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        aria-label={open ? 'Hide integrations' : 'Show all integrations'}
+        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer' }}
+      >
+        <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+      </button>
+
       <span style={{ minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
         {hasAny && top ? (
           top.kind === 'file' ? (
@@ -335,6 +354,7 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
             >
               <GithubIcon size={16} color={TEXT2} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{top.file.repoOwner}</span>
+              <ExternalLink size={15} color={MUTED} style={{ flexShrink: 0 }} />
             </a>
           ) : (
             <a href={href(top.url)} target="_blank" rel="noopener noreferrer"
@@ -343,6 +363,7 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
             >
               {topDomain ? <SiteLogo domain={topDomain} /> : <span style={{ flexShrink: 0 }}>🪧</span>}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderBottom: `1px dotted ${MUTED}` }}>{host(top.url)}</span>
+              <ExternalLink size={15} color={MUTED} style={{ flexShrink: 0 }} />
             </a>
           )
         ) : (
@@ -356,16 +377,8 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
         </span>
       )}
 
-      <button
-        onClick={() => setOpen(v => !v)}
-        aria-label={open ? 'Hide integrations' : 'Show all integrations'}
-        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer' }}
-      >
-        <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
-      </button>
-
       {open && menuPos && createPortal(
-        <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 260, zIndex: 200, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 260, zIndex: 200, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {onAddToSite && (
             <button
               onClick={() => { setOpen(false); onAddToSite() }}
@@ -381,18 +394,22 @@ export function ServedOnCell({ entry, markeeAddress, onAddToSite }: {
               <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, overflow: 'hidden' }}>
                 <GithubIcon size={12} color="currentColor" />
                 <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.repoName}/{item.file.filePath}</span>
+                <ExternalLink size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
               </span>
               <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(item.views)}
+                <Eye size={10} style={{ opacity: 0.7 }} /> {item.viewsLoaded ? formatViews(item.views) : <ViewsSpinner size={9} />}
               </span>
             </a>
           ) : (
             <a key={item.url} href={href(item.url)} target="_blank" rel="noopener noreferrer"
               style={dropdownRowStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
             >
-              <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(item.url)}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, overflow: 'hidden' }}>
+                <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(item.url)}</span>
+                <ExternalLink size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
+              </span>
               <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(item.views)}
+                <Eye size={10} style={{ opacity: 0.7 }} /> {item.viewsLoaded ? formatViews(item.views) : <ViewsSpinner size={9} />}
               </span>
             </a>
           ))}
@@ -410,9 +427,10 @@ export function MetricValue({ text, color = TEXT, title }: { text: string; color
   )
 }
 
-export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onAddToSite, topViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
+  entryLoading?: boolean
   topMarkeeAddress?: string
   onAddToSite?: () => void
   topViews: number
@@ -431,8 +449,8 @@ export function MetricsBar({ address, entry, topMarkeeAddress, onAddToSite, topV
   )
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Served on', <ServedOnCell entry={entry} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
+    <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0 6px', borderTop: `1px solid ${BORDER}` }}>
+      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(topViews)} color={BLUE} />)}
       {cell(messagesLabel, messagesLoading ? <ViewsSpinner size={16} color={TEXT} /> : <MetricValue text={markeeCount.toLocaleString()} />)}
@@ -484,6 +502,11 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
             fontFamily: 'Manrope, system-ui, sans-serif',
           }}
         >
+          {/* Brand watermark — small, unassuming, top-left on every Markee card with a hover price
+              badge (see also FeaturedHero on /marketplace and the home page hero cards). */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/markee-light.png" alt="" aria-hidden width={22} height={22} style={{ position: 'absolute', top: 14, left: 18, borderRadius: 5, opacity: 0.4, pointerEvents: 'none' }} />
+
           {/* top-right: views + flag */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} />
@@ -602,13 +625,15 @@ export function GitHubVerify({ address }: { address: string }) {
   const [syncStepIdx,  setSyncStepIdx]  = useState(0)
   const [syncError,    setSyncError]    = useState<string | null>(null)
   const [syncSummary,  setSyncSummary]  = useState<string | null>(null)
+  const [changeAccountOpen, setChangeAccountOpen] = useState(false)
+  const [oauthPending, setOauthPending] = useState(false)
   const SYNC_STEPS = ['Verify File', 'Sync Message', 'Check Views']
 
-  useEffect(() => {
-    // no-store: this is the sole "am I connected" gate, checked on every mount -- including right
-    // after the OAuth redirect back. A cached "connected: false" from before the user authenticated
-    // would otherwise look identical to GitHub never actually connecting.
-    fetch('/api/github/me', { cache: 'no-store' })
+  // no-store: this is the sole "am I connected" gate -- checked on mount, and again after a
+  // popup-based reconnect completes, so a cached "connected: false" from before never masks a
+  // just-completed sign-in.
+  function checkConnection() {
+    return fetch('/api/github/me', { cache: 'no-store' })
       .then(r => r.json())
       .then((me: { connected: boolean; login?: string }) => {
         if (!me.connected) { setStep('not-connected'); return }
@@ -619,6 +644,41 @@ export function GitHubVerify({ address }: { address: string }) {
         if (data?.repos) { setRepos(data.repos); setStep('ready') }
       })
       .catch(() => setStep('not-connected'))
+  }
+
+  useEffect(() => { checkConnection() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opens GitHub OAuth in a popup instead of navigating the current page away -- the callback
+  // route (passed popup=1) responds with a postMessage + window.close() instead of a redirect, so a
+  // modal hosting this component never closes/reloads mid-flow. Falls back to a full-page nav if the
+  // popup gets blocked.
+  function openGithubOAuth() {
+    const returnTo = buildGithubReturnTo(address)
+    const popupUrl = `/api/github/connect?popup=1&returnTo=${encodeURIComponent(returnTo)}`
+    const win = window.open(popupUrl, 'markee-github-oauth', 'width=600,height=750')
+    if (!win) {
+      window.location.href = `/api/github/connect?returnTo=${encodeURIComponent(returnTo)}`
+      return
+    }
+    setOauthPending(true)
+    setChangeAccountOpen(false)
+  }
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
+      const data = e.data as { source?: string; success?: boolean; error?: string } | undefined
+      if (data?.source !== 'markee-github-oauth') return
+      setOauthPending(false)
+      if (data.success) {
+        setStep('checking'); setSelectedRepo(''); setSelectedFile(''); setResult(null); setError(null)
+        checkConnection()
+      } else {
+        setError(data.error ?? 'GitHub sign-in failed.')
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
   }, [])
 
   useEffect(() => {
@@ -653,13 +713,6 @@ export function GitHubVerify({ address }: { address: string }) {
     } catch {
       setError('Network error'); setStep('ready')
     }
-  }
-
-  async function handleDisconnect() {
-    setStep('checking')
-    try { await fetch('/api/github/me', { method: 'DELETE' }) } catch { /* best-effort */ }
-    setLogin(null); setRepos([]); setSelectedRepo(''); setSelectedFile(''); setResult(null); setError(null)
-    setStep('not-connected')
   }
 
   // Keeps the connected repo, drops just the file + result so the picker re-opens for a second file.
@@ -732,7 +785,7 @@ export function GitHubVerify({ address }: { address: string }) {
         <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>{login}</span>
       </span>
       <button
-        onClick={handleDisconnect}
+        onClick={() => setChangeAccountOpen(true)}
         style={{ background: 'transparent', border: 'none', color: MUTED, fontFamily: MONO, fontSize: 11, cursor: 'pointer', padding: 0 }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = TEXT2 }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED }}
@@ -742,11 +795,48 @@ export function GitHubVerify({ address }: { address: string }) {
     </div>
   )
 
+  // Matches the "already selected" box's shade (rgba(15,27,107,0.5)) so an empty picker doesn't read
+  // as a visually distinct, darker control from the ones that follow it once something's chosen.
   const inputStyle = {
-    background: '#030714', border: `1px solid ${BORDER}`, borderRadius: 7,
+    background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`, borderRadius: 7,
     padding: '7px 10px', fontFamily: MONO, fontSize: 12, color: TEXT,
     width: '100%', outline: 'none',
   }
+
+  // GitHub's OAuth has no real account picker -- re-authenticating just re-uses whatever GitHub
+  // session the browser already has. This explains that instead of promising a switcher that can't
+  // exist, and reuses the same popup flow as the initial connect so the modal never navigates away.
+  const changeAccountModal = changeAccountOpen && (
+    <div
+      onClick={() => setChangeAccountOpen(false)}
+      style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 380, background: BG2, borderRadius: 14, border: `1px solid ${BORDER}`, padding: 22, boxShadow: '0 24px 80px rgba(0,0,0,0.5)', fontFamily: 'Manrope, system-ui, sans-serif', color: TEXT }}
+      >
+        <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 800 }}>Change GitHub account</h3>
+        <p style={{ margin: '0 0 18px', fontSize: 13, color: TEXT2, lineHeight: 1.6 }}>
+          You&apos;ll be asked to sign in with GitHub again. To switch to a different account, sign out of{' '}
+          {login ? <><GithubIcon size={11} color="currentColor" /> {login}</> : 'this account'} on github.com first — otherwise it&apos;ll just reconnect the same one.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setChangeAccountOpen(false)}
+            style={{ background: 'transparent', border: `1px solid ${BORDER}`, color: TEXT2, borderRadius: 8, padding: '9px 16px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={openGithubOAuth}
+            style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 16px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
+            Continue to GitHub
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   if (step === 'checking') return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '13px 16px' }}>
@@ -763,20 +853,29 @@ export function GitHubVerify({ address }: { address: string }) {
   )
 
   if (step === 'not-connected') return (
-    <a
-      href={`/api/github/connect?returnTo=${encodeURIComponent(buildGithubReturnTo(address))}`}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-        background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`,
-        borderRadius: 10, padding: '13px 16px', fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
-        color: TEXT, textDecoration: 'none', transition: 'border-color 140ms, background 140ms',
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.background = 'rgba(15,27,107,0.7)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.background = 'rgba(15,27,107,0.5)' }}
-    >
-      <GithubIcon size={16} color="currentColor" />
-      Connect GitHub
-    </a>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button
+        onClick={openGithubOAuth}
+        disabled={oauthPending}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+          background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`,
+          borderRadius: 10, padding: '13px 16px', fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+          color: TEXT, cursor: oauthPending ? 'wait' : 'pointer', width: '100%',
+          transition: 'border-color 140ms, background 140ms',
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.background = 'rgba(15,27,107,0.7)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.background = 'rgba(15,27,107,0.5)' }}
+      >
+        {oauthPending ? (
+          <span aria-hidden style={{ width: 15, height: 15, borderRadius: 99, flexShrink: 0, border: `2px solid ${PINK}`, borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+        ) : (
+          <GithubIcon size={16} color="currentColor" />
+        )}
+        {oauthPending ? 'Waiting for GitHub…' : 'Connect GitHub'}
+      </button>
+      {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
+    </div>
   )
 
   if (step === 'done' && result) return (
@@ -786,10 +885,14 @@ export function GitHubVerify({ address }: { address: string }) {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
         background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '11px 14px',
       }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: TEXT, minWidth: 0 }}>
+        <a
+          href={`https://github.com/${selectedRepo}`} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: TEXT, textDecoration: 'none', minWidth: 0 }}
+        >
           <GithubIcon size={15} color={TEXT2} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRepo}</span>
-        </span>
+          <ExternalLink size={12} color={MUTED} style={{ flexShrink: 0 }} />
+        </a>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, color: result.verified ? GREEN : MUTED }}>
           <span style={{ width: 6, height: 6, borderRadius: 99, background: result.verified ? GREEN : MUTED, flexShrink: 0 }} />
           {result.verified ? 'VERIFIED' : 'LINKED'}
@@ -797,30 +900,37 @@ export function GitHubVerify({ address }: { address: string }) {
       </div>
       {!result.verified && (
         <span style={{ fontFamily: MONO, fontSize: 11, color: TEXT2, lineHeight: 1.5 }}>
-          Add the delimiter snippet to {result.filePath}, commit it, then check again.
+          Add the delimiter snippet to{' '}
+          <a
+            href={`https://github.com/${selectedRepo}/blob/HEAD/${result.filePath}`} target="_blank" rel="noopener noreferrer"
+            style={{ color: TEXT2, display: 'inline-flex', alignItems: 'center', gap: 3 }}
+          >
+            {result.filePath}<ExternalLink size={10} />
+          </a>
+          , commit it, then check again.
         </span>
       )}
 
       {/* Check now / Sync message / Check views used to be three separate manual buttons -- unified
-          into one fail-fast chained run (see runFullSync) with a tx-modal-style step list. */}
-      {syncPhase === 'running' || syncPhase === 'error' ? (
+          into one fail-fast chained run (see runFullSync). Running uses the same centered spinning-ring
+          TxProgress the transaction modals use; a failure drops the ring (matches how tx modals handle
+          errors) and shows the step checklist as plain text instead. */}
+      {syncPhase === 'running' ? (
+        <TxProgress
+          isSuccess={false}
+          headline={`${SYNC_STEPS[syncStepIdx]}…`}
+          steps={SYNC_STEPS.map((label, i) => ({ label, done: i < syncStepIdx, active: i === syncStepIdx }))}
+        />
+      ) : syncPhase === 'error' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <TxSteps steps={SYNC_STEPS.map((label, i) => ({
-            label,
-            done: i < syncStepIdx,
-            active: i === syncStepIdx && syncPhase === 'running',
-          }))} />
-          {syncPhase === 'error' && (
-            <>
-              <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{syncError}</span>
-              <button
-                onClick={runFullSync}
-                style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', padding: 0, textAlign: 'left', alignSelf: 'flex-start' }}
-              >
-                ← Try again
-              </button>
-            </>
-          )}
+          <TxSteps steps={SYNC_STEPS.map((label, i) => ({ label, done: i < syncStepIdx, active: false }))} />
+          <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{syncError}</span>
+          <button
+            onClick={runFullSync}
+            style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', padding: 0, textAlign: 'left', alignSelf: 'flex-start' }}
+          >
+            ← Try again
+          </button>
         </div>
       ) : result.verified && (syncSummary !== null || views !== null) ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
@@ -857,6 +967,7 @@ export function GitHubVerify({ address }: { address: string }) {
           + Add another file in this repo
         </button>
       )}
+      {changeAccountModal}
     </div>
   )
 
@@ -864,60 +975,80 @@ export function GitHubVerify({ address }: { address: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {accountRow}
       {selectedRepo && selectedFile ? (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-          background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '11px 14px',
-        }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: TEXT, minWidth: 0 }}>
-            <GithubIcon size={15} color={TEXT2} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRepo}</span>
-          </span>
-          <button
-            onClick={() => { setSelectedRepo(''); setSelectedFile('') }}
-            style={{ background: 'transparent', border: 'none', color: MUTED, fontFamily: MONO, fontSize: 11, cursor: 'pointer', padding: 0, flexShrink: 0 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED }}
-          >
-            Change
-          </button>
-        </div>
+        <>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            background: 'rgba(15,27,107,0.5)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '11px 14px',
+          }}>
+            <a
+              href={`https://github.com/${selectedRepo}/blob/HEAD/${selectedFile}`} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: TEXT, textDecoration: 'none', minWidth: 0 }}
+            >
+              <GithubIcon size={15} color={TEXT2} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRepo}</span>
+              <ExternalLink size={12} color={MUTED} style={{ flexShrink: 0 }} />
+            </a>
+            <button
+              onClick={() => { setSelectedRepo(''); setSelectedFile('') }}
+              style={{ background: 'transparent', border: 'none', color: MUTED, fontFamily: MONO, fontSize: 11, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED }}
+            >
+              Change
+            </button>
+          </div>
+          {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: TEXT2, lineHeight: 1.5, flex: 1 }}>
+              Add the delimiter snippet to {selectedFile}, commit it, then verify.
+            </span>
+            <button
+              onClick={handleRegister}
+              disabled={step === 'registering'}
+              style={{
+                background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '10px 18px',
+                fontFamily: 'inherit', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', flexShrink: 0,
+                cursor: step === 'registering' ? 'not-allowed' : 'pointer',
+                opacity: step === 'registering' ? 0.6 : 1, transition: 'opacity 140ms',
+              }}
+            >
+              {step === 'registering' ? 'Verifying…' : 'Verify'}
+            </button>
+          </div>
+        </>
       ) : (
-        <select value={selectedRepo} onChange={e => setSelectedRepo(e.target.value)} disabled={step === 'registering'} style={{ ...inputStyle, cursor: 'pointer' }}>
-          <option value="">Select repository…</option>
-          {repos.map(r => <option key={r.fullName} value={r.fullName}>{r.fullName}</option>)}
-        </select>
+        <>
+          <select value={selectedRepo} onChange={e => setSelectedRepo(e.target.value)} disabled={step === 'registering'} style={{ ...inputStyle, cursor: 'pointer' }}>
+            <option value="">Select repository…</option>
+            {repos.map(r => <option key={r.fullName} value={r.fullName}>{r.fullName}</option>)}
+          </select>
+          <select
+            value={selectedFile}
+            onChange={e => setSelectedFile(e.target.value)}
+            disabled={!selectedRepo || loadingFiles || step === 'registering'}
+            style={{
+              ...inputStyle,
+              cursor: !selectedRepo ? 'default' : loadingFiles ? 'wait' : 'pointer',
+              opacity: !selectedRepo ? 0.45 : 1,
+            }}
+          >
+            <option value="">{loadingFiles ? 'Loading files…' : 'Select markdown file…'}</option>
+            {files.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
+          <button
+            disabled
+            style={{
+              background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`,
+              borderRadius: 8, padding: '13px 16px', fontFamily: 'inherit', fontWeight: 700,
+              fontSize: 14, width: '100%', cursor: 'not-allowed', opacity: 0.6,
+            }}
+          >
+            Verify
+          </button>
+        </>
       )}
-      {!selectedFile && (
-        <select
-          value={selectedFile}
-          onChange={e => setSelectedFile(e.target.value)}
-          disabled={!selectedRepo || loadingFiles || step === 'registering'}
-          style={{
-            ...inputStyle,
-            cursor: !selectedRepo ? 'default' : loadingFiles ? 'wait' : 'pointer',
-            opacity: !selectedRepo ? 0.45 : 1,
-          }}
-        >
-          <option value="">{loadingFiles ? 'Loading files…' : 'Select markdown file…'}</option>
-          {files.map(f => <option key={f} value={f}>{f}</option>)}
-        </select>
-      )}
-      {error && <span style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,100,120,0.9)' }}>{error}</span>}
-      <button
-        onClick={handleRegister}
-        disabled={!selectedRepo || !selectedFile || step === 'registering'}
-        style={{
-          background: (!selectedRepo || !selectedFile || step === 'registering') ? 'transparent' : PINK,
-          color: (!selectedRepo || !selectedFile || step === 'registering') ? MUTED : BG,
-          border: (!selectedRepo || !selectedFile || step === 'registering') ? `1px solid ${BORDER}` : 'none',
-          borderRadius: 8, padding: '13px 16px', fontFamily: 'inherit', fontWeight: 700,
-          fontSize: 14, width: '100%',
-          cursor: (!selectedRepo || !selectedFile || step === 'registering') ? 'not-allowed' : 'pointer',
-          opacity: (!selectedRepo || !selectedFile || step === 'registering') ? 0.6 : 1, transition: 'opacity 140ms',
-        }}
-      >
-        {step === 'registering' ? 'Verifying…' : 'Verify'}
-      </button>
+      {changeAccountModal}
     </div>
   )
 }
@@ -1150,6 +1281,33 @@ My leaderboard:
 - Address: ${address}
 - Buy page (fallback for non-Next.js sites): ${buyUrl}
 
+## Brand & UX requirements (read this first)
+
+This should feel like the actual Markee product embedded in my site, not a generic form bolted on --
+match the UX at markee.xyz/markee/[address] (the "hero" message card and its buy/change-message
+modal), restyled in my site's own colors and theme. Specifically:
+
+- Trigger card: the current message rendered large and prominent (Markee uses a bold monospace
+  headline with a subtle gradient text-fill from the primary text color into the accent color --
+  approximate that with your own palette). On hover, a pill badge slides up from the bottom edge
+  showing the price/action ("X.XXX ETH to change", or "be first!" if no messages yet).
+- Logo watermark: render the Markee logo (fetch the SVG/PNG from https://markee.xyz/markee-light.png,
+  or inline equivalent letterforms) small (~20-24px) and unassuming in the top-left corner of the
+  trigger card, at reduced opacity (~0.4). Recolor it to whatever reads best against your card's
+  background (a CSS filter like invert()/brightness() on the light asset works for light backgrounds;
+  use it as-is on dark ones). This is a Markee brand requirement, not optional styling -- every
+  integration should carry it.
+- Loading states never show a blank or "0" value while data is still in flight -- use a small
+  spinner (a simple CSS-animated ring is fine) in place of the number/text until the real value
+  loads, exactly like the price badge and message text above.
+- The message textarea (not the amount input) is the visually emphasized field in every form --
+  give IT the accent-colored glow/border, with the amount field styled plainly by comparison. This
+  is a deliberate Markee-wide convention: attention should land on what the visitor is saying before
+  what they're paying.
+- Any flow with more than one on-chain transaction (e.g. approve, then submit) shows a centered
+  step indicator -- a small spinning ring plus a checklist of steps (done/active/pending) -- not just
+  a single generic spinner, so the visitor can see which step they're on.
+
 ## What to build
 
 Two components:
@@ -1166,7 +1324,10 @@ Two components:
 2. A modal component (e.g. MarkeeModal) that is a full buy flow with:
    - A header with the site logo, title, and close button
    - The current top message displayed above the tabs
-   - Two tabs: "Buy a Message" and "Boost Existing Message"
+   - Two or three tabs: "Buy a Message", "Boost Existing Message", and -- only when the connected
+     wallet owns the current top message (compare owner() on the top markee to the connected
+     address) -- "Change Message", replacing the Boost tab's role for that one entry (an owner
+     doesn't need to outbid themselves, just edit what it says)
    - A footer: "You'll receive MARKEE tokens with your purchase and co-own the Markee Network." (link "Markee Network" to the Gardens community for this leaderboard if applicable)
 
 ### Buy a Message tab
@@ -1195,6 +1356,12 @@ Two components:
 - Destructure isError from both useReadContract (getTopMarkees) and useReadContracts (per-markee data); if either errors, show an error message in the boost tab instead of the list
 - "Add Funds to this Message" submit button
 
+### Change Message tab (owner of the current top message only)
+- Shows the current message read-only above a textarea for the new one (monospace, char counter, maxLength from contract) -- this is the same emphasized/glowing field treatment as the Buy tab's textarea
+- No amount input -- this call is free (updateMessage does not take value)
+- "Save Message" submit button, disabled while the textarea is empty or unchanged from the current message
+- On success, same success state as the other tabs, then re-fetches to show the updated message
+
 ### Success state
 When a transaction confirms, replace the entire modal body (below the header) with:
 - A large checkmark
@@ -1215,10 +1382,12 @@ ABI functions needed:
 - getTopMarkees(limit: uint256) view -> (address[], uint256[]) -- top markee addresses + their funds
 - createMarkee(message: string, name: string) payable -> address  -- buys a new message
 - addFunds(markeeAddress: address) payable  -- boosts an existing message
+- updateMessage(markeeAddress: address, newMessage: string)  -- called on the leaderboard contract, not payable; only the markee's owner can call it (reverts otherwise), which is why the Change Message tab is gated on owner() matching the connected address first
 
 Per-markee ABI (call on each markee contract address returned by getTopMarkees):
 - message() view -> string
 - name() view -> string
+- owner() view -> address  -- compare to the connected wallet to decide whether to show Boost or Change Message for that entry
 
 ## Data fetching
 
@@ -1357,7 +1526,7 @@ Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in your environment (get a free ID at c
 - Form state (message, name, ethAmount, boostAmount) must live in MarkeeSign (parent), not MarkeeModal. The <dialog> element unmounts/remounts when closed and reopened during wallet connect, so state inside MarkeeModal will be lost. Lift all form inputs to the parent and pass them down as props.
 - On fetch error from the proxy route, fall back to the default message and still allow the modal to open -- the modal works fully from on-chain data alone.
 - NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is required. Optionally set NEXT_PUBLIC_BASE_RPC_URL for a custom transport in the wagmi config (e.g. an Alchemy or Infura endpoint).
-- Style to match your site's existing design system. The pattern works with any CSS framework.
+- Style to match your site's existing design system -- colors, fonts, spacing should all be yours. The pattern (card, hover price pill, glowing message field, step-indicator progress, small logo watermark) should still read as unmistakably Markee, the same way the buy flow at markee.xyz does. The pattern works with any CSS framework.
 
 Please look at this codebase and implement both components. Choose an appropriate location for the trigger (sidebar widget, footer, header banner). Match the existing code style.`
 
@@ -1447,14 +1616,14 @@ export type TxHistoryEvent =
   // but one user action, merged server-side into a single "Bought Message" entry (flowRate is from
   // the paired stream-open, for display). Other rate events distinguish a brand new backer's first
   // stream from an existing backer changing/stopping theirs.
-  | { id: string; kind: 'bought'; flowRate: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'bought'; flowRate: bigint; message: string; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
   | { id: string; kind: 'rate'; subKind: 'added' | 'changed' | 'stopped'; flowRate: bigint; newAggregate: bigint; actor: string; timestamp: number; blockNumber: bigint; logIndex: number; transactionHash: string }
 
 type ApiHistoryEvent =
   | { id: string; kind: 'funds'; subKind: 'created' | 'migrated' | 'added'; amount: string; newTotal: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'message'; message: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'name'; name: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
-  | { id: string; kind: 'bought'; flowRate: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
+  | { id: string; kind: 'bought'; flowRate: string; message: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
   | { id: string; kind: 'rate'; subKind: 'added' | 'changed' | 'stopped'; flowRate: string; newAggregate: string; actor: string; timestamp: number; blockNumber: string; logIndex: number; transactionHash: string }
 
 export interface TxHistoryBidder { address: string; flowRateRaw: string }
@@ -1552,56 +1721,63 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
 
   return (
     <div style={{ borderTop: `1px solid ${BORDER}`, background: BG, padding: '12px 16px 14px', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent' }}>
-      {bidders.length > 0 && (
-        <div className="mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bidders</p>
-          <div className="space-y-2">
-            {bidders.map(b => (
-              <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
-                <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
-                  {fmtAddr(b.address)} <ExternalLink size={10} />
-                </a>
-                <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatEther(ratePerSecToMonthly(BigInt(b.flowRateRaw)))} ETH/mo</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF]">Transaction history</p>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] disabled:opacity-50 disabled:hover:text-[#8A8FBF] transition-colors"
-          >
-            <RefreshCw size={10} className={isLoading ? 'animate-spin' : undefined} />
-            Refresh
-          </button>
-          {latestTxHash && (
-            <a href={getTxUrl(CANONICAL_CHAIN_ID, latestTxHash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
-              View latest on Basescan <ExternalLink size={10} />
-            </a>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Left: current bids */}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bids</p>
+          {bidders.length > 0 ? (
+            <div className="space-y-2">
+              {bidders.map(b => (
+                <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                  <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
+                    {fmtAddr(b.address)} <ExternalLink size={10} />
+                  </a>
+                  <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatEther(ratePerSecToMonthly(BigInt(b.flowRateRaw)))} ETH/mo</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#8A8FBF] py-3">No active bids on this message yet.</p>
           )}
         </div>
-      </div>
 
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
-          <Loader2 size={14} className="animate-spin" /> Loading transaction history...
-        </div>
-      ) : error ? (
-        <p className="text-sm text-red-300 py-3">{error}</p>
-      ) : history.length === 0 ? (
-        <p className="text-sm text-[#8A8FBF] py-3">No on-chain history found for this message yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {history.map(event => (
-            <div key={event.id} className="flex items-start gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
-              <TxEventIcon kind={event.kind} />
-              <div className="min-w-0 flex-1">
-                {event.kind === 'funds' ? (
+        {/* Right: transaction history */}
+        <div>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF]">Transaction history</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1 text-xs text-[#8A8FBF] hover:text-[#F897FE] disabled:opacity-50 disabled:hover:text-[#8A8FBF] transition-colors"
+              >
+                <RefreshCw size={10} className={isLoading ? 'animate-spin' : undefined} />
+                Refresh
+              </button>
+              {latestTxHash && (
+                <a href={getTxUrl(CANONICAL_CHAIN_ID, latestTxHash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[#7C9CFF] hover:text-[#F897FE] transition-colors">
+                  View latest on Basescan <ExternalLink size={10} />
+                </a>
+              )}
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+              <Loader2 size={14} className="animate-spin" /> Loading transaction history...
+            </div>
+          ) : error ? (
+            <p className="text-sm text-red-300 py-3">{error}</p>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-[#8A8FBF] py-3">No on-chain history found for this message yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {history.map(event => (
+                <div key={event.id} className="flex items-start gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                  <TxEventIcon kind={event.kind} />
+                  <div className="min-w-0 flex-1">
+                    {event.kind === 'funds' ? (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-[#EDEEFF]">
                       {event.subKind === 'created' ? 'Bought Message' : event.subKind === 'migrated' ? 'Migrated In' : 'Added Funds'}
@@ -1619,10 +1795,15 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                     <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
                   </div>
                 ) : event.kind === 'bought' ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-[#EDEEFF]">Bought Message</span>
-                    {event.flowRate > 0n && (
-                      <span className="text-sm font-semibold text-[#7C9CFF]">{formatEther(ratePerSecToMonthly(event.flowRate))} ETH/mo</span>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-[#EDEEFF]">Bought Message</span>
+                      {event.flowRate > 0n && (
+                        <span className="text-sm font-semibold text-[#7C9CFF]">{formatEther(ratePerSecToMonthly(event.flowRate))} ETH/mo</span>
+                      )}
+                    </div>
+                    {event.message && (
+                      <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message}</p>
                     )}
                   </div>
                 ) : event.kind === 'rate' ? (
@@ -1654,7 +1835,9 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
             </div>
           ))}
         </div>
-      )}
+          )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // app/api/github/register-markee/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
 
 async function getGithubToken(uid: string): Promise<string | null> {
   const raw = await kv.get(`github:user:${uid}`)
@@ -10,24 +10,19 @@ async function getGithubToken(uid: string): Promise<string | null> {
   return data?.accessToken ?? null
 }
 
+// A timeout or missing file both just mean "not verified yet" here (the panel's own "Check Now"
+// retries with the same bounded fetch), so this stays a plain boolean unlike verify-markee-file's
+// explicit check, which needs to tell the user apart from a genuine not-found.
 async function checkDelimiters(
   token: string,
   repoFullName: string,
   filePath: string,
   leaderboardAddress: string,
 ): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
-      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' } }
-    )
-    if (!res.ok) return false
-    const content = await res.text()
-    const legacyAddrs = legacyAddressesFor(leaderboardAddress)
-    return hasDelimiterPair(content, leaderboardAddress) || legacyAddrs.some(old => hasDelimiterPair(content, old))
-  } catch {
-    return false
-  }
+  const result = await fetchGithubFileContent(repoFullName, filePath, token)
+  if (!result.ok) return false
+  const legacyAddrs = legacyAddressesFor(leaderboardAddress)
+  return hasDelimiterPair(result.content, leaderboardAddress) || legacyAddrs.some(old => hasDelimiterPair(result.content, old))
 }
 
 export async function POST(request: NextRequest) {

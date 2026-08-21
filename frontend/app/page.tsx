@@ -14,7 +14,7 @@ import { formatUsd } from '@/lib/utils'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -65,6 +65,8 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
 
   return (
     <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/markee-light.png" alt="" aria-hidden className="reader-logo" />
       {views && views.totalViews > 0 && (
         <span className="reader-views">
           <Eye size={10} />
@@ -328,7 +330,7 @@ export default function Home() {
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
   const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
   const [modalMarkee, setModalMarkee] = useState<FixedMarkee | null>(null)
-  const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}`; topFundsAdded: bigint } | null>(null)
+  const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}` } | null>(null)
   const ethPrice = useEthPrice()
 
   // Ecosystem stats for the metrics row + per-platform stats for platform cards
@@ -618,7 +620,6 @@ export default function Home() {
                               e.stopPropagation()
                               setBuyModal({
                                 leaderboardAddress: lb.address as `0x${string}`,
-                                topFundsAdded,
                               })
                             }}
                             style={{
@@ -706,10 +707,9 @@ export default function Home() {
       />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={buyModal.leaderboardAddress}
-          topFundsAdded={buyModal.topFundsAdded}
+          leaderboardAddress={buyModal.leaderboardAddress}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />

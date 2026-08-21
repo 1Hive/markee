@@ -112,12 +112,15 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
         pool: refundPool as Address,
       })
 
+      // calc.value (not calc.prefund) is the fresh-wrap amount now that callers can compute
+      // calc.prefund as "existing ETHx balance + this wrap", not just what's freshly wrapped -- same
+      // convention useCreateStreamFlow/useOpenStreamFlow already use.
       const batchHash = await writeContractAsync({
         address: HOST,
         abi: SUPERFLUID_HOST_ABI,
         functionName: 'batchCall',
         args: [ops],
-        value: depositTopUp + calc.prefund,
+        value: depositTopUp + calc.value,
         chainId: CANONICAL_CHAIN.id,
       })
       if (!openRef.current) return

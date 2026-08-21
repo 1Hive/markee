@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { parseEther, formatEther } from 'viem'
 import { formatUsd } from '@/lib/utils'
+import { formatRunwayShort } from '@/lib/superfluid/streaming'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
 import { MONO, BG, BG2, PINK, BLUE, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
@@ -13,6 +14,14 @@ export const inputStyle = {
   width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
   border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
   fontFamily: MONO, fontSize: 13, outline: 'none',
+}
+
+// The message field is the emphasized input (matches MarkeeSignModal/StreamSignModal's convention)
+// -- attention lands on what you're saying before what you're paying.
+export const messageBoxStyle = {
+  ...inputStyle,
+  border: `1.5px solid ${PINK}`,
+  boxShadow: '0 0 24px rgba(248,151,254,0.08)',
 }
 
 export function btnStyle(primary: boolean, disabled = false): React.CSSProperties {
@@ -83,7 +92,7 @@ export function InfoTip({ children, align = 'center' }: { children: React.ReactN
         type="button"
         aria-label="More info"
         onClick={e => { e.preventDefault(); setOpen(v => !v) }}
-        style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'help', color: MUTED, display: 'inline-flex' }}
+        style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: MUTED, display: 'inline-flex' }}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
@@ -150,38 +159,40 @@ export function TxRing({ done, spinning = !done }: { done: boolean; spinning?: b
   )
 }
 
-// Monthly-rate + funded-duration input shared by every For Rent "buy a message" flow (board
-// activation and backing an existing message): big rate input with MIN/MAX/WIN presets, plus
-// 1/2/3-month funding pills, mirroring the price-card pattern the For Sale buy modal uses.
+// Monthly-rate input shared by every For Rent "buy a message" flow (board activation and backing an
+// existing message): big rate input with MIN/MAX/WIN presets, plus the auto-deposit line that
+// replaced the old 1/2/3-month funding pills -- how much (if anything) gets wrapped to ETHx this tx,
+// and how long the resulting balance sustains the bid, with a link out to the Deposit Manager.
 export function RatePriceCard({
-  monthly, setMonthly, fundMonths, setFundMonths,
+  monthly, setMonthly,
   minMonthlyWei, minMonthlyEth, minLoaded, belowMin,
-  ethPrice, balanceData, spendableBalance,
+  ethPrice, ethxBalance, walletEthBalance, spendableBalance,
   calc, topMonthlyWei, lastPreset, setLastPreset,
+  runwaySecs, onOpenDepositManager,
 }: {
   monthly: string
   setMonthly: (v: string) => void
-  fundMonths: string
-  setFundMonths: (v: string) => void
   minMonthlyWei: bigint | undefined
   minMonthlyEth: string
   minLoaded: boolean
   belowMin: boolean
   ethPrice: number | null
-  balanceData: { value: bigint } | undefined
+  ethxBalance: bigint | undefined
+  walletEthBalance: bigint | undefined
   spendableBalance: bigint
   calc: { monthlyWei: bigint; prefund: bigint; value: bigint }
   topMonthlyWei?: bigint
   lastPreset: 'min' | 'max' | 'win' | null
   setLastPreset: (p: 'min' | 'max' | 'win' | null) => void
+  runwaySecs: bigint
+  onOpenDepositManager: () => void
 }) {
   return (
     <div style={{
-      border: `1.5px solid ${PINK}`,
+      border: `1px solid ${BORDER}`,
       borderRadius: 12,
       padding: '14px 16px',
       background: BG,
-      boxShadow: '0 0 24px rgba(248,151,254,0.08)',
     }}>
       {/* Number + unit inline on left, MIN/MAX on right */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -198,7 +209,7 @@ export function RatePriceCard({
               width: `${Math.max(5, (monthly || (minLoaded && minMonthlyWei ? minMonthlyEth : '0.001')).length + 0.5)}ch`,
             }}
           />
-          <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
+          <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETHx/mo</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -220,8 +231,9 @@ export function RatePriceCard({
           <button
             type="button"
             onClick={() => {
-              const months = BigInt(Math.max(1, Number(fundMonths) || 1))
-              if (spendableBalance > 0n) { setMonthly(formatEther(spendableBalance / months)); setLastPreset('max') }
+              // Same 3-month horizon the auto-deposit defaults to: the most you could sustainably
+              // bid if you funded for that long with your whole spendable balance.
+              if (spendableBalance > 0n) { setMonthly(formatEther(spendableBalance / 3n)); setLastPreset('max') }
             }}
             disabled={spendableBalance <= 0n}
             style={{
@@ -258,8 +270,8 @@ export function RatePriceCard({
         </div>
       </div>
 
-      {/* USD equiv + balance */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 12 }}>
+      {/* USD equiv + ETHx balance */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: MONO, fontSize: 12, color: MUTED, marginBottom: 12 }}>
         <span>
           {belowMin
             ? `Min: ${minMonthlyEth} ETH/mo`
@@ -267,42 +279,41 @@ export function RatePriceCard({
               ? `≈ ${formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice)}/mo`
               : ' '}
         </span>
-        <span>
-          {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {ethxBalance && ethxBalance > 0n
+            ? <>ETHx Balance {parseFloat(formatEther(ethxBalance)).toFixed(3)}</>
+            : <>ETH Balance {parseFloat(formatEther(walletEthBalance ?? 0n)).toFixed(3)}</>}
+          <InfoTip align="right">ETHx is a streamable version of Ethereum. Deposit ETH to pay for Markee messages with streamable ETHx.</InfoTip>
         </span>
       </div>
 
-      {/* Month duration pills */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        {(['1', '2', '3'] as const).map(mo => {
-          const sel = fundMonths === mo
-          return (
-            <button
-              key={mo}
-              type="button"
-              onClick={() => setFundMonths(mo)}
-              style={{
-                flex: 1, padding: '8px 0', borderRadius: 8, cursor: 'pointer',
-                border: `1px solid ${sel ? PINK : BORDER}`,
-                background: sel ? PINK : 'transparent',
-                color: sel ? BG : TEXT2,
-                fontFamily: MONO, fontSize: 13, fontWeight: 700,
-                transition: 'border-color 140ms, background 140ms, color 140ms',
-              }}
-            >
-              {mo} mo
-            </button>
-          )
-        })}
-      </div>
+      <div style={{ height: 1, background: BORDER, margin: '0 0 12px' }} />
 
-      {/* ETH total */}
-      {calc.prefund > 0n && (
-        <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 12 }}>
-          <span style={{ color: TEXT, fontWeight: 700 }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
-          <span style={{ color: MUTED }}> total</span>
-        </div>
-      )}
+      {/* Deposit Manager link (left) / right side — replaces the old month picker. calc.value > 0
+          means the wallet's existing ETHx balance doesn't already cover this bid, so fresh ETH gets
+          wrapped on top of it this tx -- show that deposit amount (with an info tip explaining the
+          runway it buys) instead of the runway itself, since "how much leaves your wallet right now"
+          is the more useful number to see before a first transaction. Once no deposit is needed,
+          fall back to just showing the runway. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <button
+          type="button"
+          onClick={onOpenDepositManager}
+          style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0, flexShrink: 0, whiteSpace: 'nowrap' }}
+        >
+          Deposit Manager →
+        </button>
+        {calc.value > 0n ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
+            <InfoTip align="right">
+              Your first transaction will deposit {parseFloat(formatEther(calc.value)).toFixed(4)} ETH as ETHx, enough to stream for {formatRunwayShort(runwaySecs)}. Go to the Deposit Manager to deposit a different amount than this.
+            </InfoTip>
+          </span>
+        ) : (
+          <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{formatRunwayShort(runwaySecs)}</span>
+        )}
+      </div>
     </div>
   )
 }

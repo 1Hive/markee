@@ -15,8 +15,9 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import {
-  monthlyToRatePerSec, ratePerSecToMonthly, bufferFor, openStreamValue, runwaySeconds,
+  monthlyToRatePerSec, ratePerSecToMonthly, bufferFor, runwaySeconds,
   STREAMING_BASE, CFA_FORWARDER_ABI, ETHX_WRAP_ABI,
+  computeAutoDeposit, formatRunwayShort, roundUpToNearestThousandth,
 } from '@/lib/superfluid/streaming'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -35,6 +36,7 @@ import { useTopSince } from '@/hooks/useTopSince'
 import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
+import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -97,18 +99,17 @@ const messageBoxStyle = {
 }
 
 // ── Rate card ────────────────────────────────────────────────────────────────
-// Matches AmountCard's exact chrome, with ETH/mo unit plus the two streaming-specific pieces kept
-// from the old RatePriceCard: the 1/2/3-month duration pills and the "X.XXXX ETH total" line.
+// Matches AmountCard's exact chrome, with an ETH/mo unit plus the auto-deposit line that replaced
+// the old 1/2/3-month picker: how much (if anything) gets wrapped to ETHx this tx, and how long the
+// resulting balance sustains the bid, with a link out to the Deposit Manager.
 function RateCard({
-  monthly, setMonthly, fundMonths, setFundMonths, lastPreset, setLastPreset, setHasUserEdited,
+  monthly, setMonthly, lastPreset, setLastPreset, setHasUserEdited,
   minMonthlyWei, minMonthlyEth, minLoaded, spendableBalance, topMonthlyWei,
   isAlreadyTop = false, twoXMonthlyEth = null,
-  ethPrice, balanceData, busy, calc,
+  ethPrice, ethxBalance, walletEthBalance, busy, calc, runwaySecs, onOpenDepositManager,
 }: {
   monthly: string
   setMonthly: (v: string) => void
-  fundMonths: string
-  setFundMonths: (v: string) => void
   lastPreset: 'min' | 'max' | 'win' | null
   setLastPreset: (v: 'min' | 'max' | 'win' | null) => void
   setHasUserEdited: (v: boolean) => void
@@ -122,9 +123,12 @@ function RateCard({
   isAlreadyTop?: boolean
   twoXMonthlyEth?: string | null
   ethPrice: number | null
-  balanceData: { value: bigint } | undefined
+  ethxBalance: bigint | undefined
+  walletEthBalance: bigint | undefined
   busy: boolean
   calc: { monthlyWei: bigint; prefund: bigint; value: bigint }
+  runwaySecs: bigint
+  onOpenDepositManager: () => void
 }) {
   const bidNum = parseFloat(monthly || '0')
   const presetBtnStyle = (active: boolean, activeColor: string, disabled: boolean) => ({
@@ -154,7 +158,7 @@ function RateCard({
                 width: `${Math.max(5, (monthly || (minLoaded && minMonthlyWei ? minMonthlyEth : '0.001')).length + 0.5)}ch`,
               }}
             />
-            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETHx/mo</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -169,8 +173,9 @@ function RateCard({
           <button
             type="button"
             onClick={() => {
-              const months = BigInt(Math.max(1, Number(fundMonths) || 1))
-              if (spendableBalance > 0n) { setHasUserEdited(true); setMonthly(formatEther(spendableBalance / months)); setLastPreset('max') }
+              // Same 3-month horizon the auto-deposit defaults to: the most you could sustainably
+              // bid if you funded for that long with your whole spendable balance.
+              if (spendableBalance > 0n) { setHasUserEdited(true); setMonthly(formatEther(spendableBalance / 3n)); setLastPreset('max') }
             }}
             disabled={spendableBalance <= 0n || busy}
             style={presetBtnStyle(lastPreset === 'max', PINK, spendableBalance <= 0n || busy)}
@@ -206,45 +211,45 @@ function RateCard({
         </div>
       </div>
 
-      {/* Line 2: USD equiv (left) / balance (right) */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
+      {/* Line 2: USD equiv (left) / balance (right) — ETHx once there's any, otherwise the wallet's
+          plain ETH balance (an empty "ETHx Balance 0.000" tells a first-time backer nothing useful). */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
         <span>{ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}/mo` : ' '}</span>
-        <span>{balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {ethxBalance && ethxBalance > 0n
+            ? <>ETHx Balance {parseFloat(formatEther(ethxBalance)).toFixed(3)}</>
+            : <>ETH Balance {parseFloat(formatEther(walletEthBalance ?? 0n)).toFixed(3)}</>}
+          <InfoTip align="right">ETHx is a streamable version of Ethereum. Deposit ETH to pay for Markee messages with streamable ETHx.</InfoTip>
+        </span>
       </div>
 
-      {/* Line 3: month duration pills (streaming-specific, kept) */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        {(['1', '2', '3'] as const).map(mo => {
-          const sel = fundMonths === mo
-          return (
-            <button
-              key={mo}
-              type="button"
-              onClick={() => { setHasUserEdited(true); setFundMonths(mo) }}
-              disabled={busy}
-              style={{
-                flex: 1, padding: '7px 0', borderRadius: 8, cursor: busy ? 'default' : 'pointer',
-                border: `1px solid ${sel ? PINK : BORDER}`,
-                background: sel ? PINK : 'transparent',
-                color: sel ? BG : TEXT2,
-                fontFamily: MONO, fontSize: 12.5, fontWeight: 700,
-                opacity: busy ? 0.6 : 1,
-                transition: 'border-color 140ms, background 140ms, color 140ms',
-              }}
-            >
-              {mo} mo
-            </button>
-          )
-        })}
-      </div>
+      <div style={{ height: 1, background: BORDER, margin: '10px 0' }} />
 
-      {/* Line 4: ETH total (streaming-specific, kept) */}
-      {calc.prefund > 0n && (
-        <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 12 }}>
-          <span style={{ color: TEXT, fontWeight: 700 }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
-          <span style={{ color: MUTED }}> total</span>
-        </div>
-      )}
+      {/* Deposit Manager link (left) / right side — replaces the old month picker. calc.value > 0
+          means the wallet's existing ETHx balance doesn't already cover this bid, so fresh ETH gets
+          wrapped on top of it this tx -- show that deposit amount (with an info tip explaining the
+          runway it buys) instead of the runway itself, since "how much leaves your wallet right now"
+          is the more useful number to see before a first transaction. Once no deposit is needed,
+          fall back to just showing the runway. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <button
+          type="button"
+          onClick={onOpenDepositManager}
+          style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0, flexShrink: 0, whiteSpace: 'nowrap' }}
+        >
+          Deposit Manager →
+        </button>
+        {calc.value > 0n ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
+            <InfoTip align="right">
+              Your first transaction will deposit {parseFloat(formatEther(calc.value)).toFixed(4)} ETH as ETHx, enough to stream for {formatRunwayShort(runwaySecs)}. Go to the Deposit Manager to deposit a different amount than this.
+            </InfoTip>
+          </span>
+        ) : (
+          <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{formatRunwayShort(runwaySecs)}</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -393,12 +398,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [target, setTarget] = useState<StreamingMarkee | null>(null)
   const [message, setMessage] = useState('')
   const [monthly, setMonthly] = useState('')
-  const [fundMonths, setFundMonths] = useState('1')
   const [newMonthly, setNewMonthly] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
   const [manageLastPreset, setManageLastPreset] = useState<'min' | 'win' | null>(null)
+  const [depositManagerOpen, setDepositManagerOpen] = useState(false)
 
   const { data: balanceData } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
 
@@ -422,7 +427,10 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const minMonthlyWei = minMonthlyWeiFetched ?? minMonthlyWeiHint
   const topMonthlyWei = (topMarkee ? ratePerSecToMonthly(topMarkee.rate) : undefined) ?? topMonthlyWeiHint
   const minLoaded = minMonthlyWei !== undefined
-  const minMonthlyEth = minMonthlyWei ? formatEther(minMonthlyWei) : '0'
+  // Rounded up to the nearest 0.001 ETH for display/MIN-preset purposes -- the raw on-chain minimum
+  // is sometimes deliberately a hair under a round number (see monthlyToRatePerSec), which would
+  // otherwise show up as an ugly "0.000999999997884" placeholder.
+  const minMonthlyEth = minMonthlyWei ? formatEther(roundUpToNearestThousandth(minMonthlyWei)) : '0'
 
   // ── Write flows (called unconditionally; only one is active per view) ──────
   const createFlow = useCreateStreamFlow(boardAddress, isOpen)
@@ -436,10 +444,11 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const backsOther = !!backedMarkee && backedMarkee !== ZERO_ADDRESS &&
     !(target && backedMarkee.toLowerCase() === target.address.toLowerCase())
 
-  // ── "Manage Your Stream" status header data (view === 'manage') ────────────────
+  // ETHx balance -- drives the "Manage Your Stream" status header, and (list/fund) the auto-deposit
+  // amount that replaced the old 1/2/3-month picker.
   const { data: ethxBalance, refetch: refetchEthx } = useReadContract({
     address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: activeAddress ? [activeAddress as Address] : undefined, chainId: CANONICAL_CHAIN.id,
-    query: { enabled: isOpen && view === 'manage' && !!activeAddress, refetchInterval: retryUntilLoaded },
+    query: { enabled: isOpen && !!activeAddress, refetchInterval: retryUntilLoaded },
   })
   const manageRank = target ? markees.findIndex(m => m.address.toLowerCase() === target.address.toLowerCase()) + 1 : 0
   const fundTargetRank = manageRank
@@ -620,25 +629,29 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const totalViews = useMemo(() => Array.from(viewsMap.values()).reduce((a, b) => a + b, 0), [viewsMap])
 
   // ── Amount derivations ───────────────────────────────────────────────────────
+  // calc.value is what actually gets wrapped fresh this tx (0 when the wallet's existing ETHx
+  // balance already covers the rate's buffer + a healthy runway) -- replaces the old flat
+  // 1/2/3-month picker. calc.prefund is the resulting total left in the wallet after the buffer
+  // pull, combining any pre-existing balance with the fresh wrap.
   const calc: CreateStreamCalc = useMemo(() => {
     const monthlyWei = parseEthInput(monthly)
-    const ratePerSec = monthlyToRatePerSec(monthlyWei)
+    const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
-    const monthsMilli = BigInt(Math.max(0, Math.round((Number(fundMonths) || 0) * 1000)))
-    const prefund = (monthlyWei * monthsMilli) / 1000n
-    const value = openStreamValue(buffer, prefund)
-    return { monthlyWei, ratePerSec, buffer, prefund, value }
-  }, [monthly, fundMonths])
+    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n)
+    return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue }
+  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei])
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
+  const runway = runwaySeconds(calc.prefund, calc.ratePerSec)
 
   // Moving an existing stream reuses the deposit the board already holds for this backer, so the
-  // batch only charges the top-up over it (mirrors useMoveStreamFlow's own math for the tx).
+  // batch only tops up the shortfall over it -- useMoveStreamFlow adds calc.value (the fresh wrap)
+  // on top of that top-up internally; mirrored here only for the balance-sufficiency check below.
   const moveHeldDeposit = moveFlow.deposit ?? 0n
   const moveDepositTopUp = calc.buffer > moveHeldDeposit ? calc.buffer - moveHeldDeposit : 0n
-  const fundCalc = view === 'fund' && backsOther ? { ...calc, value: moveDepositTopUp + calc.prefund } : calc
+  const fundTotalValue = view === 'fund' && backsOther ? moveDepositTopUp + calc.value : calc.value
 
-  const insufficientBalance = !!balanceData && fundCalc.value > 0n && balanceData.value < fundCalc.value
+  const insufficientBalance = !!balanceData && fundTotalValue > 0n && balanceData.value < fundTotalValue
   const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE ? balanceData.value - FAST_TX_GAS_RESERVE : 0n
 
   // A deleted flow (cancelled or liquidated) clears backerMarkee on-chain, so no row reads as
@@ -649,12 +662,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const live = useMemo(() => {
     const rate = rateFlow.currentRate && rateFlow.currentRate > 0n ? rateFlow.currentRate : 0n
     const nextMonthlyWei = parseEthInput(newMonthly)
-    const nextRate = monthlyToRatePerSec(nextMonthlyWei)
+    const nextRate = monthlyToRatePerSec(nextMonthlyWei, minMonthlyWei)
     const required = bufferFor(nextRate)
     const held = rateFlow.deposit ?? 0n
     const depositTopUp = required > held ? required - held : 0n
     return { rate, nextRate, nextMonthlyWei, depositTopUp, changed: nextRate > 0n && nextRate !== rate }
-  }, [rateFlow.currentRate, newMonthly, rateFlow.deposit])
+  }, [rateFlow.currentRate, newMonthly, rateFlow.deposit, minMonthlyWei])
   const nextBelowMin = live.nextMonthlyWei > 0n && !!minMonthlyWei && live.nextMonthlyWei < minMonthlyWei
   const currentMonthlyEth = rateFlow.currentRate && rateFlow.currentRate > 0n ? formatEther(ratePerSecToMonthly(rateFlow.currentRate)) : '0'
 
@@ -712,7 +725,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     // 'list' and waiting for markees to load before the separate "jump to target" effect below can
     // correct it -- that gap was a visible flash of the wrong screen (e.g. Reactivate briefly showing
     // "Change the Markee Sign" before snapping to "Add Funds").
-    setView(initialView ?? 'list'); setTarget(null); setMessage(''); setMonthly(''); setFundMonths('1'); setNewMonthly('')
+    setView(initialView ?? 'list'); setTarget(null); setMessage(''); setMonthly(''); setNewMonthly('')
     setError(null); setHasUserEdited(false); setLastPreset(null)
     setCancelTxHash(undefined); setCancelError(null)
     setWithdrawTxHash(undefined); setWithdrawError(null)
@@ -738,7 +751,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   )
 
   const openFund = (m: StreamingMarkee) => {
-    setTarget(m); setView('fund'); setMonthly(''); setFundMonths('1'); setLastPreset(null)
+    setTarget(m); setView('fund'); setMonthly(''); setLastPreset(null)
     setError(null); setHasUserEdited(false)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
@@ -801,7 +814,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const createSteps = [
     { label: 'Create Markee Message', done: createFlow.phase !== 'creating' && createFlow.phase !== 'idle', active: createFlow.phase === 'creating' },
     { label: 'Approve Deposit', done: createFlow.phase === 'streaming' || createFlow.isSuccess, active: createFlow.phase === 'approving' },
-    { label: 'Start Stream', done: createFlow.isSuccess, active: createFlow.phase === 'streaming' },
+    { label: calc.value > 0n ? 'Deposit ETH & Start Stream' : 'Start Stream', done: createFlow.isSuccess, active: createFlow.phase === 'streaming' },
   ]
 
   // Same 2-step shape as createSteps' last two steps, just without "Create Markee Message" (the
@@ -811,7 +824,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     { label: 'Approve Deposit', done: (flow.submitting && !flow.approving) || flow.isSuccess, active: flow.approving },
     { label: actionLabel, done: flow.isSuccess, active: flow.submitting && !flow.approving && !flow.isSuccess },
   ]
-  const fundSteps = view === 'fund' ? fundFlowSteps(backsOther ? moveFlow : openFlow, backsOther ? 'Move Stream' : 'Start Stream') : undefined
+  const fundStreamLabel = (calc.value > 0n ? 'Deposit ETH & ' : '') + (backsOther ? 'Move Stream' : 'Start Stream')
+  const fundSteps = view === 'fund' ? fundFlowSteps(backsOther ? moveFlow : openFlow, fundStreamLabel) : undefined
 
   const txHeadline = view === 'list'
     ? (createFlow.isSuccess ? 'Success! Your message is live'
@@ -831,6 +845,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
         : rateFlow.isPending ? 'Waiting for wallet…' : 'Confirming on Base')
 
   return (
+    <>
     <div
       onClick={() => { if ((!hasUserEdited || busy || activeIsSuccess) && !cancelBusy && !editMessageBusy && !withdrawBusy && !topUpBusy) onClose() }}
       style={{
@@ -958,11 +973,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
                   <div style={{ marginBottom: 10, flexShrink: 0 }}>
                     <RateCard
-                      monthly={monthly} setMonthly={setMonthly} fundMonths={fundMonths} setFundMonths={setFundMonths}
+                      monthly={monthly} setMonthly={setMonthly}
                       lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
                       minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
                       spendableBalance={spendableBalance} topMonthlyWei={topMonthlyWei}
-                      ethPrice={ethPrice} balanceData={balanceData} busy={busy} calc={calc}
+                      ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
+                      runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
                     />
                   </div>
 
@@ -978,14 +994,14 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                         disabled={btnDisabled}
                         style={{
                           width: '100%', height: '100%', boxSizing: 'border-box',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
                           background: PINK, color: BG, border: 'none', borderRadius: 10,
-                          fontFamily: 'inherit', fontWeight: 800, fontSize: 17,
+                          fontFamily: 'inherit', fontWeight: 800, fontSize: calc.value > 0n ? 14 : 17,
                           cursor: btnDisabled ? 'not-allowed' : 'pointer',
                           opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
                         }}
                       >
-                        Buy Message
+                        {calc.value > 0n ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and Buy` : 'Buy Message'}
                       </button>
                     </BtnTooltip>
                   </div>
@@ -1088,12 +1104,13 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <RateCard
-                      monthly={monthly} setMonthly={setMonthly} fundMonths={fundMonths} setFundMonths={setFundMonths}
+                      monthly={monthly} setMonthly={setMonthly}
                       lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
                       minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
                       spendableBalance={spendableBalance} topMonthlyWei={topMonthlyWei}
                       isAlreadyTop={fundTargetIsTop} twoXMonthlyEth={fundTwoXMonthlyEth}
-                      ethPrice={ethPrice} balanceData={balanceData} busy={busy} calc={fundCalc}
+                      ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
+                      runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
                     />
                     <ReceiveCard monthly={monthly} compact={false} />
                   </div>
@@ -1377,13 +1394,18 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                   disabled={view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone) : btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
-                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700,
+                    fontSize: view === 'fund' && calc.value > 0n ? 12.5 : 14,
                     cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                     opacity: (view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone) : btnDisabled) ? 0.4 : 1,
                     transition: 'opacity 140ms',
                   }}
                 >
-                  {view === 'fund' ? (fundReadsLoading ? 'Loading…' : backsOther ? 'Fund This Message' : 'Fund Message') : 'Update Stream'}
+                  {view === 'fund'
+                    ? (fundReadsLoading ? 'Loading…'
+                      : calc.value > 0n ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and ${backsOther ? 'Move' : 'Fund'}`
+                      : backsOther ? 'Fund This Message' : 'Fund Message')
+                    : 'Update Stream'}
                 </button>
               </BtnTooltip>
             </div>
@@ -1392,5 +1414,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
         )}
       </div>
     </div>
+    <DepositManagerModal isOpen={depositManagerOpen} onClose={() => setDepositManagerOpen(false)} />
+    </>
   )
 }
