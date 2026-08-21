@@ -110,6 +110,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: refundPool as Address,
+        wrapValue: calc.value,
       })
 
       // calc.value (not calc.prefund) is the fresh-wrap amount now that callers can compute

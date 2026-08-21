@@ -68,9 +68,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'wallet required' }, { status: 400, headers: NO_CACHE })
     }
 
+    const bust = new URL(request.url).searchParams.get('bust') === '1'
     const cacheKey = `cache:streaming:deposit-manager:${wallet}`
-    const cached = await kv.get<{ ethxBalanceRaw: string; streams: DepositManagerStream[] }>(cacheKey)
-    if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+    if (!bust) {
+      const cached = await kv.get<{ ethxBalanceRaw: string; streams: DepositManagerStream[] }>(cacheKey)
+      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
+    }
 
     if (!await underRateLimit('streaming:deposit-manager', clientIp(request), RATE_MAX_MISSES, RATE_WINDOW)) {
       return NextResponse.json(

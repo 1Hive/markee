@@ -12,7 +12,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -335,6 +335,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -380,6 +381,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!isOpen) return
     appliedInitialTargetRef.current = false
     setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false); setLastPreset(null)
+    setReviewOpen(false)
     reset()
   }, [isOpen, reset])
 
@@ -443,6 +445,18 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const isAlreadyTop = view === 'addFunds' && !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
   // 2X replaces WIN for a message that's already #1: adding its current total again doubles it.
   const twoXAmountFormatted = isAlreadyTop && target ? Number(formatEther(target.totalFundsAdded)).toFixed(3) : null
+
+  // Review-step prediction, reusing the win-target wei already derived above for whichever view is
+  // active instead of re-deriving the ranking math.
+  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewWinTarget = view === 'addFunds' ? winForTarget : winForCreate
+  const reviewWillWin = view === 'edit'
+    ? isAlreadyTop
+    : isAlreadyTop || !reviewWinTarget || reviewAmountWei >= reviewWinTarget
+  const reviewShortfallWei = !reviewWillWin && reviewWinTarget && reviewWinTarget > reviewAmountWei
+    ? reviewWinTarget - reviewAmountWei : 0n
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
+  const reviewMarkeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, parseFloat(amount || '0')))
 
   // Default the "buy a new message" amount to whatever it takes to win #1, falling back to the
   // floor price when there's no competition yet. Only runs while the user hasn't touched the field
@@ -511,10 +525,10 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
       ? Number(formatEther(m.totalFundsAdded)).toFixed(3) // 2x: adding your current total again doubles it
       : win ? Number(formatEther(win)).toFixed(3) : minimumAmountFormatted
     setTarget(m); setView('addFunds'); setAmount(defaultAmount); setLastPreset(alreadyTop || win ? 'win' : 'min')
-    setError(null); setHasUserEdited(false)
+    setError(null); setHasUserEdited(false); setReviewOpen(false)
   }
   const openEdit = (m: LeaderboardMarkee) => {
-    setTarget(m); setView('edit'); setMessage(''); setError(null); setHasUserEdited(false)
+    setTarget(m); setView('edit'); setMessage(''); setError(null); setHasUserEdited(false); setReviewOpen(false)
   }
 
   // Jump straight into a specific message's addFunds/edit sub-view (e.g. a page's dedicated
@@ -530,7 +544,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   }, [isOpen, initialTargetAddress, initialView, markees])
 
   const backToList = () => {
-    setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false); reset()
+    setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false); setReviewOpen(false); reset()
   }
 
   if (!isOpen) return null
@@ -637,6 +651,17 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
               )}
 
               {view === 'list' && (
+                reviewOpen ? (
+                  <PaymentReviewCard
+                    kind="fixed"
+                    message={message}
+                    amountLabel={`${amount || '0'} ETH`}
+                    amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
+                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
+                    willWin={reviewWillWin}
+                    minToWinLabel={reviewMinToWinLabel}
+                  />
+                ) : (
                 <>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18, flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -680,7 +705,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     <ReceiveCard amount={amount} />
                     <BtnTooltip reason={btnDisabledReason}>
                       <button
-                        onClick={handleBuyNew}
+                        onClick={() => setReviewOpen(true)}
                         disabled={btnDisabled}
                         style={{
                           width: '100%', height: '100%', boxSizing: 'border-box',
@@ -691,7 +716,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                           opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
                         }}
                       >
-                        Buy Message
+                        Review Payment Info
                       </button>
                     </BtnTooltip>
                   </div>
@@ -729,9 +754,21 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     </>
                   )}
                 </>
+                )
               )}
 
               {view === 'addFunds' && target && (
+                reviewOpen ? (
+                  <PaymentReviewCard
+                    kind="fixed"
+                    message={target.message || ''}
+                    amountLabel={`${amount || '0'} ETH`}
+                    amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
+                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
+                    willWin={reviewWillWin}
+                    minToWinLabel={reviewMinToWinLabel}
+                  />
+                ) : (
                 <div style={{ marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
                     <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || '—'}</div>
@@ -754,9 +791,21 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     <ReceiveCard amount={amount} compact={false} />
                   </div>
                 </div>
+                )
               )}
 
               {view === 'edit' && target && (
+                reviewOpen ? (
+                  <PaymentReviewCard
+                    kind="fixed"
+                    message={message}
+                    amountLabel="Free — message update only"
+                    amountUsd={null}
+                    markeeEarnedLabel="0 MARKEE"
+                    willWin={reviewWillWin}
+                    minToWinLabel={reviewMinToWinLabel}
+                  />
+                ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                   <div>
                     <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
@@ -793,18 +842,34 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     )}
                   </div>
                 </div>
+                )
               )}
 
-              {((error && !isMessageFieldError(error)) || isError) && view !== 'list' && (
+              {((error && !isMessageFieldError(error)) || isError) && view !== 'list' && !reviewOpen && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
                   {(error && !isMessageFieldError(error)) ? error : formatTransactionError(writeError)}
                 </p>
               )}
             </div>
 
-            {/* ── Footer (addFunds / edit only — list inlines its own CTA above the leaderboard) ── */}
-            {view !== 'list' && (
+            {/* ── Footer (addFunds / edit, or list while reviewing — list otherwise inlines its own CTA above the leaderboard) ── */}
+            {(view !== 'list' || reviewOpen) && (
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+              {reviewOpen ? (
+                <div style={{ width: '100%' }}>
+                  <PaymentReviewFooter
+                    onBack={() => setReviewOpen(false)}
+                    onConfirm={() => {
+                      if (view === 'list') handleBuyNew()
+                      else if (view === 'addFunds') handleAddFunds()
+                      else handleUpdateMessage()
+                    }}
+                    busy={busy}
+                    error={(error && !isMessageFieldError(error)) ? error : (isError ? formatTransactionError(writeError) : null)}
+                  />
+                </div>
+              ) : (
+              <>
               <div style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {view === 'edit'
                   ? 'As the message owner, only you can change this.'
@@ -817,10 +882,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
               </div>
               <BtnTooltip reason={btnDisabledReason}>
                 <button
-                  onClick={() => {
-                    if (view === 'addFunds') handleAddFunds()
-                    else handleUpdateMessage()
-                  }}
+                  onClick={() => setReviewOpen(true)}
                   disabled={btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
@@ -829,9 +891,11 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
                   }}
                 >
-                  {view === 'addFunds' ? 'Add Funds' : 'Update Message'}
+                  Review Payment Info
                 </button>
               </BtnTooltip>
+              </>
+              )}
             </div>
             )}
           </>

@@ -65,8 +65,6 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
 
   return (
     <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/markee-light.png" alt="" aria-hidden className="reader-logo" />
       {views && views.totalViews > 0 && (
         <span className="reader-views">
           <Eye size={10} />
@@ -78,6 +76,8 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
       </ModeratedContent>
       {hasPrice && (
         <div className="reader-pill">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/markee-logo-dark.png" alt="" aria-hidden width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
           {formatEthCompact(fixedMarkee.priceWei)} ETH to change
         </div>
       )}

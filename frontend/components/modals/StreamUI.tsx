@@ -3,12 +3,13 @@
 import { useState } from 'react'
 import { parseEther, formatEther } from 'viem'
 import { formatUsd } from '@/lib/utils'
-import { formatRunwayShort } from '@/lib/superfluid/streaming'
+import { formatRunwayShort, formatEthxBalanceDisplay } from '@/lib/superfluid/streaming'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
-import { MONO, BG, BG2, PINK, BLUE, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
-export { MONO, BG, BG2, PINK, BLUE, BORDER, MUTED, TEXT, TEXT2 }
+import { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
+export { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 }
 export const GOLD = '#FFD700'
+export const RED = '#FF8E8E'
 
 export const inputStyle = {
   width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
@@ -139,6 +140,97 @@ export function Row({ label, value, bold, info }: { label: string; value: string
   )
 }
 
+// The pre-submit "Review Payment Info" step every payment button now opens instead of submitting
+// directly: what you're paying, what you earn, and whether the message ends up featured -- with the
+// For Rent refund/takeover mechanics spelled out when relevant. Body only (no footer/buttons), so
+// each modal keeps swapping it in for its own form the same way it already swaps in TxProgress for
+// its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
+export function PaymentReviewCard({
+  kind, message, amountLabel, amountUsd, depositLabel, markeeEarnedLabel, willWin, minToWinLabel,
+}: {
+  kind: 'fixed' | 'rent'
+  message: string
+  amountLabel: string
+  amountUsd?: string | null
+  depositLabel?: string | null
+  markeeEarnedLabel: string
+  willWin: boolean
+  minToWinLabel?: string | null
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{
+        borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)',
+        padding: '12px 14px', fontFamily: MONO, fontSize: 13.5, color: TEXT, lineHeight: 1.45,
+      }}>
+        {message || '—'}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <Row label="Paying" value={amountUsd ? `${amountLabel}  (≈ ${amountUsd})` : amountLabel} bold />
+        {depositLabel && <Row label="Depositing now" value={depositLabel} />}
+        <Row label="You'll earn" value={markeeEarnedLabel} />
+      </div>
+
+      <div style={{
+        borderRadius: 10, padding: '12px 14px',
+        border: `1px solid ${willWin ? 'rgba(29,178,39,0.35)' : kind === 'rent' ? 'rgba(255,215,0,0.35)' : 'rgba(255,142,142,0.35)'}`,
+        background: willWin ? 'rgba(29,178,39,0.06)' : kind === 'rent' ? 'rgba(255,215,0,0.06)' : 'rgba(255,142,142,0.06)',
+        display: 'flex', flexDirection: 'column', gap: 4,
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: willWin ? GREEN : kind === 'rent' ? GOLD : RED }}>
+          {willWin
+            ? kind === 'fixed'
+              ? 'Your message will be featured immediately'
+              : "Your payment only streams while your message is winning"
+            : kind === 'rent'
+              ? "You are placing a bid for a message that won't be featured yet"
+              : `Not featured yet — needs ${minToWinLabel ?? 'more funding'} to take the top spot`}
+        </span>
+        {kind === 'rent' && !willWin && (
+          <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: TEXT }}>
+            Add {minToWinLabel ?? 'more funding'} to take the top spot
+          </span>
+        )}
+        {kind === 'rent' && (
+          <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.4 }}>
+            {willWin
+              ? "Anyone can overtake your message by bidding more, pausing your payment until you're winning again. You can cancel at any time."
+              : "You won't pay for time your message isn't winning, although you'll see an outgoing stream that's being refunded 100% to your wallet."}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function PaymentReviewFooter({ onBack, onConfirm, busy, error }: {
+  onBack: () => void
+  onConfirm: () => void
+  busy: boolean
+  error?: string | null
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {error && <p style={{ fontSize: 12, color: RED, margin: 0 }}>{error}</p>}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={busy}
+          style={{ ...btnStyle(false, busy), width: 'auto', flex: '0 0 auto', padding: '12px 20px' }}
+        >
+          Back
+        </button>
+        <button type="button" onClick={onConfirm} disabled={busy} style={{ ...btnStyle(true, busy), flex: 1 }}>
+          {busy && <Spinner />}
+          {busy ? 'Confirming…' : 'Confirm Payment'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function TxRing({ done, spinning = !done }: { done: boolean; spinning?: boolean }) {
   return (
     <div style={{
@@ -166,7 +258,7 @@ export function TxRing({ done, spinning = !done }: { done: boolean; spinning?: b
 export function RatePriceCard({
   monthly, setMonthly,
   minMonthlyWei, minMonthlyEth, minLoaded, belowMin,
-  ethPrice, ethxBalance, walletEthBalance, spendableBalance,
+  ethPrice, ethxBalance, walletEthBalance,
   calc, topMonthlyWei, lastPreset, setLastPreset,
   runwaySecs, onOpenDepositManager,
 }: {
@@ -179,11 +271,10 @@ export function RatePriceCard({
   ethPrice: number | null
   ethxBalance: bigint | undefined
   walletEthBalance: bigint | undefined
-  spendableBalance: bigint
   calc: { monthlyWei: bigint; prefund: bigint; value: bigint }
   topMonthlyWei?: bigint
-  lastPreset: 'min' | 'max' | 'win' | null
-  setLastPreset: (p: 'min' | 'max' | 'win' | null) => void
+  lastPreset: 'min' | 'win' | null
+  setLastPreset: (p: 'min' | 'win' | null) => void
   runwaySecs: bigint
   onOpenDepositManager: () => void
 }) {
@@ -228,26 +319,6 @@ export function RatePriceCard({
           >
             MIN
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              // Same 3-month horizon the auto-deposit defaults to: the most you could sustainably
-              // bid if you funded for that long with your whole spendable balance.
-              if (spendableBalance > 0n) { setMonthly(formatEther(spendableBalance / 3n)); setLastPreset('max') }
-            }}
-            disabled={spendableBalance <= 0n}
-            style={{
-              border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
-              background: 'transparent',
-              color: lastPreset === 'max' ? PINK : TEXT2,
-              borderRadius: 6, padding: '4px 11px', fontFamily: MONO, fontSize: 11,
-              fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
-              opacity: spendableBalance > 0n ? 1 : 0.4,
-              transition: 'border-color 120ms, color 120ms',
-            }}
-          >
-            MAX
-          </button>
           {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && (
             <button
               type="button"
@@ -281,9 +352,9 @@ export function RatePriceCard({
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center' }}>
           {ethxBalance && ethxBalance > 0n
-            ? <>ETHx Balance {parseFloat(formatEther(ethxBalance)).toFixed(3)}</>
+            ? <>ETHx Balance {formatEthxBalanceDisplay(ethxBalance)}</>
             : <>ETH Balance {parseFloat(formatEther(walletEthBalance ?? 0n)).toFixed(3)}</>}
-          <InfoTip align="right">ETHx is a streamable version of Ethereum. Deposit ETH to pay for Markee messages with streamable ETHx.</InfoTip>
+          <InfoTip align="right">Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.</InfoTip>
         </span>
       </div>
 
@@ -311,7 +382,12 @@ export function RatePriceCard({
             </InfoTip>
           </span>
         ) : (
-          <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{formatRunwayShort(runwaySecs)}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{formatRunwayShort(runwaySecs)}</span>
+            <InfoTip align="right">
+              How long your message can stream for based on your ETHx balance. To add more, go to the Deposit Manager.
+            </InfoTip>
+          </span>
         )}
       </div>
     </div>

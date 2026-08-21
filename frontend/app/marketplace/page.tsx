@@ -334,12 +334,6 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
             boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
           }}
         >
-          {/* Brand watermark — small, unassuming, top-left corner, only on hover, on every Markee
-              card with a hover price badge (see also FeaturedCard on /markee/[address] and the
-              home page hero cards). */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/markee-light.png" alt="" aria-hidden width={20} height={20} style={{ position: 'absolute', top: 8, left: 8, borderRadius: 4, opacity: hover ? 0.4 : 0, transition: 'opacity 180ms', pointerEvents: 'none' }} />
-
           {/* top row: views */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
@@ -371,17 +365,21 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
             )}
           </div>
 
-          {/* hover pill */}
+          {/* hover pill — brand watermark (dark logo) on the far left, only on hover, on every
+              Markee card with a hover price badge (see also FeaturedCard on /markee/[address] and
+              the home page hero cards). */}
           <span style={{
             position: 'absolute', bottom: -15, left: '50%',
             transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
             background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13,
-            padding: '8px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const,
+            padding: '3px 18px 3px 3px', borderRadius: 8, whiteSpace: 'nowrap' as const,
             boxShadow: '0 8px 28px rgba(248,151,254,0.42)',
             opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms',
             pointerEvents: 'none', zIndex: 3,
           }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/markee-logo-dark.png" alt="" aria-hidden width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
             {lb.strategy === 'streaming' ? `${monthlyRateLabel(lb, ethPrice)} to back` : `${priceLabel} to change`}
           </span>
         </Link>

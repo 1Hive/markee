@@ -16,15 +16,17 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import {
   monthlyToRatePerSec, ratePerSecToMonthly, bufferFor, runwaySeconds,
-  STREAMING_BASE, CFA_FORWARDER_ABI, ETHX_WRAP_ABI,
+  STREAMING_BASE, CFA_FORWARDER_ABI,
   computeAutoDeposit, formatRunwayShort, roundUpToNearestThousandth,
+  formatEthxBalanceDisplay,
 } from '@/lib/superfluid/streaming'
+import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, formatMarkeeAmount, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
-import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
 import { useCreateStreamFlow, type CreateStreamCalc } from '@/hooks/useCreateStreamFlow'
 import { useOpenStreamFlow } from '@/hooks/useOpenStreamFlow'
@@ -36,7 +38,6 @@ import { useTopSince } from '@/hooks/useTopSince'
 import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
-import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -44,7 +45,6 @@ const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
 // ── Design tokens (matches MarkeeSignModal's theme) ─────────────────────────────
 const PURP   = '#7B6AF4'
 const GOLD   = '#FFD700'
-const FAST_TX_GAS_RESERVE = BigInt('200000000000000') // 0.0002 ETH
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 function fmtAddr(a: string): string {
@@ -104,19 +104,18 @@ const messageBoxStyle = {
 // resulting balance sustains the bid, with a link out to the Deposit Manager.
 function RateCard({
   monthly, setMonthly, lastPreset, setLastPreset, setHasUserEdited,
-  minMonthlyWei, minMonthlyEth, minLoaded, spendableBalance, topMonthlyWei,
+  minMonthlyWei, minMonthlyEth, minLoaded, topMonthlyWei,
   isAlreadyTop = false, twoXMonthlyEth = null,
   ethPrice, ethxBalance, walletEthBalance, busy, calc, runwaySecs, onOpenDepositManager,
 }: {
   monthly: string
   setMonthly: (v: string) => void
-  lastPreset: 'min' | 'max' | 'win' | null
-  setLastPreset: (v: 'min' | 'max' | 'win' | null) => void
+  lastPreset: 'min' | 'win' | null
+  setLastPreset: (v: 'min' | 'win' | null) => void
   setHasUserEdited: (v: boolean) => void
   minMonthlyWei: bigint | undefined
   minMonthlyEth: string
   minLoaded: boolean
-  spendableBalance: bigint
   topMonthlyWei: bigint | undefined
   // Funding a message that's already #1: "beat the current top" is meaningless when you already are
   // it, so the WIN preset becomes "2X your own current rate" instead.
@@ -170,18 +169,6 @@ function RateCard({
           >
             MIN
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              // Same 3-month horizon the auto-deposit defaults to: the most you could sustainably
-              // bid if you funded for that long with your whole spendable balance.
-              if (spendableBalance > 0n) { setHasUserEdited(true); setMonthly(formatEther(spendableBalance / 3n)); setLastPreset('max') }
-            }}
-            disabled={spendableBalance <= 0n || busy}
-            style={presetBtnStyle(lastPreset === 'max', PINK, spendableBalance <= 0n || busy)}
-          >
-            MAX
-          </button>
           {isAlreadyTop ? (
             twoXMonthlyEth && (
               <button
@@ -217,9 +204,9 @@ function RateCard({
         <span>{ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}/mo` : ' '}</span>
         <span style={{ display: 'inline-flex', alignItems: 'center' }}>
           {ethxBalance && ethxBalance > 0n
-            ? <>ETHx Balance {parseFloat(formatEther(ethxBalance)).toFixed(3)}</>
+            ? <>ETHx Balance {formatEthxBalanceDisplay(ethxBalance)}</>
             : <>ETH Balance {parseFloat(formatEther(walletEthBalance ?? 0n)).toFixed(3)}</>}
-          <InfoTip align="right">ETHx is a streamable version of Ethereum. Deposit ETH to pay for Markee messages with streamable ETHx.</InfoTip>
+          <InfoTip align="right">Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.</InfoTip>
         </span>
       </div>
 
@@ -247,7 +234,12 @@ function RateCard({
             </InfoTip>
           </span>
         ) : (
-          <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{formatRunwayShort(runwaySecs)}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{formatRunwayShort(runwaySecs)}</span>
+            <InfoTip align="right">
+              How long your message can stream for based on your ETHx balance. To add more, go to the Deposit Manager.
+            </InfoTip>
+          </span>
         )}
       </div>
     </div>
@@ -401,9 +393,10 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [newMonthly, setNewMonthly] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
-  const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
+  const [lastPreset, setLastPreset] = useState<'min' | 'win' | null>(null)
   const [manageLastPreset, setManageLastPreset] = useState<'min' | 'win' | null>(null)
   const [depositManagerOpen, setDepositManagerOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { data: balanceData } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
 
@@ -446,7 +439,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   // ETHx balance -- drives the "Manage Your Stream" status header, and (list/fund) the auto-deposit
   // amount that replaced the old 1/2/3-month picker.
-  const { data: ethxBalance, refetch: refetchEthx } = useReadContract({
+  const { data: ethxBalance } = useReadContract({
     address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: activeAddress ? [activeAddress as Address] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen && !!activeAddress, refetchInterval: retryUntilLoaded },
   })
@@ -463,37 +456,17 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const topSince = useTopSince(view === 'manage' ? boardAddress : undefined)
   const managePending = usePendingMarkee(view === 'manage' ? boardAddress : undefined, view === 'manage' ? (activeAddress as Address | undefined) : undefined)
-  // Decimals derived from the actual accrual rate so the last digit visibly ticks about once a
-  // second, instead of a fixed decimal count that looks frozen at typical low stream rates.
-  const manageEthDecimals = decimalsForWeiRate(managePending.ratePerSec)
-  const managePendingEthWei = useLiveBalance(managePending.pendingWei, managePending.ratePerSec, manageEthDecimals)
-  const manageEarnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePendingEthWei)), managePending.feeBps)
-  const manageMarkeeRatePerSec = managePending.mintsMarkee
-    ? estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePending.ratePerSec)), managePending.feeBps)
-    : 0
-  const manageMarkeeDecimals = decimalsForRate(manageMarkeeRatePerSec, 2, 12)
   const manageTopSinceMine = manageIsTop && topSince?.address.toLowerCase() === target?.address.toLowerCase()
-  // Nothing accrued, ever settled, and not currently top -- this backer's stream has never actually
-  // been the winning one, so the usual stat grid (which is all zero/dash in that case) is replaced
-  // with an explanation instead.
-  const manageNeverWon = !manageIsTop && managePending.pendingWei === 0n && managePending.settledBalance === 0n
-  // Ticks "featured for" forward every second (only while it's actually shown) so it visibly grows
-  // instead of only updating whenever something else happens to re-render the modal.
-  const [featuredNow, setFeaturedNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!isOpen || view !== 'manage' || !manageTopSinceMine) return
-    const id = setInterval(() => setFeaturedNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [isOpen, view, manageTopSinceMine])
-  // useFlowingAmount (not useLiveBalance) here specifically: this needs to tick up from
-  // topSince.since, a timestamp that can be well in the past -- useLiveBalance always re-anchors to
-  // "now", which would silently reset this to a since-page-load total instead of since-became-top.
-  const manageStreamedDecimals = decimalsForWeiRate(manageTopSinceMine ? (rateFlow.currentRate ?? 0n) : 0n)
-  const manageStreamedWei = useFlowingAmount(0n, manageTopSinceMine ? topSince!.since : 0, manageTopSinceMine ? (rateFlow.currentRate ?? 0n) : 0n)
+
+  // 2X preset for the manage view's RateCard -- same "double your own current rate" convention the
+  // fund view's fundTwoXMonthlyEth uses when isAlreadyTop.
+  const manageTwoXMonthlyEth = manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n
+    ? formatEther(ratePerSecToMonthly(rateFlow.currentRate) * 2n) : null
 
   // Cancels the stream/bid outright (view === 'manage' only) — same setFlowrate(...,0) call
   // ManageStreamModal already uses to stop a stream, exposed here so it's reachable without leaving
-  // this modal.
+  // this modal. Declared before the live-ticking figures below so they can freeze the instant the
+  // cancel tx confirms, instead of waiting on rateFlow/managePending's own refetch to catch up.
   const [cancelTxHash, setCancelTxHash] = useState<Hex | undefined>(undefined)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const { writeContractAsync: writeCancel, isPending: cancelPending } = useWriteContract()
@@ -521,38 +494,36 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelSuccess, isOpen])
 
-  // Wraps more ETH into the backer's own ETHx so the live stream keeps running -- the top-up path
-  // the deleted ManageStreamModal provided, without which a draining stream gets liquidated and part
-  // of the deposit is slashed.
-  const [topUp, setTopUp] = useState('')
-  const [topUpError, setTopUpError] = useState<string | null>(null)
-  const [topUpTxHash, setTopUpTxHash] = useState<Hex | undefined>(undefined)
-  const { writeContractAsync: writeTopUp, isPending: topUpPending } = useWriteContract()
-  const { isLoading: topUpConfirming, isSuccess: topUpSuccess } = useWaitForTransactionReceipt({ hash: topUpTxHash, chainId: CANONICAL_CHAIN.id })
-  const topUpBusy = topUpPending || topUpConfirming
-  const topUpWei = parseEthInput(topUp)
-  async function handleTopUp() {
-    setTopUpError(null)
-    if (topUpWei <= 0n) { setTopUpError('Enter an amount to add.'); return }
-    if (balanceData && balanceData.value < topUpWei) { setTopUpError('Not enough ETH in your wallet.'); return }
-    try {
-      const hash = await writeTopUp({
-        address: ETHX, abi: ETHX_WRAP_ABI, functionName: 'upgradeByETH', value: topUpWei, chainId: CANONICAL_CHAIN.id,
-      })
-      setTopUpTxHash(hash)
-    } catch (e: unknown) {
-      logTransactionError(e, 'StreamSignModal.topUp')
-      setTopUpError(formatTransactionError(e))
-    }
-  }
+  // Decimals derived from the actual accrual rate so the last digit visibly ticks about once a
+  // second, instead of a fixed decimal count that looks frozen at typical low stream rates.
+  // Rate forced to 0 once manageStreamGone -- otherwise this keeps ticking off managePending's own
+  // (slower-to-refetch) rate for a beat after the cancel tx has already confirmed.
+  const manageEthDecimals = decimalsForWeiRate(managePending.ratePerSec)
+  const managePendingEthWei = useLiveBalance(managePending.pendingWei, manageStreamGone ? 0n : managePending.ratePerSec, manageEthDecimals)
+  const manageEarnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePendingEthWei)), managePending.feeBps)
+  const manageMarkeeRatePerSec = managePending.mintsMarkee
+    ? estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePending.ratePerSec)), managePending.feeBps)
+    : 0
+  const manageMarkeeDecimals = decimalsForRate(manageMarkeeRatePerSec, 2, 12)
+  // Nothing accrued, ever settled, and not currently top -- this backer's stream has never actually
+  // been the winning one, so the usual stat grid (which is all zero/dash in that case) is replaced
+  // with an explanation instead.
+  const manageNeverWon = !manageIsTop && managePending.pendingWei === 0n && managePending.settledBalance === 0n
+  // Ticks "featured for" forward every second (only while it's actually shown) so it visibly grows
+  // instead of only updating whenever something else happens to re-render the modal.
+  const [featuredNow, setFeaturedNow] = useState(() => Date.now())
   useEffect(() => {
-    if (topUpSuccess && isOpen) {
-      refetchEthx()
-      const t = setTimeout(() => { setTopUp(''); setTopUpTxHash(undefined) }, 1800)
-      return () => clearTimeout(t)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topUpSuccess, isOpen])
+    if (!isOpen || view !== 'manage' || !manageTopSinceMine) return
+    const id = setInterval(() => setFeaturedNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [isOpen, view, manageTopSinceMine])
+  // useFlowingAmount (not useLiveBalance) here specifically: this needs to tick up from
+  // topSince.since, a timestamp that can be well in the past -- useLiveBalance always re-anchors to
+  // "now", which would silently reset this to a since-page-load total instead of since-became-top.
+  // Frozen the same way once manageStreamGone, for the same reason.
+  const manageStillStreaming = manageTopSinceMine && !manageStreamGone
+  const manageStreamedDecimals = decimalsForWeiRate(manageStillStreaming ? (rateFlow.currentRate ?? 0n) : 0n)
+  const manageStreamedWei = useFlowingAmount(0n, manageStillStreaming ? topSince!.since : 0, manageStillStreaming ? (rateFlow.currentRate ?? 0n) : 0n)
 
   // Once cancelled, the deposit that secured the stream is free to withdraw -- same withdrawDeposit()
   // call ManageStreamModal used to make, kept reachable here instead of a second modal.
@@ -652,7 +623,6 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const fundTotalValue = view === 'fund' && backsOther ? moveDepositTopUp + calc.value : calc.value
 
   const insufficientBalance = !!balanceData && fundTotalValue > 0n && balanceData.value < fundTotalValue
-  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE ? balanceData.value - FAST_TX_GAS_RESERVE : 0n
 
   // A deleted flow (cancelled or liquidated) clears backerMarkee on-chain, so no row reads as
   // "backed by you" and every entry point lands on list/fund -- surface the reclaimable deposit
@@ -670,6 +640,17 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   }, [rateFlow.currentRate, newMonthly, rateFlow.deposit, minMonthlyWei])
   const nextBelowMin = live.nextMonthlyWei > 0n && !!minMonthlyWei && live.nextMonthlyWei < minMonthlyWei
   const currentMonthlyEth = rateFlow.currentRate && rateFlow.currentRate > 0n ? formatEther(ratePerSecToMonthly(rateFlow.currentRate)) : '0'
+
+  // Review-step prediction (fund + manage): reuses the same "beat topMonthlyWei" comparison the WIN
+  // preset already uses, just evaluated against whatever rate is currently entered instead of only
+  // offered as a preset shortcut.
+  const reviewMonthlyWei = view === 'manage' ? live.nextMonthlyWei : calc.monthlyWei
+  const reviewCurrentlyTop = view === 'manage' ? manageIsTop : fundTargetIsTop
+  const reviewWillWin = reviewCurrentlyTop || !!(topMonthlyWei && topMonthlyWei > 0n && reviewMonthlyWei > topMonthlyWei)
+  const reviewWinWei = topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei ? (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei : null
+  const reviewShortfallWei = !reviewWillWin && reviewWinWei && reviewWinWei > reviewMonthlyWei ? reviewWinWei - reviewMonthlyWei : 0n
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH/mo` : null
+  const reviewMarkeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, Number(formatEther(reviewMonthlyWei))))
 
   // Default the "buy a new message" rate to whatever it takes to win #1, falling back to the
   // floor rate when there's no competition yet. Only runs while the user hasn't touched the field.
@@ -726,10 +707,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     // correct it -- that gap was a visible flash of the wrong screen (e.g. Reactivate briefly showing
     // "Change the Markee Sign" before snapping to "Add Funds").
     setView(initialView ?? 'list'); setTarget(null); setMessage(''); setMonthly(''); setNewMonthly('')
-    setError(null); setHasUserEdited(false); setLastPreset(null)
+    setError(null); setHasUserEdited(false); setLastPreset(null); setReviewOpen(false)
     setCancelTxHash(undefined); setCancelError(null)
     setWithdrawTxHash(undefined); setWithdrawError(null)
-    setTopUp(''); setTopUpError(null); setTopUpTxHash(undefined)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }, [isOpen, initialView])
 
@@ -752,11 +732,11 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const openFund = (m: StreamingMarkee) => {
     setTarget(m); setView('fund'); setMonthly(''); setLastPreset(null)
-    setError(null); setHasUserEdited(false)
+    setError(null); setHasUserEdited(false); setReviewOpen(false)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
   const openManage = (m: StreamingMarkee) => {
-    setTarget(m); setView('manage'); setNewMonthly(''); setError(null); setHasUserEdited(false)
+    setTarget(m); setView('manage'); setNewMonthly(''); setError(null); setHasUserEdited(false); setReviewOpen(false)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
 
@@ -772,7 +752,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   }, [isOpen, initialTargetAddress, initialView, markees])
 
   const backToList = () => {
-    setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false)
+    setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false); setReviewOpen(false)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }
 
@@ -847,7 +827,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   return (
     <>
     <div
-      onClick={() => { if ((!hasUserEdited || busy || activeIsSuccess) && !cancelBusy && !editMessageBusy && !withdrawBusy && !topUpBusy) onClose() }}
+      onClick={() => { if ((!hasUserEdited || busy || activeIsSuccess) && !cancelBusy && !editMessageBusy && !withdrawBusy) onClose() }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -976,7 +956,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       monthly={monthly} setMonthly={setMonthly}
                       lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
                       minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
-                      spendableBalance={spendableBalance} topMonthlyWei={topMonthlyWei}
+                      topMonthlyWei={topMonthlyWei}
                       ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
                       runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
                     />
@@ -1043,6 +1023,18 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
               )}
 
               {view === 'fund' && target && (
+                reviewOpen ? (
+                  <PaymentReviewCard
+                    kind="rent"
+                    message={target.message || ''}
+                    amountLabel={`${monthly || '0'} ETH/mo`}
+                    amountUsd={ethPrice && parseFloat(monthly || '0') > 0 ? formatUsd(parseFloat(monthly) * ethPrice) : null}
+                    depositLabel={calc.value > 0n ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
+                    willWin={reviewWillWin}
+                    minToWinLabel={reviewMinToWinLabel}
+                  />
+                ) : (
                 <div style={{ marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <span style={{
@@ -1107,7 +1099,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       monthly={monthly} setMonthly={setMonthly}
                       lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
                       minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
-                      spendableBalance={spendableBalance} topMonthlyWei={topMonthlyWei}
+                      topMonthlyWei={topMonthlyWei}
                       isAlreadyTop={fundTargetIsTop} twoXMonthlyEth={fundTwoXMonthlyEth}
                       ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
                       runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
@@ -1115,99 +1107,23 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     <ReceiveCard monthly={monthly} compact={false} />
                   </div>
                 </div>
+                )
               )}
 
               {view === 'manage' && target && (
+                reviewOpen ? (
+                  <PaymentReviewCard
+                    kind="rent"
+                    message={target.message || ''}
+                    amountLabel={`${newMonthly || currentMonthlyEth} ETH/mo`}
+                    amountUsd={ethPrice && live.nextMonthlyWei > 0n ? formatUsd(Number(formatEther(live.nextMonthlyWei)) * ethPrice) : null}
+                    depositLabel={live.depositTopUp > 0n ? `${parseFloat(formatEther(live.depositTopUp)).toFixed(4)} ETH` : null}
+                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
+                    willWin={reviewWillWin}
+                    minToWinLabel={reviewMinToWinLabel}
+                  />
+                ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 18 }}>
-                  {/* ── Status header ── */}
-                  <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
-                      <StreamStatusIcon status={manageStatus} />
-                      <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: STREAM_STATUS_META[manageStatus].color }}>
-                        {STREAM_STATUS_META[manageStatus].label}
-                      </span>
-                      <span style={{
-                        width: 20, height: 20, borderRadius: 99, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        border: `1.5px solid ${manageIsTop ? GOLD : BORDER}`, color: manageIsTop ? GOLD : MUTED,
-                        fontFamily: MONO, fontSize: 10.5, fontWeight: 800,
-                      }}>
-                        {manageRank || '—'}
-                      </span>
-                      {manageTopSinceMine && (
-                        <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>
-                          featured {formatDuration(featuredNow / 1000 - topSince!.since, true)}
-                        </span>
-                      )}
-                    </div>
-                    {manageNeverWon ? (
-                      <p style={{ margin: 0, fontFamily: MONO, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-                        Your payment stream will start if this message starts winning.
-                      </p>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
-                        <div>
-                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Total streamed</div>
-                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>
-                            {manageTopSinceMine ? `${formatLiveEth(manageStreamedWei, manageStreamedDecimals)} ETH` : '—'}
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>ETHx balance</div>
-                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>{Number(formatEther(ethxBalance ?? 0n)).toFixed(5)} ETH</div>
-                        </div>
-                        <div>
-                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Runs for</div>
-                          <div style={{ fontFamily: MONO, fontSize: 13, color: manageLowRunway ? '#FF8E8E' : TEXT, fontWeight: manageLowRunway ? 700 : 400, marginTop: 2 }}>
-                            {manageStatus !== 'cancelled' ? `~${manageRunwayDays.toFixed(1)} days` : '—'}
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                            {managePending.mintsMarkee ? 'MARKEE earned' : 'ETH earned'}
-                          </div>
-                          <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, marginTop: 2 }}>
-                            {managePending.mintsMarkee
-                              ? manageEarnedMarkee.toLocaleString(undefined, { minimumFractionDigits: manageMarkeeDecimals, maximumFractionDigits: manageMarkeeDecimals })
-                              : `${formatLiveEth(managePendingEthWei, manageEthDecimals)} ETH`}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {manageLowRunway && (
-                      <div style={{ fontFamily: MONO, fontSize: 11, color: '#FF8E8E', lineHeight: 1.5 }}>
-                        Your funding runs out in ~{manageRunwayDays.toFixed(1)} days. If it runs dry the stream is
-                        force-closed and part of your deposit is lost, so add funding to keep it running.
-                      </div>
-                    )}
-                    {!manageStreamGone && (
-                      topUpSuccess ? (
-                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: '#7EE787' }}>✓ Funding added</span>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <input
-                              inputMode="decimal"
-                              value={topUp}
-                              onChange={e => { setTopUp(sanitizeDecimalInput(e.target.value)); if (topUpError) setTopUpError(null) }}
-                              placeholder="Add funding (ETH)"
-                              disabled={topUpBusy}
-                              style={{ ...inputStyle, flex: 1, fontSize: 12, padding: '7px 10px' }}
-                            />
-                            <button
-                              type="button"
-                              onClick={handleTopUp}
-                              disabled={topUpBusy || topUpWei <= 0n}
-                              style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', opacity: topUpBusy || topUpWei <= 0n ? 0.5 : 1 }}
-                            >
-                              {topUpBusy ? 'Adding…' : 'Add Funding'}
-                            </button>
-                          </div>
-                          {topUpError && <span style={{ fontFamily: MONO, fontSize: 11, color: '#FF8E8E' }}>{topUpError}</span>}
-                        </div>
-                      )
-                    )}
-                  </div>
-
                   {/* ── Message you're funding ── */}
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1260,95 +1176,83 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     )}
                   </div>
 
-                  {/* ── Bid amount (same container/typography as RateCard on the other For Rent modals) ── */}
-                  <div>
-                    <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>New monthly rate</div>
-                    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 16px', background: BG }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap', width: 'max-content' }}>
-                            <input
-                              inputMode="decimal"
-                              value={newMonthly}
-                              onChange={e => { setHasUserEdited(true); setNewMonthly(sanitizeDecimalInput(e.target.value)); setManageLastPreset(null); if (error) setError(null) }}
-                              placeholder={currentMonthlyEth}
-                              disabled={busy}
-                              style={{
-                                background: 'transparent', border: 'none', outline: 'none', textAlign: 'left',
-                                color: TEXT, fontFamily: MONO, fontSize: 22, fontWeight: 800, padding: 0,
-                                width: `${Math.max(5, (newMonthly || currentMonthlyEth).length + 0.5)}ch`,
-                              }}
-                            />
-                            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH/mo</span>
+                  {/* ── Status header ── */}
+                  <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+                      <StreamStatusIcon status={manageStatus} />
+                      <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: STREAM_STATUS_META[manageStatus].color }}>
+                        {STREAM_STATUS_META[manageStatus].label}
+                      </span>
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 99, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        border: `1.5px solid ${manageIsTop ? GOLD : BORDER}`, color: manageIsTop ? GOLD : MUTED,
+                        fontFamily: MONO, fontSize: 10.5, fontWeight: 800,
+                      }}>
+                        {manageRank || '—'}
+                      </span>
+                      {manageTopSinceMine && (
+                        <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>
+                          featured {formatDuration(featuredNow / 1000 - topSince!.since, true)}
+                        </span>
+                      )}
+                    </div>
+                    {manageNeverWon ? (
+                      <p style={{ margin: 0, fontFamily: MONO, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                        Your payment stream will start if this message starts winning.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Total streamed</div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>
+                            {manageTopSinceMine ? `${formatLiveEth(manageStreamedWei, manageStreamedDecimals)} ETH` : '—'}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                          {minMonthlyWei && (
-                            <button
-                              type="button"
-                              onClick={() => { setHasUserEdited(true); setNewMonthly(minMonthlyEth); setManageLastPreset('min') }}
-                              disabled={busy}
-                              style={{ border: `1px solid ${manageLastPreset === 'min' ? PINK : BORDER}`, background: 'transparent', color: manageLastPreset === 'min' ? PINK : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
-                            >
-                              MIN
-                            </button>
-                          )}
-                          {manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setHasUserEdited(true); setNewMonthly(formatEther(ratePerSecToMonthly(rateFlow.currentRate!) * 2n)); setManageLastPreset('win')
-                              }}
-                              disabled={busy}
-                              style={{ border: `1px solid ${manageLastPreset === 'win' ? GOLD : BORDER}`, background: 'transparent', color: manageLastPreset === 'win' ? GOLD : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
-                            >
-                              2X
-                            </button>
-                          )}
-                          {topMonthlyWei && topMonthlyWei > 0n && minMonthlyWei && !manageIsTop && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
-                                setHasUserEdited(true); setNewMonthly(formatEther(winWei)); setManageLastPreset('win')
-                              }}
-                              disabled={busy}
-                              style={{ border: `1px solid ${manageLastPreset === 'win' ? GOLD : BORDER}`, background: 'transparent', color: manageLastPreset === 'win' ? GOLD : TEXT2, borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
-                            >
-                              WIN
-                            </button>
-                          )}
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>ETHx balance</div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>{Number(formatEther(ethxBalance ?? 0n)).toFixed(5)} ETH</div>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
-                        <span>{ethPrice && parseFloat(newMonthly || '0') > 0 ? `≈ ${formatUsd(parseFloat(newMonthly) * ethPrice)}/mo` : ' '}</span>
-                        <span>{balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}</span>
-                      </div>
-                    </div>
-                    {nextBelowMin ? (
-                      <div style={{ fontFamily: MONO, fontSize: 11, color: PINK, marginTop: 6 }}>
-                        The minimum on this board is {minMonthlyEth} ETH / month.
-                      </div>
-                    ) : minLoaded && (
-                      <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6 }}>
-                        Minimum {minMonthlyEth} ETH / month
-                      </div>
-                    )}
-                    {live.depositTopUp > 0n && !nextBelowMin && (
-                      <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 6, display: 'flex', alignItems: 'center' }}>
-                        Adds {formatEther(live.depositTopUp)} ETH to your deposit
-                        <InfoTip>
-                          A higher rate needs a larger security deposit, taken with this transaction.
-                          The whole deposit is returned when you stop the stream.
-                        </InfoTip>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Funds Remaining</div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: manageLowRunway ? '#FF8E8E' : TEXT, fontWeight: manageLowRunway ? 700 : 400, marginTop: 2 }}>
+                            {manageStatus !== 'cancelled' ? `~${manageRunwayDays.toFixed(1)} days` : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                            {managePending.mintsMarkee ? 'MARKEE earned' : 'ETH earned'}
+                          </div>
+                          <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, marginTop: 2 }}>
+                            {managePending.mintsMarkee
+                              ? manageEarnedMarkee.toLocaleString(undefined, { minimumFractionDigits: manageMarkeeDecimals, maximumFractionDigits: manageMarkeeDecimals })
+                              : `${formatLiveEth(managePendingEthWei, manageEthDecimals)} ETH`}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
+
+                  {/* ── New monthly rate (exact same RateCard used on the fund/activate modals) ── */}
+                  <div>
+                    <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>New monthly rate</div>
+                    <RateCard
+                      monthly={newMonthly} setMonthly={setNewMonthly}
+                      lastPreset={manageLastPreset} setLastPreset={setManageLastPreset} setHasUserEdited={setHasUserEdited}
+                      minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
+                      topMonthlyWei={topMonthlyWei}
+                      isAlreadyTop={manageIsTop} twoXMonthlyEth={manageTwoXMonthlyEth}
+                      ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy}
+                      calc={{ monthlyWei: live.nextMonthlyWei, prefund: 0n, value: live.depositTopUp }}
+                      runwaySecs={runwaySeconds(ethxBalance ?? 0n, live.nextRate)}
+                      onOpenDepositManager={() => setDepositManagerOpen(true)}
+                    />
+                  </div>
                   {(cancelError || withdrawError) && <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0 }}>{cancelError || withdrawError}</p>}
                 </div>
+                )
               )}
 
-              {view !== 'list' && activeError && (
+              {view !== 'list' && activeError && !reviewOpen && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{activeError}</p>
               )}
             </div>
@@ -1356,6 +1260,17 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
             {/* ── Footer (fund / manage only — list inlines its own CTA above the leaderboard) ── */}
             {view !== 'list' && (
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+              {reviewOpen ? (
+                <div style={{ width: '100%' }}>
+                  <PaymentReviewFooter
+                    onBack={() => setReviewOpen(false)}
+                    onConfirm={() => { if (view === 'fund') handleFund(); else handleUpdateRate() }}
+                    busy={busy}
+                    error={activeError}
+                  />
+                </div>
+              ) : (
+              <>
               <div style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {view === 'manage'
                   ? (withdrawSuccess ? (
@@ -1390,24 +1305,21 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
               </div>
               <BtnTooltip reason={view === 'manage' ? (rateFlow.approving || rateFlow.submitting ? 'Transaction in progress' : manageStreamGone ? 'This stream is cancelled' : !live.changed ? 'Enter a different rate' : nextBelowMin ? `Minimum is ${minMonthlyEth} ETH/mo` : null) : btnDisabledReason}>
                 <button
-                  onClick={() => { if (view === 'fund') handleFund(); else handleUpdateRate() }}
+                  onClick={() => setReviewOpen(true)}
                   disabled={view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone) : btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
-                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700,
-                    fontSize: view === 'fund' && calc.value > 0n ? 12.5 : 14,
+                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
                     cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                     opacity: (view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone) : btnDisabled) ? 0.4 : 1,
                     transition: 'opacity 140ms',
                   }}
                 >
-                  {view === 'fund'
-                    ? (fundReadsLoading ? 'Loading…'
-                      : calc.value > 0n ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and ${backsOther ? 'Move' : 'Fund'}`
-                      : backsOther ? 'Fund This Message' : 'Fund Message')
-                    : 'Update Stream'}
+                  {view === 'fund' && fundReadsLoading ? 'Loading…' : 'Review Payment Info'}
                 </button>
               </BtnTooltip>
+              </>
+              )}
             </div>
             )}
           </>

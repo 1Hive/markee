@@ -13,7 +13,14 @@ export function useActiveWallet() {
   const { address, isConnected } = useAccount()
   const { wallets } = useWallets()
 
-  const rawAddress = address ?? wallets[0]?.address
+  // wagmi's own `address` can go briefly undefined (page load, reconnect) -- when that happens,
+  // fall back to the wallet the user actually connected with, not wallets[0]. Every logged-in user
+  // gets an auto-created embedded Privy wallet (embeddedWallets.createOnLogin: 'all-users' in
+  // Web3Provider), and it can land ahead of a linked external wallet like Rabby/MetaMask in Privy's
+  // `wallets` array -- picking wallets[0] blindly can surface that empty embedded wallet's address
+  // and (zero) balance instead of the real one.
+  const externalWallet = wallets.find(w => w.walletClientType !== 'privy' && w.walletClientType !== 'privy-v2')
+  const rawAddress = address ?? externalWallet?.address ?? wallets[0]?.address
   const activeAddress: `0x${string}` | undefined =
     rawAddress && isAddress(rawAddress) ? rawAddress : undefined
 

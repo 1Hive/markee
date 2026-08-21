@@ -1,6 +1,7 @@
 import {
   encodeAbiParameters,
   encodeFunctionData,
+  formatEther,
   keccak256,
   toBytes,
   type Address,
@@ -85,6 +86,14 @@ export function runwaySeconds(balance: bigint, ratePerSec: bigint): bigint {
 const SECONDS_IN_DAY = 86_400n
 const SECONDS_IN_WEEK = 604_800n
 
+// 3 decimals is plenty for a typical ETHx balance, but rounds anything under 0.001 down to "0.000" --
+// indistinguishable from genuinely empty. Bump to 4 decimals under that threshold so a small-but-real
+// balance (e.g. enough for a few days of a minimum-rate stream) still shows as nonzero.
+export function formatEthxBalanceDisplay(value: bigint): string {
+  const num = parseFloat(formatEther(value))
+  return num.toFixed(num < 0.001 ? 4 : 3)
+}
+
 // "2mo 14d 06h 42m 09s" -- the Deposit Manager's "runs out in" countdown format. Hours/minutes/
 // seconds are zero-padded (matches a clock reading), months/days aren't (there's no fixed width to
 // pad to). Seconds are what make the countdown visibly tick on screen, not just when a whole minute
@@ -145,28 +154,44 @@ export interface AutoDeposit {
   prefund: bigint
   // How long that prefund sustains the stream at ratePerSec.
   runwaySeconds: bigint
+  // True when even the best wrap this wallet can afford still wouldn't clear the CFA's own minimum
+  // buffer requirement (~4h of runway) -- the wallet doesn't hold enough ETH to fund this stream at
+  // all right now, not just "less than the usual 3-month default."
+  insufficientEth: boolean
 }
 
 const ETHX_AUTO_WRAP_RESERVE = 1_000_000_000_000_000n // 0.001 ETH kept unwrapped for gas
+// Below this, a flat 0.001 ETH reserve can eat most or all of the balance (or push "affordable"
+// negative), which is exactly the small-balance case this exists to handle -- switch to reserving a
+// percentage instead, which scales down gracefully instead of hitting a hard floor. Gas on Base is
+// cheap enough that holding back 10% still leaves plenty for the tx itself.
+const ETHX_AUTO_WRAP_SMALL_BALANCE_THRESHOLD = 2_000_000_000_000_000n // 0.002 ETH
+const ETHX_AUTO_WRAP_SMALL_BALANCE_PCT = 90n
 
 // The CFA requires the backer's own wallet balance to clear the flow's buffer too, on top of what
 // the board's depositBuffer pulls out of it -- so "already enough" means the existing balance clears
 // more than 2x the buffer, not just enough to cover the pull. Below that, default to wrapping 3
-// months' worth of ETH at this rate, capped at what's actually spendable (wallet balance minus a
-// small reserve for gas).
+// months' worth of ETH at this rate, capped at what's actually spendable.
 export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, walletEthBalance: bigint): AutoDeposit {
-  if (ratePerSec <= 0n) return { wrapValue: 0n, prefund: 0n, runwaySeconds: 0n }
+  if (ratePerSec <= 0n) return { wrapValue: 0n, prefund: 0n, runwaySeconds: 0n, insufficientEth: false }
   const buffer = bufferFor(ratePerSec)
   if (ethxBalance > buffer * 2n) {
     const prefund = ethxBalance - buffer
-    return { wrapValue: 0n, prefund, runwaySeconds: runwaySeconds(prefund, ratePerSec) }
+    return { wrapValue: 0n, prefund, runwaySeconds: runwaySeconds(prefund, ratePerSec), insufficientEth: false }
   }
   const threeMonths = ratePerSecToMonthly(ratePerSec) * 3n
-  const affordable = walletEthBalance > ETHX_AUTO_WRAP_RESERVE ? walletEthBalance - ETHX_AUTO_WRAP_RESERVE : 0n
+  const affordable = walletEthBalance >= ETHX_AUTO_WRAP_SMALL_BALANCE_THRESHOLD
+    ? (walletEthBalance > ETHX_AUTO_WRAP_RESERVE ? walletEthBalance - ETHX_AUTO_WRAP_RESERVE : 0n)
+    : (walletEthBalance * ETHX_AUTO_WRAP_SMALL_BALANCE_PCT) / 100n
   const wrapValue = threeMonths < affordable ? threeMonths : affordable
   const prefundRaw = ethxBalance + wrapValue - buffer
   const prefund = prefundRaw > 0n ? prefundRaw : 0n
-  return { wrapValue, prefund, runwaySeconds: prefund > 0n ? runwaySeconds(prefund, ratePerSec) : 0n }
+  return {
+    wrapValue, prefund,
+    runwaySeconds: prefund > 0n ? runwaySeconds(prefund, ratePerSec) : 0n,
+    // Mirrors the on-chain/write-flow check (prefund must exceed buffer, not just reach it).
+    insufficientEth: prefund <= buffer,
+  }
 }
 
 // ── Batched open: wrap → depositBuffer → createFlow (host.batchCall). The depositBuffer pull is
@@ -265,28 +290,36 @@ export interface OpenStreamParams {
   cfaAgreement: Address
   gdaAgreement: Address
   pool: Address
+  // Native ETH wrapped in this batch (0 when the wallet's existing ETHx balance already covers the
+  // stream -- upgradeByETH reverts on a 0 amount, so the wrap op must be omitted entirely then, not
+  // just sent with 0 value).
+  wrapValue: bigint
 }
 
-// Returns the 4 ops for host.batchCall, in the order the strategy requires: the value-bearing wrap
-// first (it drains the host balance so the later value-0 forwards don't revert), then the buffer
-// deposit credited to the explicit backer (pulled via the backer's prior ERC20 approve), then the
-// markee-tagged createFlow (op 201 preserves the backer as the flow sender), then connectPool on the
-// markee's GDA refund pool. The connect is mandatory, not cosmetic: a disconnected backer's wallet
-// drains at the full stream rate while the refund accrues unclaimed in the pool, so they could be
-// liquidated even while being refunded. It must be op 201 straight to the GDA class (a 301 via
-// GDAv1Forwarder would connect SimpleForwarder instead), and it no-ops if already connected.
+// Returns the ops for host.batchCall, in the order the strategy requires: the value-bearing wrap
+// first when there is one (it drains the host balance so the later value-0 forwards don't revert),
+// then the buffer deposit credited to the explicit backer (pulled via the backer's prior ERC20
+// approve), then the markee-tagged createFlow (op 201 preserves the backer as the flow sender), then
+// connectPool on the markee's GDA refund pool. The connect is mandatory, not cosmetic: a disconnected
+// backer's wallet drains at the full stream rate while the refund accrues unclaimed in the pool, so
+// they could be liquidated even while being refunded. It must be op 201 straight to the GDA class (a
+// 301 via GDAv1Forwarder would connect SimpleForwarder instead), and it no-ops if already connected.
 export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
-  const wrap: Operation = {
-    operationType: OP_SIMPLE_FORWARD_CALL,
-    target: p.ethx,
-    data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
+  const ops: Operation[] = []
+
+  if (p.wrapValue > 0n) {
+    ops.push({
+      operationType: OP_SIMPLE_FORWARD_CALL,
+      target: p.ethx,
+      data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
+    })
   }
 
-  const deposit: Operation = {
+  ops.push({
     operationType: OP_SIMPLE_FORWARD_CALL,
     target: p.board,
     data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.buffer] }),
-  }
+  })
 
   const callData = encodeFunctionData({
     abi: CFA_CREATE_FLOW_ABI,
@@ -295,11 +328,11 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
   })
   const userData = encodeAbiParameters([{ type: 'address' }], [p.markee])
 
-  const flow: Operation = {
+  ops.push({
     operationType: OP_CALL_AGREEMENT,
     target: p.cfaAgreement,
     data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [callData, userData]),
-  }
+  })
 
   const connectData = encodeFunctionData({
     abi: GDA_CONNECT_POOL_ABI,
@@ -307,13 +340,13 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
     args: [p.pool, '0x'],
   })
 
-  const connect: Operation = {
+  ops.push({
     operationType: OP_CALL_AGREEMENT,
     target: p.gdaAgreement,
     data: encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes' }], [connectData, '0x']),
-  }
+  })
 
-  return [wrap, deposit, flow, connect]
+  return ops
 }
 
 export interface MoveStreamOpsParams extends OpenStreamParams {
@@ -327,11 +360,15 @@ export interface MoveStreamOpsParams extends OpenStreamParams {
 // clears backerMarkee and the old markee's units, then the create re-tags the flow to the new markee.
 // backerDeposit survives the delete, so only the top-up over the held deposit is pulled.
 export function buildMoveStreamOps(p: MoveStreamOpsParams): Operation[] {
-  const ops: Operation[] = [{
-    operationType: OP_SIMPLE_FORWARD_CALL,
-    target: p.ethx,
-    data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
-  }]
+  const ops: Operation[] = []
+
+  if (p.wrapValue > 0n) {
+    ops.push({
+      operationType: OP_SIMPLE_FORWARD_CALL,
+      target: p.ethx,
+      data: encodeFunctionData({ abi: ETHX_BATCH_ABI, functionName: 'upgradeByETHTo', args: [p.backer] }),
+    })
+  }
 
   if (p.depositTopUp > 0n) {
     ops.push({
@@ -494,8 +531,11 @@ export const CFA_FORWARDER_ABI = [
 // funds a live stream (the CFA drains this balance, not the wallet's native ETH).
 export const ETHX_WRAP_ABI = [
   { type: 'function', name: 'upgradeByETH', stateMutability: 'payable', inputs: [], outputs: [] },
-  // The reverse: burns ETHx and returns the underlying ETH 1:1, for the Deposit Manager's Withdraw.
-  { type: 'function', name: 'downgrade', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
+  // The reverse: burns ETHx and returns native ETH 1:1, for the Deposit Manager's Withdraw. Must be
+  // downgradeToETH (ISETH), not the generic ISuperToken.downgrade -- ETHx is Super ETH, backed by
+  // native ETH held directly rather than an ERC20 "underlying" token, so plain downgrade() reverts
+  // with "no underlying supertoken".
+  { type: 'function', name: 'downgradeToETH', stateMutability: 'nonpayable', inputs: [{ name: 'wad', type: 'uint256' }], outputs: [] },
 ] as const
 
 // The per-Markee GDA refund pool: units are the backer's share of that Markee's aggregate rate, which

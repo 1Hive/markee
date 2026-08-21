@@ -181,6 +181,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: pool as Address,
+        wrapValue: calc.value,
       })
       const streamHash = await writeContractAsync({
         address: HOST,

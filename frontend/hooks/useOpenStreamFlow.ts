@@ -103,6 +103,7 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: refundPool as Address,
+        wrapValue: calc.value,
       })
 
       const batchHash = await writeContractAsync({

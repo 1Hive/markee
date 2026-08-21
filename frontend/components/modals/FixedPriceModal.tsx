@@ -11,7 +11,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress } from '@/components/modals/StreamUI'
+import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -67,6 +67,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const [newMessage, setNewMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -79,7 +80,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
 
   useEffect(() => {
-    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); setHasUserEdited(false); reset() }
+    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); setHasUserEdited(false); setReviewOpen(false); reset() }
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
@@ -248,73 +249,86 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             {/* ── Body ── */}
             <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
 
-              {/* Current message (if set) */}
-              {fixedMarkee.message && (
-                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                  <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
-                </div>
-              )}
-
-              {/* SET YOUR MESSAGE */}
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
-                  Set Your Message
-                </div>
-                <textarea
-                  value={newMessage}
-                  onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
-                  placeholder="Your message here..."
-                  rows={2}
-                  style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
-                  disabled={isPending || isConfirming}
+              {reviewOpen ? (
+                <PaymentReviewCard
+                  kind="fixed"
+                  message={newMessage}
+                  amountLabel={`${priceEth} ETH`}
+                  amountUsd={priceUsd != null ? formatUsd(priceUsd) : null}
+                  markeeEarnedLabel={`${markeeEarned.toLocaleString()} MARKEE`}
+                  willWin
                 />
-                <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
-                  {newMessage.length}/{maxLen}
-                </div>
-              </div>
+              ) : (
+                <>
+                  {/* Current message (if set) */}
+                  {fixedMarkee.message && (
+                    <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
+                    </div>
+                  )}
 
-              {/* Price card — fixed price, no MIN/MAX/WIN presets */}
-              <div style={{
-                border: `1px solid ${BORDER}`,
-                borderRadius: 12,
-                padding: '14px 16px',
-                background: BG,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 800, color: TEXT }}>{priceEth}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED }}>
-                  <span>
-                    {priceUsd != null ? `≈ ${formatUsd(priceUsd)}` : ' '}
-                  </span>
-                  <span>
-                    {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
-                  </span>
-                </div>
-              </div>
-
-              {/* You'll receive — horizontal */}
-              {priceEthNum > 0 && (
-                <div style={{
-                  marginTop: 12, borderRadius: 14, padding: '14px 20px',
-                  background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
-                  border: `1px solid rgba(248,151,254,0.35)`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
-                      {markeeEarned.toLocaleString()}
-                    </span>
-                    <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
+                  {/* SET YOUR MESSAGE */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Set Your Message
+                    </div>
+                    <textarea
+                      value={newMessage}
+                      onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
+                      placeholder="Your message here..."
+                      rows={2}
+                      style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
+                      disabled={isPending || isConfirming}
+                    />
+                    <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
+                      {newMessage.length}/{maxLen}
+                    </div>
                   </div>
-                </div>
+
+                  {/* Price card — fixed price, no MIN/MAX/WIN presets */}
+                  <div style={{
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 12,
+                    padding: '14px 16px',
+                    background: BG,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 800, color: TEXT }}>{priceEth}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED }}>
+                      <span>
+                        {priceUsd != null ? `≈ ${formatUsd(priceUsd)}` : ' '}
+                      </span>
+                      <span>
+                        {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* You'll receive — horizontal */}
+                  {priceEthNum > 0 && (
+                    <div style={{
+                      marginTop: 12, borderRadius: 14, padding: '14px 20px',
+                      background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
+                      border: `1px solid rgba(248,151,254,0.35)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
+                          {markeeEarned.toLocaleString()}
+                        </span>
+                        <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Error */}
-              {transactionError && (
+              {!reviewOpen && transactionError && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '14px 0 0' }}>
                   {transactionError}
                 </p>
@@ -330,24 +344,37 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
               flexShrink: 0,
             }}>
-              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
-              </div>
-              <BtnTooltip reason={btnDisabledReason}>
-                <button
-                  onClick={handleChangeMessage}
-                  disabled={btnDisabled}
-                  style={{
-                    background: PINK, color: BG, border: 'none', borderRadius: 8,
-                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
-                    cursor: btnDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                    opacity: btnDisabled ? 0.4 : 1,
-                    transition: 'opacity 140ms',
-                  }}
-                >
-                  Buy Message
-                </button>
-              </BtnTooltip>
+              {reviewOpen ? (
+                <div style={{ width: '100%' }}>
+                  <PaymentReviewFooter
+                    onBack={() => setReviewOpen(false)}
+                    onConfirm={handleChangeMessage}
+                    busy={isPending || isConfirming}
+                    error={transactionError}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
+                    100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+                  </div>
+                  <BtnTooltip reason={btnDisabledReason}>
+                    <button
+                      onClick={() => setReviewOpen(true)}
+                      disabled={btnDisabled}
+                      style={{
+                        background: PINK, color: BG, border: 'none', borderRadius: 8,
+                        padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                        cursor: btnDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                        opacity: btnDisabled ? 0.4 : 1,
+                        transition: 'opacity 140ms',
+                      }}
+                    >
+                      Review Payment Info
+                    </button>
+                  </BtnTooltip>
+                </>
+              )}
             </div>
           </>
         )}

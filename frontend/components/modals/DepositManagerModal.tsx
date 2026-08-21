@@ -21,12 +21,13 @@ import { formatTransactionError, logTransactionError } from '@/lib/transactionEr
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
+import { getTxUrl } from '@/lib/explorer'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
 const RED = '#FF8E8E'
 
-interface DepositManagerStream {
+export interface DepositManagerStream {
   boardAddress: string
   boardName: string
   markeeAddress: string
@@ -51,11 +52,14 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const [action, setAction] = useState<'deposit' | 'withdraw' | null>(null)
   const [amount, setAmount] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
+  const [depositPct, setDepositPct] = useState(50)
+  const [withdrawPct, setWithdrawPct] = useState(50)
+  const [lastTx, setLastTx] = useState<{ hash: Hex; type: 'deposit' | 'withdraw' } | null>(null)
 
-  const refresh = () => {
+  const refresh = (bust = false) => {
     if (!activeAddress) return
     setLoading(true)
-    fetch(`/api/streaming/deposit-manager?wallet=${activeAddress}`, { cache: 'no-store' })
+    fetch(`/api/streaming/deposit-manager?wallet=${activeAddress}${bust ? '&bust=1' : ''}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setData(d) })
       .catch(() => {})
@@ -69,7 +73,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   }, [isOpen, activeAddress])
 
   useEffect(() => {
-    if (!isOpen) { setAction(null); setAmount(''); setActionError(null) }
+    if (!isOpen) { setAction(null); setAmount(''); setActionError(null); setLastTx(null) }
   }, [isOpen])
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
@@ -80,14 +84,21 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const busy = isPending || isConfirming
 
   useEffect(() => {
-    if (isSuccess) {
+    if (isSuccess && txHash && action) {
+      setLastTx({ hash: txHash, type: action })
       setTxHash(undefined); resetWrite(); setAction(null); setAmount('')
-      refresh(); refetchBalance()
+      // bust=1 -- the KV cache backing this endpoint can otherwise serve the pre-deposit/withdraw
+      // balance for up to its TTL, so a normal refresh() right after a tx confirms can silently show
+      // stale data until the cache naturally expires.
+      refresh(true); refetchBalance()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 
   const initialLoading = loading && !data
+  // A refresh with data already on screen (post-deposit/withdraw bust=1 refetch) -- distinct from
+  // initialLoading, which replaces the whole panel with a skeleton on first open instead.
+  const refreshingBalance = loading && !!data
   const ethxBalanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
   const streams = data?.streams ?? []
   const winning = streams.filter(s => s.isTop)
@@ -127,8 +138,13 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
     setAmount(formatEther(ratePerSecToMonthly(streamingNowRate) * BigInt(months)))
     if (actionError) setActionError(null)
   }
-  function withdrawShortcut(pct: number) {
-    if (ethxBalanceRaw <= 0n) return
+  function depositPctChange(pct: number) {
+    setDepositPct(pct)
+    if (balanceData) setAmount(formatEther((balanceData.value * BigInt(pct)) / 100n))
+    if (actionError) setActionError(null)
+  }
+  function withdrawPctChange(pct: number) {
+    setWithdrawPct(pct)
     setAmount(formatEther((ethxBalanceRaw * BigInt(pct)) / 100n))
     if (actionError) setActionError(null)
   }
@@ -153,7 +169,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
     if (wei <= 0n) { setActionError('Enter an amount to withdraw.'); return }
     if (wei > ethxBalanceRaw) { setActionError('Not enough ETHx balance.'); return }
     try {
-      const hash = await writeContractAsync({ address: ETHX, abi: ETHX_WRAP_ABI, functionName: 'downgrade', args: [wei], chainId: CANONICAL_CHAIN.id })
+      const hash = await writeContractAsync({ address: ETHX, abi: ETHX_WRAP_ABI, functionName: 'downgradeToETH', args: [wei], chainId: CANONICAL_CHAIN.id })
       setTxHash(hash)
     } catch (e: unknown) {
       logTransactionError(e, 'DepositManagerModal.withdraw')
@@ -219,7 +235,9 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
               ← Back
             </button>
 
-            {/* ── Runs out in ── */}
+            {/* ── Runs out in (skipped entirely once we know there's nothing streaming -- an empty
+                 wallet isn't a warning state, it just hasn't been set up yet) ── */}
+            {(initialLoading || streamingNowRate > 0n) && (
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={labelStyle}>
@@ -228,7 +246,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 </span>
                 {initialLoading ? <ViewsSpinner size={14} color={MUTED} /> : (
                   <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 800, color: TEXT }}>
-                    {streamingNowRate > 0n ? formatRunway(runway) : '—'}
+                    {formatRunway(runway)}
                   </span>
                 )}
               </div>
@@ -240,38 +258,62 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 }} />
               </div>
             </div>
+            )}
 
             {/* ── ETHx balance ── */}
             <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
               <div style={{ ...labelStyle, marginBottom: 6 }}>
                 ETHx balance
-                <InfoTip>ETHx is a streamable version of Ethereum. Deposit ETH to pay for Markee messages with streamable ETHx.</InfoTip>
+                <InfoTip>Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.</InfoTip>
               </div>
               {initialLoading ? (
                 <div style={{ marginBottom: 12 }}><ViewsSpinner size={20} color={TEXT} /></div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12, flexWrap: 'wrap' as const }}>
-                  <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 800, color: TEXT }}>{formatLiveEth(displayedBalance, balanceDecimals)}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 800, color: TEXT, opacity: refreshingBalance ? 0.5 : 1, transition: 'opacity 150ms' }}>
+                    {formatLiveEth(displayedBalance, balanceDecimals)}
+                  </span>
                   <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH</span>
+                  {refreshingBalance && <ViewsSpinner size={13} color={MUTED} />}
+                </div>
+              )}
+              {lastTx && !refreshingBalance && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontFamily: MONO, fontSize: 11.5 }}>
+                  <span style={{ color: GREEN }}>✓ {lastTx.type === 'deposit' ? 'Deposit' : 'Withdrawal'} confirmed</span>
+                  <a
+                    href={getTxUrl(CANONICAL_CHAIN.id, lastTx.hash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: PINK, textDecoration: 'none', borderBottom: `1px dotted ${PINK}` }}
+                  >
+                    View on Basescan ↗
+                  </a>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 10 }}>
                 <button
-                  onClick={() => { setAction(a => a === 'deposit' ? null : 'deposit'); setAmount(''); setActionError(null) }}
+                  onClick={() => { setAction(a => a === 'deposit' ? null : 'deposit'); setAmount(''); setActionError(null); setLastTx(null) }}
                   style={{
-                    flex: 1, background: action === 'deposit' ? 'rgba(248,151,254,0.12)' : 'transparent',
-                    color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '9px 0',
+                    flex: 1,
+                    background: action === 'deposit' ? 'rgba(248,151,254,0.12)' : 'transparent',
+                    color: action === 'deposit' ? PINK : TEXT2,
+                    border: `1px solid ${action === 'deposit' ? PINK : BORDER}`,
+                    borderRadius: 8, padding: '9px 0',
                     fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
                   }}
                 >
                   Deposit
                 </button>
                 <button
-                  onClick={() => { setAction(a => a === 'withdraw' ? null : 'withdraw'); setAmount(''); setActionError(null) }}
+                  onClick={() => { setAction(a => a === 'withdraw' ? null : 'withdraw'); setAmount(''); setActionError(null); setLastTx(null) }}
                   disabled={ethxBalanceRaw <= 0n}
+                  title={ethxBalanceRaw <= 0n ? 'You have no ETHx deposited' : undefined}
                   style={{
-                    flex: 1, background: action === 'withdraw' ? 'rgba(138,143,191,0.12)' : 'transparent',
-                    color: ethxBalanceRaw > 0n ? TEXT2 : MUTED, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0',
+                    flex: 1,
+                    background: action === 'withdraw' ? 'rgba(248,151,254,0.12)' : 'transparent',
+                    color: ethxBalanceRaw <= 0n ? MUTED : action === 'withdraw' ? PINK : TEXT2,
+                    border: `1px solid ${action === 'withdraw' && ethxBalanceRaw > 0n ? PINK : BORDER}`,
+                    borderRadius: 8, padding: '9px 0',
                     fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: ethxBalanceRaw > 0n ? 'pointer' : 'not-allowed',
                     opacity: ethxBalanceRaw > 0n ? 1 : 0.5,
                   }}
@@ -312,21 +354,43 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                       {busy ? (isPending ? 'Confirm…' : 'Pending…') : action === 'deposit' ? 'Deposit' : 'Withdraw'}
                     </button>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {action === 'deposit' ? (
-                      [1, 2, 3].map(mo => (
-                        <button key={mo} type="button" onClick={() => depositShortcut(mo)} disabled={streamingNowRate <= 0n} style={shortcutBtnStyle(streamingNowRate <= 0n)}>
-                          {mo}mo
-                        </button>
-                      ))
+                  {action === 'deposit' ? (
+                    streamingNowRate > 0n ? (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {[1, 2, 3].map(mo => (
+                          <button key={mo} type="button" onClick={() => depositShortcut(mo)} style={shortcutBtnStyle(false)}>
+                            {mo}mo
+                          </button>
+                        ))}
+                      </div>
                     ) : (
-                      [25, 50, 75].map(pct => (
-                        <button key={pct} type="button" onClick={() => withdrawShortcut(pct)} style={shortcutBtnStyle(false)}>
-                          {pct}%
-                        </button>
-                      ))
-                    )}
-                  </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 10.5, color: MUTED }}>
+                          <span>% of wallet balance</span>
+                          <span style={{ color: TEXT2, fontWeight: 700 }}>{depositPct}%</span>
+                        </div>
+                        <input
+                          type="range" min={1} max={100} value={depositPct}
+                          onChange={e => depositPctChange(Number(e.target.value))}
+                          disabled={!balanceData || balanceData.value <= 0n}
+                          style={{ width: '100%', accentColor: PINK, cursor: 'pointer' }}
+                        />
+                      </div>
+                    )
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 10.5, color: MUTED }}>
+                        <span>% of ETHx balance</span>
+                        <span style={{ color: TEXT2, fontWeight: 700 }}>{withdrawPct}%</span>
+                      </div>
+                      <input
+                        type="range" min={1} max={100} value={withdrawPct}
+                        onChange={e => withdrawPctChange(Number(e.target.value))}
+                        disabled={ethxBalanceRaw <= 0n}
+                        style={{ width: '100%', accentColor: PINK, cursor: 'pointer' }}
+                      />
+                    </div>
+                  )}
                   {actionError && <span style={{ fontFamily: MONO, fontSize: 11, color: RED }}>{actionError}</span>}
                 </div>
               )}
@@ -361,7 +425,8 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
               </div>
             </div>
 
-            {/* ── Your streams ── */}
+            {/* ── Your streams (hidden entirely once we know there's nothing to show) ── */}
+            {(initialLoading || streams.length > 0) && (
             <div>
               <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Your streams</div>
               {initialLoading ? (
@@ -370,8 +435,6 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                     <div key={i} style={{ height: 52, borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(138,143,191,0.06)' }} />
                   ))}
                 </div>
-              ) : streams.length === 0 ? (
-                <p style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, margin: 0 }}>No active bids on any streaming board yet.</p>
               ) : (
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
                   {streams.map((s, i) => (
@@ -403,6 +466,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </div>

@@ -502,12 +502,6 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
             fontFamily: 'Manrope, system-ui, sans-serif',
           }}
         >
-          {/* Brand watermark — small, unassuming, top-left corner, only on hover, on every Markee
-              card with a hover price badge (see also FeaturedHero on /marketplace and the home
-              page hero cards). */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/markee-light.png" alt="" aria-hidden width={20} height={20} style={{ position: 'absolute', top: 8, left: 8, borderRadius: 4, opacity: hover ? 0.4 : 0, transition: 'opacity 180ms', pointerEvents: 'none' }} />
-
           {/* top-right: views + flag */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} />
@@ -530,9 +524,13 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
             </div>
           )}
 
-          {/* hover pill */}
+          {/* hover pill — brand watermark (dark logo) on the far left, only on hover, on every
+              Markee card with a hover price badge (see also FeaturedHero on /marketplace and the
+              home page hero cards). */}
           {pillLabel && (
-            <span style={{ position: 'absolute', bottom: -15, left: '50%', transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`, display: 'inline-flex', alignItems: 'center', gap: 6, background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13, padding: '8px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const, boxShadow: '0 8px 28px rgba(248,151,254,0.42)', opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms', pointerEvents: 'none', zIndex: 3 }}>
+            <span style={{ position: 'absolute', bottom: -15, left: '50%', transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`, display: 'inline-flex', alignItems: 'center', gap: 8, background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13, padding: '3px 18px 3px 3px', borderRadius: 8, whiteSpace: 'nowrap' as const, boxShadow: '0 8px 28px rgba(248,151,254,0.42)', opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms', pointerEvents: 'none', zIndex: 3 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/markee-logo-dark.png" alt="" aria-hidden width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
               {pillLabel}
             </span>
           )}
@@ -1292,13 +1290,17 @@ modal), restyled in my site's own colors and theme. Specifically:
   headline with a subtle gradient text-fill from the primary text color into the accent color --
   approximate that with your own palette). On hover, a pill badge slides up from the bottom edge
   showing the price/action ("X.XXX ETH to change", or "be first!" if no messages yet).
-- Logo watermark: render the Markee logo (fetch the SVG/PNG from https://markee.xyz/markee-light.png,
-  or inline equivalent letterforms) small (~20px) tucked right into the top-left corner of the
-  trigger card (a few px inset, not centered with margin). Hidden by default (opacity 0), fading in
-  to ~0.4 opacity only on hover, same trigger as the price pill -- it should not be visible on the
-  card at rest. Recolor it to whatever reads best against your card's background (a CSS filter like
-  invert()/brightness() on the light asset works for light backgrounds; use it as-is on dark ones).
-  This is a Markee brand requirement, not optional styling -- every integration should carry it.
+- Logo watermark: render the Markee logo (fetch the PNG from https://markee.xyz/markee-logo-dark.png
+  -- a light-backgrounds-friendly dark mark, or use https://markee.xyz/markee-logo-light.png if your
+  pill background is itself dark; or inline equivalent letterforms) large -- close to the full height
+  of the pill itself (~24px against a pill with ~3px vertical padding), not a small icon floating
+  inside it. Inset it flush against the pill's left/top/bottom edges with only a thin border of
+  space around it, roughly the same width as the border around the whole trigger card (a few px),
+  and round its corners so that thin border reads as a consistent ring -- the pill's own corner
+  radius minus that border width. The price/action text keeps its normal padding on the right; only
+  the logo side is tight. It only appears when the pill does (same hover trigger, same fade) -- it
+  is not a separate always-present or corner-pinned element. This is a Markee brand requirement, not
+  optional styling -- every integration should carry it.
 - Loading states never show a blank or "0" value while data is still in flight -- use a small
   spinner (a simple CSS-animated ring is fine) in place of the number/text until the real value
   loads, exactly like the price badge and message text above.

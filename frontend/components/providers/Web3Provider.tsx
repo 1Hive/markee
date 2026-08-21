@@ -24,8 +24,13 @@ function SyncActiveWallet() {
     if (!active || active.linked) return
     const linked = wallets.filter(w => w.linked)
     if (linked.length === 0) return
+    // Prefer a linked external wallet over the auto-created embedded one (embeddedWallets.createOnLogin
+    // is 'all-users', so it's always present and always linked) -- otherwise this correction can itself
+    // pin the session onto the empty embedded wallet instead of the external one the user connected
+    // with, which is indistinguishable from the "hijack" this effect exists to prevent.
+    const preferred = linked.find(w => w.walletClientType !== 'privy' && w.walletClientType !== 'privy-v2') ?? linked[0]
     attempted.current = address
-    setActiveWallet(linked[0])
+    setActiveWallet(preferred)
   }, [ready, wallets, address, setActiveWallet])
 
   return null

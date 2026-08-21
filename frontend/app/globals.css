@@ -155,22 +155,16 @@ img.emoji {
   transition: transform 200ms ease;
 }
 .reader-card:hover .reader-text { transform: scale(1.015); }
-.reader-logo {
-  position: absolute; top: 8px; left: 8px; width: 20px; height: 20px;
-  border-radius: 4px; opacity: 0; pointer-events: none;
-  transition: opacity 180ms ease;
-}
-.reader-card:hover .reader-logo { opacity: 0.4; }
 .reader-views {
   position: absolute; top: 14px; right: 16px; display: inline-flex; align-items: center; gap: 5px;
   font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
   font-size: 11px; letter-spacing: 0.5px; color: #8A8FBF; opacity: 0.85;
 }
 .reader-pill {
-  position: absolute; bottom: -16px; left: 50%; display: inline-flex; align-items: center; gap: 6px;
+  position: absolute; bottom: -16px; left: 50%; display: inline-flex; align-items: center; gap: 8px;
   background: #F897FE; color: #060A2A;
   font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
-  font-weight: 700; font-size: 13px; padding: 8px 18px; border-radius: 8px;
+  font-weight: 700; font-size: 13px; padding: 3px 18px 3px 3px; border-radius: 8px;
   white-space: nowrap; box-shadow: 0 8px 28px rgba(248,151,254,0.42);
   transition: opacity 180ms ease, transform 180ms ease; pointer-events: none; z-index: 3;
   opacity: 0; transform: translateX(-50%) translateY(4px);

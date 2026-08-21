@@ -12,9 +12,10 @@ import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
   messageBoxStyle, parseEthInput, retryUntilLoaded,
   InfoTip, ModalField, ModalShell, TxProgress, RatePriceCard,
+  PaymentReviewCard, PaymentReviewFooter,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { FAST_TX_GAS_RESERVE } from '@/lib/utils'
+import { formatUsd } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -64,18 +65,15 @@ export function StreamActivateModal({
 
   const [message, setMessage] = useState('')
   const [monthly, setMonthly] = useState('')
-  const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
+  const [lastPreset, setLastPreset] = useState<'min' | 'win' | null>(null)
   const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
   const [depositManagerOpen, setDepositManagerOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { phase, error, setError, isPending, isConfirming, isSuccess, activate } = useCreateStreamFlow(board, isOpen)
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
-
-  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
-    ? balanceData.value - FAST_TX_GAS_RESERVE
-    : 0n
 
   const { data: minMonthlyWei } = useReadContract({
     address: board, abi: StreamingLeaderboardABI, functionName: 'minimumMonthlyRate', chainId: CANONICAL_CHAIN.id,
@@ -117,11 +115,17 @@ export function StreamActivateModal({
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
   const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Number(formatEther(calc.monthlyWei)))
 
+  // Review-step prediction -- same formula the post-success snap below uses (isFirstOnBoard ||
+  // calc.monthlyWei > topMonthlyWei), just evaluated before submitting instead of after.
+  const willWin = !topMonthlyWei || topMonthlyWei === 0n || calc.monthlyWei > topMonthlyWei
+  const shortfallWei = !willWin && topMonthlyWei ? topMonthlyWei + 1n - calc.monthlyWei : 0n
+  const minToWinLabel = shortfallWei > 0n ? `${parseFloat(formatEther(shortfallWei)).toFixed(4)} ETH/mo` : null
+
   // ── Reset on close (UI-only state; the hook resets its own tx state) ───────
   useEffect(() => {
     if (!isOpen) {
       setMessage(''); setMonthly('')
-      setLastPreset(null); setSuccessSnap(null)
+      setLastPreset(null); setSuccessSnap(null); setReviewOpen(false)
     }
   }, [isOpen])
 
@@ -196,6 +200,14 @@ export function StreamActivateModal({
   const btnDisabled = !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
 
   const footer = !txActive ? (
+    reviewOpen ? (
+      <PaymentReviewFooter
+        onBack={() => setReviewOpen(false)}
+        onConfirm={handleActivate}
+        busy={isPending || isConfirming}
+        error={error}
+      />
+    ) : (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
       <div style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
         62/38 split
@@ -214,19 +226,20 @@ export function StreamActivateModal({
         </button>
       ) : (
         <button
-          onClick={handleActivate}
+          onClick={() => setReviewOpen(true)}
           disabled={btnDisabled}
           style={{
             background: PINK, color: BG, border: 'none', borderRadius: 8,
-            padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: calc.value > 0n ? 12.5 : 14,
+            padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
             cursor: btnDisabled ? 'not-allowed' : 'pointer', flexShrink: 0,
             opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
           }}
         >
-          {!minLoaded || !balancesLoaded ? 'Loading…' : calc.value > 0n ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and ${ctaLabel}` : ctaLabel}
+          {!minLoaded || !balancesLoaded ? 'Loading…' : 'Review Payment Info'}
         </button>
       )}
     </div>
+    )
   ) : undefined
 
   return (
@@ -245,6 +258,19 @@ export function StreamActivateModal({
           <button onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })} style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
             Switch to Base
           </button>
+        </div>
+      ) : reviewOpen ? (
+        <div style={{ padding: '22px', overflowY: 'auto', flex: 1 }}>
+          <PaymentReviewCard
+            kind="rent"
+            message={message}
+            amountLabel={`${monthly || '0'} ETH/mo`}
+            amountUsd={ethPrice && calc.monthlyWei > 0n ? formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice) : null}
+            depositLabel={calc.value > 0n ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+            markeeEarnedLabel={`${markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE/mo`}
+            willWin={willWin}
+            minToWinLabel={minToWinLabel}
+          />
         </div>
       ) : (
         <div style={{ padding: '22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -267,7 +293,7 @@ export function StreamActivateModal({
           <RatePriceCard
             monthly={monthly} setMonthly={setMonthly}
             minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded} belowMin={belowMin}
-            ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} spendableBalance={spendableBalance}
+            ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value}
             calc={calc} topMonthlyWei={topMonthlyWei}
             lastPreset={lastPreset} setLastPreset={setLastPreset}
             runwaySecs={calc.runwaySecs} onOpenDepositManager={() => setDepositManagerOpen(true)}

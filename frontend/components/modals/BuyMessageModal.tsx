@@ -12,7 +12,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -151,6 +151,7 @@ export function BuyMessageModal({
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | '2x' | null>('min')
   const [successSnap, setSuccessSnap] = useState<SuccessSnap | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
@@ -250,6 +251,7 @@ export function BuyMessageModal({
     setHasUserEdited(false)
     setLastPreset(null)
     setSuccessSnap(null)
+    setReviewOpen(false)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userMarkee, initialMode, isOpen, reset])
@@ -421,6 +423,17 @@ export function BuyMessageModal({
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 
+  // Review-step prediction: activeTakeFirstAmount is already "total wei needed to take #1" in the
+  // right unit for whichever tab is active (a one-time total for create, an increment for addFunds),
+  // so willWin/shortfall both fall straight out of it without re-deriving the ranking math.
+  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewWillWin = activeTab === 'updateMessage'
+    ? !!userIsTopDawg
+    : !activeTakeFirstAmount || reviewAmountWei >= activeTakeFirstAmount
+  const reviewShortfallWei = !reviewWillWin && activeTakeFirstAmount && activeTakeFirstAmount > reviewAmountWei
+    ? activeTakeFirstAmount - reviewAmountWei : 0n
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
+
   const inputStyle = {
     width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
     border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
@@ -536,6 +549,18 @@ export function BuyMessageModal({
           <>
             {/* ── Compose body ── */}
             <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
+              {reviewOpen ? (
+                <PaymentReviewCard
+                  kind="fixed"
+                  message={activeTab === 'addFunds' ? (userMarkee?.message ?? '') : message}
+                  amountLabel={activeTab === 'updateMessage' ? 'Free — message update only' : `${amount || '0'} ETH`}
+                  amountUsd={activeTab !== 'updateMessage' && ethPrice && bidNum > 0 ? formatUsd(bidNum * ethPrice) : null}
+                  markeeEarnedLabel={activeTab === 'updateMessage' ? '0 MARKEE' : `${formatMarkeeAmount(markeeEarned)} MARKEE`}
+                  willWin={reviewWillWin}
+                  minToWinLabel={reviewMinToWinLabel}
+                />
+              ) : (
+              <>
               {/* Tabs - only when user owns this markee */}
               {userMarkee && isOwner && (
                 <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, marginBottom: 18 }}>
@@ -759,6 +784,8 @@ export function BuyMessageModal({
                   {transactionError}
                 </p>
               )}
+              </>
+              )}
             </div>
 
             {/* ── Footer ── */}
@@ -768,6 +795,21 @@ export function BuyMessageModal({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
               flexShrink: 0,
             }}>
+              {reviewOpen ? (
+                <div style={{ width: '100%' }}>
+                  <PaymentReviewFooter
+                    onBack={() => setReviewOpen(false)}
+                    onConfirm={() => {
+                      if (activeTab === 'create') handleCreateMarkee()
+                      else if (activeTab === 'addFunds') handleAddFunds()
+                      else handleUpdateMessage()
+                    }}
+                    busy={isPending || isConfirming}
+                    error={transactionError}
+                  />
+                </div>
+              ) : (
+              <>
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {activeTab === 'updateMessage'
                   ? 'Only the message owner can update their message.'
@@ -780,11 +822,7 @@ export function BuyMessageModal({
               </div>
               <BtnTooltip reason={btnDisabledReason}>
                 <button
-                  onClick={() => {
-                    if (activeTab === 'create') handleCreateMarkee()
-                    else if (activeTab === 'addFunds') handleAddFunds()
-                    else handleUpdateMessage()
-                  }}
+                  onClick={() => setReviewOpen(true)}
                   disabled={btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
@@ -794,9 +832,11 @@ export function BuyMessageModal({
                     transition: 'opacity 140ms',
                   }}
                 >
-                  {activeTab === 'create' ? (ctaLabel ?? 'Buy Message') : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
+                  Review Payment Info
                 </button>
               </BtnTooltip>
+              </>
+              )}
             </div>
           </>
         )}
