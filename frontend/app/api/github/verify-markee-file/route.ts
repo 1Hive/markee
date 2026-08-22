@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: fileResult.reason === 'timeout'
           ? 'GitHub took too long to respond — try again in a moment.'
-          : `Could not fetch ${filePath} from GitHub (${fileResult.status}) — check the file still exists at that path.` },
+          : `Could not fetch the file from GitHub (${fileResult.status}) — check it still exists at that path.` },
         { status: 400 },
       )
     }

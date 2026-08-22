@@ -19,6 +19,26 @@ function popupResponse(payload: { success: boolean; login?: string; error?: stri
   return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } })
 }
 
+// Defense-in-depth on the origin read back from KV state before it becomes the postMessage
+// target and redirect base. The legitimate flow can cross deployments (connect on a staging or
+// preview deploy, GitHub redirecting to the one registered callback URL), so exact equality with
+// the callback origin is too strict -- accept any known deployment origin instead.
+function isTrustedSiteOrigin(origin: string, requestOrigin: string): boolean {
+  if (origin === requestOrigin) return true
+  try {
+    const { protocol, hostname } = new URL(origin)
+    if (protocol !== 'https:' && hostname !== 'localhost') return false
+    return (
+      hostname === 'markee.xyz' ||
+      hostname.endsWith('.markee.xyz') ||
+      hostname.endsWith('.vercel.app') ||
+      hostname === 'localhost'
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
@@ -47,6 +67,12 @@ export async function GET(request: NextRequest) {
     if (payload.origin) siteOrigin = payload.origin
   } catch {
     // state was stored as plain '1' by old connect route — treat as no returnTo
+  }
+
+  const requestOrigin = new URL(request.url).origin
+  if (!isTrustedSiteOrigin(siteOrigin, requestOrigin)) {
+    console.warn(`[github/callback] state origin ${siteOrigin} is not a known deployment, using ${requestOrigin}`)
+    siteOrigin = requestOrigin
   }
 
   const base = `${siteOrigin}/ecosystem/platforms/github`

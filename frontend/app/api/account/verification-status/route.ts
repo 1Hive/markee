@@ -8,6 +8,7 @@
 // verifiedUrls (KV, keyed by address) both exist independent of how the board was created.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAddress } from 'viem'
 import { kv } from '@vercel/kv'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
@@ -26,7 +27,7 @@ interface OiMeta {
 }
 
 function parseAddresses(raw: string[]): string[] {
-  return [...new Set(raw.map(a => a.trim().toLowerCase()).filter(Boolean))].slice(0, 200)
+  return [...new Set(raw.map(a => a.trim().toLowerCase()).filter(a => isAddress(a)))].slice(0, 200)
 }
 
 async function statusFor(addresses: string[]) {
