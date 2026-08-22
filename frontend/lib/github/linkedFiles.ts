@@ -80,17 +80,29 @@ export type GithubFileFetchResult =
   | { ok: false; reason: 'timeout' }
   | { ok: false; reason: 'not_found'; status: number }
 
+// Encodes "owner/repo" into a safe URL path. Callers pass repoFullName straight from the request
+// body, so a crafted value (query strings, "..", extra slashes) must not reshape the outbound
+// api.github.com path. A name that isn't exactly two non-empty segments can't be a real repo,
+// which is why the fetch below reports it as not_found.
+function encodedRepoPath(repoFullName: string): string | null {
+  const [owner, repo, ...rest] = repoFullName.split('/')
+  if (!owner || !repo || rest.length > 0) return null
+  return `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+}
+
 export async function fetchGithubFileContent(
   repoFullName: string,
   filePath: string,
   token: string,
   timeoutMs = 8000,
 ): Promise<GithubFileFetchResult> {
+  const repoPath = encodedRepoPath(repoFullName)
+  if (!repoPath) return { ok: false, reason: 'not_found', status: 404 }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
+      `https://api.github.com/repos/${repoPath}/contents/${encodeURIComponent(filePath)}`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' }, signal: controller.signal },
     )
     if (!res.ok) return { ok: false, reason: 'not_found', status: res.status }
