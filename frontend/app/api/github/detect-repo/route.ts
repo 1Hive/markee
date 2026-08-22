@@ -10,6 +10,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import type { EmbedFramework, EmbedWallet } from '@/lib/embedPrompt/fragments'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
+
+export const dynamic = 'force-dynamic'
+const RATE_WINDOW = 60
+const RATE_MAX = 20
 
 async function getGithubToken(uid: string | undefined): Promise<string | null> {
   if (!uid) return null
@@ -50,6 +55,9 @@ function detectWallet(deps: Record<string, string>): EmbedWallet | null {
 }
 
 export async function GET(request: NextRequest) {
+  if (!await underRateLimit('github:detect-repo', clientIp(request), RATE_MAX, RATE_WINDOW)) {
+    return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { 'Retry-After': String(RATE_WINDOW) } })
+  }
   const { searchParams } = new URL(request.url)
   const input = searchParams.get('url') ?? ''
   const parsed = parseRepo(input)

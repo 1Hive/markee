@@ -26,7 +26,10 @@ function popupResponse(payload: { success: boolean; login?: string; error?: stri
 // Defense-in-depth on the origin read back from KV state before it becomes the postMessage
 // target and redirect base. The legitimate flow can cross deployments (connect on a staging or
 // preview deploy, GitHub redirecting to the one registered callback URL), so exact equality with
-// the callback origin is too strict -- accept any known deployment origin instead.
+// the callback origin is too strict -- accept any known deployment origin instead. The primary
+// guard is the one-time KV state token; this allowlist only bounds where the popup result can be
+// delivered, so anyone able to deploy under the 1hive Vercel team is already inside the trust
+// boundary it draws.
 function isTrustedSiteOrigin(origin: string, requestOrigin: string): boolean {
   if (origin === requestOrigin) return true
   try {

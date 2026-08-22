@@ -10,8 +10,12 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { getLinkedFiles } from '@/lib/github/linkedFiles'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
 const CACHE_TTL = 3600 // 1 hour, same as /api/github/traffic
+const RATE_WINDOW = 60
+const RATE_MAX = 30
 
 interface RepoTraffic {
   count: number
@@ -50,6 +54,9 @@ async function fetchRepoTraffic(repoFullName: string, token: string): Promise<Re
 
 // GET /api/github/traffic-multi?address=0x...
 export async function GET(req: NextRequest) {
+  if (!await underRateLimit('github:traffic-multi', clientIp(req), RATE_MAX, RATE_WINDOW)) {
+    return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { 'Retry-After': String(RATE_WINDOW) } })
+  }
   const { searchParams } = new URL(req.url)
   const address = searchParams.get('address')?.toLowerCase().trim()
   if (!address) {
