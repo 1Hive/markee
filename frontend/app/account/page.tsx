@@ -590,7 +590,7 @@ function compareBySpentOrRank<T extends { isTop: boolean; rank?: number | null }
     return ar - br
   }
   const as = spent(a), bs = spent(b)
-  return as > bs ? -1 : as < bs ? 1 : 0
+  return as > bs ? 1 : as < bs ? -1 : 0
 }
 
 // ── Awaiting Activation table ─────────────────────────────────────────────────

@@ -31,7 +31,7 @@ function isTrustedSiteOrigin(origin: string, requestOrigin: string): boolean {
   if (origin === requestOrigin) return true
   try {
     const { protocol, hostname } = new URL(origin)
-    if (protocol !== 'https:' && hostname !== 'localhost') return false
+    if (protocol !== 'https:' && !(protocol === 'http:' && hostname === 'localhost')) return false
     return (
       hostname === 'markee.xyz' ||
       hostname.endsWith('.markee.xyz') ||

@@ -13,9 +13,12 @@ import { kv } from '@vercel/kv'
 import { createPublicClient, http, isAddress } from 'viem'
 import { base } from 'viem/chains'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+const RATE_WINDOW = 60
+const RATE_MAX = 30
 
 function getClient() {
   return createPublicClient({
@@ -29,6 +32,9 @@ export async function GET(request: Request) {
   if (!board || !isAddress(board)) return NextResponse.json({ error: 'Valid board address required' }, { status: 400, headers: NO_CACHE })
 
   try {
+    if (!await underRateLimit('streaming:top-since', clientIp(request), RATE_MAX, RATE_WINDOW)) {
+      return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
+    }
     const client = getClient()
     const topMarkee = (await client.readContract({
       address: board as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'topMarkee',
