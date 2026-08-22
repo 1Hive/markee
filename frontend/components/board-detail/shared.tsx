@@ -148,7 +148,11 @@ export function useServedOn(leaderboardAddress: string) {
     // unconditionally rather than only when the ecosystem listing happens to tag this board 'github'.
     Promise.all([
       fetch('/api/ecosystem/leaderboards', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/account/verification-status?addresses=${addr}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/account/verification-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: [addr] }),
+      }).then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([ecoData, verData]) => {
       const found = (ecoData?.leaderboards as EcoEntry[] | undefined)?.find(
         lb => lb.address.toLowerCase() === addr

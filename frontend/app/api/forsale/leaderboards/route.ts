@@ -166,7 +166,13 @@ export async function GET(request: Request) {
       getLinkedFilesBatch(addresses),
     ])
 
-    let markeeCallIndex = 0
+    // markeeCalls emits 3 calls per board but skips boards with no top markee, so each board's
+    // offset into markeeResults counts only the boards before it that have one.
+    const markeeResultOffsets: number[] = []
+    for (let i = 0, offset = 0; i < topMarkeeAddresses.length; i++) {
+      markeeResultOffsets.push(offset)
+      if (topMarkeeAddresses[i]) offset += 3
+    }
 
     const leaderboards = addresses.map((addr, i) => {
       const b = i * 6
@@ -182,10 +188,10 @@ export async function GET(request: Request) {
       let topMessageOwner: string | null = null
       let topMarkeeOwner: string | null = null
       if (topMarkeeAddresses[i]) {
-        topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
-        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
-        topMarkeeOwner  = (markeeResults[markeeCallIndex + 2]?.result as string) || null
-        markeeCallIndex += 3
+        const m = markeeResultOffsets[i]
+        topMessage      = (markeeResults[m]?.result as string) || null
+        topMessageOwner = (markeeResults[m + 1]?.result as string) || null
+        topMarkeeOwner  = (markeeResults[m + 2]?.result as string) || null
       }
 
       const meta = kvMetas[i]

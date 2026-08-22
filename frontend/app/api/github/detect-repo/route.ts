@@ -93,6 +93,9 @@ export async function GET(request: NextRequest) {
     }
 
     const pkg = JSON.parse(await pkgRes.text())
+    if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+      return NextResponse.json({ repoFullName, defaultBranch, framework: null, wallet: null, packageJsonFound: false })
+    }
     const deps: Record<string, string> = { ...pkg.dependencies, ...pkg.devDependencies }
     return NextResponse.json({
       repoFullName,

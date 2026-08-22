@@ -52,21 +52,8 @@ function rateLimited() {
   return NextResponse.json({}, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
 }
 
-export async function GET(request: NextRequest) {
-  try {
-    if (!await underRateLimit('verification-status', clientIp(request), RATE_MAX, RATE_WINDOW)) return rateLimited()
-    const raw = new URL(request.url).searchParams.get('addresses') ?? ''
-    return NextResponse.json(await statusFor(parseAddresses(raw.split(','))), { headers: NO_CACHE })
-  } catch (err) {
-    console.error('[account/verification-status] error:', err)
-    // 500, not {} with 200 -- the caller needs to tell "nothing is verified" apart from "we couldn't
-    // check", since the latter would otherwise flash every board into "Ready to Add to Your Site".
-    return NextResponse.json({ error: 'Unable to load verification status' }, { status: 500, headers: NO_CACHE })
-  }
-}
-
-// POST form for callers with many boards: a comma-joined query string of 200 addresses is ~8.4KB,
-// past the point where CDNs and proxies start dropping the request URL.
+// POST rather than GET: a comma-joined query string of 200 addresses is ~8.4KB, past the point
+// where CDNs and proxies start dropping the request URL.
 export async function POST(request: NextRequest) {
   try {
     if (!await underRateLimit('verification-status', clientIp(request), RATE_MAX, RATE_WINDOW)) return rateLimited()
@@ -76,6 +63,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(await statusFor(parseAddresses(raw.filter((a): a is string => typeof a === 'string'))), { headers: NO_CACHE })
   } catch (err) {
     console.error('[account/verification-status] error:', err)
+    // 500, not {} with 200 -- the caller needs to tell "nothing is verified" apart from "we couldn't
+    // check", since the latter would otherwise flash every board into "Ready to Add to Your Site".
     return NextResponse.json({ error: 'Unable to load verification status' }, { status: 500, headers: NO_CACHE })
   }
 }

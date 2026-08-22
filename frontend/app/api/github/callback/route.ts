@@ -5,13 +5,17 @@ import { kv } from '@vercel/kv'
 // Popup-mode response: postMessage the result back to the window that opened us, then close --
 // used instead of a redirect so the host page (which may have this open from inside a modal) never
 // navigates away. targetOrigin is set explicitly (not '*') since this carries the connected login.
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
 function popupResponse(payload: { success: boolean; login?: string; error?: string }, targetOrigin: string) {
   const html = `<!DOCTYPE html><html><body style="background:#060A2A;color:#8A8FBF;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <p>${payload.success ? 'Connected — you can close this window.' : 'Something went wrong — you can close this window.'}</p>
 <script>
   (function () {
-    var payload = ${JSON.stringify({ source: 'markee-github-oauth', ...payload })};
-    var targetOrigin = ${JSON.stringify(targetOrigin)};
+    var payload = ${scriptJson({ source: 'markee-github-oauth', ...payload })};
+    var targetOrigin = ${scriptJson(targetOrigin)};
     if (window.opener) { window.opener.postMessage(payload, targetOrigin); window.close(); }
   })();
 </script>
@@ -31,7 +35,7 @@ function isTrustedSiteOrigin(origin: string, requestOrigin: string): boolean {
     return (
       hostname === 'markee.xyz' ||
       hostname.endsWith('.markee.xyz') ||
-      hostname.endsWith('.vercel.app') ||
+      (hostname.startsWith('markee-') && hostname.endsWith('-1hive.vercel.app')) ||
       hostname === 'localhost'
     )
   } catch {
