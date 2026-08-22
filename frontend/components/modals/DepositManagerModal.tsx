@@ -5,7 +5,7 @@
 // across every streaming board. Opened from the auto-deposit line on the streaming buy/fund modals
 // and from a button on /account -- entirely wallet-scoped, so it takes no board/markee props.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useBalance, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -56,7 +56,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const [withdrawPct, setWithdrawPct] = useState(50)
   const [lastTx, setLastTx] = useState<{ hash: Hex; type: 'deposit' | 'withdraw' } | null>(null)
 
-  const refresh = (bust = false) => {
+  const refresh = useCallback((bust = false) => {
     if (!activeAddress) return
     setLoading(true)
     fetch(`/api/streaming/deposit-manager?wallet=${activeAddress}${bust ? '&bust=1' : ''}`, { cache: 'no-store' })
@@ -64,13 +64,12 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
       .then(d => { if (d) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }
+  }, [activeAddress])
 
   useEffect(() => {
     if (!isOpen || !activeAddress) return
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, activeAddress])
+  }, [isOpen, activeAddress, refresh])
 
   useEffect(() => {
     if (!isOpen) { setAction(null); setAmount(''); setActionError(null); setLastTx(null) }

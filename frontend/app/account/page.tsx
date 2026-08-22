@@ -551,26 +551,25 @@ function useSortableTable<T>(
   opts: { initialDir?: 'asc' | 'desc'; ascByDefault?: (key: string) => boolean } = {},
 ) {
   const { initialDir = 'desc', ascByDefault } = opts
-  const [sortKey, setSortKey] = useState(initialKey)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(initialDir)
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: initialKey, dir: initialDir })
 
   const onSort = useCallback((col: string) => {
-    setSortKey(prev => {
-      setSortDir(dir => prev === col ? (dir === 'asc' ? 'desc' : 'asc') : (ascByDefault?.(col) ? 'asc' : 'desc'))
-      return col
-    })
+    setSort(prev => ({
+      key: col,
+      dir: prev.key === col ? (prev.dir === 'asc' ? 'desc' : 'asc') : (ascByDefault?.(col) ? 'asc' : 'desc'),
+    }))
   }, [ascByDefault])
 
   const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...items].sort((a, b) => compareAscending(sortKey, a, b) * dir)
+    const dir = sort.dir === 'asc' ? 1 : -1
+    return [...items].sort((a, b) => compareAscending(sort.key, a, b) * dir)
   // compareAscending intentionally omitted: callers pass an inline function (a fresh reference every
   // render), and it only ever closes over field-accessor logic, never over changing outer state --
   // including it would re-sort on every render instead of only when the data or sort actually change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, sortKey, sortDir])
+  }, [items, sort])
 
-  return { sortKey, sortDir, onSort, sorted }
+  return { sortKey: sort.key, sortDir: sort.dir, onSort, sorted }
 }
 
 function compareByRaised<T extends { totalFundsRaw: string }>(_key: string, a: T, b: T): number {

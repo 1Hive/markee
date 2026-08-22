@@ -26,9 +26,8 @@ const RATE_MAX_MISSES = 10
 const ETHX = STREAMING_BASE.ethx as `0x${string}`
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as `0x${string}`
 
-interface EcosystemLeaderboard {
+interface StreamingBoard {
   address: string
-  strategy?: 'fixed' | 'streaming'
   markeeCount: number
   leaderboardName?: string
   name?: string
@@ -84,10 +83,10 @@ export async function GET(request: NextRequest) {
 
     const origin = internalOrigin()
     const headers = internalHeaders()
-    const ecoData = await fetch(`${origin}/api/ecosystem/leaderboards`, { cache: 'no-store', headers })
+    const boardData = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
       .then(r => r.ok ? r.json() : { leaderboards: [] })
       .catch(() => ({ leaderboards: [] }))
-    const streamingBoards: EcosystemLeaderboard[] = (ecoData.leaderboards ?? []).filter((l: EcosystemLeaderboard) => l.strategy === 'streaming')
+    const streamingBoards: StreamingBoard[] = boardData.leaderboards ?? []
 
     const client = getClient()
     const walletAddr = wallet as `0x${string}`
@@ -102,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     const backed = streamingBoards
       .map((l, i) => ({ l, backer: backerResultsList[i]?.result as `0x${string}` | undefined }))
-      .filter((x): x is { l: EcosystemLeaderboard; backer: `0x${string}` } =>
+      .filter((x): x is { l: StreamingBoard; backer: `0x${string}` } =>
         !!x.backer && x.backer !== '0x0000000000000000000000000000000000000000')
 
     let streams: DepositManagerStream[] = []

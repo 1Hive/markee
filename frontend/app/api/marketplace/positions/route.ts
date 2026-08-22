@@ -8,8 +8,10 @@
 //   to find that markee's rank.
 //
 //   Fixed: there's no equivalent "which markee does this wallet own" mapping, so the only way to find
-//   a wallet's rank is to enumerate getTopMarkees and read owner() on every returned markee. Capped to
-//   each board's own markeeCount (from the ecosystem listing) rather than a flat large limit.
+//   a wallet's rank is to enumerate getTopMarkees and read owner() on every returned markee. That scan
+//   is capped at MAX_FIXED_OWNER_SCAN per board so the owner() fan-out stays bounded no matter how
+//   large boards get; a wallet ranked past the cap gets no position entry, which the marketplace
+//   renders the same as holding no position at all.
 //
 // Cached per-wallet in KV for a short window since this is a genuinely heavier read than the other
 // listing endpoints.
@@ -28,11 +30,12 @@ export const maxDuration = 60
 const CACHE_TTL = 60 // seconds
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 const MAX_MARKEES_PER_BOARD = 500
+const MAX_FIXED_OWNER_SCAN = 100
 
 // The per-wallet cache above bounds repeat cost for one wallet, but the endpoint is unauthenticated
 // and the wallet is caller-supplied, so cycling addresses walks straight past it into a full RPC
-// fan-out every time (every board's getTopMarkees, plus owner() on every markee of every fixed
-// board). Cache misses are therefore also metered per IP.
+// fan-out every time (every board's getTopMarkees, plus owner() on every scanned markee of every
+// fixed board). Cache misses are therefore also metered per IP.
 const RATE_WINDOW = 60 // seconds
 const RATE_MAX_MISSES = 10
 
@@ -127,7 +130,7 @@ export async function GET(request: NextRequest) {
     if (fixedBoards.length > 0) {
       const topCalls = fixedBoards.map(l => ({
         address: l.address as `0x${string}`, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const,
-        args: [BigInt(Math.min(l.markeeCount || MAX_MARKEES_PER_BOARD, MAX_MARKEES_PER_BOARD))] as const,
+        args: [BigInt(Math.min(l.markeeCount || MAX_FIXED_OWNER_SCAN, MAX_FIXED_OWNER_SCAN))] as const,
       }))
       const topResults = await chunkedMulticall(client, topCalls as Parameters<typeof client.multicall>[0]['contracts'])
 

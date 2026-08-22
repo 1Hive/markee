@@ -19,6 +19,8 @@ export async function underRateLimit(
   return hits <= max
 }
 
+// Vercel always sets x-forwarded-for; anywhere that strips it, every caller collapses into the
+// one shared 'unknown' bucket and rate limits collectively rather than per client.
 export function clientIp(request: Request): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
