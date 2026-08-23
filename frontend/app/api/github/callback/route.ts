@@ -42,7 +42,7 @@ function isTrustedSiteOrigin(origin: string, requestOrigin: string): boolean {
     return (
       hostname === 'markee.xyz' ||
       hostname.endsWith('.markee.xyz') ||
-      (hostname.startsWith('markee-') && hostname.endsWith('-1hive.vercel.app')) ||
+      /^markee-[a-z0-9-]+-1hive\.vercel\.app$/.test(hostname) ||
       hostname === 'localhost'
     )
   } catch {
