@@ -2,6 +2,8 @@
 import crypto from 'crypto'
 import { kv } from '@vercel/kv'
 
+// Name carried over from the pre-session cookie so browsers replace that one instead of keeping
+// both; the value is an opaque session id now, not the GitHub user id it reads like.
 export const SESSION_COOKIE = 'github_uid'
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 365
