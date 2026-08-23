@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID!,
     redirect_uri: process.env.GITHUB_REDIRECT_URI!,
-    // `repo` already includes `public_repo` — requesting both is redundant
+    // Markee only ever writes a message block into a public README, so private access is never needed
     scope: 'public_repo read:org',
     state,
   })
