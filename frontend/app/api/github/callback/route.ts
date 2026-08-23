@@ -29,8 +29,9 @@ function popupResponse(payload: { success: boolean; login?: string; error?: stri
 // preview deploy, GitHub redirecting to the one registered callback URL), so exact equality with
 // the callback origin is too strict -- accept any known deployment origin instead. The primary
 // guard is the one-time KV state token; this allowlist only bounds where the popup result can be
-// delivered, so anyone able to deploy under the 1hive Vercel team is already inside the trust
-// boundary it draws. localhost stays trusted even in production because local dev flows bounce
+// delivered. Note the vercel.app arm is loose: a project named markee-evil-1hive satisfies both the
+// prefix and the suffix from any team, so it rests on siteOrigin coming from the state record, which
+// only this deployment writes. localhost stays trusted even in production because local dev flows bounce
 // through the one registered (deployed) callback, which must postMessage back to the localhost
 // opener; the state token still binds each flow to whoever started it.
 function isTrustedSiteOrigin(origin: string, requestOrigin: string): boolean {
