@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     client_id: process.env.GITHUB_CLIENT_ID!,
     redirect_uri: process.env.GITHUB_REDIRECT_URI!,
     // `repo` already includes `public_repo` — requesting both is redundant
-    scope: 'repo read:org',
+    scope: 'public_repo read:org',
     state,
   })
 

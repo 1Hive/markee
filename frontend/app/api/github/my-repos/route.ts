@@ -1,6 +1,6 @@
 // frontend/app/api/github/my-repos/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,17 +16,12 @@ interface GitHubRepo {
 }
 
 export async function GET(request: NextRequest) {
-  const uid = request.cookies.get('github_uid')?.value
-  if (!uid) {
+  const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+  if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
-  const raw = await kv.get<string>(`github:user:${uid}`)
-  if (!raw) {
-    return NextResponse.json({ error: 'Session expired' }, { status: 401 })
-  }
-
-  const { accessToken } = typeof raw === 'string' ? JSON.parse(raw) : raw
+  const { accessToken } = session
 
   // Fetch all repos the user can push to (own + org + collaborator)
   // GitHub paginates at 100 — fetch first 2 pages (200 repos) which covers 99% of cases

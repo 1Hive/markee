@@ -1,19 +1,14 @@
 // frontend/app/api/github/repo-files/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 export async function GET(request: NextRequest) {
-  const uid = request.cookies.get('github_uid')?.value
-  if (!uid) {
+  const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+  if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
-  const raw = await kv.get<string>(`github:user:${uid}`)
-  if (!raw) {
-    return NextResponse.json({ error: 'Session expired' }, { status: 401 })
-  }
-
-  const { accessToken } = typeof raw === 'string' ? JSON.parse(raw) : raw
+  const { accessToken } = session
 
   const { searchParams } = new URL(request.url)
   const repo = searchParams.get('repo') // e.g. "1hive/gardens"

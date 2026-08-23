@@ -2,27 +2,19 @@
 //
 // Given a bare repo URL (no OAuth flow required), fetches package.json and infers the
 // framework/wallet-library answers for the WebsiteEmbedWizard "questions" step instead of making
-// the user pick them by hand. Tries the connected GitHub account's token first (covers private repos
-// the user already has access to), falling back to an unauthenticated request otherwise -- GitHub
-// itself returns 404 (not 403) for private repos to unauthenticated callers, so that ambiguity is
-// surfaced to the caller as `needsAuth` rather than a hard error.
+// the user pick them by hand. Tries the connected GitHub account's token first (higher rate limits),
+// falling back to an unauthenticated request otherwise -- GitHub itself returns 404 (not 403) for
+// repos the caller can't see, so that ambiguity is surfaced to the caller as `needsAuth` rather
+// than a hard error.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 import type { EmbedFramework, EmbedWallet } from '@/lib/embedPrompt/fragments'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 const RATE_WINDOW = 60
 const RATE_MAX = 20
-
-async function getGithubToken(uid: string | undefined): Promise<string | null> {
-  if (!uid) return null
-  const raw = await kv.get(`github:user:${uid}`)
-  if (!raw) return null
-  const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, string>)
-  return data?.accessToken ?? null
-}
 
 // Accepts a full GitHub URL, "github.com/owner/repo", or bare "owner/repo". The shape checks keep
 // user input from reshaping the outbound api.github.com path (query strings, "..", encoded slashes).
@@ -67,11 +59,11 @@ export async function GET(request: NextRequest) {
   const { owner, repo } = parsed
   const repoFullName = `${owner}/${repo}`
 
-  const uid = request.cookies.get('github_uid')?.value
   let defaultBranch = 'main'
 
   try {
-    const token = await getGithubToken(uid)
+    const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+    const token = session?.accessToken ?? null
     const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
     const encodedRepoPath = `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
 

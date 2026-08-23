@@ -1,22 +1,14 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
 import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent } from '@/lib/github/linkedFiles'
-
-async function getGithubToken(uid: string): Promise<string | null> {
-  const raw = await kv.get(`github:user:${uid}`)
-  if (!raw) return null
-  const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, string>)
-  return data?.accessToken ?? null
-}
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 export async function POST(request: NextRequest) {
   try {
-    const uid = request.cookies.get('github_uid')?.value
-    if (!uid) return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
+    const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+    if (!session) return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
 
-    const token = await getGithubToken(uid)
-    if (!token) return NextResponse.json({ error: 'GitHub token not found — please reconnect' }, { status: 401 })
+    const token = session.accessToken
 
     const body = await request.json().catch(() => null)
     const { leaderboardAddress, repoFullName, filePath } = (body ?? {}) as {

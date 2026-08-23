@@ -1,6 +1,6 @@
 // frontend/app/api/github/me/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { destroySession, expireHostOnlyCookie, resolveSession, SESSION_COOKIE, sessionCookieOptions } from '@/lib/github/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,40 +10,45 @@ export const dynamic = 'force-dynamic'
 // correctly. That looks exactly like GitHub never actually connecting.
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
+function clearSessionCookie(res: NextResponse, requestUrl: string) {
+  const cookieOptions = sessionCookieOptions(requestUrl)
+  res.cookies.set(SESSION_COOKIE, '', { ...cookieOptions, maxAge: 0 })
+  if (cookieOptions.domain) expireHostOnlyCookie(res.headers)
+}
+
 export async function GET(request: NextRequest) {
-  const uid = request.cookies.get('github_uid')?.value
-  if (!uid) {
+  const sessionId = request.cookies.get(SESSION_COOKIE)?.value
+  if (!sessionId) {
     return NextResponse.json({ connected: false }, { headers: NO_CACHE })
   }
 
-  const raw = await kv.get<string>(`github:user:${uid}`)
-  if (!raw) {
-    // Cookie exists but KV entry expired — clear cookie
+  const session = await resolveSession(sessionId)
+  if (!session) {
     const res = NextResponse.json({ connected: false }, { headers: NO_CACHE })
-    res.cookies.delete('github_uid')
+    clearSessionCookie(res, request.url)
     return res
   }
 
-  const data = typeof raw === 'string' ? JSON.parse(raw) : raw
   return NextResponse.json({
     connected: true,
-    uid,
-    login: data.login,
-    avatarUrl: data.avatarUrl,
-    installedAt: data.installedAt,
+    uid: session.githubUserId,
+    login: session.login,
+    avatarUrl: session.avatarUrl,
+    installedAt: session.installedAt,
   }, { headers: NO_CACHE })
 }
 
 export async function DELETE(request: NextRequest) {
-  const uid = request.cookies.get('github_uid')?.value
+  const sessionId = request.cookies.get(SESSION_COOKIE)?.value
 
-  // Clear the KV session record alongside the cookie so the data doesn't
-  // linger for a year after an explicit disconnect
-  if (uid) {
-    await kv.del(`github:user:${uid}`)
+  // Disconnecting acts on the resolved session only, so a stale cookie leaves the
+  // stored token untouched.
+  if (sessionId) {
+    const session = await resolveSession(sessionId)
+    if (session) await destroySession(sessionId, session.githubUserId)
   }
 
   const res = NextResponse.json({ disconnected: true }, { headers: NO_CACHE })
-  res.cookies.delete('github_uid')
+  clearSessionCookie(res, request.url)
   return res
 }

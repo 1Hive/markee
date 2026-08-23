@@ -1,6 +1,7 @@
 // frontend/app/api/github/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
+import { createSession, expireHostOnlyCookie, SESSION_COOKIE, SESSION_MAX_AGE, sessionCookieOptions } from '@/lib/github/session'
 
 // Popup-mode response: postMessage the result back to the window that opened us, then close --
 // used instead of a redirect so the host page (which may have this open from inside a modal) never
@@ -134,19 +135,11 @@ export async function GET(request: NextRequest) {
             : base
       )
 
-  const callbackHostname = new URL(request.url).hostname
-  const cookieDomain = callbackHostname === 'markee.xyz' || callbackHostname.endsWith('.markee.xyz')
-    ? '.markee.xyz'
-    : undefined
+  const sessionId = await createSession(user.id)
+  const cookieOptions = sessionCookieOptions(request.url)
 
-  response.cookies.set('github_uid', String(user.id), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 365,
-    path: '/',
-    domain: cookieDomain,
-  })
+  response.cookies.set(SESSION_COOKIE, sessionId, { ...cookieOptions, maxAge: SESSION_MAX_AGE })
+  if (cookieOptions.domain) expireHostOnlyCookie(response.headers)
 
   return response
 }
