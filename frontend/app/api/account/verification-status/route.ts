@@ -42,7 +42,7 @@ async function statusFor(addresses: string[]) {
   const result: Record<string, { verifiedUrls: string[]; linkedFiles: LinkedFile[] }> = {}
   addresses.forEach((addr, i) => {
     const meta = oiMetas[i]
-    const verifiedUrls = Array.isArray(meta?.verifiedUrls) ? meta!.verifiedUrls! : meta?.verifiedUrl ? [meta.verifiedUrl] : []
+    const verifiedUrls = Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : []
     result[addr] = { verifiedUrls, linkedFiles: linkedFilesPerAddr[i] }
   })
   return result
