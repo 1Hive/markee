@@ -49,7 +49,7 @@ async function statusFor(addresses: string[]) {
 }
 
 function rateLimited() {
-  return NextResponse.json({}, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
+  return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
 }
 
 // POST rather than GET: a comma-joined query string of 200 addresses is ~8.4KB, past the point
