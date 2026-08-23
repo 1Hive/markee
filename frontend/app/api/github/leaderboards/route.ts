@@ -1,10 +1,11 @@
 // app/api/github/leaderboards/route.ts
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
+import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,10 +13,6 @@ const LEADERBOARD_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2'
 
 // Scopes getLogs to just creation events instead of every log the factory has ever emitted
 // (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
-const LEADERBOARD_CREATED_EVENT = parseAbiItem(
-  'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
-)
-
 function getClient() {
   return createPublicClient({
     chain: base,
@@ -46,53 +43,6 @@ const FACTORY_ABI = [
 // admin() is the beneficiary, not the creator (same issue documented for Superfluid boards).
 // Creator isn't stored on-chain -- derive it from the tx that called createLeaderboard, cached
 // permanently in KV since it never changes.
-async function resolveCreators(
-  client: ReturnType<typeof getClient>,
-  addresses: readonly `0x${string}`[],
-): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:gh:${a.toLowerCase()}`)
-  if (keys.length === 0) return []
-  const cached = await kv.mget<(string | null)[]>(...keys)
-
-  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
-  if (missingIndices.length === 0) return cached
-
-  try {
-    const logs = await client.getLogs({
-      address: LEADERBOARD_FACTORY_ADDRESS,
-      event: LEADERBOARD_CREATED_EVENT,
-      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
-      toBlock: 'latest',
-    })
-
-    // topics[1] = leaderboard address (first indexed param in the factory event)
-    const lbToTxHash = new Map<string, `0x${string}`>()
-    for (const log of logs) {
-      if (log.topics[1]) {
-        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
-        lbToTxHash.set(addr, log.transactionHash)
-      }
-    }
-
-    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
-    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
-    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
-    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
-
-    await Promise.all(missingIndices.map(i => {
-      const addr = addresses[i].toLowerCase()
-      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
-      if (creator) {
-        cached[i] = creator
-        return kv.set(keys[i], creator) // no TTL -- creator never changes
-      }
-    }))
-  } catch (e: any) {
-    console.error('[github/leaderboards] creator lookup error:', e.message)
-  }
-
-  return cached
-}
 
 const LEADERBOARD_ABI = [
   { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
@@ -216,7 +166,12 @@ export async function GET(request: Request) {
       kv.mget<({ count: number } | null)[]>(
         ...addresses.map(addr => `views:github:last:${addr.toLowerCase()}`)
       ),
-      resolveCreators(client, addresses),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'gh',
+        factories: [LEADERBOARD_FACTORY_ADDRESS],
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+        logLabel: 'github/leaderboards',
+      }),
     ])
 
     // Assemble leaderboard objects

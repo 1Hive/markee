@@ -14,12 +14,13 @@
 //   github:markee:{address} — linked GitHub files (via getLinkedFiles), same shared namespace
 
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
+import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK } from '@/lib/contracts/addresses'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,10 +30,6 @@ const CACHE_TTL = 60 // seconds
 const FOR_SALE_FACTORY_ADDRESS = FACTORIES.FOR_SALE
 
 // Scopes getLogs to just creation events instead of every log the factory has ever emitted.
-const LEADERBOARD_CREATED_EVENT = parseAbiItem(
-  'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
-)
-
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
   'Access-Control-Allow-Origin': '*',
@@ -50,52 +47,6 @@ function getClient() {
   })
 }
 
-async function resolveCreators(
-  client: ReturnType<typeof getClient>,
-  addresses: readonly `0x${string}`[],
-): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:fs:${a.toLowerCase()}`)
-  if (keys.length === 0) return []
-  const cached = await kv.mget<(string | null)[]>(...keys)
-
-  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
-  if (missingIndices.length === 0) return cached
-
-  try {
-    const logs = await client.getLogs({
-      address: FOR_SALE_FACTORY_ADDRESS,
-      event: LEADERBOARD_CREATED_EVENT,
-      fromBlock: FOR_SALE_FACTORY_DEPLOY_BLOCK,
-      toBlock: 'latest',
-    })
-
-    const lbToTxHash = new Map<string, `0x${string}`>()
-    for (const log of logs) {
-      if (log.topics[1]) {
-        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
-        lbToTxHash.set(addr, log.transactionHash)
-      }
-    }
-
-    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
-    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
-    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
-    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
-
-    await Promise.all(missingIndices.map(i => {
-      const addr = addresses[i].toLowerCase()
-      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
-      if (creator) {
-        cached[i] = creator
-        return kv.set(keys[i], creator) // permanent — creator never changes
-      }
-    }))
-  } catch (e: any) {
-    console.error('[forsale/leaderboards] creator lookup error:', e.message)
-  }
-
-  return cached
-}
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: NO_CACHE })
@@ -159,7 +110,12 @@ export async function GET(request: Request) {
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'fs',
+        factories: [FOR_SALE_FACTORY_ADDRESS],
+        fromBlock: FOR_SALE_FACTORY_DEPLOY_BLOCK,
+        logLabel: 'forsale/leaderboards',
+      }),
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),

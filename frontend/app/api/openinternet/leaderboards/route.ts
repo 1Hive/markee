@@ -9,11 +9,12 @@
 //   oi:meta:{address}      — { logoUrl, siteUrl, verifiedUrl, status } for factory leaderboards
 
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
+import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,10 +27,6 @@ const OI_FACTORY_ADDRESSES = [
 
 // Scopes getLogs to just creation events instead of every log the factory has ever emitted
 // (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
-const LEADERBOARD_CREATED_EVENT = parseAbiItem(
-  'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
-)
-
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
   'Access-Control-Allow-Origin': '*',
@@ -86,50 +83,6 @@ function getClient() {
 
 // ─── Creator resolution for factory leaderboards ──────────────────────────────
 
-async function resolveCreators(
-  client: ReturnType<typeof getClient>,
-  addresses: readonly `0x${string}`[],
-): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:oi:${a.toLowerCase()}`)
-  if (keys.length === 0) return []
-  const cached = await kv.mget<(string | null)[]>(...keys)
-
-  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
-  if (missingIndices.length === 0) return cached
-
-  try {
-    const logsPerFactory = await Promise.all(
-      OI_FACTORY_ADDRESSES.map(addr => client.getLogs({ address: addr, event: LEADERBOARD_CREATED_EVENT, fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest' }))
-    )
-    const logs = logsPerFactory.flat()
-
-    const lbToTxHash = new Map<string, `0x${string}`>()
-    for (const log of logs) {
-      if (log.topics[1]) {
-        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
-        lbToTxHash.set(addr, log.transactionHash)
-      }
-    }
-
-    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
-    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
-    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
-    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
-
-    await Promise.all(missingIndices.map(i => {
-      const addr = addresses[i].toLowerCase()
-      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
-      if (creator) {
-        cached[i] = creator
-        return kv.set(keys[i], creator) // permanent — creator never changes
-      }
-    }))
-  } catch (e: any) {
-    console.error('[openinternet/leaderboards] creator lookup error:', e.message)
-  }
-
-  return cached
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -198,7 +151,12 @@ export async function GET(request: Request) {
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'oi',
+        factories: OI_FACTORY_ADDRESSES,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+        logLabel: 'openinternet/leaderboards',
+      }),
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),

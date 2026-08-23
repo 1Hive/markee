@@ -1,11 +1,12 @@
 // app/api/superfluid/leaderboards/route.ts
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther, parseAbiItem } from 'viem'
+import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
 const BASELINE_PREFIX = 'superfluid:s6:baseline:'
@@ -24,10 +25,6 @@ const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as
 
 // Scopes getLogs to just creation events instead of every log the factory has ever emitted
 // (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
-const LEADERBOARD_CREATED_EVENT = parseAbiItem(
-  'event LeaderboardCreated(address indexed leaderboardAddress, address indexed admin, address indexed beneficiaryAddress, string name, address seedMarkeeAddress)'
-)
-
 // Leaderboards excluded from totalPlatformFunds — clearly gamed with recycled ETH
 const GAMED_LEADERBOARD_ADDRESSES = new Set([
   '0x1b4eb52953d865e0dde1c856c2ead826581e2904', // Vivek wants to play (120 ETH)
@@ -62,53 +59,6 @@ function getClient() {
 // that called createLeaderboard. Results are cached permanently in KV since
 // creator never changes.
 
-async function resolveCreators(
-  client: ReturnType<typeof getClient>,
-  addresses: readonly `0x${string}`[],
-): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:sf:${a.toLowerCase()}`)
-  if (keys.length === 0) return []
-  const cached = await kv.mget<(string | null)[]>(...keys)
-
-  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
-  if (missingIndices.length === 0) return cached
-
-  try {
-    const logs = await client.getLogs({
-      address: SUPERFLUID_FACTORY_ADDRESS,
-      event: LEADERBOARD_CREATED_EVENT,
-      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
-      toBlock: 'latest',
-    })
-
-    // topics[1] = leaderboard address (first indexed param in the factory event)
-    const lbToTxHash = new Map<string, `0x${string}`>()
-    for (const log of logs) {
-      if (log.topics[1]) {
-        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
-        lbToTxHash.set(addr, log.transactionHash)
-      }
-    }
-
-    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
-    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
-    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
-    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
-
-    await Promise.all(missingIndices.map(i => {
-      const addr = addresses[i].toLowerCase()
-      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
-      if (creator) {
-        cached[i] = creator
-        return kv.set(keys[i], creator) // no TTL — creator never changes
-      }
-    }))
-  } catch (e: any) {
-    console.error('[superfluid/leaderboards] creator lookup error:', e.message)
-  }
-
-  return cached
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -182,7 +132,12 @@ export async function GET(request: Request) {
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'sf',
+        factories: [SUPERFLUID_FACTORY_ADDRESS],
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+        logLabel: 'superfluid/leaderboards',
+      }),
       boostedListPromise,
     ])
 
