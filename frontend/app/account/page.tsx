@@ -32,6 +32,7 @@ const PURP   = '#7B6AF4'
 const GOLD   = '#FFD45E'
 const SILVER = '#C7CCD6'
 const BRONZE = '#CD7F32'
+const AMBER  = '#FFB020'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BaseLeaderboard {
@@ -105,6 +106,16 @@ interface MyMessage {
   // Legacy TopDawg (subgraph-sourced) vs v1.x LeaderboardFactory (RPC-sourced) — determines
   // whether MarkeeSignModal's RPC-only useLeaderboardDetail can safely target this markee's board.
   isLegacy: boolean
+  // Verification data for the leaderboard this message lives on -- absent for legacy
+  // subgraph-sourced rows (the subgraph query doesn't carry it), which just fall back to the
+  // "Add to Your Site" / blank state like any other missing-data default in this file.
+  platform?: string | null
+  admin?: string | null
+  verifiedUrls?: string[]
+  linkedFiles?: LinkedFile[]
+  siteUrl?: string | null
+  repoFullName?: string | null
+  repoHtmlUrl?: string | null
 }
 
 interface FundedMessage {
@@ -120,6 +131,13 @@ interface FundedMessage {
   strategy?: 'fixed' | 'streaming'
   rank?: number | null
   flowRateRaw?: string
+  platform?: string | null
+  admin?: string | null
+  verifiedUrls?: string[]
+  linkedFiles?: LinkedFile[]
+  siteUrl?: string | null
+  repoFullName?: string | null
+  repoHtmlUrl?: string | null
 }
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -313,7 +331,7 @@ function Overview({ raised, active, bought, contributed, loaded }: { raised: big
 }
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
-type TabId = 'markees' | 'bought' | 'funded'
+type TabId = 'pending' | 'live' | 'archive' | 'bought'
 
 function useNarrow() {
   const [narrow, setNarrow] = useState(false)
@@ -327,17 +345,18 @@ function useNarrow() {
   return narrow
 }
 
-function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { markees: number; bought: number; funded: number } }) {
+function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number } }) {
   const narrow = useNarrow()
   const [menuOpen, setMenuOpen] = useState(false)
-  const items: { key: TabId; label: string; n: number }[] = [
-    { key: 'markees', label: 'My Markees',           n: counts.markees },
-    { key: 'bought',  label: "Messages I've Bought", n: counts.bought  },
-    { key: 'funded',  label: "Messages I've Funded", n: counts.funded  },
+  const items: { key: TabId; label: string; n: number; amber?: boolean }[] = [
+    ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Pending Setup', n: counts.pending, amber: true }] : []),
+    { key: 'live',  label: 'My Live Markees',        n: counts.live },
+    ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive }] : []),
+    { key: 'bought', label: "Messages I've Bought",  n: counts.bought },
   ]
 
   if (narrow) {
-    const active = items.find(it => it.key === tab)!
+    const active = items.find(it => it.key === tab) ?? items[0]
     return (
       <div style={{ position: 'relative', borderBottom: `1px solid ${BORDER}` }}>
         <button
@@ -346,7 +365,7 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
         >
           <Menu size={18} color={MUTED} style={{ flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 15, flex: 1, textAlign: 'left' }}>{active.label}</span>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: PINK, background: `${PINK}1E`, borderRadius: 99, padding: '1px 8px', flexShrink: 0 }}>{active.n}</span>
+          <span style={{ fontFamily: MONO, fontSize: 12, color: active.amber ? AMBER : PINK, background: `${active.amber ? AMBER : PINK}1E`, borderRadius: 99, padding: '1px 8px', flexShrink: 0 }}>{active.n}</span>
           <ChevronDown size={16} color={MUTED} style={{ flexShrink: 0, transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 140ms' }} />
         </button>
         {menuOpen && (
@@ -355,14 +374,15 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,0.5)', zIndex: 20, overflow: 'hidden' }}>
               {items.map(it => {
                 const on = tab === it.key
+                const accent = it.amber ? AMBER : PINK
                 return (
                   <button
                     key={it.key}
                     onClick={() => { setTab(it.key); setMenuOpen(false) }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: on ? 'rgba(248,151,254,0.06)' : 'transparent', border: 'none', cursor: 'pointer', padding: '12px 16px', color: on ? TEXT : TEXT2, fontWeight: on ? 700 : 500, fontSize: 14, fontFamily: SANS, textAlign: 'left' }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: on ? `${accent}0F` : 'transparent', border: 'none', cursor: 'pointer', padding: '12px 16px', color: on ? TEXT : TEXT2, fontWeight: on ? 700 : 500, fontSize: 14, fontFamily: SANS, textAlign: 'left' }}
                   >
                     <span style={{ flex: 1 }}>{it.label}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: on ? PINK : MUTED, background: on ? `${PINK}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: on ? accent : MUTED, background: on ? `${accent}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
                   </button>
                 )
               })}
@@ -384,10 +404,11 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
       <div style={{ display: 'flex', gap: 4, flex: 1 }}>
         {items.map(it => {
           const on = tab === it.key
+          const accent = it.amber ? AMBER : PINK
           return (
-            <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : MUTED, fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? PINK : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : (it.amber ? AMBER : MUTED), fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? accent : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
               {it.label}
-              <span style={{ fontFamily: MONO, fontSize: 12, color: on ? PINK : MUTED, background: on ? `${PINK}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
+              <span style={{ fontFamily: MONO, fontSize: 12, color: on ? accent : (it.amber ? AMBER : MUTED), background: on ? `${accent}1E` : `${it.amber ? AMBER : MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
             </button>
           )
         })}
@@ -1057,9 +1078,46 @@ function RankingCell({ isTop, rank }: {
 }
 
 // ── Messages I've Bought table ────────────────────────────────────────────────
-const MSG_COLS = '160px 1fr 90px 120px 170px 100px'
+const MSG_COLS = '190px 1fr 90px 120px 170px 100px'
 
-function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void }) {
+// Bought/Funded rows are messages on OTHER people's leaderboards -- "Markee Name" (the creator's own
+// label for their board) isn't meaningful to a buyer the way it is on the creator's own dashboard
+// tabs. What matters here is where the board is actually served, same as every other table on this
+// page, or -- if it isn't served anywhere verified yet -- a way to fix that from here rather than
+// only from the board's own creator's account.
+function toServedOnLb(m: MyMessage | FundedMessage): AnyLeaderboard {
+  const base = {
+    address: m.strategyId, name: m.strategyName, totalFunds: '', totalFundsRaw: '0',
+    markeeCount: 0, admin: m.admin ?? '', topMessage: null, topFundsAddedRaw: '0',
+    strategy: m.strategy, verifiedUrls: m.verifiedUrls ?? [], linkedFiles: m.linkedFiles ?? [],
+  }
+  if (m.platform === 'github') {
+    return { ...base, platform: 'github', repoFullName: m.repoFullName ?? null, repoAvatarUrl: null, repoHtmlUrl: m.repoHtmlUrl ?? null, filePath: null, linkedFiles: m.linkedFiles ?? [] }
+  }
+  if (m.platform === 'superfluid') return { ...base, platform: 'superfluid' }
+  return {
+    ...base, platform: 'website', creator: null, logoUrl: null, siteUrl: m.siteUrl ?? null,
+    verifiedUrl: (m.verifiedUrls ?? [])[0] ?? null, verifiedUrls: m.verifiedUrls ?? [], status: 'pending', isLegacy: false,
+  }
+}
+
+function ServedOnOrAddToSite({ m, onAddToSite }: { m: MyMessage | FundedMessage; onAddToSite: (m: any) => void }) {
+  const lb = toServedOnLb(m)
+  const verified = isVerifiedLeaderboard(lb, { verifiedUrls: m.verifiedUrls, linkedFiles: m.linkedFiles })
+  if (needsVerificationGate(lb) && !verified) {
+    return (
+      <button
+        onClick={e => { e.stopPropagation(); onAddToSite(m) }}
+        style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
+      >
+        Add to Your Site
+      </button>
+    )
+  }
+  return <ServedOnCell lb={lb} />
+}
+
+function BoughtTable({ items, ethPrice, onEdit, onAddFunds, onAddToSite }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void; onAddToSite: (m: MyMessage) => void }) {
   const { sortKey, sortDir, onSort, sorted } = useSortableTable(
     items, 'spent',
     (key, a, b) => compareBySpentOrRank(key, a, b, x => x.totalFundsAdded),
@@ -1070,7 +1128,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Markee Name', 'Your Message', 'Strategy'] as const).map((h, i) => (
+          {(['Served On', 'Your Message', 'Strategy'] as const).map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1093,7 +1151,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
+              <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', minWidth: 0 }}>
                 <button
                   onClick={e => { e.stopPropagation(); onEdit(m) }}
@@ -1112,7 +1170,7 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
                 <div style={{ textAlign: 'right' }}>
                   {isStreaming
                     ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                    : <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
+                    : <span style={{ color: MUTED }}>—</span>
                   }
                 </div>
               </div>
@@ -1126,9 +1184,9 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds }: { items: MyMessage
 }
 
 // ── Messages I've Funded table ────────────────────────────────────────────────
-const FUNDED_COLS = '160px 1fr 90px 120px 170px 100px'
+const FUNDED_COLS = '190px 1fr 90px 120px 170px 100px'
 
-function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void }) {
+function FundedTable({ items, ethPrice, onAddFunds, onAddToSite }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void; onAddToSite: (m: FundedMessage) => void }) {
   const { sortKey, sortDir, onSort, sorted } = useSortableTable(
     items, 'spent',
     (key, a, b) => compareBySpentOrRank(key, a, b, x => BigInt(x.totalContributed)),
@@ -1139,7 +1197,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 800, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Markee Name', 'Current Message', 'Strategy'] as const).map((h, i) => (
+          {(['Served On', 'Current Message', 'Strategy'] as const).map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
           ))}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1162,7 +1220,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.strategyName}</span>
+              <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
               <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
               <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
@@ -1170,7 +1228,7 @@ function FundedTable({ items, ethPrice, onAddFunds }: { items: FundedMessage[]; 
                 <div style={{ textAlign: 'right' }}>
                   {isStreaming
                     ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                    : <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
+                    : <span style={{ color: MUTED }}>—</span>
                   }
                 </div>
               </div>
@@ -1268,9 +1326,8 @@ export default function AccountPage() {
   const [isLoadingFunded, setIsLoadingFunded]   = useState(false)
 
   // UI state
-  const [tab, setTab]                         = useState<TabId>('markees')
+  const [tab, setTab]                         = useState<TabId>('live')
   const [archived, setArchived]               = useState<string[]>([])
-  const [archivedExpanded, setArchivedExpanded] = useState(false)
   const [manageTarget, setManageTarget]           = useState<AnyLeaderboard | null>(null)
   const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
   const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
@@ -1376,6 +1433,13 @@ export default function AccountPage() {
           rank: m.rank ?? null,
           flowRateRaw: m.flowRateRaw ?? '0',
           isLegacy: false,
+          platform: m.platform ?? null,
+          admin: m.admin ?? null,
+          verifiedUrls: m.verifiedUrls ?? [],
+          linkedFiles: m.linkedFiles ?? [],
+          siteUrl: m.siteUrl ?? null,
+          repoFullName: m.repoFullName ?? null,
+          repoHtmlUrl: m.repoHtmlUrl ?? null,
         })))
         .catch(() => [])
 
@@ -1506,8 +1570,21 @@ export default function AccountPage() {
   const archivedBoards = useMemo(() =>
     allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
 
+  // draftBoards is exactly the "Pending Setup" tab's contents (awaitingVerification + inactive,
+  // both already archived-filtered) -- used here only as its count/visibility source; the tab body
+  // itself still renders the two underlying memos directly (see the JSX below) so nothing about
+  // their own filtering changes.
   const draftBoards = useMemo(() =>
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
+
+  // Evict off a tab the instant its last item disappears (e.g. the last pending board just got
+  // activated) -- otherwise the tab bar would either keep showing an empty selected tab or, since
+  // Pending Setup/Archive hide themselves at count 0, silently strand the user on a tab with no
+  // button pointing at it anymore.
+  useEffect(() => {
+    if (tab === 'pending' && draftBoards.length === 0) setTab('live')
+    if (tab === 'archive' && archivedBoards.length === 0) setTab('live')
+  }, [tab, draftBoards.length, archivedBoards.length])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
@@ -1588,15 +1665,13 @@ export default function AccountPage() {
         {mounted && hasWallet ? (
           <>
             <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
-              <Tabs tab={tab} setTab={setTab} counts={{ markees: allBoards.length, bought: myMessages.length, funded: fundedMessages.length }} />
+              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length }} />
             </div>
 
             <div style={{ paddingTop: 28 }}>
-              {/* ── My Markees ── */}
-              {tab === 'markees' && (
-                allBoards.length === 0 && !isLoading ? (
-                  <Empty icon="🪧" title="No Markees yet" body="Create your first sign on a platform and start raising funds wherever your audience is." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
-                ) : isLoading ? (
+              {/* ── Pending Setup ── */}
+              {tab === 'pending' && (
+                isLoading ? (
                   <div style={{ overflow: 'auto' }}>
                     <div style={{ minWidth: 640, background: BG2 }}>
                       {[1, 2, 3, 4, 5].map(i => (
@@ -1637,82 +1712,96 @@ export default function AccountPage() {
                         />
                       </div>
                     )}
-
-                    {/* Active Markees */}
-                    {activeBoards.length > 0 && (
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Live Markee Signs</h2>
-                          <CountBadge n={activeBoards.length} />
-                        </div>
-                        <ActiveTable markees={activeBoards} onManage={handleManage} ethPrice={ethPrice} />
-                      </div>
-                    )}
-
-                    {/* No active markees prompt */}
-                    {activeBoards.length === 0 && (awaitingVerification.length > 0 || inactiveBoards.length > 0) && (
-                      <p style={{ color: MUTED, fontSize: 14 }}>No integrated signs yet. Complete setup above to go live.</p>
-                    )}
-
-                    {/* Archived */}
-                    {archivedBoards.length > 0 && (
-                      <div>
-                        <button
-                          onClick={() => setArchivedExpanded(v => !v)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 0 16px', width: '100%', textAlign: 'left' as const }}
-                        >
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: MUTED }}>Archived</h2>
-                          <CountBadge n={archivedBoards.length} />
-                          <ChevronDown size={16} style={{ color: MUTED, marginLeft: 'auto', transform: archivedExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-                        </button>
-                        {archivedExpanded && (
-                          <ArchivedTable
-                            markees={archivedBoards}
-                            onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
-                          />
-                        )}
-                      </div>
-                    )}
                   </div>
                 )
               )}
 
-              {/* ── Messages I've Bought ── */}
+              {/* ── My Live Markees ── */}
+              {tab === 'live' && (
+                isLoading ? (
+                  <div style={{ overflow: 'auto' }}>
+                    <div style={{ minWidth: 640, background: BG2 }}>
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : activeBoards.length === 0 ? (
+                  <Empty icon="🪧" title="No live Markees yet" body="Once a Markee is funded and integrated, it shows up here fully live." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
+                ) : (
+                  <ActiveTable markees={activeBoards} onManage={handleManage} ethPrice={ethPrice} />
+                )
+              )}
+
+              {/* ── Archive ── */}
+              {tab === 'archive' && (
+                isLoading ? (
+                  <div style={{ overflow: 'auto' }}>
+                    <div style={{ minWidth: 600, background: BG2 }}>
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <ArchivedTable
+                    markees={archivedBoards}
+                    onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
+                  />
+                )
+              )}
+
+              {/* ── Messages I've Bought (Bought + Funded, stacked) ── */}
               {tab === 'bought' && (
-                isLoadingMessages ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 800, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+                  {isLoadingMessages ? (
+                    <div style={{ overflow: 'auto' }}>
+                      <div style={{ minWidth: 800, background: BG2 }}>
+                        {[1, 2, 3, 4, 5].map(i => (
+                          <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                            {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ) : myMessages.length === 0 ? (
-                  <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
-                ) : (
-                  <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} />
-                )
-              )}
+                  ) : myMessages.length > 0 ? (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Bought</h2>
+                        <CountBadge n={myMessages.length} />
+                      </div>
+                      <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
+                    </div>
+                  ) : null}
 
-              {/* ── Messages I've Funded ── */}
-              {tab === 'funded' && (
-                isLoadingFunded ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 800, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
+                  {isLoadingFunded ? (
+                    <div style={{ overflow: 'auto' }}>
+                      <div style={{ minWidth: 800, background: BG2 }}>
+                        {[1, 2, 3, 4, 5].map(i => (
+                          <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                            {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ) : fundedMessages.length === 0 ? (
-                  <Empty icon="🪧" title="No funded messages yet" body="When you add funds to someone else's Markee, those contributions appear here." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
-                ) : (
-                  <FundedTable items={fundedMessages} ethPrice={ethPrice} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt(m.totalContributed), topFunds: BigInt(m.topFundsRaw), name: m.name })} />
-                )
+                  ) : fundedMessages.length > 0 ? (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Funded</h2>
+                        <CountBadge n={fundedMessages.length} />
+                      </div>
+                      <FundedTable items={fundedMessages} ethPrice={ethPrice} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt(m.totalContributed), topFunds: BigInt(m.topFundsRaw), name: m.name })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
+                    </div>
+                  ) : null}
+
+                  {!isLoadingMessages && !isLoadingFunded && myMessages.length === 0 && fundedMessages.length === 0 && (
+                    <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
+                  )}
+                </div>
               )}
             </div>
           </>
