@@ -35,6 +35,7 @@ import { useUpdateStreamRateFlow } from '@/hooks/useUpdateStreamRateFlow'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { useTopSince } from '@/hooks/useTopSince'
+import { useLifetimeStreamed } from '@/hooks/useLifetimeStreamed'
 import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { formatLiveEth } from '@/hooks/useLiveBalance'
@@ -528,13 +529,23 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     const id = setInterval(() => setFeaturedNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [isOpen, view, manageTopSinceMine])
-  // useFlowingAmount (not useLiveBalance) here specifically: this needs to tick up from
-  // topSince.since, a timestamp that can be well in the past -- useLiveBalance always re-anchors to
-  // "now", which would silently reset this to a since-page-load total instead of since-became-top.
-  // Frozen the same way once manageStreamGone, for the same reason.
-  const manageStillStreaming = manageTopSinceMine && !manageStreamGone
-  const manageStreamedDecimals = decimalsForWeiRate(manageStillStreaming ? (rateFlow.currentRate ?? 0n) : 0n)
-  const manageStreamedWei = useFlowingAmount(0n, manageStillStreaming ? topSince!.since : 0, manageStillStreaming ? (rateFlow.currentRate ?? 0n) : 0n)
+  // Exact lifetime streamed/refunded, replayed server-side from on-chain events (see
+  // useLifetimeStreamed / the route it calls) -- unlike the old topSince-only calc this survives
+  // being outbid and re-promoted, and nets out the GDA refund a non-#1 backer gets automatically.
+  const lifetime = useLifetimeStreamed(
+    view === 'manage' ? boardAddress : undefined,
+    view === 'manage' && target ? (target.address as Address) : undefined,
+    view === 'manage' && activeAddress ? (activeAddress as Address) : undefined,
+  )
+  // manageStreamGone forces both to 0 the instant this session's own cancel tx confirms, same as
+  // managePendingEthWei above -- otherwise this would keep ticking off the last-fetched server state
+  // for a beat until the next poll catches up.
+  const manageLiveIsTop = !manageStreamGone && (lifetime?.isTop ?? false)
+  const manageLiveRate = manageStreamGone ? 0n : (lifetime?.currentRateWei ?? 0n)
+  const manageGrossStreamedWei = useFlowingAmount(lifetime?.streamedWei ?? 0n, lifetime?.since ?? 0, manageLiveIsTop ? manageLiveRate : 0n)
+  const manageRefundedWei = useFlowingAmount(lifetime?.refundedWei ?? 0n, lifetime?.since ?? 0, !manageLiveIsTop && manageLiveRate > 0n ? manageLiveRate : 0n)
+  const manageNetStreamedWei = manageGrossStreamedWei > manageRefundedWei ? manageGrossStreamedWei - manageRefundedWei : 0n
+  const manageStreamedDecimals = decimalsForWeiRate(manageLiveIsTop ? manageLiveRate : 0n)
 
   // Inline message edit (pencil next to "Message You're Funding") — MarkeeABI.setMessage direct on
   // the markee's own address, same call StreamingBoardDetail's StreamMessageEditModal makes.
@@ -1166,12 +1177,16 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </p>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
-                        <div>
-                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Total streamed</div>
-                          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>
-                            {manageTopSinceMine ? `${formatLiveEth(manageStreamedWei, manageStreamedDecimals)} ETH` : '—'}
+                        <BtnTooltip reason={lifetime && manageRefundedWei > DISPLAY_DUST_WEI
+                          ? `Streamed ${formatLiveEth(manageGrossStreamedWei, manageStreamedDecimals)} ETH · Refunded ${formatLiveEth(manageRefundedWei, manageStreamedDecimals)} ETH`
+                          : null}>
+                          <div>
+                            <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Total streamed</div>
+                            <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>
+                              {lifetime ? `${formatLiveEth(manageNetStreamedWei, manageStreamedDecimals)} ETH` : '—'}
+                            </div>
                           </div>
-                        </div>
+                        </BtnTooltip>
                         <div>
                           <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>ETHx balance</div>
                           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>{Number(formatEther(ethxBalance ?? 0n)).toFixed(5)} ETH</div>
