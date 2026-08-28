@@ -45,7 +45,7 @@ export async function DELETE(request: NextRequest) {
   // stored token untouched.
   if (sessionId) {
     const session = await resolveSession(sessionId)
-    if (session) await destroySession(sessionId, session.githubUserId)
+    if (session) await destroySession(sessionId)
   }
 
   const res = NextResponse.json({ disconnected: true }, { headers: NO_CACHE })

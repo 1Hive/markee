@@ -49,9 +49,11 @@ export async function resolveSession(sessionId: string | undefined): Promise<Git
   return { githubUserId, ...user }
 }
 
-export async function destroySession(sessionId: string, githubUserId: string): Promise<void> {
+// Only the session mapping is removed -- github:user:{uid} holds the OAuth token shared by every
+// session for that GitHub account (see resolveSession), so deleting it here would silently break
+// concurrent sessions (e.g. a second browser/device) on a single logout.
+export async function destroySession(sessionId: string): Promise<void> {
   await kv.del(`github:session:${sessionId}`)
-  await kv.del(`github:user:${githubUserId}`)
 }
 
 export function sessionCookieOptions(requestUrl: string) {
