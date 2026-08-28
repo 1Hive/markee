@@ -348,11 +348,11 @@ function useNarrow() {
 function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number } }) {
   const narrow = useNarrow()
   const [menuOpen, setMenuOpen] = useState(false)
-  const items: { key: TabId; label: string; n: number; amber?: boolean }[] = [
+  const items: { key: TabId; label: string; n: number; amber?: boolean; muted?: boolean }[] = [
     ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Pending Setup', n: counts.pending, amber: true }] : []),
     { key: 'live',  label: 'My Live Markees',        n: counts.live },
-    ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive }] : []),
     { key: 'bought', label: "Messages I've Bought",  n: counts.bought },
+    ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive, muted: true }] : []),
   ]
 
   if (narrow) {
@@ -374,7 +374,7 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,0.5)', zIndex: 20, overflow: 'hidden' }}>
               {items.map(it => {
                 const on = tab === it.key
-                const accent = it.amber ? AMBER : PINK
+                const accent = it.amber ? AMBER : it.muted ? MUTED : PINK
                 return (
                   <button
                     key={it.key}
@@ -404,7 +404,7 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
       <div style={{ display: 'flex', gap: 4, flex: 1 }}>
         {items.map(it => {
           const on = tab === it.key
-          const accent = it.amber ? AMBER : PINK
+          const accent = it.amber ? AMBER : it.muted ? MUTED : PINK
           return (
             <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : (it.amber ? AMBER : MUTED), fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? accent : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
               {it.label}
@@ -962,31 +962,32 @@ function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[
 }
 
 // ── Archived Markees table ────────────────────────────────────────────────────
-function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
+// Most archived boards were never activated, so "Served on"/"Current message"/"Total raised" are
+// almost always empty here -- Markee Name + Beneficiary (the same fmtAddr(lb.admin) pattern
+// ActivationTable already uses; admin() is the beneficiary here, not the creator) is the info that's
+// actually meaningful for a board someone set aside before it ever went live.
+const ARCHIVED_COLS = '1fr 220px 116px'
 
+function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
+  const fmtAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 600, background: BG2, opacity: 0.8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Served on</span>
-          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-            <SortHead label="Total raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="left" />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current message</span>
-          <span />
+      <div style={{ minWidth: 500, background: BG2, opacity: 0.8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          {['Markee Name', 'Beneficiary Address', ''].map((h, i) => (
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 2 ? 'right' as const : 'left' as const }}>{h}</span>
+          ))}
         </div>
-        {sorted.map(lb => (
+        {markees.map(lb => (
           <div
             key={lb.address}
             onClick={() => window.location.href = `/markee/${lb.address}`}
-            style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+            style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
-            <ServedOnCell lb={lb} />
-            <span style={{ fontSize: 12.5, color: BLUE, fontFamily: MONO, fontWeight: 600 }}>{lb.totalFunds}</span>
-            <span style={{ fontFamily: MONO, fontSize: 13, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>{lb.topMessage || 'No message yet'}</span>
+            <MarkeeNameCell lb={lb} />
+            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtAddr(lb.admin)}</span>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
                 onClick={e => { e.stopPropagation(); onUnarchive(lb.address) }}
@@ -1326,8 +1327,28 @@ export default function AccountPage() {
   const [isLoadingFunded, setIsLoadingFunded]   = useState(false)
 
   // UI state
-  const [tab, setTab]                         = useState<TabId>('live')
+  // Optimistically default to Pending Setup -- the eviction effect below redirects to My Live
+  // Markees once loading actually finishes and confirms there's genuinely nothing pending, so a
+  // returning user with everything already live doesn't get stuck staring at an empty tab.
+  const [tab, setTab]                         = useState<TabId>('pending')
   const [archived, setArchived]               = useState<string[]>([])
+  // "Archive" is purely a local dashboard preference -- there's no on-chain or backend concept of
+  // it -- so without persisting it, every reload silently un-archives everything. Keyed per wallet
+  // in localStorage; the ref tracks which wallet's list is currently loaded so the save effect below
+  // can't fire with a stale empty array before the load effect has actually run for this wallet.
+  const archivedLoadedForRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeAddress) return
+    try {
+      const raw = localStorage.getItem(`markee:archived:${activeAddress.toLowerCase()}`)
+      setArchived(raw ? JSON.parse(raw) : [])
+    } catch { setArchived([]) }
+    archivedLoadedForRef.current = activeAddress.toLowerCase()
+  }, [activeAddress])
+  useEffect(() => {
+    if (!activeAddress || archivedLoadedForRef.current !== activeAddress.toLowerCase()) return
+    try { localStorage.setItem(`markee:archived:${activeAddress.toLowerCase()}`, JSON.stringify(archived)) } catch { /* non-critical */ }
+  }, [archived, activeAddress])
   const [manageTarget, setManageTarget]           = useState<AnyLeaderboard | null>(null)
   const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
   const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
@@ -1577,14 +1598,16 @@ export default function AccountPage() {
   const draftBoards = useMemo(() =>
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
 
-  // Evict off a tab the instant its last item disappears (e.g. the last pending board just got
-  // activated) -- otherwise the tab bar would either keep showing an empty selected tab or, since
-  // Pending Setup/Archive hide themselves at count 0, silently strand the user on a tab with no
-  // button pointing at it anymore.
+  // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
+  // or off the default Pending Setup landing tab once loading confirms there was never anything
+  // pending to begin with. Gated on !isLoading -- draftBoards/archivedBoards both start at length 0
+  // before allBoards has loaded, so without this guard a user who does have pending boards gets
+  // bounced to My Live Markees before the data even arrives, and never bounced back.
   useEffect(() => {
+    if (isLoading) return
     if (tab === 'pending' && draftBoards.length === 0) setTab('live')
     if (tab === 'archive' && archivedBoards.length === 0) setTab('live')
-  }, [tab, draftBoards.length, archivedBoards.length])
+  }, [tab, isLoading, draftBoards.length, archivedBoards.length])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
@@ -1739,10 +1762,10 @@ export default function AccountPage() {
               {tab === 'archive' && (
                 isLoading ? (
                   <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 600, background: BG2 }}>
+                    <div style={{ minWidth: 500, background: BG2 }}>
                       {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACT_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                          {[1, 2, 3].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
                         </div>
                       ))}
                     </div>

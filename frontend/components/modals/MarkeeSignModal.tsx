@@ -564,7 +564,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const btnDisabled = busy || isSuccess || blocksOnBalance
   const btnDisabledReason = busy ? 'Transaction in progress' : blocksOnBalance ? "You don't have enough ETH for this" : null
 
-  const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE' : 'CHANGE THE MARKEE SIGN'
+  const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
+    : fundedMarkees.length === 0 ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
 
   return (
     <div
