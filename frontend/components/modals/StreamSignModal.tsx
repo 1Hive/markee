@@ -37,7 +37,7 @@ import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { useTopSince } from '@/hooks/useTopSince'
 import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
-import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
+import { formatLiveEth } from '@/hooks/useLiveBalance'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -505,7 +505,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // Rate forced to 0 once manageStreamGone -- otherwise this keeps ticking off managePending's own
   // (slower-to-refetch) rate for a beat after the cancel tx has already confirmed.
   const manageEthDecimals = decimalsForWeiRate(managePending.ratePerSec)
-  const managePendingEthWei = useLiveBalance(managePending.pendingWei, manageStreamGone ? 0n : managePending.ratePerSec, manageEthDecimals)
+  // useFlowingAmount (not useLiveBalance) here specifically: pendingWei is a snapshot true as of
+  // managePending.snapshotAt, not "now". useLiveBalance re-anchors to whenever this hook itself last
+  // ran, silently understating everything accrued between that on-chain snapshot and this render --
+  // exactly the "Markee earned doesn't match what the tx actually pays out" gap Gossman flagged.
+  // ClaimModal computes the real claim amount the same way (pending.pendingWei, pending.snapshotAt).
+  const managePendingEthWei = useFlowingAmount(managePending.pendingWei, managePending.snapshotAt, manageStreamGone ? 0n : managePending.ratePerSec)
   const manageEarnedMarkee = estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePendingEthWei)), managePending.feeBps)
   const manageMarkeeRatePerSec = managePending.mintsMarkee
     ? estimateStreamingSettlementMarkeeTokens(Number(formatEther(managePending.ratePerSec)), managePending.feeBps)
@@ -1172,7 +1177,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2 }}>{Number(formatEther(ethxBalance ?? 0n)).toFixed(5)} ETH</div>
                         </div>
                         <div>
-                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Funds Remaining</div>
+                          <div style={{ fontFamily: MONO, fontSize: 9.5, color: MUTED, letterSpacing: 0.5, textTransform: 'uppercase' }}>Runs out in</div>
                           <div style={{ fontFamily: MONO, fontSize: 13, color: manageLowRunway ? '#FF8E8E' : TEXT, fontWeight: manageLowRunway ? 700 : 400, marginTop: 2 }}>
                             {manageStatus !== 'cancelled' ? `~${manageRunwayDays.toFixed(1)} days` : '—'}
                           </div>
