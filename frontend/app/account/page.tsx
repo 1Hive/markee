@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, ExternalLink, Code2, Pencil, X, ChevronDown, Info, Menu } from 'lucide-react'
+import { Globe2, Github, Zap, Pencil, ChevronDown, Info, Menu } from 'lucide-react'
 import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
@@ -20,11 +20,14 @@ import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
+import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
+import { type StreamStatus, streamStatusOf, StreamStatusIcon, TxHistoryToggle } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
+import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
+import type { Abi } from 'viem'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const SANS   = 'Manrope, system-ui, sans-serif'
@@ -215,11 +218,6 @@ function platformHref(lb: AnyLeaderboard) {
 
 function detailUrl(lb: AnyLeaderboard) {
   return `/markee/${lb.address}`
-}
-
-// Fixed-price website boards: go through the URL verify/integrate/edit management flows.
-function isFixedWebsiteBoard(lb: AnyLeaderboard): lb is WebsiteLeaderboard {
-  return lb.platform === 'website' && lb.strategy !== 'streaming'
 }
 
 // Extract hostname from a URL for use with logo.dev. Returns null if unparseable.
@@ -738,7 +736,7 @@ function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderb
 // ── Active Markees table ──────────────────────────────────────────────────────
 const ACT_COLS = '200px 110px 1fr 116px'
 
-function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
+function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: () => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
 
@@ -766,8 +764,29 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
     </button>
   )
 
+  // Only when onAddToSite is passed (My Live Markees) is the dropdown reachable with zero or one
+  // integration -- other callers keep the original behavior of only offering a dropdown once there's
+  // more than one to actually pick between.
+  const chevron = onAddToSite && (
+    <button
+      onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
+      aria-label={open ? 'Hide integrations' : 'Show all integrations'}
+      style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer' }}
+    >
+      <ChevronDown size={12} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+    </button>
+  )
+
   const dropdown = (items: Array<{ href: string; label: string }>) => open && (
     <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 6, minWidth: 220, zIndex: 50, boxShadow: '0 16px 44px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {onAddToSite && (
+        <button
+          onClick={e => { e.stopPropagation(); setOpen(false); onAddToSite() }}
+          style={{ color: PINK, background: `${PINK}14`, border: `1px solid rgba(248,151,254,0.3)`, fontSize: 12, fontWeight: 700, fontFamily: MONO, padding: '8px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: items.length > 0 ? 4 : 0 }}
+        >
+          + Add to Your Site
+        </button>
+      )}
       {items.map(({ href, label }) => (
         <a
           key={href}
@@ -814,15 +833,21 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
             {gh.repoFullName || 'GitHub'}
           </span>
         )}
-        {extras > 0 && pill(extras)}
+        {onAddToSite ? chevron : extras > 0 && pill(extras)}
         {dropdown(files.map(f => ({ href: fileUrl(f), label: f.filePath })))}
       </span>
     )
   }
 
   if (lb.platform === 'superfluid') {
+    // Verification is address-based, independent of platform tag (see the comment above) -- a
+    // Superfluid-platform board can still have a verified website/GitHub integration attached, so
+    // this branch gets the same add/view dropdown as the others rather than a dead-end label.
+    const sfFiles = (lb.linkedFiles ?? []).filter(f => f.verified)
+    const sfUrls = lb.verifiedUrls ?? []
+    const sfFileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
         {iconBox(
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src="/partners/superfluid.png" alt="" width={16} height={16} style={{ objectFit: 'contain' }} />
@@ -830,6 +855,11 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
           {lb.name || 'Superfluid'}
         </span>
+        {onAddToSite && chevron}
+        {dropdown([
+          ...sfFiles.map(f => ({ href: sfFileUrl(f), label: f.filePath })),
+          ...sfUrls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })),
+        ])}
       </span>
     )
   }
@@ -863,7 +893,7 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
           {lb.name || fmtAddr(lb.address)}
         </span>
       )}
-      {extras > 0 && pill(extras)}
+      {onAddToSite ? chevron : extras > 0 && pill(extras)}
       {dropdown(urls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })))}
     </span>
   )
@@ -897,7 +927,9 @@ function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: bo
   )
 }
 
-function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onManage: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
+function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, ethPrice }: {
+  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; ethPrice: number | null
+}) {
   const isStreaming = lb.strategy === 'streaming'
   const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
   const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
@@ -905,11 +937,11 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
   return (
     <div
       onClick={() => window.location.href = `/markee/${lb.address}`}
-      style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
+      style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '13px 16px', borderBottom: expanded ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
-      <ServedOnCell lb={lb} />
+      <ServedOnCell lb={lb} onAddToSite={onAddToSite} />
       <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
         {lb.topMessage || 'No message yet'}
       </span>
@@ -923,21 +955,128 @@ function ActiveTableRow({ lb, onManage, ethPrice }: { lb: AnyLeaderboard; onMana
           : <span style={{ color: MUTED }}>—</span>
         }
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={e => { e.stopPropagation(); onManage(lb) }}
-          style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-        >
-          Manage
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+        <TxHistoryToggle expanded={expanded} onClick={onToggleExpand} rank={0} />
       </div>
     </div>
   )
 }
 
-function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[]; onManage: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
+// Wraps ActiveTableRow with the click-to-expand admin panel -- replaces the old bare "Manage" button
+// (View leaderboard / Edit website info / Embed) entirely; those actions plus the previously
+// unexposed admin-only contract settings now live in the panel below, gated to the connected admin.
+function LiveMarkeeAdminRow({ lb, onAddToSite, ethPrice, activeAddress, onOpenEditWebsite, onOpenManageStream, onSuccess }: {
+  lb: AnyLeaderboard
+  onAddToSite: () => void
+  ethPrice: number | null
+  activeAddress: string | undefined
+  onOpenEditWebsite: () => void
+  onOpenManageStream: () => void
+  onSuccess: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div>
+      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} ethPrice={ethPrice} />
+      {expanded && (
+        <LiveMarkeeAdminPanel
+          lb={lb}
+          activeAddress={activeAddress}
+          onOpenEditWebsite={onOpenEditWebsite}
+          onOpenManageStream={onOpenManageStream}
+          onSuccess={onSuccess}
+        />
+      )}
+    </div>
+  )
+}
+
+const actionBtnStyle = {
+  background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7,
+  padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS,
+  whiteSpace: 'nowrap' as const, textDecoration: 'none' as const, display: 'inline-flex',
+}
+
+function LiveMarkeeAdminPanel({ lb, activeAddress, onOpenEditWebsite, onOpenManageStream, onSuccess }: {
+  lb: AnyLeaderboard
+  activeAddress: string | undefined
+  onOpenEditWebsite: () => void
+  onOpenManageStream: () => void
+  onSuccess: () => void
+}) {
+  const isAdmin = !!activeAddress && !!lb.admin && lb.admin.toLowerCase() === activeAddress.toLowerCase()
+  const isStreaming = lb.strategy === 'streaming'
+  // Legacy is a website-only historical concept (pre-migration TopDawg boards) -- github/superfluid/
+  // streaming-platform listing routes never set it, so every board on those platforms already uses
+  // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
+  const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
+  const contractAddress = lb.address as `0x${string}`
+
+  return (
+    <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Actions</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+          <Link href={detailUrl(lb)} style={actionBtnStyle}>View Leaderboard</Link>
+          {lb.platform === 'website' && (
+            <button onClick={onOpenEditWebsite} style={actionBtnStyle}>Edit Website Info</button>
+          )}
+          {isStreaming && (
+            <button onClick={onOpenManageStream} style={actionBtnStyle}>Manage Your Stream</button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Admin Settings</div>
+        {!isAdmin ? (
+          <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Only this Markee's admin wallet can change these.</p>
+        ) : isLegacyFixed ? (
+          <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Admin settings aren't available for legacy boards from this dashboard.</p>
+        ) : isStreaming ? (
+          <div>
+            <AdminSettingRow label="Minimum Monthly Rate (wei/sec)" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow
+              label="Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
+              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
+            />
+          </div>
+        ) : (
+          <div>
+            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="RevNet Enabled" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="revNetEnabled" setterName="setRevNetEnabled" inputType="bool" dangerous="warn" warning="Toggling this changes how payments are routed -- can break payouts if the RevNet terminal/project below aren't correctly set." onSuccess={onSuccess} />
+            <AdminSettingRow label="RevNet Terminal" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="revNetTerminal" setterName="setRevNetTerminal" inputType="address" dangerous="warn" warning="An incorrect terminal can make funds unclaimable through RevNet." onSuccess={onSuccess} />
+            <AdminSettingRow label="RevNet Project ID" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="revNetProjectId" setterName="setRevNetProjectId" inputType="uint256" dangerous="warn" warning="Must match the terminal above -- an incorrect pair can make funds unclaimable through RevNet." onSuccess={onSuccess} />
+            <AdminSettingRow label="Percent to Beneficiary" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="percentToBeneficiary" setterName="setPercentToBeneficiary" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Platform Fee Receiver" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="platformFeeReceiver" setterName="setPlatformFeeReceiver" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Percent to Platform Fee Receiver" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="percentToPlatformFeeReceiver" setterName="setPercentToPlatformFeeReceiver" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow
+              label="Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
+              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Extension point: per-integration moderators are out of scope for now -- nothing like this
+          has ever existed (lib/moderation/config.ts is a single flat platform-wide admin allowlist;
+          a past attempt to add partner-specific moderators to that same list was explicitly reverted:
+          "Honeyswap moderators belong in the Honeyswap repo, not here"). If/when a per-integration
+          moderator system exists, it renders here, admin-gated like the settings section above. */}
+    </div>
+  )
+}
+
+function ActiveTable({ markees, onAddToSite, ethPrice, activeAddress, onOpenEditWebsite, onOpenManageStream, onSuccess }: {
+  markees: AnyLeaderboard[]
+  onAddToSite: (lb: AnyLeaderboard) => void
+  ethPrice: number | null
+  activeAddress: string | undefined
+  onOpenEditWebsite: (lb: AnyLeaderboard) => void
+  onOpenManageStream: (lb: AnyLeaderboard) => void
+  onSuccess: () => void
+}) {
   const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
 
   return (
@@ -954,7 +1093,16 @@ function ActiveTable({ markees, onManage, ethPrice }: { markees: AnyLeaderboard[
           <span />
         </div>
         {sorted.map(lb => (
-          <ActiveTableRow key={lb.address} lb={lb} onManage={onManage} ethPrice={ethPrice} />
+          <LiveMarkeeAdminRow
+            key={lb.address}
+            lb={lb}
+            onAddToSite={() => onAddToSite(lb)}
+            ethPrice={ethPrice}
+            activeAddress={activeAddress}
+            onOpenEditWebsite={() => onOpenEditWebsite(lb)}
+            onOpenManageStream={() => onOpenManageStream(lb)}
+            onSuccess={onSuccess}
+          />
         ))}
       </div>
     </div>
@@ -1243,42 +1391,6 @@ function FundedTable({ items, ethPrice, onAddFunds, onAddToSite }: { items: Fund
 }
 
 // ── Manage integrations modal ─────────────────────────────────────────────────
-function ManageModal({ lb, onClose, onEmbed, onEdit }: { lb: AnyLeaderboard; onClose: () => void; onEmbed?: () => void; onEdit?: () => void }) {
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [onClose])
-
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(6,10,42,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)', margin: 'auto', background: BG2, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-          <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT, letterSpacing: -0.4 }}>{lb.name}</h3>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}><X size={20} /></button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Link href={detailUrl(lb)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', textDecoration: 'none', color: TEXT, fontSize: 14, fontWeight: 600 }}>
-            <ExternalLink size={15} style={{ color: BLUE }} /> View leaderboard
-          </Link>
-          {onEdit && (
-            <button onClick={() => { onClose(); onEdit() }} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, textAlign: 'left' }}>
-              <Pencil size={15} style={{ color: MUTED }} /> Edit website info
-            </button>
-          )}
-          {onEmbed && (
-            <button onClick={() => { onClose(); onEmbed() }} style={{ display: 'flex', alignItems: 'center', gap: 10, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, textAlign: 'left' }}>
-              <Code2 size={15} style={{ color: MUTED }} /> Embed
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Empty state ───────────────────────────────────────────────────────────────
 function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: string; body: string; ctaLabel: string; ctaHref: string }) {
   return (
@@ -1349,7 +1461,6 @@ export default function AccountPage() {
     if (!activeAddress || archivedLoadedForRef.current !== activeAddress.toLowerCase()) return
     try { localStorage.setItem(`markee:archived:${activeAddress.toLowerCase()}`, JSON.stringify(archived)) } catch { /* non-critical */ }
   }, [archived, activeAddress])
-  const [manageTarget, setManageTarget]           = useState<AnyLeaderboard | null>(null)
   const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
   const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
   const [editingBoard, setEditingBoard]         = useState<WebsiteLeaderboard | null>(null)
@@ -1358,6 +1469,11 @@ export default function AccountPage() {
   const embedReopenApplied = useRef(false)
   const [editMessageTarget, setEditMessageTarget]       = useState<MyMessage | null>(null)
   const [streamEditTarget, setStreamEditTarget]         = useState<MyMessage | null>(null)
+  // "Manage Your Stream" opened from My Live Markees' expandable panel -- only needs the board
+  // address, since StreamSignModal's 'manage' view self-resolves the target to whatever the
+  // connected wallet currently backs (rateFlow.backedMarkee), unlike streamEditTarget above which is
+  // about editing a specific bought message and needs the full MyMessage shape.
+  const [liveManageBoard, setLiveManageBoard]           = useState<string | null>(null)
   const [addFundsTarget, setAddFundsTarget] = useState<{
     strategy: 'fixed' | 'streaming'
     strategyId: string
@@ -1617,9 +1733,17 @@ export default function AccountPage() {
   }, [myMessages, fundedMessages])
 
   // Manage a leaderboard (from active table) — opens the manage modal
-  const handleManage = useCallback((lb: AnyLeaderboard) => {
-    if (isFixedWebsiteBoard(lb)) setManageTarget(lb)
-    else window.open(detailUrl(lb), '_self')
+  const handleOpenAddToSite = useCallback((lb: AnyLeaderboard) => {
+    setEmbedTarget(lb)
+    setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website')
+  }, [])
+
+  const handleOpenEditWebsite = useCallback((lb: AnyLeaderboard) => {
+    if (lb.platform === 'website') setEditingBoard(lb as WebsiteLeaderboard)
+  }, [])
+
+  const handleOpenManageStream = useCallback((lb: AnyLeaderboard) => {
+    setLiveManageBoard(lb.address)
   }, [])
 
   const handleEditMessage = useCallback((m: MyMessage) => {
@@ -1754,7 +1878,15 @@ export default function AccountPage() {
                 ) : activeBoards.length === 0 ? (
                   <Empty icon="🪧" title="No live Markees yet" body="Once a Markee is funded and integrated, it shows up here fully live." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
                 ) : (
-                  <ActiveTable markees={activeBoards} onManage={handleManage} ethPrice={ethPrice} />
+                  <ActiveTable
+                    markees={activeBoards}
+                    onAddToSite={handleOpenAddToSite}
+                    ethPrice={ethPrice}
+                    activeAddress={activeAddress}
+                    onOpenEditWebsite={handleOpenEditWebsite}
+                    onOpenManageStream={handleOpenManageStream}
+                    onSuccess={() => activeAddress && fetchAll(activeAddress)}
+                  />
                 )
               )}
 
@@ -1853,13 +1985,14 @@ export default function AccountPage() {
 
       <Footer />
 
-      {/* Manage modal (website + github boards) */}
-      {manageTarget && (
-        <ManageModal
-          lb={manageTarget}
-          onClose={() => setManageTarget(null)}
-          onEdit={manageTarget.platform === 'website' ? () => setEditingBoard(manageTarget as WebsiteLeaderboard) : undefined}
-          onEmbed={manageTarget.platform === 'website' || manageTarget.platform === 'github' ? () => { setEmbedTarget(manageTarget); setEmbedInitialPlatform(manageTarget.platform === 'github' ? 'github' : 'website') } : undefined}
+      {/* "Manage Your Stream" opened from My Live Markees' expandable panel */}
+      {liveManageBoard && (
+        <StreamSignModal
+          isOpen={!!liveManageBoard}
+          board={liveManageBoard}
+          initialView="manage"
+          onClose={() => setLiveManageBoard(null)}
+          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
         />
       )}
 
