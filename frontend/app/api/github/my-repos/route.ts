@@ -42,8 +42,12 @@ export async function GET(request: NextRequest) {
   const [page1, page2] = await Promise.all([fetchPage(1), fetchPage(2)])
   const all = [...page1, ...page2]
 
-  // Return all repos — push access check happens server-side at register time
+  // Private repos are excluded, not just unverifiable -- Markee's whole point is public visibility,
+  // so linking a private repo's file never made sense even before the OAuth scope narrowed to
+  // public_repo. register-markee enforces this too (defense in depth); filtering here means a user
+  // never sees a repo they couldn't actually link in the first place.
   const repos = all
+    .filter(r => !r.private)
     .map(r => ({
       id: r.id,
       fullName: r.full_name,

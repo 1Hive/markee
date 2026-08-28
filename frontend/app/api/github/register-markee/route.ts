@@ -49,6 +49,11 @@ export async function POST(request: NextRequest) {
     const repoData = await repoRes.json()
     if (!repoData.permissions?.push)
       return NextResponse.json({ error: `You need push access to ${repoFullName}` }, { status: 403 })
+    // Markee's whole point is public visibility, so a private repo's file was never a valid
+    // verification target -- this is the hard enforcement point (my-repos filters the picker,
+    // repo-files backstops the file-list step, this is what actually persists a link).
+    if (repoData.private)
+      return NextResponse.json({ error: 'Private repositories can\'t be linked to a Markee' }, { status: 403 })
 
     // Check for address-specific delimiters
     const verified = await checkDelimiters(token, repoData.full_name, filePath, normalizedAddress)

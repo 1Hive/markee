@@ -29,6 +29,12 @@ export async function GET(request: NextRequest) {
   }
 
   const repoData = await repoRes.json()
+  // Backstop for register-markee's own check: my-repos already excludes private repos from the
+  // picker, so this only matters if someone hits this endpoint directly with a repo they can't
+  // actually link (a stale repo=... in the URL, or a pre-scope-narrowing session).
+  if (repoData.private) {
+    return NextResponse.json({ error: 'Private repositories can\'t be linked to a Markee' }, { status: 403 })
+  }
   const defaultBranch = repoData.default_branch ?? 'main'
 
   // Fetch the full recursive tree — much faster than walking the tree manually
