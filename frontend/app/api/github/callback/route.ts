@@ -21,7 +21,14 @@ function popupResponse(payload: { success: boolean; login?: string; error?: stri
   })();
 </script>
 </body></html>`
-  return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } })
+  // This page's only job is postMessage(payload) to the opener -- a strict CSP means an injected
+  // script (despite scriptJson already escaping "</script>") has nowhere to exfiltrate the login to.
+  return new NextResponse(html, {
+    headers: {
+      'Content-Type': 'text/html',
+      'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+    },
+  })
 }
 
 // Defense-in-depth on the origin read back from KV state before it becomes the postMessage

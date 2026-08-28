@@ -90,6 +90,14 @@ function encodedRepoPath(repoFullName: string): string | null {
   return `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
 }
 
+// The Contents API takes a path, not a single segment -- encoding the whole string (including its
+// "/" separators) turns e.g. "docs/README.md" into "docs%2FREADME.md", which 404s since GitHub
+// expects the slashes to stay literal. Each segment still needs its own encoding (spaces, unicode
+// filenames), just not the separators between them.
+export function encodedFilePath(filePath: string): string {
+  return filePath.split('/').map(encodeURIComponent).join('/')
+}
+
 export async function fetchGithubFileContent(
   repoFullName: string,
   filePath: string,
@@ -102,7 +110,7 @@ export async function fetchGithubFileContent(
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${repoPath}/contents/${encodeURIComponent(filePath)}`,
+      `https://api.github.com/repos/${repoPath}/contents/${encodedFilePath(filePath)}`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' }, signal: controller.signal },
     )
     if (!res.ok) return { ok: false, reason: 'not_found', status: res.status }

@@ -78,6 +78,9 @@ export async function GET(request: Request) {
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
+    if (addresses.length === 1000) {
+      console.warn('[forsale/leaderboards] hit the 1000-board getLeaderboards cap -- listing may be truncated')
+    }
 
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },

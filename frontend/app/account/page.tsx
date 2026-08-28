@@ -1494,7 +1494,7 @@ export default function AccountPage() {
   // verified integration (website or GitHub) -- see needsVerificationGate for which boards that is.
   const awaitingVerification = useMemo(() =>
     allBoards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n && needsVerificationGate(lb) && !isVerified(lb)),
-    [allBoards, isVerified, needsVerificationGate])
+    [allBoards, isVerified])
   const awaitingVerificationAddrs = useMemo(() => new Set(awaitingVerification.map(lb => lb.address)), [awaitingVerification])
 
   const activeBoards = useMemo(() =>
