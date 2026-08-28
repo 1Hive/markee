@@ -7,10 +7,10 @@ import { usePrivy, useFundWallet } from '@privy-io/react-auth'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import { monthlyToRatePerSec, bufferFor, computeAutoDeposit, roundUpToNearestThousandth, STREAMING_BASE } from '@/lib/superfluid/streaming'
+import { monthlyToRatePerSec, bufferFor, computeAutoDeposit, roundUpToNearestThousandth, STREAMING_BASE, DISPLAY_DUST_WEI, formatRunwayShort } from '@/lib/superfluid/streaming'
 import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
-  messageBoxStyle, parseEthInput, retryUntilLoaded,
+  messageBoxStyle, inputStyle, parseEthInput, retryUntilLoaded,
   InfoTip, ModalField, ModalShell, TxProgress, RatePriceCard,
   PaymentReviewCard, PaymentReviewFooter,
 } from '@/components/modals/StreamUI'
@@ -64,6 +64,7 @@ export function StreamActivateModal({
   const isCorrectChain = chain?.id === CANONICAL_CHAIN.id
 
   const [message, setMessage] = useState('')
+  const [name, setName] = useState('')
   const [monthly, setMonthly] = useState('')
   const [lastPreset, setLastPreset] = useState<'min' | 'win' | null>(null)
   const [successSnap, setSuccessSnap] = useState<StreamSuccessSnap | null>(null)
@@ -87,7 +88,12 @@ export function StreamActivateModal({
     address: board, abi: StreamingLeaderboardABI, functionName: 'maxMessageLength', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
+  const { data: maxNameLength } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'maxNameLength', chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen },
+  })
   const maxLen = Number(maxMessageLength || 223)
+  const maxNameLen = Number(maxNameLength || 32)
   const { data: ethxBalance } = useReadContract({
     address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: activeAddress ? [activeAddress] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen && !!activeAddress, refetchInterval: retryUntilLoaded },
@@ -124,7 +130,7 @@ export function StreamActivateModal({
   // ── Reset on close (UI-only state; the hook resets its own tx state) ───────
   useEffect(() => {
     if (!isOpen) {
-      setMessage(''); setMonthly('')
+      setMessage(''); setName(''); setMonthly('')
       setLastPreset(null); setSuccessSnap(null); setReviewOpen(false)
     }
   }, [isOpen])
@@ -154,7 +160,7 @@ export function StreamActivateModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess, isOpen])
 
-  const handleActivate = () => activate(message, calc, { maxLen, belowMin, minMonthlyEth })
+  const handleActivate = () => activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
 
   if (!isOpen) return null
 
@@ -164,7 +170,7 @@ export function StreamActivateModal({
   const activationSteps = [
     { label: 'Create Markee Message', done: phase !== 'creating' && phase !== 'idle', active: phase === 'creating' },
     { label: 'Approve Deposit', done: phase === 'streaming' || done, active: phase === 'approving' },
-    { label: calc.value > 0n ? 'Deposit ETH & Start Stream' : 'Start Stream', done: done, active: phase === 'streaming' },
+    { label: calc.value > DISPLAY_DUST_WEI ? 'Deposit ETH & Start Stream' : 'Start Stream', done: done, active: phase === 'streaming' },
   ]
 
   const txHeadline = done
@@ -266,7 +272,8 @@ export function StreamActivateModal({
             message={message}
             amountLabel={`${monthly || '0'} ETH/mo`}
             amountUsd={ethPrice && calc.monthlyWei > 0n ? formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice) : null}
-            depositLabel={calc.value > 0n ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+            depositLabel={calc.value > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+            runwayLabel={formatRunwayShort(calc.runwaySecs)}
             markeeEarnedLabel={`${markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE/mo`}
             willWin={willWin}
             minToWinLabel={minToWinLabel}
@@ -287,6 +294,17 @@ export function StreamActivateModal({
             <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
               {message.length}/{maxLen}
             </div>
+          </ModalField>
+
+          {/* Your Name (optional) */}
+          <ModalField label="Your Name (optional)">
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value.slice(0, maxNameLen))}
+              placeholder="tell the world who wrote this..."
+              style={inputStyle}
+            />
           </ModalField>
 
           {/* Price card */}

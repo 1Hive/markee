@@ -1,12 +1,12 @@
 // app/api/ecosystem/leaderboards/route.ts
 //
-// Aggregates all three platform leaderboards into a single unified list.
-// Each leaderboard has a `platform` field: 'website' | 'github' | 'superfluid'
+// Aggregates all platform leaderboards into a single unified list for public consumption (the
+// marketplace). Each leaderboard has a `platform` field: 'website' | 'github' | 'superfluid'.
 //
-// Sections (determined by caller):
-//   Top Verified Markees  — platform: 'website', status: 'verified', markeeCount > 0
-//   Unverified Markees    — markeeCount > 0, not verified
-//   Awaiting Activation   — markeeCount === 0
+// Boards that need a verified integration and don't have one yet (see needsVerificationGate) are
+// filtered out entirely here -- they only ever appear on their creator's own /account page until
+// verified. /account fetches the underlying platform routes directly, not this one, so it still sees
+// everything regardless of verification status.
 
 import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
@@ -14,6 +14,7 @@ import { formatEther } from 'viem'
 import { imputeEffectiveRate } from '@/lib/strategy'
 import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
+import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 
 export const dynamic = 'force-dynamic'
 
@@ -121,7 +122,7 @@ export async function GET(request: Request) {
     // Every row carries a strategy (fixed-price unless the streaming API tagged it) and an
     // effectiveRateRaw (wei/sec) yardstick: streaming reads it on-chain, fixed-price imputes it from
     // cumulative funds so both strategies rank on one axis.
-    const leaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards, ...streamLeaderboards, ...forsaleLeaderboards]
+    const preFilterLeaderboards = [...oiLeaderboards, ...githubLeaderboards, ...sfLeaderboards, ...streamLeaderboards, ...forsaleLeaderboards]
       .map((l: any) => {
         const strategy = l.strategy === 'streaming' ? 'streaming' : 'fixed'
         const effectiveRateRaw = strategy === 'streaming'
@@ -129,6 +130,22 @@ export async function GET(request: Request) {
           : imputeEffectiveRate(BigInt(l.totalFundsRaw ?? '0')).toString()
         return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }
       })
+
+    // A board that needs a verified integration (see needsVerificationGate -- every streaming board,
+    // plus any fixed-price board whose admin isn't the Coop migration multisig) and doesn't have one
+    // yet lives only on its creator's /account page until they verify it, not on the public
+    // marketplace. Same address-based lookup /account itself uses (a platform-specific listing route
+    // can't reliably know about an integration made through a different route -- streaming boards in
+    // particular aren't split by platform at all), so the two stay consistent with each other.
+    const gatedAddrs = preFilterLeaderboards.filter(needsVerificationGate).map((l: any) => l.address as string)
+    const verificationMap: Record<string, { verifiedUrls: string[]; linkedFiles: { verified: boolean }[] }> = gatedAddrs.length > 0
+      ? await fetch(`${origin}/api/account/verification-status`, {
+          method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addresses: gatedAddrs }), cache: 'no-store',
+        }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+      : {}
+    const leaderboards = preFilterLeaderboards.filter((l: any) =>
+      !needsVerificationGate(l) || isVerifiedLeaderboard(l, verificationMap[l.address?.toLowerCase()]))
 
     // Sort descending by cumulative funds — fixed boards' lump-sum total, streaming boards' total
     // streamed-in (getLogs). One cumulative-$ axis across strategies.

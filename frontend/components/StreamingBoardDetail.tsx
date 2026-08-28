@@ -30,7 +30,7 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { Pencil } from 'lucide-react'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, HERO_GRAD,
-  formatViews, fmtAddr, formatDuration, decimalsForRate, decimalsForWeiRate, formatLiveUsd, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
+  formatViews, fmtAddr, formatRate, formatDuration, decimalsForRate, decimalsForWeiRate, formatLiveUsd, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
   TxHistoryToggle, TxHistoryPanel, useTxHistory,
 } from '@/components/board-detail/shared'
 
@@ -41,14 +41,6 @@ const STREAM_LB_COLS = '42px 150px 110px 120px minmax(220px,1fr) 70px 170px'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
-
-// Effective rate (wei/sec) → human "X ETH/mo".
-function formatRate(weiPerSec: bigint): string {
-  const eth = parseFloat(formatEther(ratePerSecToMonthly(weiPerSec)))
-  if (eth === 0) return '0 ETH/mo'
-  if (eth < 0.00005) return '< 0.0001 ETH/mo' // would round to 0.0000 at 4 dp
-  return `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
-}
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
@@ -176,6 +168,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const topMarkee = markees[0] ?? null
   const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
+  // "Total views" in the metrics bar is every message on this board, not just the current top one.
+  const totalViewsSum = Array.from(viewsMap.values()).reduce((sum, v) => sum + v, 0)
   const topMonthlyWei = markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined
 
   const streamedEthLabel = `${streamedEth.toFixed(6)} ETH`
@@ -246,7 +240,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               address={board}
               entry={ecoEntry}
               entryLoading={ecoEntryLoading}
-              topViews={topViews}
+              totalViews={totalViewsSum}
               viewsLoading={viewsLoading}
               markeeCount={messageCount}
               messagesLoading={isLoading}

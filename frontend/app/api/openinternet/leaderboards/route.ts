@@ -15,6 +15,7 @@ import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -147,7 +148,7 @@ export async function GET(request: Request) {
 
     // Resolve creators, fetch markee messages, and read KV meta in parallel
     const metaKeys = addresses.map(a => `oi:meta:${a.toLowerCase()}`)
-    const [markeeResults, creators, kvMetas] = await Promise.all([
+    const [markeeResults, creators, kvMetas, linkedFilesPerAddr] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
@@ -160,6 +161,11 @@ export async function GET(request: Request) {
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),
+      // "Served On" falls back to a verified GitHub link when there's no verifiedUrl -- these boards
+      // share the same address-keyed github:markee:{address} KV namespace as forsale/streaming
+      // boards, so a website-platform board can have one too even though this factory predates the
+      // GitHub integration.
+      getLinkedFilesBatch(addresses),
     ])
 
     let markeeCallIndex = 0
@@ -187,6 +193,7 @@ export async function GET(request: Request) {
       const kvMeta = kvMetas[i]
       const partnerMeta = PARTNER_META[addr.toLowerCase()]
       const meta = partnerMeta ?? kvMeta
+      const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,
         name,
@@ -209,6 +216,7 @@ export async function GET(request: Request) {
         verifiedUrl: meta?.verifiedUrl ?? null,
         verifiedUrls: Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [],
         status: (meta?.status as 'pending' | 'verified') ?? 'pending',
+        linkedFiles,
       }
     })
 

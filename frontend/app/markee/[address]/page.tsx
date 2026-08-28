@@ -152,6 +152,8 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   const topMarkee  = markees[0] ?? null
   topMarkeeAddrRef.current = topMarkee?.address?.toLowerCase() ?? ''
   const topViews   = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
+  // "Total views" in the metrics bar is every message on this board, not just the current top one.
+  const totalViewsSum = Array.from(viewsMap.values()).reduce((sum, v) => sum + v, 0)
   const totalFunds = meta?.totalLeaderboardFunds ?? 0n
 
   const totalFundsEth   = parseFloat(formatEther(totalFunds))
@@ -215,7 +217,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
               address={leaderboardAddress}
               entry={ecoEntry}
               entryLoading={ecoEntryLoading}
-              topViews={topViews}
+              totalViews={totalViewsSum}
               viewsLoading={viewsLoading}
               markeeCount={markees.length}
               messagesLoading={isLoading}

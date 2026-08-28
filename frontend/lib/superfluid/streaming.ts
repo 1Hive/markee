@@ -73,6 +73,27 @@ export function ratePerSecToMonthly(ratePerSec: bigint): bigint {
   return ratePerSec * SECONDS_IN_MONTH
 }
 
+// ratePerSec is an integer wei/sec value, so it essentially never divides back out to a "clean"
+// monthly decimal -- the on-chain rate already absorbed a small remainder when it was first derived
+// from a monthly amount (monthlyToRatePerSec floors/ceils to get an integer rate). Converting it back
+// via ratePerSecToMonthly and formatEther surfaces that remainder as invisible-until-you-look noise
+// several decimals deep (e.g. "0.004000000002048" instead of "0.004"). Round to 6dp and strip trailing
+// zeros for any preset/placeholder built from an existing on-chain rate (2X, deposit shortcuts, etc.)
+// so it doesn't carry that artifact into an editable field or a review screen. 6dp is far finer than
+// any rate anyone actually types, so this never changes a genuinely-intended value.
+export function cleanEthAmountInput(weiPerMonth: bigint): string {
+  if (weiPerMonth <= 0n) return '0'
+  const fixed = parseFloat(formatEther(weiPerMonth)).toFixed(6)
+  return fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed
+}
+
+// Below this, an amount displays as "0.0000 ETH" at the 4dp precision the deposit/wrap UI shows --
+// the same on-chain-rate rounding noise cleanEthAmountInput fixes for editable fields can otherwise
+// leave a technically-positive-but-invisible wei amount that flips a ">0n" branch (e.g. "show a
+// deposit line" instead of "show the runway") to the wrong one. Compare against this instead of 0n
+// wherever that branch decision is user-visible.
+export const DISPLAY_DUST_WEI = 50_000_000_000_000n // 0.00005 ETH
+
 export function bufferFor(ratePerSec: bigint): bigint {
   return ratePerSec * BUFFER_PERIOD
 }

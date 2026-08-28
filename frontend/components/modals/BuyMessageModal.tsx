@@ -12,7 +12,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -146,6 +146,7 @@ export function BuyMessageModal({
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
+  const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
@@ -246,6 +247,7 @@ export function BuyMessageModal({
     else if (userMarkee) setActiveTab('addFunds')
     else setActiveTab('create')
     setMessage('')
+    setName('')
     setAmount('')
     setError(null)
     setHasUserEdited(false)
@@ -296,6 +298,7 @@ export function BuyMessageModal({
       setSuccessSnap(snap)
       setTimeout(() => {
         setMessage('')
+        setName('')
         setAmount('')
         setError(null)
         onSuccess?.()
@@ -359,7 +362,7 @@ export function BuyMessageModal({
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
-      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, ''], value: amountWei, chainId: CANONICAL_CHAIN.id })
+      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name.trim()], value: amountWei, chainId: CANONICAL_CHAIN.id })
     } catch (err) {
       logTransactionError(err, 'BuyMessageModal.createMarkee')
       setError(formatTransactionError(err))
@@ -409,6 +412,7 @@ export function BuyMessageModal({
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
   const maxLen = Number(maxMessageLength || 223)
+  const maxNameLen = Number(maxNameLength || 32)
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
@@ -599,6 +603,16 @@ export function BuyMessageModal({
                       {message.length}/{maxLen}
                     </div>
                   </ModalField>
+                  <ModalField label="Your Name (optional)">
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      placeholder="tell the world who wrote this..."
+                      style={inputStyle}
+                      disabled={isPending || isConfirming}
+                    />
+                  </ModalField>
                 </div>
               )}
 
@@ -606,7 +620,7 @@ export function BuyMessageModal({
               {activeTab === 'addFunds' && (
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
                   <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                    {userMarkee?.message || '—'}
+                    {userMarkee?.message || <MessageLoading />}
                   </div>
                   {userMarkee?.name && (
                     <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>

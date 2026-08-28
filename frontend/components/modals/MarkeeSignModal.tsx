@@ -12,7 +12,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -331,6 +331,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
   const [message, setMessage] = useState('')
+  const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
@@ -347,6 +348,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const { data: maxMessageLength } = useReadContract({
     address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'maxMessageLength', chainId: CANONICAL_CHAIN.id,
   })
+  const { data: maxNameLength } = useReadContract({
+    address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'maxNameLength', chainId: CANONICAL_CHAIN.id,
+  })
 
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
@@ -357,6 +361,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const minimumAmount = meta?.minimumPrice || parseEther('0.001')
   const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
   const maxLen = Number(maxMessageLength || 223)
+  const maxNameLen = Number(maxNameLength || 32)
 
   // ── Views (batched, per-markee + summed for the header) ────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -380,7 +385,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   useEffect(() => {
     if (!isOpen) return
     appliedInitialTargetRef.current = false
-    setView('list'); setTarget(null); setMessage(''); setError(null); setHasUserEdited(false); setLastPreset(null)
+    setView('list'); setTarget(null); setMessage(''); setName(''); setError(null); setHasUserEdited(false); setLastPreset(null)
     setReviewOpen(false)
     reset()
   }, [isOpen, reset])
@@ -389,7 +394,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (isSuccess && isOpen) {
       setTimeout(() => {
         refetchLeaderboard()
-        setView('list'); setTarget(null); setMessage(''); setAmount(''); setError(null); setHasUserEdited(false)
+        setView('list'); setTarget(null); setMessage(''); setName(''); setAmount(''); setError(null); setHasUserEdited(false)
         reset()
         onSuccess?.()
       }, 2000)
@@ -480,7 +485,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
-      writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'createMarkee', args: [message, ''], value: amountWei, chainId: CANONICAL_CHAIN.id })
+      writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'createMarkee', args: [message, name.trim()], value: amountWei, chainId: CANONICAL_CHAIN.id })
     } catch (err) {
       logTransactionError(err, 'MarkeeSignModal.createMarkee')
       setError(formatTransactionError(err))
@@ -641,7 +646,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
         ) : (
           <>
             <div style={{ padding: '22px 22px 0', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              {view !== 'list' && (
+              {view !== 'list' && !reviewOpen && (
                 <button
                   onClick={backToList}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: PINK, fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0, marginBottom: 18 }}
@@ -683,6 +688,18 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     {isMessageFieldError(error) && (
                       <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0 }}>{error}</p>
                     )}
+                  </div>
+
+                  <div style={{ marginBottom: 18, flexShrink: 0 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Your Name (optional)</div>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      placeholder="tell the world who wrote this..."
+                      style={inputStyle}
+                      disabled={busy}
+                    />
                   </div>
 
                   <div style={{ marginBottom: 10, flexShrink: 0 }}>
@@ -771,7 +788,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 ) : (
                 <div style={{ marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || '—'}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
                     <div style={{ marginTop: 6 }}>
                       <MessageMeta
                         views={viewsMap.get(target.address.toLowerCase()) ?? 0}

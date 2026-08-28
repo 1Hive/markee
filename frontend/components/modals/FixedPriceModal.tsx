@@ -65,6 +65,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
+  const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -78,9 +79,10 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
   const markeeEarned = Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum))
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
+  const maxNameLen = 32
 
   useEffect(() => {
-    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); setHasUserEdited(false); setReviewOpen(false); reset() }
+    if (isOpen && fixedMarkee) { setNewMessage(''); setName(''); setError(null); setHasUserEdited(false); setReviewOpen(false); reset() }
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
@@ -131,7 +133,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
         address: fixedMarkee.strategyAddress as `0x${string}`,
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
-        args: [newMessage, ''],
+        args: [newMessage, name.trim()],
         value: priceWei,
         chainId: CANONICAL_CHAIN.id,
       })
@@ -284,6 +286,21 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                     <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
                       {newMessage.length}/{maxLen}
                     </div>
+                  </div>
+
+                  {/* YOUR NAME (optional) — shown before the wallet address wherever this message appears */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Your Name (optional)
+                    </div>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      placeholder="tell the world who wrote this..."
+                      style={inputStyle}
+                      disabled={isPending || isConfirming}
+                    />
                   </div>
 
                   {/* Price card — fixed price, no MIN/MAX/WIN presets */}

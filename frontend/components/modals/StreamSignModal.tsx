@@ -18,7 +18,7 @@ import {
   monthlyToRatePerSec, ratePerSecToMonthly, bufferFor, runwaySeconds,
   STREAMING_BASE, CFA_FORWARDER_ABI,
   computeAutoDeposit, formatRunwayShort, roundUpToNearestThousandth,
-  formatEthxBalanceDisplay,
+  formatEthxBalanceDisplay, cleanEthAmountInput, DISPLAY_DUST_WEI,
 } from '@/lib/superfluid/streaming'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -26,7 +26,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, formatMarkeeAmount, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
-import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
 import { useCreateStreamFlow, type CreateStreamCalc } from '@/hooks/useCreateStreamFlow'
 import { useOpenStreamFlow } from '@/hooks/useOpenStreamFlow'
@@ -226,7 +226,7 @@ function RateCard({
         >
           Deposit Manager →
         </button>
-        {calc.value > 0n ? (
+        {calc.value > DISPLAY_DUST_WEI ? (
           <span style={{ display: 'inline-flex', alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
             <InfoTip align="right">
@@ -389,6 +389,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<StreamingMarkee | null>(null)
   const [message, setMessage] = useState('')
+  const [name, setName] = useState('')
   const [monthly, setMonthly] = useState('')
   const [newMonthly, setNewMonthly] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -408,7 +409,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'maxMessageLength', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
+  const { data: maxNameLength } = useReadContract({
+    address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'maxNameLength', chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen },
+  })
   const maxLen = Number(maxMessageLength || 223)
+  const maxNameLen = Number(maxNameLength || 32)
 
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
@@ -446,7 +452,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const manageRank = target ? markees.findIndex(m => m.address.toLowerCase() === target.address.toLowerCase()) + 1 : 0
   const fundTargetRank = manageRank
   const fundTargetIsTop = fundTargetRank === 1
-  const fundTwoXMonthlyEth = target ? formatEther(ratePerSecToMonthly(target.rate) * 2n) : null
+  const fundTwoXMonthlyEth = target ? cleanEthAmountInput(ratePerSecToMonthly(target.rate) * 2n) : null
   const manageIsTop = manageRank === 1
   const manageStatus = streamStatusOf(manageIsTop, rateFlow.currentRate ?? 0n)
   const manageRunwayDays = rateFlow.currentRate && rateFlow.currentRate > 0n
@@ -461,7 +467,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // 2X preset for the manage view's RateCard -- same "double your own current rate" convention the
   // fund view's fundTwoXMonthlyEth uses when isAlreadyTop.
   const manageTwoXMonthlyEth = manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n
-    ? formatEther(ratePerSecToMonthly(rateFlow.currentRate) * 2n) : null
+    ? cleanEthAmountInput(ratePerSecToMonthly(rateFlow.currentRate) * 2n) : null
 
   // Cancels the stream/bid outright (view === 'manage' only) — same setFlowrate(...,0) call
   // ManageStreamModal already uses to stop a stream, exposed here so it's reachable without leaving
@@ -524,34 +530,6 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const manageStillStreaming = manageTopSinceMine && !manageStreamGone
   const manageStreamedDecimals = decimalsForWeiRate(manageStillStreaming ? (rateFlow.currentRate ?? 0n) : 0n)
   const manageStreamedWei = useFlowingAmount(0n, manageStillStreaming ? topSince!.since : 0, manageStillStreaming ? (rateFlow.currentRate ?? 0n) : 0n)
-
-  // Once cancelled, the deposit that secured the stream is free to withdraw -- same withdrawDeposit()
-  // call ManageStreamModal used to make, kept reachable here instead of a second modal.
-  const [withdrawTxHash, setWithdrawTxHash] = useState<Hex | undefined>(undefined)
-  const [withdrawError, setWithdrawError] = useState<string | null>(null)
-  const { writeContractAsync: writeWithdraw, isPending: withdrawPending } = useWriteContract()
-  const { isLoading: withdrawConfirming, isSuccess: withdrawSuccess } = useWaitForTransactionReceipt({ hash: withdrawTxHash, chainId: CANONICAL_CHAIN.id })
-  const withdrawBusy = withdrawPending || withdrawConfirming
-  async function handleWithdraw() {
-    setWithdrawError(null)
-    try {
-      const hash = await writeWithdraw({
-        address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'withdrawDeposit', args: [], chainId: CANONICAL_CHAIN.id,
-      })
-      setWithdrawTxHash(hash)
-    } catch (e: unknown) {
-      logTransactionError(e, 'StreamSignModal.withdrawDeposit')
-      setWithdrawError(formatTransactionError(e))
-    }
-  }
-  useEffect(() => {
-    if (withdrawSuccess && isOpen) {
-      rateFlow.refetchDeposit()
-      const t = setTimeout(() => { onSuccess?.(); onClose() }, 1800)
-      return () => clearTimeout(t)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [withdrawSuccess, isOpen])
 
   // Inline message edit (pencil next to "Message You're Funding") — MarkeeABI.setMessage direct on
   // the markee's own address, same call StreamingBoardDetail's StreamMessageEditModal makes.
@@ -624,11 +602,6 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const insufficientBalance = !!balanceData && fundTotalValue > 0n && balanceData.value < fundTotalValue
 
-  // A deleted flow (cancelled or liquidated) clears backerMarkee on-chain, so no row reads as
-  // "backed by you" and every entry point lands on list/fund -- surface the reclaimable deposit
-  // here too, not only behind the manage view.
-  const strandedDeposit = (rateFlow.deposit ?? 0n) > 0n && rateFlow.currentRate === 0n
-
   const live = useMemo(() => {
     const rate = rateFlow.currentRate && rateFlow.currentRate > 0n ? rateFlow.currentRate : 0n
     const nextMonthlyWei = parseEthInput(newMonthly)
@@ -639,7 +612,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     return { rate, nextRate, nextMonthlyWei, depositTopUp, changed: nextRate > 0n && nextRate !== rate }
   }, [rateFlow.currentRate, newMonthly, rateFlow.deposit, minMonthlyWei])
   const nextBelowMin = live.nextMonthlyWei > 0n && !!minMonthlyWei && live.nextMonthlyWei < minMonthlyWei
-  const currentMonthlyEth = rateFlow.currentRate && rateFlow.currentRate > 0n ? formatEther(ratePerSecToMonthly(rateFlow.currentRate)) : '0'
+  const currentMonthlyEth = rateFlow.currentRate && rateFlow.currentRate > 0n ? cleanEthAmountInput(ratePerSecToMonthly(rateFlow.currentRate)) : '0'
 
   // Review-step prediction (fund + manage): reuses the same "beat topMonthlyWei" comparison the WIN
   // preset already uses, just evaluated against whatever rate is currently entered instead of only
@@ -686,8 +659,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // of an empty field.
   useEffect(() => {
     if (!isOpen || view !== 'manage' || hasUserEdited || !minMonthlyWei) return
-    if (manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n) {
-      setNewMonthly(formatEther(ratePerSecToMonthly(rateFlow.currentRate) * 2n)); setManageLastPreset('win')
+    if (manageIsTop && rateFlow.currentRate && rateFlow.currentRate > 0n && manageTwoXMonthlyEth) {
+      setNewMonthly(manageTwoXMonthlyEth); setManageLastPreset('win')
     } else if (topMonthlyWei && topMonthlyWei > 0n) {
       const winWei = (topMonthlyWei / minMonthlyWei + 1n) * minMonthlyWei
       setNewMonthly(formatEther(winWei)); setManageLastPreset('win')
@@ -695,7 +668,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
       setNewMonthly(minMonthlyEth); setManageLastPreset('min')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, view, hasUserEdited, minMonthlyWei, minMonthlyEth, topMonthlyWei, manageIsTop, rateFlow.currentRate])
+  }, [isOpen, view, hasUserEdited, minMonthlyWei, minMonthlyEth, topMonthlyWei, manageIsTop, rateFlow.currentRate, manageTwoXMonthlyEth])
 
   // ── Reset on open/close ──────────────────────────────────────────────────────
   const appliedInitialTargetRef = useRef(false)
@@ -706,10 +679,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     // 'list' and waiting for markees to load before the separate "jump to target" effect below can
     // correct it -- that gap was a visible flash of the wrong screen (e.g. Reactivate briefly showing
     // "Change the Markee Sign" before snapping to "Add Funds").
-    setView(initialView ?? 'list'); setTarget(null); setMessage(''); setMonthly(''); setNewMonthly('')
+    setView(initialView ?? 'list'); setTarget(null); setMessage(''); setName(''); setMonthly(''); setNewMonthly('')
     setError(null); setHasUserEdited(false); setLastPreset(null); setReviewOpen(false)
     setCancelTxHash(undefined); setCancelError(null)
-    setWithdrawTxHash(undefined); setWithdrawError(null)
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }, [isOpen, initialView])
 
@@ -721,7 +693,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   }, [isOpen, onClose])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleBuyNew = () => createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth })
+  const handleBuyNew = () => createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
   const handleFund = () => backsOther
     ? moveFlow.moveStream(calc, { belowMin, minMonthlyEth })
     : openFlow.openStream(calc, { belowMin, minMonthlyEth })
@@ -794,7 +766,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const createSteps = [
     { label: 'Create Markee Message', done: createFlow.phase !== 'creating' && createFlow.phase !== 'idle', active: createFlow.phase === 'creating' },
     { label: 'Approve Deposit', done: createFlow.phase === 'streaming' || createFlow.isSuccess, active: createFlow.phase === 'approving' },
-    { label: calc.value > 0n ? 'Deposit ETH & Start Stream' : 'Start Stream', done: createFlow.isSuccess, active: createFlow.phase === 'streaming' },
+    { label: calc.value > DISPLAY_DUST_WEI ? 'Deposit ETH & Start Stream' : 'Start Stream', done: createFlow.isSuccess, active: createFlow.phase === 'streaming' },
   ]
 
   // Same 2-step shape as createSteps' last two steps, just without "Create Markee Message" (the
@@ -804,8 +776,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     { label: 'Approve Deposit', done: (flow.submitting && !flow.approving) || flow.isSuccess, active: flow.approving },
     { label: actionLabel, done: flow.isSuccess, active: flow.submitting && !flow.approving && !flow.isSuccess },
   ]
-  const fundStreamLabel = (calc.value > 0n ? 'Deposit ETH & ' : '') + (backsOther ? 'Move Stream' : 'Start Stream')
+  const fundStreamLabel = (calc.value > DISPLAY_DUST_WEI ? 'Deposit ETH & ' : '') + (backsOther ? 'Move Stream' : 'Start Stream')
   const fundSteps = view === 'fund' ? fundFlowSteps(backsOther ? moveFlow : openFlow, fundStreamLabel) : undefined
+  const manageSteps = view === 'manage' ? fundFlowSteps(rateFlow, 'Update Stream') : undefined
 
   const txHeadline = view === 'list'
     ? (createFlow.isSuccess ? 'Success! Your message is live'
@@ -827,7 +800,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   return (
     <>
     <div
-      onClick={() => { if ((!hasUserEdited || busy || activeIsSuccess) && !cancelBusy && !editMessageBusy && !withdrawBusy) onClose() }}
+      onClick={() => { if ((!hasUserEdited || busy || activeIsSuccess) && !cancelBusy && !editMessageBusy) onClose() }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -867,7 +840,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
             isSuccess={activeIsSuccess}
             headline={txHeadline}
             detail={activeIsSuccess ? 'The sign will refresh in a moment.' : 'Usually under 2 seconds on Base.'}
-            steps={view === 'list' ? createSteps : view === 'fund' ? fundSteps : undefined}
+            steps={view === 'list' ? createSteps : view === 'fund' ? fundSteps : manageSteps}
           />
 
         ) : isWalletConnectionPending ? (
@@ -896,7 +869,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
         ) : (
           <>
             <div style={{ padding: '22px 22px 0', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              {view !== 'list' && (
+              {view !== 'list' && !reviewOpen && (
                 <button
                   onClick={backToList}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: PINK, fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0, marginBottom: 18 }}
@@ -905,34 +878,6 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                 </button>
               )}
 
-              {view !== 'manage' && (strandedDeposit || withdrawSuccess) && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                  borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)',
-                  padding: '10px 14px', marginBottom: 16, flexShrink: 0,
-                }}>
-                  {withdrawSuccess ? (
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: '#7EE787' }}>✓ Deposit withdrawn</span>
-                  ) : (
-                    <>
-                      <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>
-                        Your stream on this board is stopped, so your {formatEther(rateFlow.deposit ?? 0n)} ETH deposit is free to withdraw.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleWithdraw}
-                        disabled={withdrawBusy}
-                        style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, opacity: withdrawBusy ? 0.5 : 1 }}
-                      >
-                        {withdrawBusy ? 'Withdrawing…' : 'Withdraw Deposit'}
-                      </button>
-                    </>
-                  )}
-                  {withdrawError && !withdrawSuccess && (
-                    <span style={{ fontFamily: MONO, fontSize: 11, color: '#FF8E8E' }}>{withdrawError}</span>
-                  )}
-                </div>
-              )}
 
               {view === 'list' && (
                 <>
@@ -947,6 +892,18 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       placeholder={`Your message here... (${maxLen} max)`}
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
+                      disabled={busy}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 18, flexShrink: 0 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Your Name (optional)</div>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      placeholder="tell the world who wrote this..."
+                      style={inputStyle}
                       disabled={busy}
                     />
                   </div>
@@ -976,12 +933,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           width: '100%', height: '100%', boxSizing: 'border-box',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
                           background: PINK, color: BG, border: 'none', borderRadius: 10,
-                          fontFamily: 'inherit', fontWeight: 800, fontSize: calc.value > 0n ? 14 : 17,
+                          fontFamily: 'inherit', fontWeight: 800, fontSize: calc.value > DISPLAY_DUST_WEI ? 14 : 17,
                           cursor: btnDisabled ? 'not-allowed' : 'pointer',
                           opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
                         }}
                       >
-                        {calc.value > 0n ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and Buy` : 'Buy Message'}
+                        {calc.value > DISPLAY_DUST_WEI ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and Buy` : 'Buy Message'}
                       </button>
                     </BtnTooltip>
                   </div>
@@ -1029,7 +986,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     message={target.message || ''}
                     amountLabel={`${monthly || '0'} ETH/mo`}
                     amountUsd={ethPrice && parseFloat(monthly || '0') > 0 ? formatUsd(parseFloat(monthly) * ethPrice) : null}
-                    depositLabel={calc.value > 0n ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+                    depositLabel={calc.value > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+                    runwayLabel={formatRunwayShort(runway)}
                     markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
@@ -1081,7 +1039,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                                 <Pencil size={11} />
                               </button>
                             )}
-                            <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || '—'}</div>
+                            <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
                           </div>
                           <div style={{ marginTop: 6 }}>
                             <MessageMeta
@@ -1117,7 +1075,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     message={target.message || ''}
                     amountLabel={`${newMonthly || currentMonthlyEth} ETH/mo`}
                     amountUsd={ethPrice && live.nextMonthlyWei > 0n ? formatUsd(Number(formatEther(live.nextMonthlyWei)) * ethPrice) : null}
-                    depositLabel={live.depositTopUp > 0n ? `${parseFloat(formatEther(live.depositTopUp)).toFixed(4)} ETH` : null}
+                    depositLabel={live.depositTopUp > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(live.depositTopUp)).toFixed(4)} ETH` : null}
+                    runwayLabel={formatRunwayShort(runwaySeconds(ethxBalance ?? 0n, live.nextRate))}
                     markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
@@ -1164,7 +1123,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </div>
                     ) : (
                       <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>
-                        {target.message || '—'}
+                        {target.message || <MessageLoading />}
                         <div style={{ marginTop: 6 }}>
                           <MessageMeta
                             views={viewsMap.get(target.address.toLowerCase()) ?? 0}
@@ -1247,7 +1206,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       onOpenDepositManager={() => setDepositManagerOpen(true)}
                     />
                   </div>
-                  {(cancelError || withdrawError) && <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0 }}>{cancelError || withdrawError}</p>}
+                  {cancelError && <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0 }}>{cancelError}</p>}
                 </div>
                 )
               )}
@@ -1273,17 +1232,20 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
               <>
               <div style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {view === 'manage'
-                  ? (withdrawSuccess ? (
-                      <span style={{ color: '#7EE787' }}>✓ Deposit withdrawn</span>
-                    ) : manageStatus === 'cancelled' && (rateFlow.deposit ?? 0n) > 0n ? (
-                      <button
-                        type="button"
-                        onClick={handleWithdraw}
-                        disabled={withdrawBusy || busy}
-                        style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontFamily: MONO, fontWeight: 700, fontSize: 11.5, cursor: 'pointer', opacity: withdrawBusy || busy ? 0.5 : 1 }}
-                      >
-                        {withdrawBusy ? 'Withdrawing…' : 'Withdraw Deposit'}
-                      </button>
+                  ? (manageStatus === 'cancelled' && (rateFlow.deposit ?? 0n) > 0n ? (
+                      // No inline "Withdraw Deposit" here on purpose -- that balance is still usable
+                      // ETHx for any other message, and we don't want cancelling a stream to nudge
+                      // people toward draining it. The Deposit Manager already covers withdrawals.
+                      <span>
+                        Your deposit stays as ETHx, usable for any other message.{' '}
+                        <button
+                          type="button"
+                          onClick={() => setDepositManagerOpen(true)}
+                          style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', padding: 0 }}
+                        >
+                          Deposit Manager →
+                        </button>
+                      </span>
                     ) : cancelSuccess ? (
                       <span style={{ color: '#7EE787' }}>✓ Cancelled</span>
                     ) : (

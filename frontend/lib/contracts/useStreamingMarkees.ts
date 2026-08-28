@@ -111,9 +111,12 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
     fetch(`/api/streaming/ever-funded?board=${board}`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { markees?: string[] } | null) => {
-        if (!cancelled && d?.markees) setEverFunded(new Set(d.markees.map(a => a.toLowerCase())))
+        if (!cancelled) setEverFunded(new Set((d?.markees ?? []).map(a => a.toLowerCase())))
       })
-      .catch(() => {})
+      // A failed check must still resolve everFunded (to an empty set, same as "none known") --
+      // isLoading now depends on it going non-null, so leaving it null on error would leave the page
+      // stuck on its skeleton forever instead of just under-reporting zero-rate messages like before.
+      .catch(() => { if (!cancelled) setEverFunded(new Set()) })
     return () => { cancelled = true }
   }, [board])
 
@@ -143,7 +146,10 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
   return {
     meta,
     markees,
-    isLoading: isMetaLoading || (topAddresses.length > 0 && isDetailsLoading),
+    // everFunded === null (its fetch hasn't resolved yet) has to count as loading too -- otherwise
+    // zero-rate markees silently drop out of `markees` (see the filter above) while the caller thinks
+    // loading has finished, instead of showing a loading state until they're known one way or the other.
+    isLoading: isMetaLoading || (topAddresses.length > 0 && isDetailsLoading) || (topAddresses.length > 0 && everFunded === null),
     refetch,
   }
 }

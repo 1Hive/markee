@@ -11,7 +11,7 @@ import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import {
-  STREAMING_BASE, ETHX_WRAP_ABI, ratePerSecToMonthly,
+  STREAMING_BASE, ETHX_WRAP_ABI, ratePerSecToMonthly, cleanEthAmountInput,
   runwaySeconds, runwayProgressPct, runwayTier, formatRunway,
 } from '@/lib/superfluid/streaming'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
@@ -134,7 +134,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
 
   function depositShortcut(months: number) {
     if (streamingNowRate <= 0n) return
-    setAmount(formatEther(ratePerSecToMonthly(streamingNowRate) * BigInt(months)))
+    setAmount(cleanEthAmountInput(ratePerSecToMonthly(streamingNowRate) * BigInt(months)))
     if (actionError) setActionError(null)
   }
   function depositPctChange(pct: number) {

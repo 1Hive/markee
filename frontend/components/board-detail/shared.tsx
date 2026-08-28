@@ -40,6 +40,16 @@ export function fmtAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
+// Effective rate (wei/sec) → human "X ETH/mo". Rounds to 4dp and strips trailing zeros so a rate the
+// user picked as a clean number (e.g. 0.004) doesn't round-trip through the on-chain per-second
+// integer division and come back out as 0.00399999999942.
+export function formatRate(weiPerSec: bigint): string {
+  const eth = parseFloat(formatEther(ratePerSecToMonthly(weiPerSec)))
+  if (eth === 0) return '0 ETH/mo'
+  if (eth < 0.00005) return '< 0.0001 ETH/mo' // would round to 0.0000 at 4 dp
+  return `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
+}
+
 // ── Stream status icon (green active / yellow pending-not-winning / red cancelled) ─────────────────
 // Shared by /account's tables and the "Manage Your Stream" flow -- both need the same tri-state read
 // of a backer's position on a streaming board.
@@ -431,13 +441,14 @@ export function MetricValue({ text, color = TEXT, title }: { text: string; color
   )
 }
 
-export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onAddToSite, topViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onAddToSite, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
   entryLoading?: boolean
   topMarkeeAddress?: string
   onAddToSite?: () => void
-  topViews: number
+  // Sum of views across every message on this board, not just the current top one.
+  totalViews: number
   viewsLoading?: boolean
   markeeCount: number
   messagesLoading?: boolean
@@ -456,7 +467,7 @@ export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onA
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0 6px', borderTop: `1px solid ${BORDER}` }}>
       {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
       {cell(totalLabel, totalNode)}
-      {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(topViews)} color={BLUE} />)}
+      {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(totalViews)} color={BLUE} />)}
       {cell(messagesLabel, messagesLoading ? <ViewsSpinner size={16} color={TEXT} /> : <MetricValue text={markeeCount.toLocaleString()} />)}
       {cell('Contract address',
         <a href={getAddressUrl(CANONICAL_CHAIN_ID, address)} target="_blank" rel="noopener noreferrer"
@@ -1733,14 +1744,18 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
         {/* Left: current bids */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bids</p>
-          {bidders.length > 0 ? (
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+              <Loader2 size={14} className="animate-spin" /> Loading bids...
+            </div>
+          ) : bidders.length > 0 ? (
             <div className="space-y-2">
               {bidders.map(b => (
                 <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
                   <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
                     {fmtAddr(b.address)} <ExternalLink size={10} />
                   </a>
-                  <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatEther(ratePerSecToMonthly(BigInt(b.flowRateRaw)))} ETH/mo</span>
+                  <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatRate(BigInt(b.flowRateRaw))}</span>
                 </div>
               ))}
             </div>
@@ -1807,7 +1822,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-[#EDEEFF]">Bought Message</span>
                       {event.flowRate > 0n && (
-                        <span className="text-sm font-semibold text-[#7C9CFF]">{formatEther(ratePerSecToMonthly(event.flowRate))} ETH/mo</span>
+                        <span className="text-sm font-semibold text-[#7C9CFF]">{formatRate(event.flowRate)}</span>
                       )}
                     </div>
                     {event.message && (
@@ -1820,7 +1835,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                       {event.subKind === 'stopped' ? 'Stream Stopped' : event.subKind === 'added' ? 'Added a Stream' : 'Stream Rate Changed'}
                     </span>
                     {event.flowRate > 0n && (
-                      <span className="text-sm font-semibold text-[#1DB227]">{formatEther(ratePerSecToMonthly(event.flowRate))} ETH/mo</span>
+                      <span className="text-sm font-semibold text-[#1DB227]">{formatRate(event.flowRate)}</span>
                     )}
                   </div>
                 ) : (

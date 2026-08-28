@@ -21,7 +21,7 @@ import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
-import { COOPERATIVE_MULTISIG } from '@/lib/contracts/addresses'
+import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
@@ -849,7 +849,7 @@ function ServedOnCell({ lb }: { lb: AnyLeaderboard }) {
 }
 
 const ACTIVE_COLS = '180px 1fr 90px 130px 160px 110px'
-const ACTIVE_HEADERS_LEFT = ['Board Name', 'Current Message', 'Strategy'] as const
+const ACTIVE_HEADERS_LEFT = ['Served on', 'Current Message', 'Strategy'] as const
 
 function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
   const eth = Number(balance) / 1e18
@@ -1464,24 +1464,8 @@ export default function AccountPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allBoardAddrsFingerprint])
 
-  const isVerified = useCallback((lb: AnyLeaderboard): boolean => {
-    const v = verificationMap[lb.address.toLowerCase()]
-    const verifiedUrls = v?.verifiedUrls ?? lb.verifiedUrls ?? []
-    const linkedFiles = v?.linkedFiles ?? lb.linkedFiles ?? []
-    return verifiedUrls.length > 0 || linkedFiles.some(f => f.verified)
-  }, [verificationMap])
-
-  // Streaming boards always need a verified integration to reach Active -- they've never been split
-  // by platform, so there's no "migrated, creator can't fix it" history to exempt. Fixed ("For Sale")
-  // boards are exempt only when admin was reassigned to the Coop multisig during migration -- that's
-  // the actual "creator can't reach it anymore" case (confirmed on the known migrated partner boards:
-  // Cooperative/Gardens/Clawchemy all carry admin === COOPERATIVE_MULTISIG). A board whose admin is
-  // still a normal wallet -- even one from a legacy per-vertical factory -- was created directly by
-  // someone who can act on it, so it's gated like everything else.
-  const needsVerificationGate = useCallback((lb: AnyLeaderboard): boolean => {
-    if (lb.strategy === 'streaming') return true
-    return lb.admin?.toLowerCase() !== COOPERATIVE_MULTISIG.toLowerCase()
-  }, [])
+  const isVerified = useCallback((lb: AnyLeaderboard): boolean =>
+    isVerifiedLeaderboard(lb, verificationMap[lb.address.toLowerCase()]), [verificationMap])
 
   // Reopen the embed modal after a GitHub OAuth round-trip initiated from here (see
   // buildGithubReturnTo in board-detail/shared.tsx) -- ?embed=1&embedAddress=<leaderboard>.

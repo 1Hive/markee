@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { parseEther, formatEther } from 'viem'
 import { formatUsd } from '@/lib/utils'
-import { formatRunwayShort, formatEthxBalanceDisplay } from '@/lib/superfluid/streaming'
+import { formatRunwayShort, formatEthxBalanceDisplay, DISPLAY_DUST_WEI } from '@/lib/superfluid/streaming'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
 import { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
@@ -79,6 +79,17 @@ export function Spinner({ size = 14 }: { size?: number }) {
   )
 }
 
+// A markee always has a message once its data has actually loaded -- an empty string in a
+// "message you're funding/managing" box means that read hasn't resolved yet, not that the message
+// is genuinely blank. Shown instead of a bare "—" so that reads as "still loading", not "empty".
+export function MessageLoading() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: MUTED }}>
+      <Spinner size={12} /> Loading message…
+    </span>
+  )
+}
+
 // A little ⓘ that reveals an explanation on hover or tap: the place technical detail lives so the
 // forms themselves stay plain.
 export function InfoTip({ children, align = 'center' }: { children: React.ReactNode; align?: 'center' | 'right' }) {
@@ -146,29 +157,35 @@ export function Row({ label, value, bold, info }: { label: string; value: string
 // each modal keeps swapping it in for its own form the same way it already swaps in TxProgress for
 // its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
 export function PaymentReviewCard({
-  kind, message, amountLabel, amountUsd, depositLabel, markeeEarnedLabel, willWin, minToWinLabel,
+  kind, message, amountLabel, amountUsd, depositLabel, runwayLabel, markeeEarnedLabel, willWin, minToWinLabel,
 }: {
   kind: 'fixed' | 'rent'
   message: string
   amountLabel: string
   amountUsd?: string | null
+  // Only one of these two shows: depositLabel when this tx actually wraps fresh ETH into ETHx,
+  // otherwise runwayLabel -- the existing ETHx balance already covers it, so nothing is being
+  // deposited and the useful number is how long that balance keeps the message streaming instead.
   depositLabel?: string | null
+  runwayLabel?: string | null
   markeeEarnedLabel: string
   willWin: boolean
   minToWinLabel?: string | null
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 6 }}>
       <div style={{
         borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)',
         padding: '12px 14px', fontFamily: MONO, fontSize: 13.5, color: TEXT, lineHeight: 1.45,
       }}>
-        {message || '—'}
+        {message || <MessageLoading />}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         <Row label="Paying" value={amountUsd ? `${amountLabel}  (≈ ${amountUsd})` : amountLabel} bold />
-        {depositLabel && <Row label="Depositing now" value={depositLabel} />}
+        {depositLabel
+          ? <Row label="Depositing now" value={depositLabel} />
+          : runwayLabel && <Row label="Payment balance time remaining" value={runwayLabel} />}
         <Row label="You'll earn" value={markeeEarnedLabel} />
       </div>
 
@@ -374,7 +391,7 @@ export function RatePriceCard({
         >
           Deposit Manager →
         </button>
-        {calc.value > 0n ? (
+        {calc.value > DISPLAY_DUST_WEI ? (
           <span style={{ display: 'inline-flex', alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: TEXT }}>{parseFloat(formatEther(calc.value)).toFixed(4)} ETH</span>
             <InfoTip align="right">

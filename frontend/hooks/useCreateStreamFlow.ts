@@ -89,6 +89,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
     message: string,
     calc: CreateStreamCalc,
     opts: { maxLen: number; belowMin: boolean; minMonthlyEth: string },
+    name = '',
   ) {
     setError(null)
     if (!address || !publicClient) return
