@@ -64,8 +64,19 @@ async function fetchStreamingOwned(
   const data = await fetch(`${origin}/api/streaming/leaderboards`, { headers })
     .then(r => r.ok ? r.json() : null).catch(() => null)
 
-  const boards: Array<{ address: string; name: string; topMarkeeAddress: string | null; topFundsAddedRaw: string }> =
-    (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
+  const boards: Array<{
+    address: string
+    name: string
+    topMarkeeAddress: string | null
+    topFundsAddedRaw: string
+    platform?: string
+    admin?: string
+    verifiedUrls?: string[]
+    linkedFiles?: unknown[]
+    siteUrl?: string | null
+    repoFullName?: string | null
+    repoHtmlUrl?: string | null
+  }> = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
   if (boards.length === 0) return []
 
   // Find this owner's markee on each streaming board
@@ -124,6 +135,13 @@ async function fetchStreamingOwned(
         strategy: 'streaming' as const,
         rank: isTop ? 1 : null,
         flowRateRaw: (pos?.rate ?? 0n).toString(),
+        platform: b.lb.platform ?? null,
+        admin: b.lb.admin ?? null,
+        verifiedUrls: b.lb.verifiedUrls ?? [],
+        linkedFiles: b.lb.linkedFiles ?? [],
+        siteUrl: b.lb.siteUrl ?? null,
+        repoFullName: b.lb.repoFullName ?? null,
+        repoHtmlUrl: b.lb.repoHtmlUrl ?? null,
       }
     })
     .filter((m): m is NonNullable<typeof m> => m !== null)
@@ -151,8 +169,19 @@ export async function GET(request: Request) {
     name: string
     topMarkeeAddress: string | null
     topFundsAddedRaw: string
+    platform?: string
+    admin?: string
+    verifiedUrls?: string[]
+    linkedFiles?: unknown[]
+    siteUrl?: string | null
+    repoFullName?: string | null
+    repoHtmlUrl?: string | null
   }> = [
-    ...(sfData?.leaderboards ?? []),
+    // Superfluid's own listing route carries no platform tag or verification fields (added
+    // downstream by ecosystem/leaderboards) -- streaming-strategy boards are always
+    // verification-gated regardless, so an empty verifiedUrls/linkedFiles here is correct, not
+    // a gap.
+    ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
   ].filter((lb: any) => lb.markeeCount > 0)
@@ -237,6 +266,13 @@ export async function GET(request: Request) {
       strategy: 'fixed' as const,
       rank,
       flowRateRaw: '0',
+      platform: lb.platform ?? null,
+      admin: lb.admin ?? null,
+      verifiedUrls: lb.verifiedUrls ?? [],
+      linkedFiles: lb.linkedFiles ?? [],
+      siteUrl: lb.siteUrl ?? null,
+      repoFullName: lb.repoFullName ?? null,
+      repoHtmlUrl: lb.repoHtmlUrl ?? null,
     }
   })
 

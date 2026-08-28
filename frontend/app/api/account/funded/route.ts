@@ -71,6 +71,13 @@ interface FundedMessage {
   strategy: 'fixed' | 'streaming'
   rank: number | null
   flowRateRaw: string
+  platform: string | null
+  admin: string | null
+  verifiedUrls: string[]
+  linkedFiles: unknown[]
+  siteUrl: string | null
+  repoFullName: string | null
+  repoHtmlUrl: string | null
 }
 
 type Board = {
@@ -78,6 +85,13 @@ type Board = {
   name: string
   topMarkeeAddress: string | null
   topFundsAddedRaw: string
+  platform?: string
+  admin?: string
+  verifiedUrls?: string[]
+  linkedFiles?: unknown[]
+  siteUrl?: string | null
+  repoFullName?: string | null
+  repoHtmlUrl?: string | null
 }
 
 // Lump-sum boards: a backer is whoever emitted FundsAdded on a markee.
@@ -94,7 +108,10 @@ async function fixedFunded(
   ])
 
   const leaderboards: Board[] = [
-    ...(sfData?.leaderboards ?? []),
+    // See messages/route.ts for why superfluid's own listing route needs platform/verification
+    // fields backfilled here -- it carries neither today, and streaming-strategy boards are
+    // always verification-gated regardless, so empty is correct.
+    ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
   ].filter((lb: any) => lb.markeeCount > 0)
@@ -230,6 +247,13 @@ async function fixedFunded(
       strategy: 'fixed' as const,
       rank: markeeToRank.get(addr) ?? null,
       flowRateRaw: '0',
+      platform: lb?.platform ?? null,
+      admin: lb?.admin ?? null,
+      verifiedUrls: lb?.verifiedUrls ?? [],
+      linkedFiles: lb?.linkedFiles ?? [],
+      siteUrl: lb?.siteUrl ?? null,
+      repoFullName: lb?.repoFullName ?? null,
+      repoHtmlUrl: lb?.repoHtmlUrl ?? null,
     }
   })
 }
@@ -306,6 +330,13 @@ async function streamingFunded(
         strategy: 'streaming' as const,
         rank: isTop ? 1 : null,
         flowRateRaw: (pos?.rate ?? 0n).toString(),
+        platform: b.lb.platform ?? null,
+        admin: b.lb.admin ?? null,
+        verifiedUrls: b.lb.verifiedUrls ?? [],
+        linkedFiles: b.lb.linkedFiles ?? [],
+        siteUrl: b.lb.siteUrl ?? null,
+        repoFullName: b.lb.repoFullName ?? null,
+        repoHtmlUrl: b.lb.repoHtmlUrl ?? null,
       }
     })
     .filter((m): m is NonNullable<typeof m> => m !== null)
