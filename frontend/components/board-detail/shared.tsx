@@ -29,46 +29,37 @@ export const HERO_GRAD = [
 ].join(', ')
 
 // ── Brand watermark ───────────────────────────────────────────────────────────
-// The actual "MAR/KEE" logo (public/markee-logo-dark.png), bled off the card's top-left corner,
-// clipped to its border radius. Sits behind the message/pill content and shares the same hover
-// trigger as the price pill -- it's a brand accent on the card, not a static logo lockup.
+// The real Markee logo (public/markee-logo-purple.png), translucent purple, centered in the card
+// behind the message/pill content, shared hover trigger as the price pill.
 //
-// Rendered as a plain <img> with mix-blend-mode: 'lighten', not a CSS mask -- an earlier version
-// used mask-image + mask-mode: 'luminance' to get an arbitrary-color letters-only watermark, but
-// real-world support for the `mask-mode` property (needed to force luminance masking instead of the
-// spec default of alpha masking, which -- since this PNG is fully opaque throughout its rounded
-// square -- would just show a solid block) turned out to be inconsistent enough that it rendered as
-// nothing at all in testing. `mix-blend-mode: lighten` is far more reliably supported and, against
-// this card's dark background, achieves the same visual result for free: 'lighten' keeps whichever
-// of source/backdrop is lighter per pixel, so the PNG's near-black background is indistinguishable
-// from the dark card behind it (both dark, backdrop usually wins) while its white letters push
-// toward full white regardless of backdrop. This only works because the card background is
-// consistently dark -- it is not the general-purpose any-color-tint technique the masked version
-// was reaching for; see lib/embedPrompt/fragments.ts for how the embed prompt handles light
-// backgrounds differently. (An even earlier version recreated "MAR"/"KEE" as plain CSS text in a
-// guessed font, which visibly mismatched the real logo's letterforms -- M/A/R reading heavier than
-// K/E/E at the same font-size. Using the real asset avoids that too.)
+// Rendered as a plain low-opacity <img> -- no blend mode, no CSS mask. Earlier versions tried
+// mix-blend-mode tricks and a CSS luminance mask to hide the PNG's own square background and show
+// "just the letters" in an arbitrary tint color, chasing a corner-bled design that turned out to
+// collide with message text and, in the masked version, real-world mask-mode support was
+// inconsistent enough to render as nothing at all. A centered, genuinely translucent placement of
+// the actual purple asset sidesteps all of that -- there's no background to hide since low opacity
+// already reads as a soft brand tint, and centering keeps it clear of text that starts near the
+// card's edges rather than needing pixel-precise corner-collision math. (An even earlier version
+// recreated "MAR"/"KEE" as plain CSS text in a guessed font, which visibly mismatched the real
+// logo's letterforms -- M/A/R reading heavier than K/E/E at the same font-size. Using the real
+// asset avoids that too.)
 //
-// z-index -1 so it paints behind the card's normal in-flow content without needing to touch that
-// content's own stacking -- but that only works if the parent container is ALSO an explicit stacking
-// context (position + a set z-index, not just position:relative alone), otherwise the negative
-// z-index can escape and paint behind far-away ancestors (e.g. the page's hero background). Give the
-// card container `zIndex: 0` (or any number) alongside its existing `position: relative` when using
-// this component. The card's own overflow can stay 'visible' since the clipping happens on this
-// component's own wrapper -- the price pill (which bleeds past the bottom edge) is unaffected.
+// z-index -1 on the wrapper below so it paints behind the card's normal in-flow content without
+// needing to touch that content's own stacking -- but that only works if the parent card is ALSO an
+// explicit stacking context (position + a set z-index, not just position:relative alone), otherwise
+// the negative z-index can escape and paint behind far-away ancestors. Give the card container
+// `zIndex: 0` (or any number) alongside its existing `position: relative` when using this component.
 export function MarkeeWatermark({ show }: { show: boolean }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit', pointerEvents: 'none', zIndex: -1 }}>
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit', pointerEvents: 'none', zIndex: -1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/markee-logo-dark.png"
+        src="/markee-logo-purple.png"
         alt=""
         aria-hidden
         style={{
-          position: 'absolute', top: -8, left: -8,
-          width: 'clamp(56px, 7vw, 84px)', height: 'clamp(56px, 7vw, 84px)',
-          mixBlendMode: 'lighten',
-          opacity: show ? 0.45 : 0, transition: 'opacity 220ms ease',
+          width: 'clamp(110px, 16vw, 190px)', height: 'auto',
+          opacity: show ? 0.16 : 0, transition: 'opacity 220ms ease',
         }}
       />
     </div>
@@ -1353,32 +1344,26 @@ modal), restyled in my site's own colors and theme. Specifically:
   headline with a subtle gradient text-fill from the primary text color into the accent color --
   approximate that with your own palette). On hover, a pill badge slides up from the bottom edge
   showing the price/action ("X.XXX ETH to change", or "be first!" if no messages yet).
-- Brand watermark: the real Markee logo, not recreated letterforms (an earlier version of this spec
-  tried approximating "MAR"/"KEE" as plain text in a guessed font and the two words visibly
-  mismatched in weight), small and low-opacity, tucked into the trigger card's top-left corner. Use
-  https://markee.xyz/markee-logo-dark.png (black background, white letters) as a plain image with a
-  CSS blend mode, not a normal full-opacity logo placement -- an earlier version of this spec tried a
-  CSS luminance mask (mask-image + mask-mode:luminance) to get an arbitrary-color letters-only
-  watermark, but real-world support for mask-mode turned out to be inconsistent enough that it
-  rendered as nothing at all in testing. Blend modes are far more reliably supported. Pick based on
-  whether the trigger card's background is dark or light: on a dark or mid-toned card, an
-  absolutely-positioned img of that PNG (sized clamp(56px,7vw,84px) square, positioned top:-8px/
-  left:-8px) with mix-blend-mode:lighten -- this keeps whichever of the image or your card background
-  is lighter per pixel, so the PNG's near-black background is indistinguishable from a dark card
-  (both dark) while the white letters push toward full white, so the square disappears and only the
-  letters read. On a light card, invert the same image first with filter:invert(1) (turns the black
-  square white and the white letters black) then use mix-blend-mode:multiply instead of lighten,
-  which keeps whichever pixel is darker -- the now-white square vanishes into the light background
-  while the now-black letters stay visible. Test against the actual card background and adjust
-  opacity if needed (start around 0.45 on hover) -- there's no universal number that looks right on
-  every color. Keep it compact and pulled tight to the corner with only a few px of negative offset
-  so it stays clear of the message headline's own text, including where a long message wraps onto a
-  second or third line -- oversizing this was a mistake in an earlier version of this spec too. Clip
-  it with its own absolutely-positioned "overflow: hidden" wrapper, not the whole card's overflow --
-  the price pill intentionally bleeds past the card's bottom edge and would get cut off otherwise.
-  Give the card container an explicit z-index (not just position: relative) so the watermark's
-  negative z-index stays contained instead of escaping behind the page's own background. It shares
-  the price pill's hover trigger -- fades in and out together with the pill, not a separate
+- Brand watermark: the real Markee logo, translucent purple, centered in the trigger card behind the
+  message text -- not recreated letterforms (an earlier version of this spec tried approximating
+  "MAR"/"KEE" as plain text in a guessed font and the two words visibly mismatched in weight) and not
+  blend-mode or CSS-mask tricks to hide the logo's own background (earlier versions of this spec
+  tried that too, chasing a corner-bled placement that collided with message text and, for the masked
+  version, ran into inconsistent real-world support for the CSS mask-mode property that made it
+  render as nothing at all). Use https://markee.xyz/markee-logo-purple.png as a plain, low-opacity
+  image -- purple at low opacity reads reasonably against light and dark card backgrounds alike, so
+  there's no light/dark branching to get wrong: a flex-centered wrapper (position:absolute, inset:0,
+  overflow:hidden, border-radius:inherit, pointer-events:none, z-index:-1, display:flex,
+  align-items:center, justify-content:center) containing the img sized clamp(110px,16vw,190px)
+  square, opacity around 0.16 on hover, 0 otherwise. Centered, not corner-anchored -- this is what
+  actually keeps it clear of the message headline without needing pixel-precise collision math
+  against text that wraps to a variable number of lines: a translucent mark diffused across the
+  middle of the card reads as a soft background texture regardless of exactly where the message text
+  falls. Clip it with its own absolutely-positioned "overflow: hidden" wrapper, not the whole card's
+  overflow -- the price pill intentionally bleeds past the card's bottom edge and would get cut off
+  otherwise. Give the card container an explicit z-index (not just position: relative) so the
+  watermark's negative z-index stays contained instead of escaping behind the page's own background.
+  It shares the price pill's hover trigger -- fades in and out together with the pill, not a separate
   always-present element. This is a Markee brand requirement, not optional styling -- every
   integration should carry it.
 - Loading states never show a blank or "0" value while data is still in flight -- use a small

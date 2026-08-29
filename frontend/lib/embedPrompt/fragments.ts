@@ -73,51 +73,34 @@ an embedded widget -- but its shape should be unmistakably Markee:
 - On hover: a pill badge slides up from the bottom-center edge showing the price/action --
   "X.XXX ETH to change" (fixed) or "X.XXX ETH/mo to back" (streaming), or "be first!" if there's no
   message yet. Fade in with a slight upward translate, not an instant show/hide.
-- **Brand watermark (required on every integration, not optional styling):** the real Markee logo
-  (not recreated letterforms -- an earlier version of this spec tried approximating "MAR"/"KEE" as
-  plain text in a guessed font and the two words visibly mismatched in weight), small and low-opacity,
-  tucked into the card's top-left corner. Use https://markee.xyz/markee-logo-dark.png (black
-  background, white letters) as a plain image with a CSS blend mode, not a normal full-opacity logo
-  placement -- an earlier version of this spec tried a CSS luminance mask (\`mask-image\` +
-  \`mask-mode: luminance\`) to get an arbitrary-color letters-only watermark, but real-world support
-  for \`mask-mode\` turned out to be inconsistent enough that it rendered as nothing at all in
-  testing. Blend modes are far more reliably supported. Pick based on whether your card background is
-  dark or light:
+- **Brand watermark (required on every integration, not optional styling):** the real Markee logo,
+  translucent purple, centered in the trigger card behind the message text -- not recreated
+  letterforms (an earlier version of this spec tried approximating "MAR"/"KEE" as plain text in a
+  guessed font and the two words visibly mismatched in weight) and not blend-mode or CSS-mask tricks
+  to hide the logo's own background (earlier versions of this spec tried that too, chasing a
+  corner-bled placement that collided with message text and, for the masked version, ran into
+  inconsistent real-world support for the CSS \`mask-mode\` property that made it render as nothing
+  at all). Use https://markee.xyz/markee-logo-purple.png as a plain, low-opacity image -- purple at
+  low opacity reads reasonably against light and dark card backgrounds alike, so there's no
+  light/dark branching to get wrong:
   \`\`\`
-  <!-- Dark or mid-toned card background (most common) -->
-  <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
-    <img src="https://markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
-      position:absolute; top:-8px; left:-8px; width:clamp(56px,7vw,84px); height:clamp(56px,7vw,84px);
-      mix-blend-mode:lighten; opacity:{hover ? 0.45 : 0}; transition:opacity 220ms;
-    " />
-  </div>
-
-  <!-- Light card background -->
-  <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
-    <img src="https://markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
-      position:absolute; top:-8px; left:-8px; width:clamp(56px,7vw,84px); height:clamp(56px,7vw,84px);
-      filter:invert(1); mix-blend-mode:multiply; opacity:{hover ? 0.45 : 0}; transition:opacity 220ms;
+  <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1; display:flex; align-items:center; justify-content:center">
+    <img src="https://markee.xyz/markee-logo-purple.png" alt="" aria-hidden style="
+      width:clamp(110px,16vw,190px); height:auto;
+      opacity:{hover ? 0.16 : 0}; transition:opacity 220ms;
     " />
   </div>
   \`\`\`
-  Both use the same dark-variant PNG, just composited differently: \`mix-blend-mode: lighten\` keeps
-  whichever of the image or your card background is lighter per pixel, so against a dark card the
-  PNG's near-black background is indistinguishable from your own background (both dark) while the
-  white letters push toward full white -- the square disappears, only the letters read. Against a
-  light card, invert the image first (\`filter: invert(1)\` turns the black square white and the white
-  letters black) then use \`mix-blend-mode: multiply\`, which keeps whichever pixel is darker -- the
-  now-white square vanishes into your light background while the now-black letters stay visible. Test
-  against your actual card background and adjust opacity if needed; there's no universal number that
-  looks right on every color. Keep it compact and pulled tight to the corner (a few px of negative
-  offset, not more) so it stays clear of the message headline's own text, including where a long
-  message wraps onto a second or third line -- oversizing this was a mistake in an earlier version of
-  this spec too. It shares the hover pill's trigger -- fades in and out together with the pill, rather
-  than sitting there permanently. The wrapper's own \`overflow:hidden\` does the clipping -- don't set
-  it on the whole card, or the price pill (which intentionally bleeds past the card's bottom edge)
-  gets cut off too. Give the card container an explicit \`z-index\` (not just \`position: relative\`)
-  so the watermark's negative z-index stays contained instead of escaping behind your page's own
-  background -- position + z-index together is what actually creates a new stacking context; position
-  alone doesn't.
+  Centered, not corner-anchored -- this is what actually keeps it clear of the message headline
+  without needing pixel-precise collision math against text that wraps to a variable number of
+  lines: a translucent mark diffused across the middle of the card reads as a soft background
+  texture regardless of exactly where the message text falls. It shares the hover pill's trigger --
+  fades in and out together with the pill, rather than sitting there permanently. The wrapper's own
+  \`overflow:hidden\` does the clipping -- don't set it on the whole card, or the price pill (which
+  intentionally bleeds past the card's bottom edge) gets cut off too. Give the card container an
+  explicit \`z-index\` (not just \`position: relative\`) so the watermark's negative z-index stays
+  contained instead of escaping behind your page's own background -- position + z-index together is
+  what actually creates a new stacking context; position alone doesn't.
 - Card container: rounded corners (12-16px), a subtle 1px border that brightens on hover, slight lift
   (translateY(-2px)) + shadow-on-hover, backdrop blur if your design system already uses
   glassmorphism.
