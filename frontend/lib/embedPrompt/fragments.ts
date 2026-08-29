@@ -55,6 +55,51 @@ My leaderboard:
 Build a fully embedded flow -- visitors buy, edit, and add funds to messages without ever leaving this site. Do not fall back to an iframe.`
 }
 
+// ── Trigger card & brand watermark ─────────────────────────────────────────────
+// The piece integrators most often skip or reinvent -- without it you get a generic "Buy" button
+// instead of something that reads as Markee. Mirrors markee.xyz's own hero card
+// (components/board-detail/shared.tsx's FeaturedCard + MarkeeWatermark), restyled in the host
+// site's own colors -- not Markee's pink, just Markee's shape.
+export function triggerCardFragment(): string {
+  return `## Trigger card: match Markee's own hero-card pattern
+
+The card that displays the current top message should feel like a real piece of this site's UI, not
+an embedded widget -- but its shape should be unmistakably Markee:
+
+- Bold, large message text as the card's headline (monospace or a heavy sans font, ~24-34px; a
+  subtle gradient text-fill from your primary text color into your accent color if your design
+  system supports gradient text). A small eye-icon view count in the top-right corner. The message
+  owner's name (or truncated 0x1234...abcd address) bottom-right, prefixed with "-".
+- On hover: a pill badge slides up from the bottom-center edge showing the price/action --
+  "X.XXX ETH to change" (fixed) or "X.XXX ETH/mo to back" (streaming), or "be first!" if there's no
+  message yet. Fade in with a slight upward translate, not an instant show/hide.
+- **Brand watermark (required on every integration, not optional styling):** a large, low-opacity
+  "MARKEE" wordmark bled off the card's top-left corner -- two stacked lines, "MAR" over "KEE", bold
+  sans-serif (weight ~800), sized roughly 2x the message headline's font size, positioned with a
+  small negative top/left offset so it's naturally clipped by the card's own border-radius, at
+  ~8-10% opacity. It shares the hover pill's trigger -- fades in and out together with the pill,
+  rather than sitting there permanently. Render it as plain text, not an image -- it inherits your
+  color exactly and needs no external asset fetch:
+  \`\`\`
+  <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
+    <div style="position:absolute; top:-14px; left:-8px; font-weight:800; font-size:clamp(46px,6.5vw,80px); line-height:0.82; opacity:{hover ? 0.09 : 0}; transition:opacity 220ms; white-space:pre; color:{tint}">MAR{'\\n'}KEE</div>
+  </div>
+  \`\`\`
+  This wrapper's own \`overflow:hidden\` does the clipping -- don't set it on the whole card, or the
+  price pill (which intentionally bleeds past the card's bottom edge) gets cut off too. Give the card
+  container an explicit \`z-index\` (not just \`position: relative\`) so the watermark's negative
+  z-index stays contained instead of escaping behind your page's own background -- position +
+  z-index together is what actually creates a new stacking context; position alone doesn't.
+  Tint: white on dark/black card backgrounds, near-black on light/white backgrounds, or Markee's own
+  purple (#7B6AF4) if your card background sits in between -- pick whichever reads as a faint accent
+  against your own card's actual background, not a fixed choice.
+- Card container: rounded corners (12-16px), a subtle 1px border that brightens on hover, slight lift
+  (translateY(-2px)) + shadow-on-hover, backdrop blur if your design system already uses
+  glassmorphism.
+
+This card is also the click target that opens the buy modal below.`
+}
+
 // ── Wallet setup ──────────────────────────────────────────────────────────────
 // wagmi + viem is the one non-negotiable base under either choice -- every contract-call fragment
 // below assumes it. Don't pre-detect whether it's already installed; let the agent figure that out
@@ -307,7 +352,7 @@ Skipping this is fine -- verification just skips those two checks rather than fa
 export function themeAdoptionFragment(): string {
   return `## Match this site's theme
 
-Don't import Markee's own color palette. Before building the modal, read this site's existing design tokens -- Tailwind config, CSS custom properties, or whatever component library it already uses -- and reuse its actual colors, font, border-radius, and spacing scale. The modal should look like it was built for this site, not pasted in from another product.`
+Don't import Markee's own color palette. Before building the modal, read this site's existing design tokens -- Tailwind config, CSS custom properties, or whatever component library it already uses -- and reuse its actual colors, font, border-radius, and spacing scale. The modal should look like it was built for this site, not pasted in from another product. The one exception is the brand watermark described above -- its shape and hover behavior are a Markee requirement, only its tint color adapts to your theme.`
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
@@ -315,6 +360,7 @@ export function buildEmbedPrompt({ address, name, strategy, framework, wallet, a
   const buyUrl = `https://markee.xyz/markee/${address}`
   const sections = [
     coreIdentityFragment({ address, name, buyUrl }),
+    triggerCardFragment(),
     walletFragment(wallet),
     strategyFragment(strategy, address),
     proxyRouteFragment(framework, address),

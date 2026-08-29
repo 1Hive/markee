@@ -19,6 +19,7 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 
@@ -329,7 +330,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
           style={{
-            position: 'relative', display: 'block', textDecoration: 'none',
+            position: 'relative', zIndex: 0, display: 'block', textDecoration: 'none',
             background: 'rgba(255,255,255,0.04)',
             border: `1px solid ${hover ? 'rgba(248,151,254,0.5)' : 'rgba(255,255,255,0.18)'}`,
             borderRadius: 16, padding: '18px 26px 22px',
@@ -339,6 +340,8 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
             boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
           }}
         >
+          <MarkeeWatermark show={hover} />
+
           {/* top row: views */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
@@ -370,21 +373,20 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
             )}
           </div>
 
-          {/* hover pill — brand watermark (dark logo) on the far left, only on hover, on every
-              Markee card with a hover price badge (see also FeaturedCard on /markee/[address] and
-              the home page hero cards). */}
+          {/* hover pill -- brand watermark now lives as the large MarkeeWatermark behind the whole
+              card (see above), not a small logo inside the pill; same hover trigger, same fade, on
+              every Markee card with a hover price badge (see also FeaturedCard on /markee/[address]
+              and the home page hero cards). */}
           <span style={{
             position: 'absolute', bottom: -15, left: '50%',
             transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`,
             display: 'inline-flex', alignItems: 'center', gap: 8,
             background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13,
-            padding: '3px 18px 3px 3px', borderRadius: 8, whiteSpace: 'nowrap' as const,
+            padding: '3px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const,
             boxShadow: '0 8px 28px rgba(248,151,254,0.42)',
             opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms',
             pointerEvents: 'none', zIndex: 3,
           }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/markee-logo-dark.png" alt="" aria-hidden width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
             {lb.strategy === 'streaming' ? `${monthlyRateLabel(lb, ethPrice)} to back` : `${priceLabel} to change`}
           </span>
         </Link>
@@ -505,11 +507,15 @@ function TableRow({ lb, views, viewsLoading, ethPrice, position, onBuy, onStream
         {totalLabel}
       </span>
 
-      {/* CURRENT MESSAGE */}
+      {/* CURRENT MESSAGE -- ModeratedContent only, no FlagButton: this whole row is a Link and
+          FlagButton's handler only stopPropagation()s, not preventDefault()s, so nesting it here
+          would still navigate on click. The target page already has a working FlagButton. */}
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+          </div>
+        </ModeratedContent>
       </div>
 
       <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>

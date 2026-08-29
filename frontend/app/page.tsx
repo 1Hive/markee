@@ -18,6 +18,7 @@ import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { MarkeeWatermark } from '@/components/board-detail/shared'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px 100px'
@@ -62,9 +63,17 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
   onClick: () => void
 }) {
   const hasPrice = fixedMarkee.priceWei !== '0' && fixedMarkee.priceWei !== '0x0'
+  const [hover, setHover] = useState(false)
 
   return (
-    <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="reader-card"
+      style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}
+    >
+      <MarkeeWatermark show={hover} />
       {views && views.totalViews > 0 && (
         <span className="reader-views">
           <Eye size={10} />
@@ -76,8 +85,6 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
       </ModeratedContent>
       {hasPrice && (
         <div className="reader-pill">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/markee-logo-dark.png" alt="" aria-hidden width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
           {formatEthCompact(fixedMarkee.priceWei)} ETH to change
         </div>
       )}
@@ -588,12 +595,18 @@ export default function Home() {
 
                       {/* Current message */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
-                        <div style={{
-                          fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>
-                          {lb.topMessage || '—'}
-                        </div>
+                        {/* ModeratedContent only, no FlagButton -- this whole row is a Link and
+                            FlagButton's handler only stopPropagation()s, not preventDefault()s, so
+                            nesting it here would still navigate on click. The target page has a
+                            working FlagButton already. */}
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+                          <div style={{
+                            fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {lb.topMessage || '—'}
+                          </div>
+                        </ModeratedContent>
                       </div>
 
                       {/* Views */}

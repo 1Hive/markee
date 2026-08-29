@@ -28,6 +28,33 @@ export const HERO_GRAD = [
   'linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)',
 ].join(', ')
 
+// ── Brand watermark ───────────────────────────────────────────────────────────
+// Large "MAR/KEE" wordmark bled off the card's top-left corner, clipped to its border radius. Sits
+// behind the message/pill content and shares the same hover trigger as the price pill -- it's a
+// brand accent on the card, not a static logo lockup. z-index -1 so it paints behind the card's
+// normal in-flow content without needing to touch that content's own stacking -- but that only
+// works if the parent container is ALSO an explicit stacking context (position + a set z-index, not
+// just position:relative alone), otherwise the negative z-index can escape and paint behind
+// far-away ancestors (e.g. the page's hero background). Give the card container `zIndex: 0` (or
+// any number) alongside its existing `position: relative` when using this component. The card's own
+// overflow can stay 'visible' since the clipping happens on this component's own wrapper -- the
+// price pill (which bleeds past the bottom edge) is unaffected.
+export function MarkeeWatermark({ show }: { show: boolean }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit', pointerEvents: 'none', zIndex: -1 }}>
+      <div style={{
+        position: 'absolute', top: -14, left: -8,
+        fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800,
+        fontSize: 'clamp(46px, 6.5vw, 80px)', lineHeight: 0.82, letterSpacing: '-0.01em',
+        color: TEXT, whiteSpace: 'pre' as const,
+        opacity: show ? 0.09 : 0, transition: 'opacity 220ms ease',
+      }}>
+        {'MAR\nKEE'}
+      </div>
+    </div>
+  )
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function formatViews(n: number) {
   if (n < 1000) return String(n)
@@ -507,7 +534,7 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
           style={{
-            position: 'relative', width: '100%', textAlign: 'left', cursor: 'pointer',
+            position: 'relative', zIndex: 0, width: '100%', textAlign: 'left', cursor: 'pointer',
             background: 'rgba(255,255,255,0.04)',
             border: `1px solid ${hover ? 'rgba(248,151,254,0.5)' : 'rgba(255,255,255,0.18)'}`,
             borderRadius: 16, padding: '18px 26px 22px', backdropFilter: 'blur(4px)',
@@ -517,6 +544,8 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
             fontFamily: 'Manrope, system-ui, sans-serif',
           }}
         >
+          <MarkeeWatermark show={hover} />
+
           {/* top-right: views + flag */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} />
@@ -539,13 +568,12 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
             </div>
           )}
 
-          {/* hover pill — brand watermark (dark logo) on the far left, only on hover, on every
-              Markee card with a hover price badge (see also FeaturedHero on /marketplace and the
-              home page hero cards). */}
+          {/* hover pill -- brand watermark now lives as the large MarkeeWatermark behind the whole
+              card (see above), not a small logo inside the pill; same hover trigger, same fade, on
+              every Markee card with a hover price badge (see also FeaturedHero on /marketplace and
+              the home page hero cards). */}
           {pillLabel && (
-            <span style={{ position: 'absolute', bottom: -15, left: '50%', transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`, display: 'inline-flex', alignItems: 'center', gap: 8, background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13, padding: '3px 18px 3px 3px', borderRadius: 8, whiteSpace: 'nowrap' as const, boxShadow: '0 8px 28px rgba(248,151,254,0.42)', opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms', pointerEvents: 'none', zIndex: 3 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/markee-logo-dark.png" alt="" aria-hidden width={24} height={24} style={{ borderRadius: 6, flexShrink: 0 }} />
+            <span style={{ position: 'absolute', bottom: -15, left: '50%', transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`, display: 'inline-flex', alignItems: 'center', gap: 8, background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13, padding: '3px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const, boxShadow: '0 8px 28px rgba(248,151,254,0.42)', opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms', pointerEvents: 'none', zIndex: 3 }}>
               {pillLabel}
             </span>
           )}
@@ -1305,17 +1333,19 @@ modal), restyled in my site's own colors and theme. Specifically:
   headline with a subtle gradient text-fill from the primary text color into the accent color --
   approximate that with your own palette). On hover, a pill badge slides up from the bottom edge
   showing the price/action ("X.XXX ETH to change", or "be first!" if no messages yet).
-- Logo watermark: render the Markee logo (fetch the PNG from https://markee.xyz/markee-logo-dark.png
-  -- a light-backgrounds-friendly dark mark, or use https://markee.xyz/markee-logo-light.png if your
-  pill background is itself dark; or inline equivalent letterforms) large -- close to the full height
-  of the pill itself (~24px against a pill with ~3px vertical padding), not a small icon floating
-  inside it. Inset it flush against the pill's left/top/bottom edges with only a thin border of
-  space around it, roughly the same width as the border around the whole trigger card (a few px),
-  and round its corners so that thin border reads as a consistent ring -- the pill's own corner
-  radius minus that border width. The price/action text keeps its normal padding on the right; only
-  the logo side is tight. It only appears when the pill does (same hover trigger, same fade) -- it
-  is not a separate always-present or corner-pinned element. This is a Markee brand requirement, not
-  optional styling -- every integration should carry it.
+- Brand watermark: a large, low-opacity "MARKEE" wordmark bled off the trigger card's top-left
+  corner -- two stacked lines, "MAR" over "KEE", bold sans-serif (weight ~800), sized roughly 2x the
+  message headline's font size, positioned with a small negative top/left offset so it's naturally
+  clipped by the card's own border-radius, at ~8-10% opacity. Render it as plain text (not an image)
+  so it inherits your color exactly and needs no external asset fetch. Clip it with its own
+  absolutely-positioned "overflow: hidden" wrapper, not the whole card's overflow -- the price pill
+  intentionally bleeds past the card's bottom edge and would get cut off otherwise. Give the card
+  container an explicit z-index (not just position: relative) so the watermark's negative z-index
+  stays contained instead of escaping behind the page's own background. Tint: white on dark/black
+  card backgrounds, near-black on light/white backgrounds, or Markee's own purple (#7B6AF4) if the
+  card background sits in between. It shares the price pill's hover trigger -- fades in and out
+  together with the pill, not a separate always-present element. This is a Markee brand requirement,
+  not optional styling -- every integration should carry it.
 - Loading states never show a blank or "0" value while data is still in flight -- use a small
   spinner (a simple CSS-animated ring is fine) in place of the number/text until the real value
   loads, exactly like the price badge and message text above.
