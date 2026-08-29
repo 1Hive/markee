@@ -14,6 +14,8 @@ import { StrategyBadge } from '@/components/StrategyBadge'
 import { useStreamingRows } from '@/hooks/useStreamingRows'
 import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -30,6 +32,8 @@ interface SuperfluidLeaderboard {
   boosted: boolean
   strategy?: Strategy
   effectiveRateRaw?: string
+  admin?: string
+  creator?: string | null
 }
 
 function rowEffectiveRate(lb: SuperfluidLeaderboard): bigint {
@@ -261,9 +265,11 @@ function BoostedTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+          </div>
+        </ModeratedContent>
       </div>
 
       <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -338,9 +344,11 @@ function RegularTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+          </div>
+        </ModeratedContent>
       </div>
 
       <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>

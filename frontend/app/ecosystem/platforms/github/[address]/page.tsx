@@ -20,6 +20,8 @@ import { useGithubTraffic } from '@/hooks/useGithubTraffic'
 import { useViews } from '@/hooks/useViews'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -143,6 +145,7 @@ export default function GithubLeaderboardPage() {
 
   const leaderboardName = meta?.[0]?.result as string | undefined
   const totalFunds = meta?.[1]?.result as bigint | undefined
+  const boardAdmin = meta?.[4]?.result as string | undefined
   const topResult = meta?.[6]?.result as [string[], bigint[]] | undefined
 
   const displayName = leaderboardName ?? undefined
@@ -322,9 +325,14 @@ export default function GithubLeaderboardPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message (In Context Window)</div>
-                <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
-                  {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
-                </p>
+                <div className="flex items-start gap-2">
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+                    <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
+                      {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
+                    </p>
+                  </ModeratedContent>
+                  <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} compact />
+                </div>
                 <div className="flex items-center gap-4 mt-3">
                   {topMarkee.name && (
                     <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
@@ -385,6 +393,7 @@ export default function GithubLeaderboardPage() {
                   rank={idx + 1}
                   formatFunds={formatFunds}
                   leaderboardAddress={leaderboardAddress}
+                  boardAdmin={boardAdmin}
                   onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
                   onEditMessage={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('updateMessage'); setBuyModalOpen(true) }}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
