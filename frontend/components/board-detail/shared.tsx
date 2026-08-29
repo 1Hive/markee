@@ -43,11 +43,11 @@ export function MarkeeWatermark({ show }: { show: boolean }) {
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit', pointerEvents: 'none', zIndex: -1 }}>
       <div style={{
-        position: 'absolute', top: -14, left: -8,
+        position: 'absolute', top: -6, left: -6,
         fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800,
-        fontSize: 'clamp(46px, 6.5vw, 80px)', lineHeight: 0.82, letterSpacing: '-0.01em',
+        fontSize: 'clamp(22px, 3vw, 34px)', lineHeight: 0.86, letterSpacing: '-0.01em',
         color: TEXT, whiteSpace: 'pre' as const,
-        opacity: show ? 0.09 : 0, transition: 'opacity 220ms ease',
+        opacity: show ? 0.07 : 0, transition: 'opacity 220ms ease',
       }}>
         {'MAR\nKEE'}
       </div>
@@ -1333,11 +1333,15 @@ modal), restyled in my site's own colors and theme. Specifically:
   headline with a subtle gradient text-fill from the primary text color into the accent color --
   approximate that with your own palette). On hover, a pill badge slides up from the bottom edge
   showing the price/action ("X.XXX ETH to change", or "be first!" if no messages yet).
-- Brand watermark: a large, low-opacity "MARKEE" wordmark bled off the trigger card's top-left
-  corner -- two stacked lines, "MAR" over "KEE", bold sans-serif (weight ~800), sized roughly 2x the
-  message headline's font size, positioned with a small negative top/left offset so it's naturally
-  clipped by the card's own border-radius, at ~8-10% opacity. Render it as plain text (not an image)
-  so it inherits your color exactly and needs no external asset fetch. Clip it with its own
+- Brand watermark: a small, low-opacity "MARKEE" wordmark tucked into the trigger card's top-left
+  corner -- two stacked lines, "MAR" over "KEE", bold sans-serif (weight ~800), sized noticeably
+  smaller than the message headline (roughly clamp(22px, 3vw, 34px) against a ~24-34px headline), at
+  ~7% opacity, pulled tight to the corner with only a few px of negative offset. Keep it compact and
+  clear of the message headline's own text, including where a long message wraps onto a second or
+  third line -- oversizing this is the most common mistake, since at headline-matching sizes it
+  collides with the message text directly behind it and reads as noise instead of a subtle corner
+  texture. Render it as plain text (not an image) so it inherits your color exactly and needs no
+  external asset fetch. Clip it with its own
   absolutely-positioned "overflow: hidden" wrapper, not the whole card's overflow -- the price pill
   intentionally bleeds past the card's bottom edge and would get cut off otherwise. Give the card
   container an explicit z-index (not just position: relative) so the watermark's negative z-index

@@ -73,16 +73,20 @@ an embedded widget -- but its shape should be unmistakably Markee:
 - On hover: a pill badge slides up from the bottom-center edge showing the price/action --
   "X.XXX ETH to change" (fixed) or "X.XXX ETH/mo to back" (streaming), or "be first!" if there's no
   message yet. Fade in with a slight upward translate, not an instant show/hide.
-- **Brand watermark (required on every integration, not optional styling):** a large, low-opacity
-  "MARKEE" wordmark bled off the card's top-left corner -- two stacked lines, "MAR" over "KEE", bold
-  sans-serif (weight ~800), sized roughly 2x the message headline's font size, positioned with a
-  small negative top/left offset so it's naturally clipped by the card's own border-radius, at
-  ~8-10% opacity. It shares the hover pill's trigger -- fades in and out together with the pill,
-  rather than sitting there permanently. Render it as plain text, not an image -- it inherits your
-  color exactly and needs no external asset fetch:
+- **Brand watermark (required on every integration, not optional styling):** a small, low-opacity
+  "MARKEE" wordmark tucked into the card's top-left corner -- two stacked lines, "MAR" over "KEE",
+  bold sans-serif (weight ~800), sized noticeably *smaller* than the message headline (roughly
+  clamp(22px, 3vw, 34px) against a ~24-34px headline), at ~7% opacity. Keep it compact and pulled
+  tight to the corner (a few px of negative offset, not more) -- it must stay clear of the message
+  headline's own text, including where a long message wraps onto a second or third line. Oversizing
+  this is the single most common mistake: at headline-matching or larger sizes it collides with the
+  message text directly behind it and reads as noise instead of a subtle corner texture. It shares
+  the hover pill's trigger -- fades in and out together with the pill, rather than sitting there
+  permanently. Render it as plain text, not an image -- it inherits your color exactly and needs no
+  external asset fetch:
   \`\`\`
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
-    <div style="position:absolute; top:-14px; left:-8px; font-weight:800; font-size:clamp(46px,6.5vw,80px); line-height:0.82; opacity:{hover ? 0.09 : 0}; transition:opacity 220ms; white-space:pre; color:{tint}">MAR{'\\n'}KEE</div>
+    <div style="position:absolute; top:-6px; left:-6px; font-weight:800; font-size:clamp(22px,3vw,34px); line-height:0.86; opacity:{hover ? 0.07 : 0}; transition:opacity 220ms; white-space:pre; color:{tint}">MAR{'\\n'}KEE</div>
   </div>
   \`\`\`
   This wrapper's own \`overflow:hidden\` does the clipping -- don't set it on the whole card, or the
