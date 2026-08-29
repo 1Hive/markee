@@ -33,14 +33,21 @@ export const HERO_GRAD = [
 // clipped to its border radius. Sits behind the message/pill content and shares the same hover
 // trigger as the price pill -- it's a brand accent on the card, not a static logo lockup.
 //
-// Rendered via a CSS luminance mask rather than an <img> so it can be tinted to any color: the dark
-// variant's near-black background (luminance ~0) and white letters (luminance ~255) give the
-// cleanest letter/background contrast of the three PNG variants, so it's used as a pure shape mask
-// regardless of the card's own theme -- the visible color comes entirely from `backgroundColor`
-// below, not from the source image's own colors. An earlier version of this recreated "MAR"/"KEE" as
-// plain CSS text in a guessed font, which visibly mismatched the real logo's letterforms (M/A/R
-// reading heavier than K/E/E at the same font-size). Masking the real asset avoids that entirely --
-// both words come from the same artwork, already sized and kerned consistently.
+// Rendered as a plain <img> with mix-blend-mode: 'lighten', not a CSS mask -- an earlier version
+// used mask-image + mask-mode: 'luminance' to get an arbitrary-color letters-only watermark, but
+// real-world support for the `mask-mode` property (needed to force luminance masking instead of the
+// spec default of alpha masking, which -- since this PNG is fully opaque throughout its rounded
+// square -- would just show a solid block) turned out to be inconsistent enough that it rendered as
+// nothing at all in testing. `mix-blend-mode: lighten` is far more reliably supported and, against
+// this card's dark background, achieves the same visual result for free: 'lighten' keeps whichever
+// of source/backdrop is lighter per pixel, so the PNG's near-black background is indistinguishable
+// from the dark card behind it (both dark, backdrop usually wins) while its white letters push
+// toward full white regardless of backdrop. This only works because the card background is
+// consistently dark -- it is not the general-purpose any-color-tint technique the masked version
+// was reaching for; see lib/embedPrompt/fragments.ts for how the embed prompt handles light
+// backgrounds differently. (An even earlier version recreated "MAR"/"KEE" as plain CSS text in a
+// guessed font, which visibly mismatched the real logo's letterforms -- M/A/R reading heavier than
+// K/E/E at the same font-size. Using the real asset avoids that too.)
 //
 // z-index -1 so it paints behind the card's normal in-flow content without needing to touch that
 // content's own stacking -- but that only works if the parent container is ALSO an explicit stacking
@@ -52,22 +59,18 @@ export const HERO_GRAD = [
 export function MarkeeWatermark({ show }: { show: boolean }) {
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit', pointerEvents: 'none', zIndex: -1 }}>
-      <div style={{
-        position: 'absolute', top: -8, left: -8,
-        width: 'clamp(56px, 7vw, 84px)', height: 'clamp(56px, 7vw, 84px)',
-        backgroundColor: TEXT,
-        WebkitMaskImage: 'url(/markee-logo-dark.png)',
-        maskImage: 'url(/markee-logo-dark.png)',
-        WebkitMaskSize: 'contain', maskSize: 'contain',
-        WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'center', maskPosition: 'center',
-        // Standards-track mask-image defaults to alpha-based masking (the PNG is opaque throughout
-        // its rounded square, so that alone would just show a solid block); explicit luminance mode
-        // is what actually reveals just the letters. Older WebKit's -webkit-mask-image has always
-        // been luminance-based with no separate mode property, so it needs no equivalent here.
-        maskMode: 'luminance',
-        opacity: show ? 0.1 : 0, transition: 'opacity 220ms ease',
-      } as React.CSSProperties} />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/markee-logo-dark.png"
+        alt=""
+        aria-hidden
+        style={{
+          position: 'absolute', top: -8, left: -8,
+          width: 'clamp(56px, 7vw, 84px)', height: 'clamp(56px, 7vw, 84px)',
+          mixBlendMode: 'lighten',
+          opacity: show ? 0.45 : 0, transition: 'opacity 220ms ease',
+        }}
+      />
     </div>
   )
 }
@@ -1353,27 +1356,31 @@ modal), restyled in my site's own colors and theme. Specifically:
 - Brand watermark: the real Markee logo, not recreated letterforms (an earlier version of this spec
   tried approximating "MAR"/"KEE" as plain text in a guessed font and the two words visibly
   mismatched in weight), small and low-opacity, tucked into the trigger card's top-left corner. Use
-  https://markee.xyz/markee-logo-dark.png (black background, white letters) purely as a luminance
-  mask, not as a normal img tag -- this is what lets it tint to any color instead of being stuck as a
-  solid black square: absolutely-positioned div sized clamp(56px,7vw,84px) square, positioned with
-  top:-8px/left:-8px, background-color set to your tint, mask-image (and -webkit-mask-image) pointing
-  at that PNG, mask-size:contain, mask-repeat:no-repeat, mask-position:center, and mask-mode:luminance.
-  mask-mode:luminance is the key property -- without it, standards-track mask-image defaults to
-  alpha-based masking, and since the PNG is fully opaque throughout its rounded square, that alone
-  would just show a solid tinted block instead of the letters. Older WebKit's -webkit-mask-image has
-  always been luminance-based with no separate mode property, so it needs no equivalent there -- both
-  mask properties together cover current browsers. Keep it compact and pulled tight to the corner
-  with only a few px of negative offset so it stays clear of the message headline's own text,
-  including where a long message wraps onto a second or third line -- oversizing this was the actual
-  mistake in an earlier version of this spec, not a font issue. Clip it with its own
-  absolutely-positioned "overflow: hidden" wrapper, not the whole card's overflow -- the price pill
-  intentionally bleeds past the card's bottom edge and would get cut off otherwise. Give the card
-  container an explicit z-index (not just position: relative) so the watermark's negative z-index
-  stays contained instead of escaping behind the page's own background. Tint: white on dark/black
-  card backgrounds, near-black on light/white backgrounds, or Markee's own purple (#7B6AF4) if the
-  card background sits in between. It shares the price pill's hover trigger -- fades in and out
-  together with the pill, not a separate always-present element. This is a Markee brand requirement,
-  not optional styling -- every integration should carry it.
+  https://markee.xyz/markee-logo-dark.png (black background, white letters) as a plain image with a
+  CSS blend mode, not a normal full-opacity logo placement -- an earlier version of this spec tried a
+  CSS luminance mask (mask-image + mask-mode:luminance) to get an arbitrary-color letters-only
+  watermark, but real-world support for mask-mode turned out to be inconsistent enough that it
+  rendered as nothing at all in testing. Blend modes are far more reliably supported. Pick based on
+  whether the trigger card's background is dark or light: on a dark or mid-toned card, an
+  absolutely-positioned img of that PNG (sized clamp(56px,7vw,84px) square, positioned top:-8px/
+  left:-8px) with mix-blend-mode:lighten -- this keeps whichever of the image or your card background
+  is lighter per pixel, so the PNG's near-black background is indistinguishable from a dark card
+  (both dark) while the white letters push toward full white, so the square disappears and only the
+  letters read. On a light card, invert the same image first with filter:invert(1) (turns the black
+  square white and the white letters black) then use mix-blend-mode:multiply instead of lighten,
+  which keeps whichever pixel is darker -- the now-white square vanishes into the light background
+  while the now-black letters stay visible. Test against the actual card background and adjust
+  opacity if needed (start around 0.45 on hover) -- there's no universal number that looks right on
+  every color. Keep it compact and pulled tight to the corner with only a few px of negative offset
+  so it stays clear of the message headline's own text, including where a long message wraps onto a
+  second or third line -- oversizing this was a mistake in an earlier version of this spec too. Clip
+  it with its own absolutely-positioned "overflow: hidden" wrapper, not the whole card's overflow --
+  the price pill intentionally bleeds past the card's bottom edge and would get cut off otherwise.
+  Give the card container an explicit z-index (not just position: relative) so the watermark's
+  negative z-index stays contained instead of escaping behind the page's own background. It shares
+  the price pill's hover trigger -- fades in and out together with the pill, not a separate
+  always-present element. This is a Markee brand requirement, not optional styling -- every
+  integration should carry it.
 - Loading states never show a blank or "0" value while data is still in flight -- use a small
   spinner (a simple CSS-animated ring is fine) in place of the number/text until the real value
   loads, exactly like the price badge and message text above.

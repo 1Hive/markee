@@ -77,37 +77,47 @@ an embedded widget -- but its shape should be unmistakably Markee:
   (not recreated letterforms -- an earlier version of this spec tried approximating "MAR"/"KEE" as
   plain text in a guessed font and the two words visibly mismatched in weight), small and low-opacity,
   tucked into the card's top-left corner. Use https://markee.xyz/markee-logo-dark.png (black
-  background, white letters) purely as a **luminance mask**, not as a normal image element -- this is
-  what lets it tint to any color instead of being stuck as a solid black square:
+  background, white letters) as a plain image with a CSS blend mode, not a normal full-opacity logo
+  placement -- an earlier version of this spec tried a CSS luminance mask (\`mask-image\` +
+  \`mask-mode: luminance\`) to get an arbitrary-color letters-only watermark, but real-world support
+  for \`mask-mode\` turned out to be inconsistent enough that it rendered as nothing at all in
+  testing. Blend modes are far more reliably supported. Pick based on whether your card background is
+  dark or light:
   \`\`\`
+  <!-- Dark or mid-toned card background (most common) -->
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
-    <div style="
+    <img src="https://markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
       position:absolute; top:-8px; left:-8px; width:clamp(56px,7vw,84px); height:clamp(56px,7vw,84px);
-      background-color:{tint};
-      -webkit-mask-image:url(https://markee.xyz/markee-logo-dark.png); mask-image:url(https://markee.xyz/markee-logo-dark.png);
-      -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
-      -webkit-mask-position:center; mask-position:center; mask-mode:luminance;
-      opacity:{hover ? 0.1 : 0}; transition:opacity 220ms;
-    "></div>
+      mix-blend-mode:lighten; opacity:{hover ? 0.45 : 0}; transition:opacity 220ms;
+    " />
+  </div>
+
+  <!-- Light card background -->
+  <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
+    <img src="https://markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
+      position:absolute; top:-8px; left:-8px; width:clamp(56px,7vw,84px); height:clamp(56px,7vw,84px);
+      filter:invert(1); mix-blend-mode:multiply; opacity:{hover ? 0.45 : 0}; transition:opacity 220ms;
+    " />
   </div>
   \`\`\`
-  \`mask-mode: luminance\` is the key line -- without it, standards-track \`mask-image\` defaults to
-  alpha-based masking, and since the PNG is fully opaque throughout its rounded square, that alone
-  would just show a solid tinted block instead of the letters. Older WebKit's \`-webkit-mask-image\`
-  has always been luminance-based with no separate mode property, so it needs no equivalent there --
-  both mask properties together cover current browsers. Keep it compact and pulled tight to the
-  corner (a few px of negative offset, not more) so it stays clear of the message headline's own
-  text, including where a long message wraps onto a second or third line -- oversizing this was the
-  actual mistake in an earlier version of this spec, not a font issue. It shares the hover pill's
-  trigger -- fades in and out together with the pill, rather than sitting there permanently.
-  This wrapper's own \`overflow:hidden\` does the clipping -- don't set it on the whole card, or the
-  price pill (which intentionally bleeds past the card's bottom edge) gets cut off too. Give the card
-  container an explicit \`z-index\` (not just \`position: relative\`) so the watermark's negative
-  z-index stays contained instead of escaping behind your page's own background -- position +
-  z-index together is what actually creates a new stacking context; position alone doesn't.
-  Tint: white on dark/black card backgrounds, near-black on light/white backgrounds, or Markee's own
-  purple (#7B6AF4) if your card background sits in between -- pick whichever reads as a faint accent
-  against your own card's actual background, not a fixed choice.
+  Both use the same dark-variant PNG, just composited differently: \`mix-blend-mode: lighten\` keeps
+  whichever of the image or your card background is lighter per pixel, so against a dark card the
+  PNG's near-black background is indistinguishable from your own background (both dark) while the
+  white letters push toward full white -- the square disappears, only the letters read. Against a
+  light card, invert the image first (\`filter: invert(1)\` turns the black square white and the white
+  letters black) then use \`mix-blend-mode: multiply\`, which keeps whichever pixel is darker -- the
+  now-white square vanishes into your light background while the now-black letters stay visible. Test
+  against your actual card background and adjust opacity if needed; there's no universal number that
+  looks right on every color. Keep it compact and pulled tight to the corner (a few px of negative
+  offset, not more) so it stays clear of the message headline's own text, including where a long
+  message wraps onto a second or third line -- oversizing this was a mistake in an earlier version of
+  this spec too. It shares the hover pill's trigger -- fades in and out together with the pill, rather
+  than sitting there permanently. The wrapper's own \`overflow:hidden\` does the clipping -- don't set
+  it on the whole card, or the price pill (which intentionally bleeds past the card's bottom edge)
+  gets cut off too. Give the card container an explicit \`z-index\` (not just \`position: relative\`)
+  so the watermark's negative z-index stays contained instead of escaping behind your page's own
+  background -- position + z-index together is what actually creates a new stacking context; position
+  alone doesn't.
 - Card container: rounded corners (12-16px), a subtle 1px border that brightens on hover, slight lift
   (translateY(-2px)) + shadow-on-hover, backdrop blur if your design system already uses
   glassmorphism.
@@ -367,7 +377,7 @@ Skipping this is fine -- verification just skips those two checks rather than fa
 export function themeAdoptionFragment(): string {
   return `## Match this site's theme
 
-Don't import Markee's own color palette. Before building the modal, read this site's existing design tokens -- Tailwind config, CSS custom properties, or whatever component library it already uses -- and reuse its actual colors, font, border-radius, and spacing scale. The modal should look like it was built for this site, not pasted in from another product. The one exception is the brand watermark described above -- its shape and hover behavior are a Markee requirement, only its tint color adapts to your theme.`
+Don't import Markee's own color palette. Before building the modal, read this site's existing design tokens -- Tailwind config, CSS custom properties, or whatever component library it already uses -- and reuse its actual colors, font, border-radius, and spacing scale. The modal should look like it was built for this site, not pasted in from another product. The one exception is the brand watermark described above -- its shape and hover behavior are a Markee requirement, only which of the two compositing variants (light or dark card background) applies is a choice.`
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
