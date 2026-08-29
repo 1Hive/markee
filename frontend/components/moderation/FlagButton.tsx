@@ -17,15 +17,19 @@ import { ShieldAlert, ShieldCheck } from 'lucide-react'
 interface FlagButtonProps {
   chainId: number | string
   markeeId: string
+  /** This markee's board admin -- lets that board's own admin flag messages on it too, not just global admins */
+  boardAdmin?: string | null
+  /** This markee's board creator (from lib/leaderboards/resolveCreators.ts) -- same as boardAdmin */
+  boardCreator?: string | null
   /** Compact mode for smaller cards */
   compact?: boolean
 }
 
-export function FlagButton({ chainId, markeeId, compact = false }: FlagButtonProps) {
-  const { isAdmin, isFlagged, toggleFlag } = useModeration()
+export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compact = false }: FlagButtonProps) {
+  const { canModerate, isFlagged, toggleFlag } = useModeration()
   const [isToggling, setIsToggling] = useState(false)
 
-  if (!isAdmin) return null
+  if (!canModerate(boardAdmin, boardCreator)) return null
 
   const flagged = isFlagged(chainId, markeeId)
   const iconSize = compact ? 14 : 16
@@ -36,7 +40,7 @@ export function FlagButton({ chainId, markeeId, compact = false }: FlagButtonPro
 
     setIsToggling(true)
     try {
-      await toggleFlag(chainId, markeeId)
+      await toggleFlag(chainId, markeeId, boardAdmin, boardCreator)
     } finally {
       setIsToggling(false)
     }

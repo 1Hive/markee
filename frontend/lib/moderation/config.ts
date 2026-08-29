@@ -4,10 +4,13 @@
  * Centralized config for the moderation system.
  */
 
-// Wallet addresses authorized to flag/unflag content.
-// Add any address in lowercase. Checked case-insensitively at runtime.
+// Wallet addresses authorized to flag/unflag ANY content sitewide. Checked case-insensitively at
+// runtime. This is deliberately a small, fixed, hand-maintained list -- per-board moderators aren't
+// managed here: any leaderboard's own on-chain admin, or its resolved creator (see
+// lib/leaderboards/resolveCreators.ts), can already flag content on that specific board, checked
+// independently in app/api/moderation/route.ts. Only add an address here if it should be able to
+// moderate every board on the site, not just its own.
 export const ADMIN_ADDRESSES: string[] = [
-  // Addresses that can flag messages for blurring
     '0x809C9f8dd8CA93A41c3adca4972Fa234C28F7714',
     '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB'
 ]
