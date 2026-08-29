@@ -158,7 +158,7 @@ export function ExpandableMarkeeRow({
         </div>
       </div>
 
-      <TxHistoryPanel leaderboardAddress={leaderboardAddress} markeeAddress={markee.address} expanded={expanded} featured={featured} />
+      <TxHistoryPanel leaderboardAddress={leaderboardAddress} markeeAddress={markee.address} expanded={expanded} featured={featured} boardAdmin={boardAdmin} />
     </div>
   )
 }

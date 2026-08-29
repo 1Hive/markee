@@ -636,7 +636,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
         </div>
       </div>
 
-      <TxHistoryPanel leaderboardAddress={board} markeeAddress={markee.address} expanded={historyOpen} featured={featured} strategy="streaming" />
+      <TxHistoryPanel leaderboardAddress={board} markeeAddress={markee.address} expanded={historyOpen} featured={featured} strategy="streaming" boardAdmin={boardAdmin} />
     </div>
   )
 }

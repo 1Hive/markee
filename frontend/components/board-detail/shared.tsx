@@ -1727,12 +1727,14 @@ function TxEventIcon({ kind }: { kind: TxHistoryEvent['kind'] }) {
   return <div className="w-7 h-7 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0"><User size={13} className="text-[#FFA94D]" /></div>
 }
 
-export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured, strategy }: {
+export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured, strategy, boardAdmin, boardCreator }: {
   leaderboardAddress: string
   markeeAddress: string
   expanded: boolean
   featured?: boolean
   strategy?: 'fixed' | 'streaming'
+  boardAdmin?: string | null
+  boardCreator?: string | null
 }) {
   const { history, bidders, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded, strategy)
   if (!expanded) return null
@@ -1815,7 +1817,12 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                 ) : event.kind === 'message' ? (
                   <div>
                     <span className="text-sm font-semibold text-[#EDEEFF]">Changed Message</span>
-                    <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
+                    <div className="flex items-center gap-2">
+                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
+                        <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
+                      </ModeratedContent>
+                      <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} compact />
+                    </div>
                   </div>
                 ) : event.kind === 'bought' ? (
                   <div>
@@ -1826,7 +1833,12 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                       )}
                     </div>
                     {event.message && (
-                      <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message}</p>
+                      <div className="flex items-center gap-2">
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
+                          <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message}</p>
+                        </ModeratedContent>
+                        <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} compact />
+                      </div>
                     )}
                   </div>
                 ) : event.kind === 'rate' ? (
