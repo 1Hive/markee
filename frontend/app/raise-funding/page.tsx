@@ -273,7 +273,7 @@ function HowItWorks() {
         </div>
         <h2 style={{ margin: '0 0 12px', fontSize: 'clamp(26px,3.6vw,38px)', fontWeight: 800, letterSpacing: -0.8, color: C.text }}>Embed a paid message to any digital space</h2>
         <p style={{ margin: '0 0 48px', color: C.text2, fontSize: 16, lineHeight: 1.6, maxWidth: '60ch' }}>
-          Cross-platform, non-intrusive, and kinda fun for people to see.
+          Cross-platform, non-intrusive, and fun for your site's visitors.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column' as const }}>
           {steps.map((s, i) => (
