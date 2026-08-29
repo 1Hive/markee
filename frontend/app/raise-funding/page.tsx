@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { STRATEGIES, type Strategy } from '@/lib/strategy'
+import { StrategyPreviewCard } from '@/components/StrategyPreviewCard'
 import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 
 const C = {
@@ -53,7 +54,6 @@ function PlatGlyph({ icon, size = 24, color }: { icon: string; size?: number; co
   if (icon === 'globe') return <svg {...s}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
   if (icon === 'github') return <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
   if (icon === 'zap') return <svg {...s}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-  if (icon === 'tag') return <svg {...s}><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.58 9.59a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1.2" fill={color} stroke="none"/></svg>
   return <svg {...s}><path d="M12 5v14M5 12h14"/></svg>
 }
 
@@ -183,68 +183,25 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
 // ── How it works ──────────────────────────────────────────────────────────────
 // ── Strategy explainer card — same visual language as create-a-markee's selectable cards, adapted
 // for a link instead of a form selection (no persistent "selected" state to track here). ──
-function StrategyExplainerCard({ strategyKey }: { strategyKey: Strategy }) {
-  const [hovering, setHovering] = useState(false)
-  const meta = STRATEGIES[strategyKey]
-  const iconKey = meta.glyph === 'tag' ? 'tag' : 'zap'
-  const disabled = strategyKey === 'streaming' && !STREAMING_ENABLED
+// Same card create-a-markee's own strategy picker uses -- not a lookalike. Selecting there advances a
+// wizard; here there's no wizard to advance, so onSelect navigates into create-a-markee with that
+// strategy pre-picked instead (?strategy=..., which that page's own useEffect already reads).
+function StrategyExplainerCards() {
+  const router = useRouter()
+  const [strategyViews, setStrategyViews] = useState<{ fixed: number; streaming: number } | null>(null)
 
-  const accentRgba = (a: number): string => {
-    const hex = meta.accent.replace('#', '')
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
-    return `rgba(${r},${g},${b},${a})`
-  }
+  useEffect(() => {
+    fetch('/api/views/strategy-totals')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && typeof d.fixed === 'number') setStrategyViews(d) })
+      .catch(() => {})
+  }, [])
 
-  const active = hovering && !disabled
-  const textGradient = `linear-gradient(120deg, ${C.text} 0%, ${meta.accent} 100%)`
-
-  const card = (
-    <div
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      style={{
-        position: 'relative' as const, height: '100%', boxSizing: 'border-box' as const,
-        background: active ? accentRgba(0.06) : 'rgba(255,255,255,0.04)',
-        border: `1px solid ${active ? accentRgba(0.5) : 'rgba(255,255,255,0.16)'}`,
-        borderRadius: 16, padding: '22px 24px',
-        opacity: disabled ? 0.55 : 1,
-        boxShadow: active ? `0 16px 44px rgba(6,10,42,0.55), 0 0 0 4px ${accentRgba(0.1)}` : 'none',
-        transform: active ? 'translateY(-2px)' : 'none',
-        transition: 'border-color 200ms, transform 200ms, box-shadow 200ms, background 200ms',
-      }}
-    >
-      {disabled && (
-        <span style={{ position: 'absolute' as const, top: 16, right: 18, fontFamily: MONO, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 99, padding: '3px 9px' }}>Coming soon</span>
-      )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: C.bg, border: `1px solid ${accentRgba(0.35)}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <PlatGlyph icon={iconKey} color={meta.accent} size={20} />
-        </div>
-        <div style={{
-          fontFamily: MONO, fontWeight: 700, fontSize: 'clamp(18px, 2.2vw, 22px)', letterSpacing: '-0.02em',
-          background: textGradient, WebkitBackgroundClip: 'text' as const, backgroundClip: 'text' as const,
-          WebkitTextFillColor: 'transparent', userSelect: 'none' as const,
-        }}>
-          {meta.label}
-        </div>
-      </div>
-      <p style={{ margin: '0 0 8px', color: C.text, fontSize: 14, fontWeight: 600, lineHeight: 1.5 }}>{meta.tagline}</p>
-      <p style={{ margin: 0, color: C.text2, fontSize: 13.5, lineHeight: 1.6 }}>{meta.summary}</p>
-      {!disabled && (
-        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: active ? meta.accent : C.muted, transition: 'color 200ms' }}>
-          Set up a {meta.label} sign <span style={{ transform: active ? 'translateX(2px)' : 'none', transition: 'transform 200ms' }}>→</span>
-        </div>
-      )}
-    </div>
-  )
-
-  if (disabled) return card
   return (
-    <Link href={`/create-a-markee?strategy=${strategyKey}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
-      {card}
-    </Link>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+      <StrategyPreviewCard strategyKey="fixed" selected={false} onSelect={() => router.push('/create-a-markee?strategy=fixed')} viewCount={strategyViews?.fixed} />
+      <StrategyPreviewCard strategyKey="streaming" selected={false} disabled={!STREAMING_ENABLED} onSelect={() => router.push('/create-a-markee?strategy=streaming')} viewCount={strategyViews?.streaming} />
+    </div>
   )
 }
 
@@ -255,9 +212,14 @@ function HowItWorks() {
       t: 'Set up your sign',
       d: 'Every Markee is either For Sale or For Rent -- pick whichever fits how you want to get paid, then add a name and funding recipient.',
       extra: (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginTop: 20 }}>
-          <StrategyExplainerCard strategyKey="fixed" />
-          <StrategyExplainerCard strategyKey="streaming" />
+        <div style={{ marginTop: 20 }}>
+          <StrategyExplainerCards />
+          <p style={{ margin: '18px 0 0', color: C.text2, fontSize: 13.5, lineHeight: 1.6, maxWidth: '60ch' }}>
+            Either way, the top funded message wins the spot. The difference is how payment works: For Sale is a one-time price; For Rent streams payment continuously, so the winner only pays for the time their message is actually featured.
+          </p>
+          <p style={{ margin: '10px 0 0', color: C.muted, fontSize: 13, lineHeight: 1.6, maxWidth: '60ch' }}>
+            <strong style={{ color: C.text2 }}>Our take:</strong> For Rent suits most signs best — it's more buyer-friendly, since nobody pays for a message that isn't winning. For Sale tends to fit best when you're expecting one large, one-off sponsorship rather than ongoing bidding.
+          </p>
         </div>
       ),
     },

@@ -907,7 +907,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           Add funds to an existing message
                         </span>
                       </div>
-                      <div style={{ maxHeight: '30vh', overflowY: 'auto' }}>
+                      {/* Capped to ~2 rows -- this list is secondary to composing a new message below
+                          it, not the main event; scroll for more rather than eating the modal. */}
+                      <div style={{ maxHeight: 116, overflowY: 'auto' }}>
                         {markees.map((m, i) => (
                           <SignRow
                             key={m.address}
