@@ -58,7 +58,13 @@ export function MarkeeWatermark({ show }: { show: boolean }) {
         alt=""
         aria-hidden
         style={{
-          width: 'clamp(110px, 16vw, 190px)', height: 'auto',
+          // Sized to the card's own height (the wrapper is inset:0, so 100% here is exactly
+          // the card's height) rather than a fixed clamp() range -- this way it's correctly
+          // proportioned whether it's sitting in a compact reader-card or a tall hero card,
+          // with no per-usage size tuning needed. Width follows automatically from the image's
+          // own aspect ratio; overflow:hidden on the wrapper above clips it on unusually
+          // narrow/tall cards instead of letting it spill past the card edge.
+          height: '100%', width: 'auto',
           opacity: show ? 0.16 : 0, transition: 'opacity 220ms ease',
         }}
       />
@@ -1354,11 +1360,16 @@ modal), restyled in my site's own colors and theme. Specifically:
   image -- purple at low opacity reads reasonably against light and dark card backgrounds alike, so
   there's no light/dark branching to get wrong: a flex-centered wrapper (position:absolute, inset:0,
   overflow:hidden, border-radius:inherit, pointer-events:none, z-index:-1, display:flex,
-  align-items:center, justify-content:center) containing the img sized clamp(110px,16vw,190px)
-  square, opacity around 0.16 on hover, 0 otherwise. Centered, not corner-anchored -- this is what
-  actually keeps it clear of the message headline without needing pixel-precise collision math
-  against text that wraps to a variable number of lines: a translucent mark diffused across the
-  middle of the card reads as a soft background texture regardless of exactly where the message text
+  align-items:center, justify-content:center) containing the img sized height:100%/width:auto,
+  opacity around 0.16 on hover, 0 otherwise. Sizing to height:100% (against a wrapper that's
+  inset:0, so exactly the card's own size) rather than a fixed pixel range keeps it correctly
+  proportioned whether the trigger card is short or tall, with no per-integration size tuning
+  needed -- width follows automatically from the logo's own square aspect ratio, and the wrapper's
+  overflow:hidden clips it on unusually narrow cards instead of letting it spill past the edge.
+  Centered, not corner-anchored -- this is what actually keeps it clear of the message headline
+  without needing pixel-precise collision math against text that wraps to a variable number of
+  lines: a translucent mark diffused across the middle of the card reads as a soft background
+  texture regardless of exactly where the message text
   falls. Clip it with its own absolutely-positioned "overflow: hidden" wrapper, not the whole card's
   overflow -- the price pill intentionally bleeds past the card's bottom edge and would get cut off
   otherwise. Give the card container an explicit z-index (not just position: relative) so the

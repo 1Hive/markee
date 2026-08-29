@@ -86,15 +86,20 @@ an embedded widget -- but its shape should be unmistakably Markee:
   \`\`\`
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1; display:flex; align-items:center; justify-content:center">
     <img src="https://markee.xyz/markee-logo-purple.png" alt="" aria-hidden style="
-      width:clamp(110px,16vw,190px); height:auto;
+      height:100%; width:auto;
       opacity:{hover ? 0.16 : 0}; transition:opacity 220ms;
     " />
   </div>
   \`\`\`
-  Centered, not corner-anchored -- this is what actually keeps it clear of the message headline
-  without needing pixel-precise collision math against text that wraps to a variable number of
-  lines: a translucent mark diffused across the middle of the card reads as a soft background
-  texture regardless of exactly where the message text falls. It shares the hover pill's trigger --
+  Sized to the card's own height (\`height:100%\` against the wrapper's \`inset:0\`, which makes the
+  wrapper exactly the card's own size) rather than a fixed pixel range -- this way it's correctly
+  proportioned whether the trigger card is short or tall, with no per-integration size tuning needed.
+  Width follows automatically from the logo's own square aspect ratio; \`overflow:hidden\` on the
+  wrapper clips it on unusually narrow cards instead of letting it spill past the edge. Centered, not
+  corner-anchored -- this is what actually keeps it clear of the message headline without needing
+  pixel-precise collision math against text that wraps to a variable number of lines: a translucent
+  mark diffused across the middle of the card reads as a soft background texture regardless of
+  exactly where the message text falls. It shares the hover pill's trigger --
   fades in and out together with the pill, rather than sitting there permanently. The wrapper's own
   \`overflow:hidden\` does the clipping -- don't set it on the whole card, or the price pill (which
   intentionally bleeds past the card's bottom edge) gets cut off too. Give the card container an
