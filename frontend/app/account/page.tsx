@@ -6,7 +6,6 @@ import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, Pencil, ChevronDown, Info, Menu } from 'lucide-react'
-import { EditWebsiteMetaModal } from '@/components/modals/EditWebsiteMetaModal'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
@@ -23,9 +22,10 @@ import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { type StreamStatus, streamStatusOf, StreamStatusIcon, TxHistoryToggle } from '@/components/board-detail/shared'
+import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
-import { logoDevUrl } from '@/lib/utils'
+import { logoDevUrl, formatUsd } from '@/lib/utils'
+import { formatEther } from 'viem'
 import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import type { Abi } from 'viem'
 
@@ -784,7 +784,7 @@ function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: (
           onClick={e => { e.stopPropagation(); setOpen(false); onAddToSite() }}
           style={{ color: PINK, background: `${PINK}14`, border: `1px solid rgba(248,151,254,0.3)`, fontSize: 12, fontWeight: 700, fontFamily: MONO, padding: '8px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: items.length > 0 ? 4 : 0 }}
         >
-          + Add to Your Site
+          + Add to Another Site
         </button>
       )}
       {items.map(({ href, label }) => (
@@ -899,8 +899,22 @@ function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: (
   )
 }
 
-const ACTIVE_COLS = '180px 1fr 90px 130px 160px 110px'
+const ACTIVE_COLS = '180px 1fr 90px 130px 160px 96px 110px'
 const ACTIVE_HEADERS_LEFT = ['Served on', 'Current Message', 'Strategy'] as const
+
+// Same formulas the marketplace's price-to-change button uses (priceToOvertake/monthlyRateLabel),
+// applied here to My Live Markees rows so the owner sees the identical price a visitor would.
+function priceToOvertakeLive(lb: AnyLeaderboard): bigint {
+  return BigInt(lb.topFundsAddedRaw || '0') + 1_000_000_000_000_000n
+}
+function priceButtonLabel(lb: AnyLeaderboard, ethPrice: number | null): string {
+  if (lb.strategy === 'streaming') {
+    const monthlyEth = parseFloat(formatEther(BigInt(lb.topRateRaw || '0') * 60n * 60n * 24n * 30n))
+    return ethPrice ? `${formatUsd(monthlyEth * ethPrice)}/mo` : `${monthlyEth.toFixed(4)} ETH/mo`
+  }
+  const priceEth = parseFloat(formatEther(priceToOvertakeLive(lb)))
+  return ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+}
 
 function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
   const eth = Number(balance) / 1e18
@@ -927,8 +941,8 @@ function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: bo
   )
 }
 
-function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, ethPrice }: {
-  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; ethPrice: number | null
+function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPriceButton, ethPrice }: {
+  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; onOpenPriceButton: () => void; ethPrice: number | null
 }) {
   const isStreaming = lb.strategy === 'streaming'
   const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
@@ -955,53 +969,53 @@ function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, ethPrice }:
           : <span style={{ color: MUTED }}>—</span>
         }
       </div>
+      <div onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onOpenPriceButton}
+          style={{ width: '100%', textAlign: 'center' as const, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' as const, boxShadow: '0 2px 10px rgba(248,151,254,0.28)' }}
+        >
+          {priceButtonLabel(lb, ethPrice)}
+        </button>
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-        <TxHistoryToggle expanded={expanded} onClick={onToggleExpand} rank={0} />
+        <button
+          onClick={onToggleExpand}
+          aria-expanded={expanded}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: expanded ? `${PINK}14` : 'transparent', color: expanded ? PINK : TEXT2, border: `1px solid ${expanded ? 'rgba(248,151,254,0.35)' : BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms, background 120ms' }}
+        >
+          Admin
+          <ChevronDown size={13} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+        </button>
       </div>
     </div>
   )
 }
 
 // Wraps ActiveTableRow with the click-to-expand admin panel -- replaces the old bare "Manage" button
-// (View leaderboard / Edit website info / Embed) entirely; those actions plus the previously
-// unexposed admin-only contract settings now live in the panel below, gated to the connected admin.
-function LiveMarkeeAdminRow({ lb, onAddToSite, ethPrice, activeAddress, onOpenEditWebsite, onOpenManageStream, onSuccess }: {
+// (View leaderboard / Edit website info / Embed) entirely; the previously unexposed admin-only
+// contract settings now live in the panel below, gated to the connected admin.
+function LiveMarkeeAdminRow({ lb, onAddToSite, onOpenPriceButton, ethPrice, activeAddress, onSuccess }: {
   lb: AnyLeaderboard
   onAddToSite: () => void
+  onOpenPriceButton: () => void
   ethPrice: number | null
   activeAddress: string | undefined
-  onOpenEditWebsite: () => void
-  onOpenManageStream: () => void
   onSuccess: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   return (
     <div>
-      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} ethPrice={ethPrice} />
+      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} onOpenPriceButton={onOpenPriceButton} ethPrice={ethPrice} />
       {expanded && (
-        <LiveMarkeeAdminPanel
-          lb={lb}
-          activeAddress={activeAddress}
-          onOpenEditWebsite={onOpenEditWebsite}
-          onOpenManageStream={onOpenManageStream}
-          onSuccess={onSuccess}
-        />
+        <LiveMarkeeAdminPanel lb={lb} activeAddress={activeAddress} onSuccess={onSuccess} />
       )}
     </div>
   )
 }
 
-const actionBtnStyle = {
-  background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7,
-  padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS,
-  whiteSpace: 'nowrap' as const, textDecoration: 'none' as const, display: 'inline-flex',
-}
-
-function LiveMarkeeAdminPanel({ lb, activeAddress, onOpenEditWebsite, onOpenManageStream, onSuccess }: {
+function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
   lb: AnyLeaderboard
   activeAddress: string | undefined
-  onOpenEditWebsite: () => void
-  onOpenManageStream: () => void
   onSuccess: () => void
 }) {
   const isAdmin = !!activeAddress && !!lb.admin && lb.admin.toLowerCase() === activeAddress.toLowerCase()
@@ -1014,19 +1028,6 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onOpenEditWebsite, onOpenMana
 
   return (
     <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Actions</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
-          <Link href={detailUrl(lb)} style={actionBtnStyle}>View Leaderboard</Link>
-          {lb.platform === 'website' && (
-            <button onClick={onOpenEditWebsite} style={actionBtnStyle}>Edit Website Info</button>
-          )}
-          {isStreaming && (
-            <button onClick={onOpenManageStream} style={actionBtnStyle}>Manage Your Stream</button>
-          )}
-        </div>
-      </div>
-
       <div>
         <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Admin Settings</div>
         {!isAdmin ? (
@@ -1043,14 +1044,17 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onOpenEditWebsite, onOpenMana
             />
           </div>
         ) : (
+          // Only setBeneficiaryAddress and setAdmin are confirmed present, onlyAdmin-gated, and
+          // creator-controllable across every fixed-board contract version still in use (v1.1-v1.3).
+          // The RevNet routing settings (terminal/projectId/percentToBeneficiary/enabled/
+          // platformFeeReceiver/percentToPlatformFeeReceiver) were pulled: v1.3 -- what every "For
+          // Sale" board created today actually runs -- doesn't even have those setters anymore
+          // (contracts/v1.3/Leaderboard.sol has no such functions at all; they're fixed at deploy
+          // time by the Cooperative's factory config), and where they do exist on older v1.1/v1.2
+          // boards, showing them here as if any board's creator could tune RevNet routing was
+          // misleading regardless of technical onlyAdmin gating.
           <div>
             <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow label="RevNet Enabled" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="revNetEnabled" setterName="setRevNetEnabled" inputType="bool" dangerous="warn" warning="Toggling this changes how payments are routed -- can break payouts if the RevNet terminal/project below aren't correctly set." onSuccess={onSuccess} />
-            <AdminSettingRow label="RevNet Terminal" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="revNetTerminal" setterName="setRevNetTerminal" inputType="address" dangerous="warn" warning="An incorrect terminal can make funds unclaimable through RevNet." onSuccess={onSuccess} />
-            <AdminSettingRow label="RevNet Project ID" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="revNetProjectId" setterName="setRevNetProjectId" inputType="uint256" dangerous="warn" warning="Must match the terminal above -- an incorrect pair can make funds unclaimable through RevNet." onSuccess={onSuccess} />
-            <AdminSettingRow label="Percent to Beneficiary" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="percentToBeneficiary" setterName="setPercentToBeneficiary" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Platform Fee Receiver" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="platformFeeReceiver" setterName="setPlatformFeeReceiver" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow label="Percent to Platform Fee Receiver" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="percentToPlatformFeeReceiver" setterName="setPercentToPlatformFeeReceiver" inputType="uint256" onSuccess={onSuccess} />
             <AdminSettingRow
               label="Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
               dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
@@ -1068,20 +1072,19 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onOpenEditWebsite, onOpenMana
   )
 }
 
-function ActiveTable({ markees, onAddToSite, ethPrice, activeAddress, onOpenEditWebsite, onOpenManageStream, onSuccess }: {
+function ActiveTable({ markees, onAddToSite, onOpenPriceButton, ethPrice, activeAddress, onSuccess }: {
   markees: AnyLeaderboard[]
   onAddToSite: (lb: AnyLeaderboard) => void
+  onOpenPriceButton: (lb: AnyLeaderboard) => void
   ethPrice: number | null
   activeAddress: string | undefined
-  onOpenEditWebsite: (lb: AnyLeaderboard) => void
-  onOpenManageStream: (lb: AnyLeaderboard) => void
   onSuccess: () => void
 }) {
   const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 760, background: BG2 }}>
+      <div style={{ minWidth: 840, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
           {ACTIVE_HEADERS_LEFT.map((h, i) => (
             <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
@@ -1091,16 +1094,16 @@ function ActiveTable({ markees, onAddToSite, ethPrice, activeAddress, onOpenEdit
           </div>
           <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Streaming</span>
           <span />
+          <span />
         </div>
         {sorted.map(lb => (
           <LiveMarkeeAdminRow
             key={lb.address}
             lb={lb}
             onAddToSite={() => onAddToSite(lb)}
+            onOpenPriceButton={() => onOpenPriceButton(lb)}
             ethPrice={ethPrice}
             activeAddress={activeAddress}
-            onOpenEditWebsite={() => onOpenEditWebsite(lb)}
-            onOpenManageStream={() => onOpenManageStream(lb)}
             onSuccess={onSuccess}
           />
         ))}
@@ -1463,17 +1466,17 @@ export default function AccountPage() {
   }, [archived, activeAddress])
   const [activateTarget, setActivateTarget]       = useState<AnyLeaderboard | null>(null)
   const [activateStreamBoard, setActivateStreamBoard] = useState<AnyLeaderboard | null>(null)
-  const [editingBoard, setEditingBoard]         = useState<WebsiteLeaderboard | null>(null)
   const [embedTarget, setEmbedTarget]           = useState<AnyLeaderboard | null>(null)
   const [embedInitialPlatform, setEmbedInitialPlatform] = useState<'github' | 'website'>('website')
   const embedReopenApplied = useRef(false)
   const [editMessageTarget, setEditMessageTarget]       = useState<MyMessage | null>(null)
   const [streamEditTarget, setStreamEditTarget]         = useState<MyMessage | null>(null)
-  // "Manage Your Stream" opened from My Live Markees' expandable panel -- only needs the board
-  // address, since StreamSignModal's 'manage' view self-resolves the target to whatever the
-  // connected wallet currently backs (rateFlow.backedMarkee), unlike streamEditTarget above which is
-  // about editing a specific bought message and needs the full MyMessage shape.
-  const [liveManageBoard, setLiveManageBoard]           = useState<string | null>(null)
+  // My Live Markees' price-to-change button -- opens the same rich buy/change modal any visitor
+  // would see for that board (StreamSignModal for streaming, MarkeeSignModal for modern fixed
+  // boards, BuyMessageModal for legacy fixed boards whose data is subgraph- not RPC-sourced). None
+  // of these need an initialView: if the connected admin already backs/owns the top message, each
+  // modal's own list view already offers Manage/Add Funds for that row.
+  const [priceButtonTarget, setPriceButtonTarget]       = useState<AnyLeaderboard | null>(null)
   const [addFundsTarget, setAddFundsTarget] = useState<{
     strategy: 'fixed' | 'streaming'
     strategyId: string
@@ -1732,18 +1735,9 @@ export default function AccountPage() {
     return bought + funded
   }, [myMessages, fundedMessages])
 
-  // Manage a leaderboard (from active table) — opens the manage modal
   const handleOpenAddToSite = useCallback((lb: AnyLeaderboard) => {
     setEmbedTarget(lb)
     setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website')
-  }, [])
-
-  const handleOpenEditWebsite = useCallback((lb: AnyLeaderboard) => {
-    if (lb.platform === 'website') setEditingBoard(lb as WebsiteLeaderboard)
-  }, [])
-
-  const handleOpenManageStream = useCallback((lb: AnyLeaderboard) => {
-    setLiveManageBoard(lb.address)
   }, [])
 
   const handleEditMessage = useCallback((m: MyMessage) => {
@@ -1881,10 +1875,9 @@ export default function AccountPage() {
                   <ActiveTable
                     markees={activeBoards}
                     onAddToSite={handleOpenAddToSite}
+                    onOpenPriceButton={lb => setPriceButtonTarget(lb)}
                     ethPrice={ethPrice}
                     activeAddress={activeAddress}
-                    onOpenEditWebsite={handleOpenEditWebsite}
-                    onOpenManageStream={handleOpenManageStream}
                     onSuccess={() => activeAddress && fetchAll(activeAddress)}
                   />
                 )
@@ -1985,25 +1978,31 @@ export default function AccountPage() {
 
       <Footer />
 
-      {/* "Manage Your Stream" opened from My Live Markees' expandable panel */}
-      {liveManageBoard && (
+      {/* My Live Markees' price-to-change button -- same modal any visitor would see for that
+          board, no initialView: if the connected admin already backs/owns the top message, the
+          modal's own list view already offers Manage/Add Funds for that row. */}
+      {priceButtonTarget?.strategy === 'streaming' && (
         <StreamSignModal
-          isOpen={!!liveManageBoard}
-          board={liveManageBoard}
-          initialView="manage"
-          onClose={() => setLiveManageBoard(null)}
+          isOpen
+          board={priceButtonTarget.address}
+          onClose={() => setPriceButtonTarget(null)}
           onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
         />
       )}
-
-      {editingBoard && (
-        <EditWebsiteMetaModal
-          isOpen={!!editingBoard}
-          onClose={() => setEditingBoard(null)}
-          leaderboardAddress={editingBoard.address}
-          initialSiteUrl={editingBoard.siteUrl}
-          initialLogoUrl={editingBoard.logoUrl}
-          onSuccess={() => { setEditingBoard(null); if (activeAddress) fetchAll(activeAddress) }}
+      {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy && (
+        <BuyMessageModal
+          isOpen
+          onClose={() => setPriceButtonTarget(null)}
+          strategyAddress={priceButtonTarget.address as `0x${string}`}
+          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+        />
+      )}
+      {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && !(priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy) && (
+        <MarkeeSignModal
+          isOpen
+          onClose={() => setPriceButtonTarget(null)}
+          leaderboardAddress={priceButtonTarget.address}
+          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
         />
       )}
 
