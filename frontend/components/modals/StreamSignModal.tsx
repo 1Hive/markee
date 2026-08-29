@@ -896,87 +896,18 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
 
               {view === 'list' && (
-                <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18, flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set your message</span>
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
-                    </div>
-                    <textarea
-                      value={message}
-                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)); if (error) setError(null) }}
-                      placeholder={`Your message here... (${maxLen} max)`}
-                      rows={2}
-                      style={{ ...messageBoxStyle, resize: 'vertical' }}
-                      disabled={busy}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 18, flexShrink: 0 }}>
-                    <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Your Name (optional)</div>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
-                      placeholder="tell the world who wrote this..."
-                      style={inputStyle}
-                      disabled={busy}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: 10, flexShrink: 0 }}>
-                    <RateCard
-                      monthly={monthly} setMonthly={setMonthly}
-                      lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
-                      minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
-                      topMonthlyWei={topMonthlyWei}
-                      ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
-                      runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
-                    />
-                  </div>
-
-                  {activeError && (
-                    <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px', flexShrink: 0 }}>{activeError}</p>
-                  )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8, flexShrink: 0 }}>
-                    <ReceiveCard monthly={monthly} />
-                    <BtnTooltip reason={btnDisabledReason}>
-                      <button
-                        onClick={handleBuyNew}
-                        disabled={btnDisabled}
-                        style={{
-                          width: '100%', height: '100%', boxSizing: 'border-box',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-                          background: PINK, color: BG, border: 'none', borderRadius: 10,
-                          fontFamily: 'inherit', fontWeight: 800, fontSize: calc.value > DISPLAY_DUST_WEI ? 14 : 17,
-                          cursor: btnDisabled ? 'not-allowed' : 'pointer',
-                          opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
-                        }}
-                      >
-                        {calc.value > DISPLAY_DUST_WEI ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and Buy` : 'Buy Message'}
-                      </button>
-                    </BtnTooltip>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10, flexShrink: 0, fontFamily: MONO, fontSize: 12.5, color: MUTED }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      62/38 split
-                      <InfoTip align="right">
-                        62% to the sign&apos;s beneficiary<br />38% to Markee&apos;s Revnet<br />Your MARKEE is issued by the Revnet
-                      </InfoTip>
-                    </span>
-                  </div>
-
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  {/* Existing messages -- own scroll region, capped so it can't crowd out the compose
+                      fields below on a short viewport. */}
                   {markees.length > 0 && (
-                    <>
-                      <div style={{ textAlign: 'center', margin: '10px 0 0', position: 'relative', flexShrink: 0 }}>
+                    <div style={{ flexShrink: 0 }}>
+                      <div style={{ textAlign: 'center', margin: '0 0 10px', position: 'relative' }}>
                         <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: BORDER }} />
                         <span style={{ position: 'relative', background: BG2, padding: '0 12px', fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>
-                          Or add funds to an existing message
+                          Add funds to an existing message
                         </span>
                       </div>
-                      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginTop: 10, marginBottom: 18 }}>
+                      <div style={{ maxHeight: '30vh', overflowY: 'auto' }}>
                         {markees.map((m, i) => (
                           <SignRow
                             key={m.address}
@@ -990,9 +921,93 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           />
                         ))}
                       </div>
-                    </>
+                      <div style={{ textAlign: 'center', margin: '14px 0', position: 'relative' }}>
+                        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: BORDER }} />
+                        <span style={{ position: 'relative', background: BG2, padding: '0 12px', fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>
+                          Or set a new message
+                        </span>
+                      </div>
+                    </div>
                   )}
-                </>
+
+                  {/* Compose fields -- own scroll region, independent of the messages list above. */}
+                  <div style={{ flex: 1, minHeight: 80, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set your message</span>
+                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
+                      </div>
+                      <textarea
+                        value={message}
+                        onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)); if (error) setError(null) }}
+                        placeholder={`Your message here... (${maxLen} max)`}
+                        rows={2}
+                        style={{ ...messageBoxStyle, resize: 'vertical' }}
+                        disabled={busy}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Your Name (optional)</div>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                        placeholder="tell the world who wrote this..."
+                        style={inputStyle}
+                        disabled={busy}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Rate + submit -- affixed footer, always visible regardless of how tall either
+                      scroll region above gets. */}
+                  <div style={{ flexShrink: 0, paddingTop: 14, paddingBottom: 22, marginTop: 10, borderTop: `1px solid ${BORDER}` }}>
+                    <div style={{ marginBottom: 10 }}>
+                      <RateCard
+                        monthly={monthly} setMonthly={setMonthly}
+                        lastPreset={lastPreset} setLastPreset={setLastPreset} setHasUserEdited={setHasUserEdited}
+                        minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
+                        topMonthlyWei={topMonthlyWei}
+                        ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
+                        runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
+                      />
+                    </div>
+
+                    {activeError && (
+                      <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{activeError}</p>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+                      <ReceiveCard monthly={monthly} />
+                      <BtnTooltip reason={btnDisabledReason}>
+                        <button
+                          onClick={handleBuyNew}
+                          disabled={btnDisabled}
+                          style={{
+                            width: '100%', height: '100%', boxSizing: 'border-box',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+                            background: PINK, color: BG, border: 'none', borderRadius: 10,
+                            fontFamily: 'inherit', fontWeight: 800, fontSize: calc.value > DISPLAY_DUST_WEI ? 14 : 17,
+                            cursor: btnDisabled ? 'not-allowed' : 'pointer',
+                            opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
+                          }}
+                        >
+                          {calc.value > DISPLAY_DUST_WEI ? `Deposit ${parseFloat(formatEther(calc.value)).toFixed(3)} ETH and Buy` : 'Buy Message'}
+                        </button>
+                      </BtnTooltip>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', fontFamily: MONO, fontSize: 12.5, color: MUTED }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        62/38 split
+                        <InfoTip align="right">
+                          62% to the sign&apos;s beneficiary<br />38% to Markee&apos;s Revnet<br />Your MARKEE is issued by the Revnet
+                        </InfoTip>
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {view === 'fund' && target && (
