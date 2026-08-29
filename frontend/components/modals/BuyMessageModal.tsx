@@ -5,7 +5,7 @@ import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt,
 import { parseEther, formatEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -13,6 +13,7 @@ import { formatTransactionError, logTransactionError } from '@/lib/transactionEr
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { ModeratedContent } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -562,6 +563,8 @@ export function BuyMessageModal({
                   markeeEarnedLabel={activeTab === 'updateMessage' ? '0 MARKEE' : `${formatMarkeeAmount(markeeEarned)} MARKEE`}
                   willWin={reviewWillWin}
                   minToWinLabel={reviewMinToWinLabel}
+                  chainId={activeTab !== 'create' ? CANONICAL_CHAIN_ID : undefined}
+                  markeeId={activeTab !== 'create' ? userMarkee?.address : undefined}
                 />
               ) : (
               <>
@@ -619,9 +622,11 @@ export function BuyMessageModal({
               {/* Funded message read-only (addFunds) */}
               {activeTab === 'addFunds' && (
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                    {userMarkee?.message || <MessageLoading />}
-                  </div>
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee?.address ?? ''}>
+                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                      {userMarkee?.message || <MessageLoading />}
+                    </div>
+                  </ModeratedContent>
                   {userMarkee?.name && (
                     <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
                   )}
@@ -633,7 +638,9 @@ export function BuyMessageModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px' }}>
                     <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee.address}>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
+                    </ModeratedContent>
                   </div>
                   <ModalField label="New Message">
                     <textarea

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useBalance, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import {
   STREAMING_BASE, ETHX_WRAP_ABI, ratePerSecToMonthly, cleanEthAmountInput,
   runwaySeconds, runwayProgressPct, runwayTier, formatRunway,
@@ -21,6 +21,7 @@ import { formatTransactionError, logTransactionError } from '@/lib/transactionEr
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
+import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
 
 const ETHX = STREAMING_BASE.ethx as Address
@@ -449,9 +450,11 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                         <span style={{ width: 7, height: 7, borderRadius: 99, background: s.isTop ? GREEN : MUTED, flexShrink: 0 }} />
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
-                            {s.message || s.name || fmtAddr(s.markeeAddress)}
-                          </div>
+                          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={s.markeeAddress}>
+                            <div style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+                              {s.message || s.name || fmtAddr(s.markeeAddress)}
+                            </div>
+                          </ModeratedContent>
                           <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 1 }}>
                             {s.isTop ? 'Winning' : 'Not winning'} · #{s.rank}
                           </div>

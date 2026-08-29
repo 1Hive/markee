@@ -12,7 +12,7 @@ import { useAccount, useReadContract, useSwitchChain, useBalance, useWriteContra
 import { formatEther, erc20Abi, type Address, type Hex } from 'viem'
 import { Eye, Pencil } from 'lucide-react'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import {
   monthlyToRatePerSec, ratePerSecToMonthly, bufferFor, runwaySeconds,
@@ -28,6 +28,7 @@ import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMar
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { useCreateStreamFlow, type CreateStreamCalc } from '@/hooks/useCreateStreamFlow'
 import { useOpenStreamFlow } from '@/hooks/useOpenStreamFlow'
 import { useMoveStreamFlow } from '@/hooks/useMoveStreamFlow'
@@ -301,7 +302,7 @@ function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: 
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 function SignRow({
-  markee, rank, views, isOwner, isBacking, onFund, onManage,
+  markee, rank, views, isOwner, isBacking, onFund, onManage, boardAdmin,
 }: {
   markee: StreamingMarkee
   rank: number
@@ -310,6 +311,7 @@ function SignRow({
   isBacking: boolean
   onFund: () => void
   onManage: () => void
+  boardAdmin?: string | null
 }) {
   const isTop = rank === 1
   const subtitle = markee.name || fmtAddr(markee.owner)
@@ -332,15 +334,18 @@ function SignRow({
         {rank}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {markee.message || '—'}
-        </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
+          <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {markee.message || '—'}
+          </div>
+        </ModeratedContent>
         <div style={{ marginTop: 2 }}>
           <MessageMeta views={views} isOwner={isOwner} authorLabel={subtitle} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{monthlyEth} ETH/mo</span>
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+        <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} compact />
         {isBacking ? (
           <button
             onClick={onManage}
@@ -920,6 +925,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                             isBacking={!!backedMarkee && backedMarkee.toLowerCase() === m.address.toLowerCase()}
                             onFund={() => openFund(m)}
                             onManage={() => openManage(m)}
+                            boardAdmin={meta?.admin}
                           />
                         ))}
                       </div>
@@ -1024,6 +1030,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
+                    chainId={CANONICAL_CHAIN_ID}
+                    markeeId={target.address}
+                    boardAdmin={meta?.admin}
                   />
                 ) : (
                 <div style={{ marginBottom: 18 }}>
@@ -1072,7 +1081,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                                 <Pencil size={11} />
                               </button>
                             )}
-                            <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
+                            <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                              <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
+                            </ModeratedContent>
                           </div>
                           <div style={{ marginTop: 6 }}>
                             <MessageMeta
@@ -1113,6 +1124,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
+                    chainId={CANONICAL_CHAIN_ID}
+                    markeeId={target.address}
+                    boardAdmin={meta?.admin}
                   />
                 ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 18 }}>
@@ -1156,7 +1170,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </div>
                     ) : (
                       <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>
-                        {target.message || <MessageLoading />}
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                          {target.message || <MessageLoading />}
+                        </ModeratedContent>
                         <div style={{ marginTop: 6 }}>
                           <MessageMeta
                             views={viewsMap.get(target.address.toLowerCase()) ?? 0}

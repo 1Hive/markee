@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { parseEther, formatEther } from 'viem'
 import { formatUsd } from '@/lib/utils'
 import { formatRunwayShort, formatEthxBalanceDisplay, DISPLAY_DUST_WEI } from '@/lib/superfluid/streaming'
+import { ModeratedContent } from '@/components/moderation'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
 import { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
@@ -158,6 +159,7 @@ export function Row({ label, value, bold, info }: { label: string; value: string
 // its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
 export function PaymentReviewCard({
   kind, message, amountLabel, amountUsd, depositLabel, runwayLabel, markeeEarnedLabel, willWin, minToWinLabel,
+  chainId, markeeId, boardAdmin, boardCreator,
 }: {
   kind: 'fixed' | 'rent'
   message: string
@@ -171,15 +173,28 @@ export function PaymentReviewCard({
   markeeEarnedLabel: string
   willWin: boolean
   minToWinLabel?: string | null
+  // Moderation -- optional so every existing call site keeps working unwrapped; pass all three to
+  // enable the blur-if-flagged check on this review step too.
+  chainId?: number | string
+  markeeId?: string
+  boardAdmin?: string | null
+  boardCreator?: string | null
 }) {
+  const messageBox = (
+    <div style={{
+      borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)',
+      padding: '12px 14px', fontFamily: MONO, fontSize: 13.5, color: TEXT, lineHeight: 1.45,
+    }}>
+      {message || <MessageLoading />}
+    </div>
+  )
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 6 }}>
-      <div style={{
-        borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)',
-        padding: '12px 14px', fontFamily: MONO, fontSize: 13.5, color: TEXT, lineHeight: 1.45,
-      }}>
-        {message || <MessageLoading />}
-      </div>
+      {chainId !== undefined && markeeId ? (
+        <ModeratedContent chainId={chainId} markeeId={markeeId} boardAdmin={boardAdmin} boardCreator={boardCreator}>
+          {messageBox}
+        </ModeratedContent>
+      ) : messageBox}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         <Row label="Paying" value={amountUsd ? `${amountLabel}  (≈ ${amountUsd})` : amountLabel} bold />

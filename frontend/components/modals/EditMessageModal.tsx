@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { useAccount } from 'wagmi'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { TxProgress } from '@/components/modals/StreamUI'
+import { ModeratedContent } from '@/components/moderation'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { formatTransactionError } from '@/lib/transactionErrors'
 import { MONO, PINK, BG2, BG, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -124,7 +125,9 @@ export function EditMessageModal({
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current Message</div>
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                  {currentMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message set</span>}
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress}>
+                    {currentMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message set</span>}
+                  </ModeratedContent>
                 </div>
               </div>
 

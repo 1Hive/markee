@@ -12,6 +12,7 @@ import { formatTransactionError, logTransactionError } from '@/lib/transactionEr
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { ModeratedContent } from '@/components/moderation'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -259,6 +260,8 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   amountUsd={priceUsd != null ? formatUsd(priceUsd) : null}
                   markeeEarnedLabel={`${markeeEarned.toLocaleString()} MARKEE`}
                   willWin
+                  chainId={fixedMarkee.chainId}
+                  markeeId={fixedMarkee.markeeAddress}
                 />
               ) : (
                 <>
@@ -266,7 +269,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   {fixedMarkee.message && (
                     <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
                       <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
+                      <ModeratedContent chainId={fixedMarkee.chainId} markeeId={fixedMarkee.markeeAddress}>
+                        <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
+                      </ModeratedContent>
                     </div>
                   )}
 

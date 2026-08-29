@@ -6,7 +6,7 @@ import { parseEther, formatEther } from 'viem'
 import { Eye } from 'lucide-react'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
@@ -14,6 +14,7 @@ import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
@@ -249,7 +250,7 @@ function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: 
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 function SignRow({
-  markee, rank, views, isOwner, onFund, onEdit,
+  markee, rank, views, isOwner, onFund, onEdit, boardAdmin,
 }: {
   markee: LeaderboardMarkee
   rank: number
@@ -257,6 +258,7 @@ function SignRow({
   isOwner: boolean
   onFund: () => void
   onEdit: () => void
+  boardAdmin?: string | null
 }) {
   const isTop = rank === 1
   const subtitle = markee.name || fmtAddr(markee.owner)
@@ -279,15 +281,18 @@ function SignRow({
         {rank}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {markee.message || '—'}
-        </div>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
+          <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {markee.message || '—'}
+          </div>
+        </ModeratedContent>
         <div style={{ marginTop: 2 }}>
           <MessageMeta views={views} isOwner={isOwner} authorLabel={subtitle} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{eth} ETH</span>
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+        <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} compact />
         {isOwner && (
           <button
             onClick={onEdit}
@@ -691,6 +696,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                             isOwner={!!activeAddress && m.owner.toLowerCase() === activeAddress.toLowerCase()}
                             onFund={() => openFund(m)}
                             onEdit={() => openEdit(m)}
+                            boardAdmin={meta?.admin}
                           />
                         ))}
                       </div>
@@ -802,11 +808,16 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
+                    chainId={CANONICAL_CHAIN_ID}
+                    markeeId={target.address}
+                    boardAdmin={meta?.admin}
                   />
                 ) : (
                 <div style={{ marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
+                    </ModeratedContent>
                     <div style={{ marginTop: 6 }}>
                       <MessageMeta
                         views={viewsMap.get(target.address.toLowerCase()) ?? 0}
@@ -839,13 +850,18 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     markeeEarnedLabel="0 MARKEE"
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
+                    chainId={CANONICAL_CHAIN_ID}
+                    markeeId={target.address}
+                    boardAdmin={meta?.admin}
                   />
                 ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                   <div>
                     <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
                     <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>
-                      {target.message}
+                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                        {target.message}
+                      </ModeratedContent>
                       <div style={{ marginTop: 6 }}>
                         <MessageMeta
                           views={viewsMap.get(target.address.toLowerCase()) ?? 0}
