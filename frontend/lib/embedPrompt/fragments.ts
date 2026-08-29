@@ -73,22 +73,33 @@ an embedded widget -- but its shape should be unmistakably Markee:
 - On hover: a pill badge slides up from the bottom-center edge showing the price/action --
   "X.XXX ETH to change" (fixed) or "X.XXX ETH/mo to back" (streaming), or "be first!" if there's no
   message yet. Fade in with a slight upward translate, not an instant show/hide.
-- **Brand watermark (required on every integration, not optional styling):** a small, low-opacity
-  "MARKEE" wordmark tucked into the card's top-left corner -- two stacked lines, "MAR" over "KEE",
-  bold sans-serif (weight ~800), sized noticeably *smaller* than the message headline (roughly
-  clamp(22px, 3vw, 34px) against a ~24-34px headline), at ~7% opacity. Keep it compact and pulled
-  tight to the corner (a few px of negative offset, not more) -- it must stay clear of the message
-  headline's own text, including where a long message wraps onto a second or third line. Oversizing
-  this is the single most common mistake: at headline-matching or larger sizes it collides with the
-  message text directly behind it and reads as noise instead of a subtle corner texture. It shares
-  the hover pill's trigger -- fades in and out together with the pill, rather than sitting there
-  permanently. Render it as plain text, not an image -- it inherits your color exactly and needs no
-  external asset fetch:
+- **Brand watermark (required on every integration, not optional styling):** the real Markee logo
+  (not recreated letterforms -- an earlier version of this spec tried approximating "MAR"/"KEE" as
+  plain text in a guessed font and the two words visibly mismatched in weight), small and low-opacity,
+  tucked into the card's top-left corner. Use https://markee.xyz/markee-logo-dark.png (black
+  background, white letters) purely as a **luminance mask**, not as a normal image element -- this is
+  what lets it tint to any color instead of being stuck as a solid black square:
   \`\`\`
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1">
-    <div style="position:absolute; top:-6px; left:-6px; font-weight:800; font-size:clamp(22px,3vw,34px); line-height:0.86; opacity:{hover ? 0.07 : 0}; transition:opacity 220ms; white-space:pre; color:{tint}">MAR{'\\n'}KEE</div>
+    <div style="
+      position:absolute; top:-8px; left:-8px; width:clamp(56px,7vw,84px); height:clamp(56px,7vw,84px);
+      background-color:{tint};
+      -webkit-mask-image:url(https://markee.xyz/markee-logo-dark.png); mask-image:url(https://markee.xyz/markee-logo-dark.png);
+      -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+      -webkit-mask-position:center; mask-position:center; mask-mode:luminance;
+      opacity:{hover ? 0.1 : 0}; transition:opacity 220ms;
+    "></div>
   </div>
   \`\`\`
+  \`mask-mode: luminance\` is the key line -- without it, standards-track \`mask-image\` defaults to
+  alpha-based masking, and since the PNG is fully opaque throughout its rounded square, that alone
+  would just show a solid tinted block instead of the letters. Older WebKit's \`-webkit-mask-image\`
+  has always been luminance-based with no separate mode property, so it needs no equivalent there --
+  both mask properties together cover current browsers. Keep it compact and pulled tight to the
+  corner (a few px of negative offset, not more) so it stays clear of the message headline's own
+  text, including where a long message wraps onto a second or third line -- oversizing this was the
+  actual mistake in an earlier version of this spec, not a font issue. It shares the hover pill's
+  trigger -- fades in and out together with the pill, rather than sitting there permanently.
   This wrapper's own \`overflow:hidden\` does the clipping -- don't set it on the whole card, or the
   price pill (which intentionally bleeds past the card's bottom edge) gets cut off too. Give the card
   container an explicit \`z-index\` (not just \`position: relative\`) so the watermark's negative
