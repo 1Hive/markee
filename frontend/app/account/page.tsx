@@ -45,6 +45,12 @@ interface BaseLeaderboard {
   totalFundsRaw: string
   markeeCount: number
   admin: string
+  // Address-resolved creator (lib/leaderboards/resolveCreators.ts) -- distinct from admin, which for
+  // some platforms (Superfluid) is the beneficiary, and for migrated boards is the Cooperative
+  // multisig, not whoever actually created the board. Populated for superfluid/github/openinternet/
+  // forsale; streaming boards have no separate creator resolution, so callers fall back to admin
+  // (matches the existing lb.creator ?? lb.admin convention already used elsewhere on this page).
+  creator?: string | null
   topMessage: string | null
   topMessageOwner?: string | null
   topFundsAddedRaw: string

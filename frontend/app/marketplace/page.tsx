@@ -39,6 +39,11 @@ interface Leaderboard {
   streamedAt?: number
   topFundsAddedRaw: string
   markeeCount: number
+  // Both already come through in /api/ecosystem/leaderboards' response (every platform route
+  // returns them); only used for moderation eligibility (FlagButton/ModeratedContent's boardAdmin/
+  // boardCreator props), not currently displayed.
+  admin?: string
+  creator?: string | null
   topMessage: string | null
   topMessageOwner: string | null
   topMarkeeOwner: string | null

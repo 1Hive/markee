@@ -6,6 +6,7 @@ import { Eye, Pencil } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { TxHistoryToggle, TxHistoryPanel } from '@/components/board-detail/shared'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -22,6 +23,8 @@ interface ExpandableMarkeeRowProps {
   rank: number
   formatFunds: (wei: bigint) => string
   leaderboardAddress: `0x${string}`
+  /** Board's on-chain admin -- lets that board's own admin flag messages on it, per lib/moderation. */
+  boardAdmin?: string | null
   viewCount?: number
   viewsLoading?: boolean
   featured?: boolean
@@ -54,6 +57,7 @@ export function ExpandableMarkeeRow({
   rank,
   formatFunds,
   leaderboardAddress,
+  boardAdmin,
   viewCount,
   viewsLoading = false,
   featured = false,
@@ -117,9 +121,12 @@ export function ExpandableMarkeeRow({
               <Pencil size={11} />
             </button>
           )}
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {markee.message || <span className="opacity-40 italic">No message</span>}
-          </p>
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+            <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {markee.message || <span className="opacity-40 italic">No message</span>}
+            </p>
+          </ModeratedContent>
+          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} compact />
         </div>
 
         <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>

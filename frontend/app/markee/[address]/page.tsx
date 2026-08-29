@@ -318,6 +318,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
                         return ethPrice ? formatUsd(fundsEth * ethPrice) : `${fundsEth.toFixed(3)} ETH`
                       }}
                       leaderboardAddress={leaderboardAddress as `0x${string}`}
+                      boardAdmin={meta?.admin}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
                       viewsLoading={viewsLoading}
                       onAddFunds={() => openAddFunds(m)}

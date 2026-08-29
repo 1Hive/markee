@@ -15,6 +15,7 @@ import { EmbedModal } from '@/components/modals/EmbedModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
 import { STREAMING_BASE, CFA_FORWARDER_ABI, ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
@@ -300,6 +301,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                       rank={i + 1}
                       featured={i === 0}
                       board={board}
+                      boardAdmin={meta?.admin}
                       topSince={topSince}
                       ethPrice={ethPrice}
                       viewCount={viewsMap.get(m.address.toLowerCase()) ?? 0}
@@ -506,11 +508,13 @@ function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage
 
 // ── Leaderboard row ────────────────────────────────────────────────────────────
 
-function StreamingRow({ markee, rank, featured, board, topSince, ethPrice, viewCount, viewsLoading, isBackedByYou, hasAnyPosition, isOwner, onStream, onEditMessage }: {
+function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, ethPrice, viewCount, viewsLoading, isBackedByYou, hasAnyPosition, isOwner, onStream, onEditMessage }: {
   markee: StreamingMarkee
   rank: number
   featured: boolean
   board: Address
+  /** Board's on-chain admin -- lets that board's own admin flag messages on it, per lib/moderation. */
+  boardAdmin?: string | null
   topSince: { address: string; since: number } | null
   ethPrice: number | null
   viewCount: number
@@ -595,9 +599,12 @@ function StreamingRow({ markee, rank, featured, board, topSince, ethPrice, viewC
               <Pencil size={11} />
             </button>
           )}
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {markee.message || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>No message</span>}
-          </p>
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+            <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {markee.message || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>No message</span>}
+            </p>
+          </ModeratedContent>
+          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} compact />
         </div>
 
         <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
