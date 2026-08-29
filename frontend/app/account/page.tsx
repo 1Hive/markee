@@ -27,6 +27,8 @@ import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { formatEther } from 'viem'
 import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Abi } from 'viem'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -53,6 +55,10 @@ interface BaseLeaderboard {
   creator?: string | null
   topMessage: string | null
   topMessageOwner?: string | null
+  // Address of the top markee slot itself (distinct from `address`, the leaderboard/board contract) --
+  // already returned by every platform's leaderboards API, just not previously typed here. Needed as
+  // the markeeId for moderation (ModeratedContent/FlagButton key flagged state per-markee, not per-board).
+  topMarkeeAddress?: string | null
   topFundsAddedRaw: string
   topRateRaw?: string
   minimumPriceRaw?: string
@@ -688,9 +694,16 @@ function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbe
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <MarkeeNameCell lb={lb} />
-      <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
-        {lb.topMessage || 'No message yet'}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
+          <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
+            {lb.topMessage || 'No message yet'}
+          </span>
+        </ModeratedContent>
+        {lb.topMarkeeAddress && (
+          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
+        )}
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
       </div>
@@ -962,9 +975,16 @@ function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPrice
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <ServedOnCell lb={lb} onAddToSite={onAddToSite} />
-      <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic' }}>
-        {lb.topMessage || 'No message yet'}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
+          <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
+            {lb.topMessage || 'No message yet'}
+          </span>
+        </ModeratedContent>
+        {lb.topMarkeeAddress && (
+          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
+        )}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
       </div>
@@ -1320,7 +1340,10 @@ function BoughtTable({ items, ethPrice, onEdit, onAddFunds, onAddToSite }: { ite
                 >
                   <Pencil size={11} />
                 </button>
-                <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message'}</span>
+                <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
+                  <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic', display: 'block' }}>{m.message || 'No message'}</span>
+                </ModeratedContent>
+                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
               <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
@@ -1379,7 +1402,12 @@ function FundedTable({ items, ethPrice, onAddFunds, onAddToSite }: { items: Fund
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
-              <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic' }}>{m.message || 'No message yet'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
+                  <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic', display: 'block' }}>{m.message || 'No message yet'}</span>
+                </ModeratedContent>
+                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
               <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
