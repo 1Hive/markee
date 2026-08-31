@@ -438,16 +438,10 @@ export default function SuperfluidPlatformPage() {
     : `${totalEth.toFixed(3)} ETH`
   const basePointsPerEth = Number(campaign?.pointsPerEth ?? 0)
   const maxMultiplier = Math.max(1, ...Object.values(boostMultipliers))
-  const campaignStatus = campaign?.status ?? 'upcoming'
-  const campaignStatusLabel = campaignStatus === 'active'
-    ? 'Rewards Active'
-    : campaignStatus === 'ended'
-      ? 'Rewards Ended'
-      : 'Rewards Upcoming'
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="raise" />
+      <Header activePage="campaign" />
 
       {/* ── Hero ── */}
       <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>
@@ -498,11 +492,11 @@ export default function SuperfluidPlatformPage() {
                       display: 'inline-block',
                       animation: 'glowPulse 1.5s ease-in-out infinite',
                     }} />
-                    {campaign?.name ? `${campaign.name} · ${campaignStatusLabel}` : campaignStatusLabel}
+                    {campaign?.name ?? 'Superfluid Rewards'}
                   </span>
                 </div>
                 <p style={{ margin: 0, color: TEXT2, fontSize: 15, maxWidth: '60ch', lineHeight: 1.55 }}>
-                  Earn SUP points from net ETHx streamed to eligible Markees on Base. Refunds are subtracted, and configured boosts apply prospectively.
+                  Earn SUP points from ETH streamed to For Rent Markee
                 </p>
               </div>
             </div>
@@ -570,26 +564,21 @@ export default function SuperfluidPlatformPage() {
             </div>
             <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              <span style={{ color: GREEN, fontWeight: 700, fontFamily: MONO }}>{basePointsPerEth.toLocaleString()} pts / ETHx</span>
+              <span style={{ color: GREEN, fontWeight: 700, fontFamily: MONO }}>{basePointsPerEth.toLocaleString()} pts / ETH</span>
               <span style={{ color: MUTED }}>standard</span>
-            </div>
-            <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              <RocketIcon size={13} color={PINK} />
-              <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{(basePointsPerEth * maxMultiplier).toLocaleString()} max pts / ETHx</span>
-              <span style={{ color: MUTED }}>with boosts</span>
             </div>
           </div>
         </div>
       </section>
 
       {/* ── Boosted Markees section ── */}
-      <section style={{ padding: '44px 40px', background: BG2, borderBottom: `1px solid ${BORDER}` }}>
+      {boostedLeaderboards.length > 0 && (
+        <section style={{ padding: '44px 40px', background: BG2, borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1240, margin: '0 auto' }}>
           {/* Section header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <RocketIcon size={16} color={PINK} />
-            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Boosted Streaming Markees</span>
+            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Boosted For Rent Markees</span>
             <span style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -612,7 +601,7 @@ export default function SuperfluidPlatformPage() {
               <SkeletonRows count={4} />
             ) : activeBoostedEntries.length === 0 ? (
               <div style={{ padding: '40px 14px', textAlign: 'center', color: MUTED, fontSize: 14 }}>
-                No boosted streaming Markees are configured for this campaign.
+                No boosted For Rent Markees are configured for this campaign.
               </div>
             ) : (
               activeBoostedEntries.map(entry => (
@@ -626,13 +615,14 @@ export default function SuperfluidPlatformPage() {
             )}
           </div>
         </div>
-      </section>
+        </section>
+      )}
 
       {/* ── Create CTA between sections ── */}
       <section style={{ padding: '24px 40px', borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <p style={{ margin: 0, color: TEXT2, fontSize: 14 }}>
-            Want to earn SUP rewards? Create a streaming Markee and receive ETHx streams on Base.
+            Want to earn SUP rewards? Create a For Rent Markee and receive ETH streams on Base.
           </p>
           <Link
             href="/create-a-markee?platform=superfluid"
@@ -651,7 +641,7 @@ export default function SuperfluidPlatformPage() {
               boxShadow: '0 4px 18px rgba(248,151,254,0.35)',
             }}
           >
-            Create a Superfluid Markee →
+            Create a For Rent Markee →
           </Link>
         </div>
       </section>
@@ -662,7 +652,7 @@ export default function SuperfluidPlatformPage() {
           {/* Section header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <LightningIcon size={16} color={GREEN} />
-            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All Streaming Markees</span>
+            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All For Rent Markees</span>
           </div>
 
           <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
@@ -671,7 +661,7 @@ export default function SuperfluidPlatformPage() {
               <SkeletonRows count={4} />
             ) : regularRows.length === 0 ? (
               <div style={{ padding: '40px 14px', textAlign: 'center', color: MUTED, fontSize: 14 }}>
-                No active streaming Markees yet. Create one for your Superfluid project to appear here.
+                No active For Rent Markees yet. Create one for your project to appear here.
               </div>
             ) : (
               regularRows.map(lb => (
@@ -696,10 +686,10 @@ export default function SuperfluidPlatformPage() {
       }}>
         <div style={{ maxWidth: 1240, margin: '0 auto' }}>
           <h2 style={{ margin: 0, fontSize: 'clamp(22px,3vw,34px)', fontWeight: 800, color: TEXT, letterSpacing: -0.5, marginBottom: 10 }}>
-            Add a Markee to your Superfluid project
+            Add a For Rent Markee to your project
           </h2>
           <p style={{ margin: '0 0 28px', color: TEXT2, fontSize: 15, maxWidth: '48ch', lineHeight: 1.55 }}>
-            Create a streaming Markee for your project. Backers earn points on net ETHx streamed during the campaign window; refunded ETHx does not count.
+            Create a For Rent Markee for your project. Backers earn points on net ETH streamed during the campaign window; refunded ETH does not count.
           </p>
           <Link
             href="/create-a-markee?platform=superfluid"
@@ -718,7 +708,7 @@ export default function SuperfluidPlatformPage() {
               boxShadow: '0 4px 20px rgba(248,151,254,0.35)',
             }}
           >
-            Create a Superfluid Markee →
+            Create a For Rent Markee →
           </Link>
         </div>
       </section>

@@ -106,6 +106,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/ecosystem', destination: '/create-a-markee', permanent: true },
+      { source: '/ecosystem/platforms/superfluid', destination: '/campaigns/superfluid', permanent: true },
       { source: '/own-the-network', destination: '/owners', permanent: false },
     ]
   },
