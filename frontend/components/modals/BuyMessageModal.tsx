@@ -7,7 +7,6 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
@@ -156,9 +155,7 @@ export function BuyMessageModal({
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
-
-  const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
   const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined,
@@ -307,16 +304,6 @@ export function BuyMessageModal({
       }, 2000)
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
-
-  useEffect(() => {
-    if (!isSuccess || !receipt || !activeAddress || !strategyAddress || activeTab === 'updateMessage') return
-    if (platformId !== 'superfluid') return
-    const txHash = receipt.transactionHash
-    const amountWei = parseEther(amount).toString()
-    if (activeTab === 'addFunds') trackAddFunds(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
-    else trackBuyMessage(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess, receipt, activeAddress])
 
   useEffect(() => {
     if (!isSuccess || !strategyAddress || activeTab === 'updateMessage' || platformId !== 'github') return

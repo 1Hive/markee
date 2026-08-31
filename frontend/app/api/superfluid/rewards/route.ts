@@ -1,58 +1,56 @@
-/**
- * GET /api/superfluid/rewards
- *
- * Server-side proxy for the Superfluid Points API leaderboard.
- * Fetches all pages and returns the full ranked account list in one response.
- */
-import { NextRequest, NextResponse } from 'next/server'
-import { getCampaignId } from '@/lib/superfluid/points'
-
-const BASE_URL = 'https://cms.superfluid.pro'
-const PAGE_SIZE = 100
-const MAX_PAGES = 20 // safety cap: 2,000 participants max
+import { NextResponse } from 'next/server'
+import { kv } from '@vercel/kv'
+import {
+  FARCASTER_EVENT_NAME,
+  STREAMING_EVENT_NAME,
+  boostHistoryKey,
+  fetchCampaignEventBalance,
+  fetchCampaignLeaderboard,
+  getStreamingCampaignConfig,
+  type BoostConfigVersion,
+} from '@/lib/superfluid/streamingCampaign'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const campaignId = getCampaignId()
-
-    // Fetch all pages and merge
-    const allAccounts: unknown[] = []
-    let totalDocs = 0
-
-    for (let p = 1; p <= MAX_PAGES; p++) {
-      const res = await fetch(
-        `${BASE_URL}/points/accounts?campaignId=${campaignId}&orderBy=totalPoints&order=desc&page=${p}&limit=${PAGE_SIZE}`,
-        { cache: 'no-store' }
-      )
-      if (!res.ok) break
-      const data = await res.json()
-      const accounts: unknown[] = data.accounts ?? []
-      allAccounts.push(...accounts)
-      totalDocs = data.pagination?.totalDocs ?? allAccounts.length
-      if (!data.pagination?.hasNextPage) break
-    }
-
-    const [fundsTotal, farcasterTotal] = await Promise.all([
-      fetch(`${BASE_URL}/points/event-balance?campaignId=${campaignId}&eventName=add_funds`, { cache: 'no-store' })
-        .then(r => r.ok ? r.json() : { points: 0 })
-        .catch(() => ({ points: 0 })),
-      fetch(`${BASE_URL}/points/event-balance?campaignId=${campaignId}&eventName=farcaster_follow`, { cache: 'no-store' })
-        .then(r => r.ok ? r.json() : { points: 0 })
-        .catch(() => ({ points: 0 })),
+    const campaign = getStreamingCampaignConfig()
+    const [accounts, streamPoints, farcasterPoints, boostHistory] = await Promise.all([
+      fetchCampaignLeaderboard(),
+      fetchCampaignEventBalance(STREAMING_EVENT_NAME),
+      fetchCampaignEventBalance(FARCASTER_EVENT_NAME),
+      kv.get<BoostConfigVersion[]>(boostHistoryKey(campaign.id)),
     ])
+    const latestBoosts = (boostHistory ?? []).sort(
+      (a, b) => a.effectiveBlock - b.effectiveBlock,
+    ).at(-1)?.multipliers ?? {}
+    const now = Math.floor(Date.now() / 1000)
 
     return NextResponse.json({
-      accounts: allAccounts,
-      totalDocs,
-      campaignTotals: {
-        addFunds: fundsTotal.points ?? 0,
-        farcasterFollow: farcasterTotal.points ?? 0,
+      accounts,
+      totalDocs: accounts.length,
+      campaign: {
+        id: campaign.id,
+        name: campaign.name,
+        startTimestamp: campaign.startTimestamp,
+        endTimestamp: campaign.endTimestamp,
+        pointsPerEth: campaign.pointsPerEth.toString(),
+        status:
+          now < campaign.startTimestamp ? 'upcoming'
+          : now >= campaign.endTimestamp ? 'ended'
+          : 'active',
       },
+      campaignTotals: {
+        streamMarkee: streamPoints,
+        farcasterFollow: farcasterPoints,
+      },
+      boostMultipliers: latestBoosts,
     })
-  } catch (e: any) {
-    console.error('[/api/superfluid/rewards]', e.message)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+  } catch (error) {
+    console.error('[/api/superfluid/rewards]', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal error' },
+      { status: 500 },
+    )
   }
 }

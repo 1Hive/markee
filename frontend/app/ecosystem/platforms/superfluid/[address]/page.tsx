@@ -404,7 +404,7 @@ export default function SuperfluidLeaderboardPage() {
                       <>
                         <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? ''}</h1>
                         <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                          Superfluid S5
+                          Superfluid Streaming
                         </span>
                       </>
                     )

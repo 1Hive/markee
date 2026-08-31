@@ -17,9 +17,18 @@ interface RewardsData {
   accounts: LeaderboardEntry[]
   totalDocs: number
   campaignTotals: {
-    addFunds: number
+    streamMarkee: number
     farcasterFollow: number
   }
+  campaign: {
+    id: number
+    name: string
+    startTimestamp: number
+    endTimestamp: number
+    pointsPerEth: string
+    status: 'upcoming' | 'active' | 'ended'
+  }
+  boostMultipliers: Record<string, number>
 }
 
 interface RewardsModalProps {
@@ -125,8 +134,8 @@ function RewardsRow({
 export function RewardsModal({
   isOpen,
   onClose,
-  title = 'Season 5 SUP Rewards',
-  description = 'Earn points by buying messages and adding funds to any Superfluid message.',
+  title = 'Superfluid Streaming Rewards',
+  description = 'Earn points from net ETHx streamed to eligible Markees.',
 }: RewardsModalProps) {
   const { address } = useAccount()
   const [data, setData] = useState<RewardsData | null>(null)
@@ -177,7 +186,9 @@ export function RewardsModal({
   const connectedRank = connectedIdx >= 0 ? connectedIdx + 1 : null
 
   const totalAwarded =
-    (data?.campaignTotals.addFunds ?? 0) + (data?.campaignTotals.farcasterFollow ?? 0)
+    (data?.campaignTotals.streamMarkee ?? 0) + (data?.campaignTotals.farcasterFollow ?? 0)
+  const campaignTitle = data?.campaign.name ?? title
+  const pointsPerEth = Number(data?.campaign.pointsPerEth ?? 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -193,10 +204,10 @@ export function RewardsModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-[#EDEEFF] font-bold text-lg">{title}</h2>
+                <h2 className="text-[#EDEEFF] font-bold text-lg">{campaignTitle}</h2>
                 <span className="flex items-center gap-1 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-[10px] font-semibold px-2 py-0.5 rounded-full">
                   <span className="w-1 h-1 rounded-full bg-[#1DB227] animate-pulse" />
-                  Live
+                  {data?.campaign.status ?? 'Loading'}
                 </span>
               </div>
               <p className="text-[#8A8FBF] text-xs mt-0.5">{description}</p>
@@ -249,7 +260,7 @@ export function RewardsModal({
             <div className="py-12 text-center">
               <Trophy size={28} className="text-[#8A8FBF] mx-auto mb-3" />
               <p className="text-[#EDEEFF] font-semibold mb-1">No participants yet</p>
-              <p className="text-[#8A8FBF] text-sm">Buy a message to earn the first points.</p>
+              <p className="text-[#8A8FBF] text-sm">Stream ETHx to an eligible Markee to earn the first points.</p>
             </div>
           ) : (
             <>
@@ -287,7 +298,8 @@ export function RewardsModal({
         <div className="flex-shrink-0 border-t border-[#8A8FBF]/20 px-6 py-4 bg-[#060A2A]/40">
           <p className="text-[#8A8FBF] text-[10px] uppercase tracking-wider mb-2 font-semibold">How to Earn Points</p>
           <div className="flex flex-col gap-1.5 text-xs text-[#8A8FBF]">
-            <span>🪧 Buy a message or add funds to an existing message: 10M pts per ETH</span>
+            <span>🌊 Net ETHx streamed to an eligible Markee: {pointsPerEth.toLocaleString()} pts per ETHx</span>
+            <span>↩️ Refunded streams do not earn points; configured leaderboard boosts apply prospectively.</span>
             <span className="flex items-center gap-1.5">
               🟣 Follow @markee on Farcaster: 1pt
               <a

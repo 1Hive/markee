@@ -8,11 +8,10 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { RewardsModal } from '@/components/modals/RewardsModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { useStreamingRows } from '@/hooks/useStreamingRows'
-import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
+import { type Strategy } from '@/lib/strategy'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -36,18 +35,21 @@ interface SuperfluidLeaderboard {
   creator?: string | null
 }
 
-function rowEffectiveRate(lb: SuperfluidLeaderboard): bigint {
-  return lb.strategy === 'streaming'
-    ? BigInt(lb.effectiveRateRaw || '0')
-    : imputeEffectiveRate(BigInt(lb.totalFundsRaw || '0'))
-}
-
 interface BoostedLeaderboardEntry {
   address: string
   name: string
   logoUrl?: string
   projectUrl?: string
+  multiplier: number
   leaderboard: SuperfluidLeaderboard | null
+}
+
+interface CampaignMetadata {
+  name: string
+  status: 'upcoming' | 'active' | 'ended'
+  startTimestamp: number
+  endTimestamp: number
+  pointsPerEth: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -55,10 +57,6 @@ function formatViews(n: number) {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
   return `${(n / 1_000_000).toFixed(1)}M`
-}
-
-function priceToChange(lb: SuperfluidLeaderboard): bigint {
-  return BigInt(lb.topFundsAddedRaw || '0') + BigInt('1000000000000000')
 }
 
 // ── Superfluid lightning SVG ──────────────────────────────────────────────────
@@ -141,7 +139,7 @@ function BoostedServedOnCell({ entry }: { entry: BoostedLeaderboardEntry }) {
         flexShrink: 0,
         whiteSpace: 'nowrap',
       }}>
-        5x pts
+        {entry.multiplier}x pts
       </span>
     </span>
   )
@@ -175,55 +173,15 @@ function RegularServedOnCell({ lb }: { lb: SuperfluidLeaderboard }) {
 }
 
 // ── Buy button ────────────────────────────────────────────────────────────────
-function BuyButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={e => { e.preventDefault(); e.stopPropagation(); onClick() }}
-      style={{
-        width: '100%',
-        textAlign: 'center',
-        background: PINK,
-        color: BG,
-        border: 'none',
-        borderRadius: 7,
-        padding: '8px 10px',
-        fontFamily: MONO,
-        fontWeight: 700,
-        fontSize: 12.5,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
-        transition: 'transform 120ms, box-shadow 120ms',
-      }}
-      onMouseEnter={e => {
-        e.stopPropagation()
-        const el = e.currentTarget as HTMLElement
-        el.style.transform = 'translateY(-1px)'
-        el.style.boxShadow = '0 6px 18px rgba(248,151,254,0.45)'
-      }}
-      onMouseLeave={e => {
-        e.stopPropagation()
-        const el = e.currentTarget as HTMLElement
-        el.style.transform = 'none'
-        el.style.boxShadow = '0 2px 10px rgba(248,151,254,0.28)'
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
 // ── Boosted table row ─────────────────────────────────────────────────────────
 function BoostedTableRow({
   entry,
   viewsMap,
   ethPrice,
-  onBuy,
 }: {
   entry: BoostedLeaderboardEntry
   viewsMap: Map<string, number>
   ethPrice: number | null
-  onBuy: () => void
 }) {
   const [hover, setHover] = useState(false)
   const lb = entry.leaderboard!
@@ -231,14 +189,8 @@ function BoostedTableRow({
   const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
 
-  const priceEth = parseFloat(formatEther(priceToChange(lb)))
-  const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
-
   const addrKey = (lb.topMarkeeAddress || lb.address).toLowerCase()
   const views = viewsMap.get(addrKey) ?? 0
-
-  const isStreaming = lb.strategy === 'streaming'
-  const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
   return (
     <Link
@@ -278,12 +230,7 @@ function BoostedTableRow({
       </span>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {isStreaming
-          ? <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>Stream →</span>
-          : hasTopFunds
-          ? <BuyButton label={priceLabel} onClick={onBuy} />
-          : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
-        }
+        <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>Stream →</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -298,26 +245,18 @@ function RegularTableRow({
   lb,
   viewsMap,
   ethPrice,
-  onBuy,
 }: {
   lb: SuperfluidLeaderboard
   viewsMap: Map<string, number>
   ethPrice: number | null
-  onBuy: () => void
 }) {
   const [hover, setHover] = useState(false)
 
   const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
 
-  const priceEth = parseFloat(formatEther(priceToChange(lb)))
-  const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
-
   const addrKey = (lb.topMarkeeAddress || lb.address).toLowerCase()
   const views = viewsMap.get(addrKey) ?? 0
-
-  const isStreaming = lb.strategy === 'streaming'
-  const hasTopFunds = BigInt(lb.topFundsAddedRaw || '0') > 0n
 
   return (
     <Link
@@ -357,12 +296,7 @@ function RegularTableRow({
       </span>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {isStreaming
-          ? <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>Stream →</span>
-          : hasTopFunds
-          ? <BuyButton label={priceLabel} onClick={onBuy} />
-          : <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
-        }
+        <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>Stream →</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -388,7 +322,7 @@ function TableHeaders() {
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Total Raised</span>
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current Message</span>
       <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Views</span>
-      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Price to Change</span>
+      <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Action</span>
       <span />
     </div>
   )
@@ -413,31 +347,41 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function SuperfluidPlatformPage() {
   const ethPrice = useEthPrice()
-  const [leaderboards, setLeaderboards] = useState<SuperfluidLeaderboard[]>([])
-  const [boostedLeaderboards, setBoostedLeaderboards] = useState<BoostedLeaderboardEntry[]>([])
-  const [totalPlatformFunds, setTotalPlatformFunds] = useState('0')
+  const [boostMultipliers, setBoostMultipliers] = useState<Record<string, number>>({})
+  const [campaign, setCampaign] = useState<CampaignMetadata | null>(null)
   const [loading, setLoading] = useState(true)
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
-  const [buyModal, setBuyModal] = useState<{ address: string; topFundsAdded: bigint } | null>(null)
   const [rewardsOpen, setRewardsOpen] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/superfluid/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+    fetch(`/api/superfluid/rewards?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return
-        setLeaderboards(data.leaderboards ?? [])
-        setBoostedLeaderboards(data.boostedLeaderboards ?? [])
-        setTotalPlatformFunds(data.totalPlatformFunds ?? '0')
+        setBoostMultipliers(data.boostMultipliers ?? {})
+        setCampaign(data.campaign ?? null)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
-  const streaming = useStreamingRows('superfluid')
+  // This campaign covers every board registered by StreamingLeaderboardFactory,
+  // regardless of the board's ecosystem placement tag.
+  const streaming = useStreamingRows()
   const streamRows: SuperfluidLeaderboard[] = useMemo(
     () => streaming.map(row => ({ ...row, boosted: false })),
     [streaming],
+  )
+  const boostedLeaderboards: BoostedLeaderboardEntry[] = useMemo(
+    () => streamRows
+      .filter((row) => (boostMultipliers[row.address.toLowerCase()] ?? 1) > 1)
+      .map((row) => ({
+        address: row.address,
+        name: row.name,
+        multiplier: boostMultipliers[row.address.toLowerCase()],
+        leaderboard: row,
+      })),
+    [streamRows, boostMultipliers],
   )
 
   // Batch-fetch views for all top markees (boosted + regular)
@@ -447,9 +391,6 @@ export default function SuperfluidPlatformPage() {
     for (const entry of boostedLeaderboards) {
       const lb = entry.leaderboard
       if (lb?.topMarkeeAddress) addrs.push(lb.topMarkeeAddress.toLowerCase())
-    }
-    for (const lb of leaderboards) {
-      if (lb.topMarkeeAddress) addrs.push(lb.topMarkeeAddress.toLowerCase())
     }
     for (const row of streaming) {
       if (row.topMarkeeAddress) addrs.push(row.topMarkeeAddress.toLowerCase())
@@ -469,7 +410,7 @@ export default function SuperfluidPlatformPage() {
         setViewsMap(m)
       })
       .catch(() => {})
-  }, [leaderboards, boostedLeaderboards, streaming])
+  }, [boostedLeaderboards, streaming])
 
   const boostedAddressSet = new Set(boostedLeaderboards.map(b => b.address.toLowerCase()))
 
@@ -478,28 +419,31 @@ export default function SuperfluidPlatformPage() {
       BigInt(entry.leaderboard.topFundsAddedRaw || '0') > 0n && entry.leaderboard.topMessage
   )
 
-  // Fixed-price + streaming rank together on effectiveRate (imputed for fixed, on-chain for streaming).
-  const regularRows = [...leaderboards, ...streamRows]
+  const regularRows = streamRows
     .filter(lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage && !boostedAddressSet.has(lb.address.toLowerCase()))
     .sort((a, b) => {
-      const ar = rowEffectiveRate(a)
-      const br = rowEffectiveRate(b)
+      const ar = BigInt(a.effectiveRateRaw || '0')
+      const br = BigInt(b.effectiveRateRaw || '0')
       return br > ar ? 1 : br < ar ? -1 : 0
     })
 
-  // Count active signs across boosted + regular
-  const activeBoostedCount = boostedLeaderboards.filter(
-    b => b.leaderboard && BigInt(b.leaderboard.topFundsAddedRaw || '0') > 0n
+  const activeSignsCount = streamRows.filter(
+    (row) => BigInt(row.topFundsAddedRaw || '0') > 0n,
   ).length
-  const activeRegularCount = leaderboards.filter(
-    lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && !boostedAddressSet.has(lb.address.toLowerCase())
-  ).length
-  const activeSignsCount = activeBoostedCount + activeRegularCount
 
-  const totalEth = parseFloat(totalPlatformFunds)
+  const totalWei = streamRows.reduce((total, row) => total + BigInt(row.totalFundsRaw || '0'), 0n)
+  const totalEth = parseFloat(formatEther(totalWei))
   const totalLabel = ethPrice
     ? formatUsd(totalEth * ethPrice)
     : `${totalEth.toFixed(3)} ETH`
+  const basePointsPerEth = Number(campaign?.pointsPerEth ?? 0)
+  const maxMultiplier = Math.max(1, ...Object.values(boostMultipliers))
+  const campaignStatus = campaign?.status ?? 'upcoming'
+  const campaignStatusLabel = campaignStatus === 'active'
+    ? 'Rewards Active'
+    : campaignStatus === 'ended'
+      ? 'Rewards Ended'
+      : 'Rewards Upcoming'
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
@@ -554,11 +498,11 @@ export default function SuperfluidPlatformPage() {
                       display: 'inline-block',
                       animation: 'glowPulse 1.5s ease-in-out infinite',
                     }} />
-                    Season 6 Rewards Active
+                    {campaign?.name ? `${campaign.name} · ${campaignStatusLabel}` : campaignStatusLabel}
                   </span>
                 </div>
                 <p style={{ margin: 0, color: TEXT2, fontSize: 15, maxWidth: '60ch', lineHeight: 1.55 }}>
-                  A digital sign for your Superfluid project anyone can pay to edit. Boosted Markees earn 5x SUP points. Fund your favorite ecosystem project and earn!
+                  Earn SUP points from net ETHx streamed to eligible Markees on Base. Refunds are subtracted, and configured boosts apply prospectively.
                 </p>
               </div>
             </div>
@@ -626,14 +570,14 @@ export default function SuperfluidPlatformPage() {
             </div>
             <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              <span style={{ color: GREEN, fontWeight: 700, fontFamily: MONO }}>10M pts / ETH</span>
+              <span style={{ color: GREEN, fontWeight: 700, fontFamily: MONO }}>{basePointsPerEth.toLocaleString()} pts / ETHx</span>
               <span style={{ color: MUTED }}>standard</span>
             </div>
             <span style={{ color: BORDER, userSelect: 'none' }}>·</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
               <RocketIcon size={13} color={PINK} />
-              <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>50M pts / ETH</span>
-              <span style={{ color: MUTED }}>on Boosted</span>
+              <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{(basePointsPerEth * maxMultiplier).toLocaleString()} max pts / ETHx</span>
+              <span style={{ color: MUTED }}>with boosts</span>
             </div>
           </div>
         </div>
@@ -645,7 +589,7 @@ export default function SuperfluidPlatformPage() {
           {/* Section header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <RocketIcon size={16} color={PINK} />
-            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Boosted Markees</span>
+            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Boosted Streaming Markees</span>
             <span style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -658,7 +602,7 @@ export default function SuperfluidPlatformPage() {
               borderRadius: 99,
               fontFamily: MONO,
             }}>
-              5x pts
+              up to {maxMultiplier}x pts
             </span>
           </div>
 
@@ -668,7 +612,7 @@ export default function SuperfluidPlatformPage() {
               <SkeletonRows count={4} />
             ) : activeBoostedEntries.length === 0 ? (
               <div style={{ padding: '40px 14px', textAlign: 'center', color: MUTED, fontSize: 14 }}>
-                No boosted markees yet this season.
+                No boosted streaming Markees are configured for this campaign.
               </div>
             ) : (
               activeBoostedEntries.map(entry => (
@@ -677,10 +621,6 @@ export default function SuperfluidPlatformPage() {
                   entry={entry}
                   viewsMap={viewsMap}
                   ethPrice={ethPrice}
-                  onBuy={() => setBuyModal({
-                    address: entry.leaderboard!.address,
-                    topFundsAdded: BigInt(entry.leaderboard!.topFundsAddedRaw || '0'),
-                  })}
                 />
               ))
             )}
@@ -692,7 +632,7 @@ export default function SuperfluidPlatformPage() {
       <section style={{ padding: '24px 40px', borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <p style={{ margin: 0, color: TEXT2, fontSize: 14 }}>
-            Want to earn SUP rewards? Create a Markee for your Superfluid project.
+            Want to earn SUP rewards? Create a streaming Markee and receive ETHx streams on Base.
           </p>
           <Link
             href="/create-a-markee?platform=superfluid"
@@ -722,7 +662,7 @@ export default function SuperfluidPlatformPage() {
           {/* Section header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <LightningIcon size={16} color={GREEN} />
-            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All Markee Signs</span>
+            <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All Streaming Markees</span>
           </div>
 
           <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
@@ -731,7 +671,7 @@ export default function SuperfluidPlatformPage() {
               <SkeletonRows count={4} />
             ) : regularRows.length === 0 ? (
               <div style={{ padding: '40px 14px', textAlign: 'center', color: MUTED, fontSize: 14 }}>
-                No community signs yet. Create a Markee for your Superfluid project to appear here.
+                No active streaming Markees yet. Create one for your Superfluid project to appear here.
               </div>
             ) : (
               regularRows.map(lb => (
@@ -740,7 +680,6 @@ export default function SuperfluidPlatformPage() {
                   lb={lb}
                   viewsMap={viewsMap}
                   ethPrice={ethPrice}
-                  onBuy={() => setBuyModal({ address: lb.address, topFundsAdded: BigInt(lb.topFundsAddedRaw || '0') })}
                 />
               ))
             )}
@@ -760,7 +699,7 @@ export default function SuperfluidPlatformPage() {
             Add a Markee to your Superfluid project
           </h2>
           <p style={{ margin: '0 0 28px', color: TEXT2, fontSize: 15, maxWidth: '48ch', lineHeight: 1.55 }}>
-            Create a sign for your project and start earning from every message purchase. Boosted signs earn 5x SUP points.
+            Create a streaming Markee for your project. Backers earn points on net ETHx streamed during the campaign window; refunded ETHx does not count.
           </p>
           <Link
             href="/create-a-markee?platform=superfluid"
@@ -786,20 +725,9 @@ export default function SuperfluidPlatformPage() {
 
       <Footer />
 
-      {buyModal && (
-        <MarkeeSignModal
-          isOpen={true}
-          leaderboardAddress={buyModal.address}
-          onClose={() => setBuyModal(null)}
-          onSuccess={() => setBuyModal(null)}
-        />
-      )}
-
       <RewardsModal
         isOpen={rewardsOpen}
         onClose={() => setRewardsOpen(false)}
-        title="Season 6 SUP Rewards"
-        description="Earn points by buying messages. Boosted Markees earn 5× points."
       />
     </div>
   )
