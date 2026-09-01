@@ -711,16 +711,44 @@ export function GitHubVerify({ address }: { address: string }) {
   // route (passed popup=1) responds with a postMessage + window.close() instead of a redirect, so a
   // modal hosting this component never closes/reloads mid-flow. Falls back to a full-page nav if the
   // popup gets blocked.
+  //
+  // The window name used to be a fixed 'markee-github-oauth' string. If any earlier attempt left a
+  // window with that name around (a previous click, a popup the browser silently reused instead of
+  // blocking), window.open() with the same name focuses/reuses THAT window rather than guaranteeing
+  // a fresh navigation to the new popupUrl -- which can leave it showing stale content instead of
+  // actually running this attempt's OAuth flow. A name unique to this attempt rules that out
+  // entirely: there's never anything to accidentally reuse.
+  const oauthPopupRef = useRef<Window | null>(null)
+  const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   function openGithubOAuth() {
     const returnTo = buildGithubReturnTo(address)
     const popupUrl = `/api/github/connect?popup=1&returnTo=${encodeURIComponent(returnTo)}`
-    const win = window.open(popupUrl, 'markee-github-oauth', 'width=600,height=750')
+    const windowName = `markee-github-oauth-${Date.now()}`
+    const win = window.open(popupUrl, windowName, 'width=600,height=750')
     if (!win) {
       window.location.href = `/api/github/connect?returnTo=${encodeURIComponent(returnTo)}`
       return
     }
+    oauthPopupRef.current = win
     setOauthPending(true)
     setChangeAccountOpen(false)
+
+    // Safety net for "Waiting for GitHub..." hanging forever: if the user closes the popup (or it
+    // closes itself some other way) without ever posting a result, there's no message to catch it --
+    // poll for that instead so oauthPending always resolves one way or the other.
+    if (oauthPollRef.current) clearInterval(oauthPollRef.current)
+    oauthPollRef.current = setInterval(() => {
+      if (win.closed) {
+        if (oauthPollRef.current) clearInterval(oauthPollRef.current)
+        oauthPollRef.current = null
+        setOauthPending(pending => {
+          if (!pending) return pending // already resolved via postMessage
+          setError('GitHub sign-in window was closed before finishing.')
+          return false
+        })
+      }
+    }, 500)
   }
 
   useEffect(() => {
@@ -728,6 +756,7 @@ export function GitHubVerify({ address }: { address: string }) {
       if (e.origin !== window.location.origin) return
       const data = e.data as { source?: string; success?: boolean; error?: string } | undefined
       if (data?.source !== 'markee-github-oauth') return
+      if (oauthPollRef.current) { clearInterval(oauthPollRef.current); oauthPollRef.current = null }
       setOauthPending(false)
       if (data.success) {
         setStep('checking'); setSelectedRepo(''); setSelectedFile(''); setResult(null); setError(null)
@@ -737,7 +766,10 @@ export function GitHubVerify({ address }: { address: string }) {
       }
     }
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      if (oauthPollRef.current) clearInterval(oauthPollRef.current)
+    }
   }, [])
 
   useEffect(() => {
