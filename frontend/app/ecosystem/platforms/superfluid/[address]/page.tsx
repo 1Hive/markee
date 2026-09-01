@@ -11,10 +11,13 @@ import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useViews } from '@/hooks/useViews'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
@@ -295,6 +298,7 @@ export default function SuperfluidLeaderboardPage() {
   const leaderboardName = meta?.[0]?.result as string | undefined
   const totalFunds = meta?.[1]?.result as bigint | undefined
   const markeeCount = meta?.[2]?.result as bigint | undefined
+  const boardAdmin = meta?.[4]?.result as string | undefined
   const contractVersion = meta?.[6]?.result as string | undefined
   const isLegacyContract = contractVersion !== undefined && contractVersion !== '1.1.0' && contractVersion !== '1.2.0' && contractVersion !== '1.3.0'
   const topResult = meta?.[7]?.result as [string[], bigint[]] | undefined
@@ -400,7 +404,7 @@ export default function SuperfluidLeaderboardPage() {
                       <>
                         <h1 className="text-2xl font-bold text-[#EDEEFF]">{leaderboardName ?? ''}</h1>
                         <span className="flex items-center gap-1.5 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                          Superfluid S5
+                          For Rent Markee
                         </span>
                       </>
                     )
@@ -472,9 +476,14 @@ export default function SuperfluidLeaderboardPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
-                  <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
-                    {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
-                  </p>
+                  <div className="flex items-start gap-2">
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+                      <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">
+                        {topMarkee.message || <span className="opacity-40 italic">No message set</span>}
+                      </p>
+                    </ModeratedContent>
+                    <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} compact />
+                  </div>
                   <div className="flex items-center gap-4 mt-3">
                     {topMarkee.name && (
                       <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
@@ -542,6 +551,7 @@ export default function SuperfluidLeaderboardPage() {
                   rank={idx + 1}
                   formatFunds={formatFunds}
                   leaderboardAddress={leaderboardAddress}
+                  boardAdmin={boardAdmin}
                   trackView={trackView}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                   onAddFunds={NETWORK_PAUSED || isLegacyContract ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
@@ -556,13 +566,11 @@ export default function SuperfluidLeaderboardPage() {
       <Footer />
 
       {buyModalOpen && !isLegacyContract && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={leaderboardAddress}
-          userMarkee={selectedMarkee}
-          topFundsAdded={markees[0]?.totalFundsAdded}
-          initialMode={initialMode}
-          platformId="superfluid"
+          leaderboardAddress={leaderboardAddress}
+          initialView={initialMode === 'addFunds' ? 'addFunds' : initialMode === 'updateMessage' ? 'edit' : undefined}
+          initialTargetAddress={selectedMarkee?.address}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
           onSuccess={refetch}
         />

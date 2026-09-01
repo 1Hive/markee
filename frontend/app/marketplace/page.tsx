@@ -1,32 +1,31 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import Link from 'next/link'
+import Image from 'next/image'
 import { formatEther } from 'viem'
-import { Eye } from 'lucide-react'
+import { Eye, Zap, Tag } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { formatUsd } from '@/lib/utils'
-import { StreamModal, type StreamTarget } from '@/components/modals/StreamModal'
-import { CreateMessageModal } from '@/components/modals/CreateMessageModal'
+import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
-import { SECONDS_IN_MONTH, type Strategy } from '@/lib/strategy'
+import { SECONDS_IN_MONTH, STRATEGIES, type Strategy } from '@/lib/strategy'
+import { useActiveWallet } from '@/hooks/useActiveWallet'
+import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { MarkeeWatermark } from '@/components/board-detail/shared'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { logoDevUrl } from '@/lib/utils'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO  = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK  = '#F897FE'
-const BLUE  = '#7C9CFF'
 const PURP  = '#7B6AF4'
-const GREEN = '#1DB227'
-const BG    = '#060A2A'
-const BG2   = '#0A0F3D'
-const TEXT  = '#EDEEFF'
-const TEXT2 = '#B8B6D9'
-const MUTED = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
+const GOLD  = '#FFD700'
 
 const PAGE_SIZE = 25
 
@@ -41,6 +40,11 @@ interface Leaderboard {
   streamedAt?: number
   topFundsAddedRaw: string
   markeeCount: number
+  // Both already come through in /api/ecosystem/leaderboards' response (every platform route
+  // returns them); only used for moderation eligibility (FlagButton/ModeratedContent's boardAdmin/
+  // boardCreator props), not currently displayed.
+  admin?: string
+  creator?: string | null
   topMessage: string | null
   topMessageOwner: string | null
   topMarkeeOwner: string | null
@@ -51,6 +55,9 @@ interface Leaderboard {
   logoUrl?: string
   status?: string
   isLegacy?: boolean
+  // Populated for boards with no inherent platform tag (the shared "For Sale" factory) so Served On
+  // can be derived from actual verification instead of a creation-time tag.
+  linkedFiles?: { verified: boolean }[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -72,6 +79,7 @@ function servedOnLabel(lb: Leaderboard): string {
     const extra = (lb.verifiedUrls?.length ?? 1) - 1
     return extra > 0 ? `${domain} +${extra}` : domain
   }
+  if ((lb.linkedFiles ?? []).some(f => f.verified)) return 'GitHub'
   return lb.leaderboardName || lb.address.slice(0, 8) + '...'
 }
 
@@ -190,8 +198,13 @@ function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: n
 
 // ── Platform glyph for SERVED ON ──────────────────────────────────────────────
 function ServedLogo({ lb }: { lb: Leaderboard }) {
+  const [failed, setFailed] = useState(false)
   const box: React.CSSProperties = { width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${BORDER}`, overflow: 'hidden' }
-  if (lb.platform === 'github') {
+  // GitHub-platform boards always render this way; other-platform boards (e.g. a "For Sale" factory
+  // board, which carries no inherent platform tag) render it too once they have a verified linked
+  // file -- Served On is derived from actual verification, not a rigid creation-time tag.
+  const hasVerifiedGithubFile = (lb.linkedFiles ?? []).some(f => f.verified)
+  if (lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile)) {
     return <span style={{ ...box, background: 'rgba(237,238,255,0.08)' }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill={TEXT2}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
     </span>
@@ -201,8 +214,22 @@ function ServedLogo({ lb }: { lb: Leaderboard }) {
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
     </span>
   }
-  if (lb.logoUrl) {
-    return <span style={{ ...box }}><img src={lb.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></span>
+  const primaryUrl = lb.verifiedUrl || lb.verifiedUrls?.[0] || null
+  let hostname: string | null = null
+  if (primaryUrl) { try { hostname = new URL(primaryUrl).hostname } catch { /* ignore */ } }
+  if (hostname && !failed) {
+    return (
+      <span style={box}>
+        <Image
+          src={logoDevUrl(hostname)}
+          alt={`${hostname} logo`}
+          width={22}
+          height={22}
+          style={{ objectFit: 'contain' }}
+          onError={() => setFailed(true)}
+        />
+      </span>
+    )
   }
   const raw = lb.verifiedUrl ? extractDomain(lb.verifiedUrl) : (lb.leaderboardName || '?')
   const ch = (raw[0] || '?').toUpperCase()
@@ -220,16 +247,39 @@ function SortHead({ label, col, sortKey, sortDir, onSort, align = 'left', title 
       title={title}
       style={{
         background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
-        display: 'inline-flex', alignItems: 'center', gap: 5,
+        display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
         justifySelf: align === 'right' ? 'end' : 'start',
         fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase',
         color: active ? PINK : MUTED, transition: 'color 120ms',
       }}
     >
-      {label}
-      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1 }}>
+      <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1, flexShrink: 0 }}>
         {active ? (sortDir === 'asc' ? '▲' : '▼') : '▾'}
       </span>
+    </button>
+  )
+}
+
+// ── Strategy filter tag (click to filter marketplace by For Sale / For Rent) ──
+function StrategyFilterTag({ strategy, active, onClick }: { strategy: Strategy; active: boolean; onClick: () => void }) {
+  const meta = STRATEGIES[strategy]
+  const Icon = strategy === 'streaming' ? Zap : Tag
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+        color: active ? BG : meta.accent,
+        background: active ? meta.accent : `${meta.accent}1A`,
+        border: `1px solid ${meta.accent}`,
+        borderRadius: 99, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
+        transition: 'background 120ms, color 120ms',
+      }}
+    >
+      <Icon size={12} />
+      {meta.label}
     </button>
   )
 }
@@ -256,10 +306,12 @@ function PagerBtn({ children, active, disabled, onClick }: { children: React.Rea
 }
 
 // ── Featured hero card ────────────────────────────────────────────────────────
-function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number; ethPrice: number | null }) {
+function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null }) {
   const [hover, setHover] = useState(false)
+  const [signModalOpen, setSignModalOpen] = useState(false)
   const priceEth = parseFloat(formatEther(priceToOvertake(lb)))
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
+  const isStreaming = lb.strategy === 'streaming'
 
   return (
     <section
@@ -268,12 +320,17 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
     >
       <HeroBackground />
       <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-        <a
+        <Link
           href={detailHref(lb)}
+          onClick={e => {
+            if (isStreaming) return
+            e.preventDefault()
+            setSignModalOpen(true)
+          }}
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
           style={{
-            position: 'relative', display: 'block', textDecoration: 'none',
+            position: 'relative', zIndex: 0, display: 'block', textDecoration: 'none',
             background: 'rgba(255,255,255,0.04)',
             border: `1px solid ${hover ? 'rgba(248,151,254,0.5)' : 'rgba(255,255,255,0.18)'}`,
             borderRadius: 16, padding: '18px 26px 22px',
@@ -283,24 +340,27 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
             boxShadow: hover ? '0 16px 44px rgba(6,10,42,0.55)' : 'none',
           }}
         >
-          {/* top row: strategy badge + views */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
-            <StrategyBadge strategy={lb.strategy ?? 'fixed'} />
+          <MarkeeWatermark show={hover} />
+
+          {/* top row: views */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 13, fontFamily: MONO, fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: BLUE }}>
-              <Eye size={10} style={{ opacity: 0.7 }} /> {formatViews(views)}
+              <Eye size={10} style={{ opacity: 0.7 }} /> {viewsLoading ? <ViewsSpinner size={10} /> : formatViews(views)}
             </span>
           </div>
 
           {/* message text */}
-          <div style={{
-            fontFamily: MONO, fontWeight: 700,
-            fontSize: 'clamp(19px, 2.6vw, 30px)', lineHeight: 1.12, letterSpacing: '-0.02em',
-            textWrap: 'balance' as any,
-            background: `linear-gradient(120deg, ${TEXT} 0%, ${PINK} 100%)`,
-            WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>
-            {lb.topMessage || lb.leaderboardName || '—'}
-          </div>
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address}>
+            <div style={{
+              fontFamily: MONO, fontWeight: 700,
+              fontSize: 'clamp(19px, 2.6vw, 30px)', lineHeight: 1.12, letterSpacing: '-0.02em',
+              textWrap: 'balance' as any,
+              background: `linear-gradient(120deg, ${TEXT} 0%, ${PINK} 100%)`,
+              WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            }}>
+              {lb.topMessage || lb.leaderboardName || '—'}
+            </div>
+          </ModeratedContent>
 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
@@ -313,29 +373,74 @@ function FeaturedHero({ lb, views, ethPrice }: { lb: Leaderboard; views: number;
             )}
           </div>
 
-          {/* hover pill */}
+          {/* hover pill -- brand watermark now lives as the large MarkeeWatermark behind the whole
+              card (see above), not a small logo inside the pill; same hover trigger, same fade, on
+              every Markee card with a hover price badge (see also FeaturedCard on /markee/[address]
+              and the home page hero cards). */}
           <span style={{
             position: 'absolute', bottom: -15, left: '50%',
             transform: `translateX(-50%) ${hover ? 'translateY(0)' : 'translateY(4px)'}`,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
             background: PINK, color: BG, fontFamily: MONO, fontWeight: 700, fontSize: 13,
-            padding: '8px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const,
+            padding: '3px 18px', borderRadius: 8, whiteSpace: 'nowrap' as const,
             boxShadow: '0 8px 28px rgba(248,151,254,0.42)',
             opacity: hover ? 1 : 0, transition: 'opacity 180ms, transform 180ms',
             pointerEvents: 'none', zIndex: 3,
           }}>
             {lb.strategy === 'streaming' ? `${monthlyRateLabel(lb, ethPrice)} to back` : `${priceLabel} to change`}
           </span>
-        </a>
+        </Link>
       </div>
+      {!isStreaming && (
+        <MarkeeSignModal
+          isOpen={signModalOpen}
+          onClose={() => setSignModalOpen(false)}
+          leaderboardAddress={lb.address}
+        />
+      )}
     </section>
   )
 }
 
+type RowOpenOpts = { initialView?: 'addFunds' | 'manage'; initialTargetAddress?: string }
+
+// ── Rank badge (Your Rank column) ───────────────────────────────────────────────
+const SILVER = '#C7CCD6'
+const BRONZE = '#CD7F32'
+
+function rankTierColor(rank: number): string {
+  if (rank === 1) return GOLD
+  if (rank === 2) return SILVER
+  if (rank === 3) return BRONZE
+  return MUTED
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  const color = rankTierColor(rank)
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+      border: `1.5px solid ${color}`, color,
+      fontFamily: MONO, fontSize: 12, fontWeight: 800,
+    }}>
+      {rank}
+    </span>
+  )
+}
+
 // ── Dense table row ───────────────────────────────────────────────────────────
-function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; views: number; ethPrice: number | null; onBuy: () => void; onStream: () => void }) {
+interface RowPosition { rank: number; address: string; fundedRaw: bigint | null }
+
+function TableRow({ lb, views, viewsLoading, ethPrice, position, onBuy, onStream }: {
+  lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null
+  position: RowPosition | null
+  onBuy: (opts?: RowOpenOpts) => void; onStream: (opts?: RowOpenOpts) => void
+}) {
   const [hover, setHover] = useState(false)
   const isStreaming = lb.strategy === 'streaming'
+  const isTop = position?.rank === 1
+
   // Streaming totals tick up live from the API snapshot; fixed boards pass rate 0 → static base.
   const liveTotalWei = useFlowingAmount(
     BigInt(lb.totalFundsRaw || '0'),
@@ -349,16 +454,44 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
     : `${totalEth.toFixed(isStreaming ? 6 : 3)} ETH`
   const priceLabel = ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
 
+  // Price-to-change button: "Add Funds" if the wallet already holds #1 (jumps straight into the
+  // addFunds sub-view on that message); the incremental amount still needed to retake #1 if it owns
+  // a lower-ranked message, but clicking still opens the normal Buy a Message flow (its own "add
+  // funds to an existing message" list already offers the top-up path -- landing there directly
+  // skipped the choice of writing a new message instead); otherwise the normal buy/back price.
+  let actionLabel: string
+  let actionOpts: RowOpenOpts | undefined
+  if (isTop) {
+    actionLabel = isStreaming ? 'Change' : 'Add Funds'
+    actionOpts = { initialView: isStreaming ? 'manage' : 'addFunds', initialTargetAddress: position!.address }
+  } else if (position && !isStreaming) {
+    const needed = priceToOvertake(lb) - (position.fundedRaw ?? 0n)
+    const neededWei = needed > 0n ? needed : 0n
+    const neededEth = parseFloat(formatEther(neededWei))
+    actionLabel = ethPrice ? formatUsd(neededEth * ethPrice) : `${neededEth.toFixed(3)} ETH`
+    actionOpts = undefined
+  } else if (position && isStreaming) {
+    actionLabel = monthlyRateLabel(lb, ethPrice)
+    actionOpts = { initialView: 'manage', initialTargetAddress: position.address }
+  } else {
+    actionLabel = isStreaming ? monthlyRateLabel(lb, ethPrice) : priceLabel
+    actionOpts = undefined
+  }
+
   return (
-    <a
+    <Link
       href={detailHref(lb)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px',
-        gap: 16, padding: '11px 14px', textDecoration: 'none',
+        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px',
+        gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
-        background: hover ? 'rgba(248,151,254,0.04)' : 'transparent',
+        background: isTop
+          ? (hover ? 'rgba(255,215,0,0.10)' : 'rgba(255,215,0,0.06)')
+          : position
+          ? (hover ? 'rgba(124,156,255,0.09)' : 'rgba(124,156,255,0.05)')
+          : (hover ? 'rgba(248,151,254,0.04)' : 'transparent'),
         transition: 'background 120ms', cursor: 'pointer',
       }}
     >
@@ -374,25 +507,38 @@ function TableRow({ lb, views, ethPrice, onBuy, onStream }: { lb: Leaderboard; v
         {totalLabel}
       </span>
 
-      {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
+      {/* CURRENT MESSAGE -- ModeratedContent only, no FlagButton: this whole row is a Link and
+          FlagButton's handler only stopPropagation()s, not preventDefault()s, so nesting it here
+          would still navigate on click. The target page already has a working FlagButton. */}
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+          </div>
+        </ModeratedContent>
       </div>
 
       <span style={{ fontSize: 11, color: MUTED, display: 'flex', alignItems: 'center', gap: 4 }}>
         <Eye size={10} style={{ opacity: 0.7 }} />
-        {views > 0 ? formatViews(views) : '—'}
+        {viewsLoading ? <ViewsSpinner size={9} /> : views > 0 ? formatViews(views) : '—'}
       </span>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {isStreaming
-          ? <RowActionButton label={monthlyRateLabel(lb, ethPrice)} onClick={onStream} />
-          : <RowActionButton label={priceLabel} onClick={onBuy} />}
+      {/* YOUR RANK */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        {position && <RankBadge rank={position.rank} />}
       </div>
-    </a>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <RowActionButton
+          label={actionLabel}
+          onClick={() => (isStreaming ? onStream(actionOpts) : onBuy(actionOpts))}
+        />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+      </div>
+    </Link>
   )
 }
 
@@ -424,14 +570,31 @@ export default function MarketplacePage() {
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([])
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
+  const [viewsLoading, setViewsLoading] = useState(true)
   const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
 
-  const [buyModal, setBuyModal] = useState<Leaderboard | null>(null)
-  const [streamCreate, setStreamCreate] = useState<Leaderboard | null>(null)
-  const [streamTarget, setStreamTarget] = useState<{ board: `0x${string}`; markee: StreamTarget } | null>(null)
+  // Wallet's rank on every board, fetched in bulk (not per-row) so sorting by rank can happen before
+  // pagination -- see app/api/marketplace/positions.
+  const { activeAddress } = useActiveWallet()
+  const [positionsMap, setPositionsMap] = useState<Record<string, { rank: number; markeeAddress: string; fundedRaw?: string }>>({})
+  useEffect(() => {
+    if (!activeAddress) { setPositionsMap({}); return }
+    fetch(`/api/marketplace/positions?wallet=${activeAddress.toLowerCase()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.positions) setPositionsMap(data.positions) })
+      .catch(() => {})
+  }, [activeAddress])
+  const positionFor = useCallback((lb: Leaderboard): RowPosition | null => {
+    const p = positionsMap[lb.address.toLowerCase()]
+    if (!p) return null
+    return { rank: p.rank, address: p.markeeAddress, fundedRaw: p.fundedRaw !== undefined ? BigInt(p.fundedRaw) : null }
+  }, [positionsMap])
+
+  const [buyModal, setBuyModal] = useState<({ lb: Leaderboard } & RowOpenOpts) | null>(null)
+  const [streamCreate, setStreamCreate] = useState<({ lb: Leaderboard } & RowOpenOpts) | null>(null)
 
   const [search,  setSearch]   = useState('')
-  const [factory, setFactory]  = useState('all')
+  const [strategyFilter, setStrategyFilter] = useState<'all' | Strategy>('all')
   const [sortKey, setSortKey]  = useState('raised')
   const [sortDir, setSortDir]  = useState<'asc' | 'desc'>('desc')
   const [page,    setPage]     = useState(0)
@@ -460,7 +623,7 @@ export default function MarketplacePage() {
   // Batch-fetch views for all top markees
   useEffect(() => {
     const addrs = leaderboards.map(lb => lb.topMarkeeAddress).filter(Boolean) as string[]
-    if (addrs.length === 0) return
+    if (addrs.length === 0) { setViewsLoading(false); return }
     const params = addrs.map(a => a.toLowerCase()).join(',')
     fetch(`/api/views?addresses=${params}`)
       .then(r => r.ok ? r.json() : null)
@@ -473,6 +636,7 @@ export default function MarketplacePage() {
         setViewsMap(m)
       })
       .catch(() => {})
+      .finally(() => setViewsLoading(false))
   }, [leaderboards])
 
   // Filter
@@ -480,7 +644,7 @@ export default function MarketplacePage() {
     let arr = leaderboards.filter(lb =>
       BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage
     )
-    if (factory !== 'all') arr = arr.filter(lb => lb.platform === factory)
+    if (strategyFilter !== 'all') arr = arr.filter(lb => (lb.strategy ?? 'fixed') === strategyFilter)
     if (search.trim()) {
       const s = search.toLowerCase()
       arr = arr.filter(lb =>
@@ -492,7 +656,7 @@ export default function MarketplacePage() {
       )
     }
     return arr
-  }, [leaderboards, factory, search])
+  }, [leaderboards, strategyFilter, search])
 
   // Sort
   const sorted = useMemo(() => {
@@ -502,6 +666,17 @@ export default function MarketplacePage() {
         const av = viewsMap.get((a.topMarkeeAddress || '').toLowerCase()) ?? 0
         const bv = viewsMap.get((b.topMarkeeAddress || '').toLowerCase()) ?? 0
         return (av - bv) * dir
+      }
+      if (sortKey === 'rank') {
+        // Unranked rows always sort last, in either direction. Among ranked rows, the default click
+        // (dir starts 'desc') shows the wallet's best rank first -- the inverse of the raw numeric
+        // order 'desc' means for every other column -- so it's inverted here.
+        const ar = positionsMap[a.address.toLowerCase()]?.rank
+        const br = positionsMap[b.address.toLowerCase()]?.rank
+        if (ar == null && br == null) return 0
+        if (ar == null) return 1
+        if (br == null) return -1
+        return (ar - br) * -dir
       }
       if (sortKey === 'price') {
         // Sort each row by the number its price button actually shows: streaming rows a monthly
@@ -517,10 +692,10 @@ export default function MarketplacePage() {
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
     })
-  }, [filtered, sortKey, sortDir, viewsMap])
+  }, [filtered, sortKey, sortDir, viewsMap, positionsMap])
 
   // Reset page on filter/sort changes
-  useEffect(() => { setPage(0) }, [search, factory, sortKey, sortDir])
+  useEffect(() => { setPage(0) }, [search, strategyFilter, sortKey, sortDir])
 
   const onSort = useCallback((col: string) => {
     setSortKey(prev => {
@@ -551,19 +726,12 @@ export default function MarketplacePage() {
   }, [])
   const totalViews = networkViews
 
-  const FACTORIES = [
-    { key: 'all',        label: 'All' },
-    { key: 'website',    label: 'Websites' },
-    { key: 'github',     label: 'GitHub Repos' },
-    { key: 'superfluid', label: 'Superfluid' },
-  ]
-
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="marketplace" useRegularLinks />
+      <Header activePage="marketplace" />
 
       {/* ── Featured hero ── */}
-      {featured && <FeaturedHero lb={featured} views={featuredViews} ethPrice={ethPrice} />}
+      {featured && <FeaturedHero lb={featured} views={featuredViews} viewsLoading={viewsLoading} ethPrice={ethPrice} />}
 
       {/* ── Metrics strip ── */}
       <MetricsStrip stats={{ ...ecoStats, views: totalViews }} loaded={!loading} />
@@ -584,7 +752,7 @@ export default function MarketplacePage() {
               Find and buy messages from any Markee on the internet.
             </p>
           </div>
-          <a
+          <Link
             href="/raise-funding"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
@@ -596,7 +764,7 @@ export default function MarketplacePage() {
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = TEXT2; (e.currentTarget as HTMLElement).style.borderColor = BORDER }}
           >
             Create Your Own Markee →
-          </a>
+          </Link>
         </div>
 
         {/* filters */}
@@ -618,45 +786,49 @@ export default function MarketplacePage() {
             )}
           </div>
 
-          {/* factory toggle */}
-          <div style={{ display: 'flex', gap: 4, padding: 3, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 8 }}>
-            {FACTORIES.map(f => (
-              <button
-                key={f.key}
-                onClick={() => setFactory(f.key)}
-                style={{
-                  background: factory === f.key ? PURP : 'transparent',
-                  color: factory === f.key ? TEXT : MUTED,
-                  border: 'none', borderRadius: 5, padding: '7px 12px',
-                  fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                  whiteSpace: 'nowrap', fontFamily: 'inherit',
-                  transition: 'background 120ms, color 120ms',
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
+          {/* strategy filter */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setStrategyFilter('all')}
+              style={{
+                fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+                color: strategyFilter === 'all' ? BG : TEXT2,
+                background: strategyFilter === 'all' ? PINK : 'transparent',
+                border: `1px solid ${strategyFilter === 'all' ? PINK : BORDER}`,
+                borderRadius: 99, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'background 120ms, color 120ms, border-color 120ms',
+              }}
+            >
+              All
+            </button>
+            <StrategyFilterTag strategy="fixed" active={strategyFilter === 'fixed'} onClick={() => setStrategyFilter('fixed')} />
+            <StrategyFilterTag strategy="streaming" active={strategyFilter === 'streaming'} onClick={() => setStrategyFilter('streaming')} />
           </div>
         </div>
 
         {/* table */}
         <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
             <SortHead label="Views"           col="views"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            </div>
             <SortHead label="Price to change" col="price"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="right" title="Fixed boards: one-time price. Streaming boards: monthly rate to hold the top." />
+            <span />
           </div>
 
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
-                {[1, 2, 3, 4, 5].map(j => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+                {[1, 2, 3, 4, 5, 6].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
+                <div />
               </div>
             ))
           ) : pageRows.length === 0 ? (
@@ -669,9 +841,11 @@ export default function MarketplacePage() {
                 key={lb.address}
                 lb={lb}
                 views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
+                viewsLoading={viewsLoading}
                 ethPrice={ethPrice}
-                onBuy={() => setBuyModal(lb)}
-                onStream={() => setStreamCreate(lb)}
+                position={positionFor(lb)}
+                onBuy={(opts) => setBuyModal({ lb, ...opts })}
+                onStream={(opts) => setStreamCreate({ lb, ...opts })}
               />
             ))
           )}
@@ -692,35 +866,24 @@ export default function MarketplacePage() {
       <Footer />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={buyModal.address as `0x${string}`}
-          topFundsAdded={BigInt(buyModal.topFundsAddedRaw || '0')}
-          platformId={buyModal.platform === 'superfluid' ? 'superfluid' : buyModal.platform === 'github' ? 'github' : undefined}
+          leaderboardAddress={buyModal.lb.address}
+          initialView={buyModal.initialView as 'addFunds' | undefined}
+          initialTargetAddress={buyModal.initialTargetAddress}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />
       )}
 
       {streamCreate && (
-        <CreateMessageModal
-          board={streamCreate.address as `0x${string}`}
-          onClose={() => setStreamCreate(null)}
-          onCreated={(addr, message, name) => {
-            const board = streamCreate.address as `0x${string}`
-            setStreamCreate(null)
-            setStreamTarget({ board, markee: { address: addr, message, name } })
-          }}
-        />
-      )}
-
-      {streamTarget && (
-        <StreamModal
+        <StreamSignModal
           isOpen={true}
-          board={streamTarget.board}
-          markee={streamTarget.markee}
-          onClose={() => setStreamTarget(null)}
-          onSuccess={() => setStreamTarget(null)}
+          board={streamCreate.lb.address}
+          initialView={streamCreate.initialView as 'manage' | undefined}
+          initialTargetAddress={streamCreate.initialTargetAddress}
+          onClose={() => setStreamCreate(null)}
+          onSuccess={() => setStreamCreate(null)}
         />
       )}
     </div>

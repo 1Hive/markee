@@ -25,12 +25,20 @@ import { ADMIN_ADDRESSES, MODERATION_API } from '@/lib/moderation/config'
 interface ModerationContextValue {
   /** Set of flagged keys in "chainId:markeeId" format */
   flaggedSet: Set<string>
-  /** Whether the current wallet is an admin */
+  /** Whether the current wallet is a global admin (in lib/moderation/config.ts's ADMIN_ADDRESSES) */
   isAdmin: boolean
+  /**
+   * Whether the current wallet can moderate a specific markee -- true for global admins, or when
+   * the wallet matches the passed board's on-chain admin or KV-cached creator. This is a UI gate
+   * only (show/hide controls); the server independently re-derives and enforces the same rule from
+   * markeeId alone on every actual flag/unflag request, so passing wrong/stale board info here can
+   * only hide a control a wallet is actually entitled to use, never grant one it isn't.
+   */
+  canModerate: (boardAdmin?: string | null, boardCreator?: string | null) => boolean
   /** Check if a specific markee is flagged */
   isFlagged: (chainId: number | string, markeeId: string) => boolean
-  /** Toggle flag state (admin only). Returns new flag state. */
-  toggleFlag: (chainId: number | string, markeeId: string) => Promise<boolean>
+  /** Toggle flag state (must pass canModerate for the same board info). Returns new flag state. */
+  toggleFlag: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => Promise<boolean>
   /** Loading state for initial fetch */
   isLoading: boolean
 }
@@ -38,6 +46,7 @@ interface ModerationContextValue {
 const ModerationContext = createContext<ModerationContextValue>({
   flaggedSet: new Set(),
   isAdmin: false,
+  canModerate: () => false,
   isFlagged: () => false,
   toggleFlag: async () => false,
   isLoading: true,
@@ -89,9 +98,21 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
     [flaggedSet]
   )
 
+  const canModerate = useCallback(
+    (boardAdmin?: string | null, boardCreator?: string | null): boolean => {
+      if (isAdminUser) return true
+      if (!address) return false
+      const wallet = address.toLowerCase()
+      if (boardAdmin && boardAdmin.toLowerCase() === wallet) return true
+      if (boardCreator && boardCreator.toLowerCase() === wallet) return true
+      return false
+    },
+    [isAdminUser, address]
+  )
+
   const toggleFlag = useCallback(
-    async (chainId: number | string, markeeId: string): Promise<boolean> => {
-      if (!address || !isAdminUser) return false
+    async (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): Promise<boolean> => {
+      if (!address || !canModerate(boardAdmin, boardCreator)) return false
 
       const key = toKey(chainId, markeeId)
       const currentlyFlagged = flaggedSet.has(key)
@@ -142,12 +163,12 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return currentlyFlagged
       }
     },
-    [address, isAdminUser, flaggedSet, signMessageAsync]
+    [address, canModerate, flaggedSet, signMessageAsync]
   )
 
   return (
     <ModerationContext.Provider
-      value={{ flaggedSet, isAdmin: isAdminUser, isFlagged, toggleFlag, isLoading }}
+      value={{ flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, toggleFlag, isLoading }}
     >
       {children}
     </ModerationContext.Provider>

@@ -23,6 +23,17 @@ export function endDelimiter(leaderboardAddress: string): string {
   return `<!-- MARKEE:END:${leaderboardAddress.toLowerCase()} -->`
 }
 
+// Case-insensitive delimiter match for one specific address. Deliberately does NOT fall back to
+// "any address-shaped delimiter pair" -- that accepted a completely unrelated project's delimiters
+// (or a typo'd/wrong address) as valid verification for this leaderboard. Legacy migration aliases
+// are handled by the caller via legacyAddressesFor(), not by this function.
+export function hasDelimiterPair(content: string, leaderboardAddress: string): boolean {
+  const addr = leaderboardAddress.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const start = new RegExp(`<!--\\s*MARKEE:START:${addr}\\s*-->`, 'i')
+  const end = new RegExp(`<!--\\s*MARKEE:END:${addr}\\s*-->`, 'i')
+  return start.test(content) && end.test(content)
+}
+
 // Maps current GitHub leaderboard addresses → their old predecessor address(es).
 // All addresses lowercase. Used to grandfather in pre-migration delimiters.
 // v1.1 → v1.0 pairs (original migration)
@@ -58,32 +69,66 @@ export function legacyAddressesFor(newAddress: string): string[] {
   return GITHUB_NEW_TO_OLD[newAddress.toLowerCase()] ?? []
 }
 
+// ── GitHub content fetch (with timeout) ─────────────────────────────────────
+// Both register-markee and verify-markee-file fetch the file's raw content to check for the
+// delimiter pair. Neither had a timeout, so a slow/hanging GitHub response surfaced only as a
+// generic "Network error" after however long the platform's own function timeout took to kill it --
+// this bounds it to a few seconds and lets the caller tell "GitHub took too long" apart from "the
+// file/repo genuinely doesn't exist or isn't accessible."
+export type GithubFileFetchResult =
+  | { ok: true; content: string }
+  | { ok: false; reason: 'timeout' }
+  | { ok: false; reason: 'not_found'; status: number }
+
+// Encodes "owner/repo" into a safe URL path. Callers pass repoFullName straight from the request
+// body, so a crafted value (query strings, "..", extra slashes) must not reshape the outbound
+// api.github.com path. A name that isn't exactly two non-empty segments can't be a real repo,
+// which is why the fetch below reports it as not_found.
+function encodedRepoPath(repoFullName: string): string | null {
+  const [owner, repo, ...rest] = repoFullName.split('/')
+  if (!owner || !repo || rest.length > 0) return null
+  return `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+}
+
+// The Contents API takes a path, not a single segment -- encoding the whole string (including its
+// "/" separators) turns e.g. "docs/README.md" into "docs%2FREADME.md", which 404s since GitHub
+// expects the slashes to stay literal. Each segment still needs its own encoding (spaces, unicode
+// filenames), just not the separators between them.
+export function encodedFilePath(filePath: string): string {
+  return filePath.split('/').map(encodeURIComponent).join('/')
+}
+
+export async function fetchGithubFileContent(
+  repoFullName: string,
+  filePath: string,
+  token: string,
+  timeoutMs = 8000,
+): Promise<GithubFileFetchResult> {
+  const repoPath = encodedRepoPath(repoFullName)
+  if (!repoPath) return { ok: false, reason: 'not_found', status: 404 }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repoPath}/contents/${encodedFilePath(filePath)}`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' }, signal: controller.signal },
+    )
+    if (!res.ok) return { ok: false, reason: 'not_found', status: res.status }
+    return { ok: true, content: await res.text() }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return { ok: false, reason: 'timeout' }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ── KV helpers ────────────────────────────────────────────────────────────────
 
-async function readLinkedFilesFromKV(addr: string): Promise<LinkedFile[]> {
-  const kvKey = `github:markee:${addr}`
-  // Use Upstash REST API directly with strong consistency to avoid
-  // read replica lag causing verified status to flicker on page refresh
-  const url = `${process.env.KV_REST_API_URL}/get/${encodeURIComponent(kvKey)}`
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      'Upstash-Consistency': 'strong',
-    },
-    cache: 'no-store',
-  })
-
-  if (!res.ok) {
-    console.error(`[getLinkedFiles] Upstash REST error ${res.status} for key ${kvKey}`)
-    return []
-  }
-
-  const json = await res.json()
-  const raw = json.result
-
+function normalize(raw: unknown): LinkedFile[] {
   if (!raw) return []
   if (Array.isArray(raw)) return raw as LinkedFile[]
-  if (typeof raw === 'object' && raw !== null) return legacyToArray(raw as Record<string, unknown>)
+  if (typeof raw === 'object') return legacyToArray(raw as Record<string, unknown>)
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw)
@@ -94,25 +139,64 @@ async function readLinkedFilesFromKV(addr: string): Promise<LinkedFile[]> {
   return []
 }
 
-export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
-  const addr = leaderboardAddress.toLowerCase()
+// One MGET for many addresses. Goes through the Upstash REST API rather than kv.mget so the
+// strong-consistency header is preserved -- read replica lag makes verified status flicker on
+// page refresh, which is why this path never used the pooled client in the first place.
+async function readLinkedFilesFromKV(addrs: string[]): Promise<LinkedFile[][]> {
+  if (addrs.length === 0) return []
+  try {
+    const res = await fetch(`${process.env.KV_REST_API_URL}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
+        'Upstash-Consistency': 'strong',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['MGET', ...addrs.map(a => `github:markee:${a}`)]),
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error(`[getLinkedFiles] Upstash REST error ${res.status} for ${addrs.length} key(s)`)
+      return addrs.map(() => [])
+    }
+    const json = await res.json()
+    const results: unknown[] = Array.isArray(json.result) ? json.result : []
+    return addrs.map((_, i) => normalize(results[i]))
+  } catch (err) {
+    console.error('[getLinkedFiles] Upstash REST fetch failed:', err)
+    return addrs.map(() => [])
+  }
+}
 
-  // Try current address first
-  const files = await readLinkedFilesFromKV(addr)
-  if (files.length > 0) return files
+// Batched form of getLinkedFiles. Two round trips regardless of address count (one for the current
+// keys, one more only if some addresses missed and have legacy predecessors) instead of one per
+// address, which mattered once callers started passing 200 boards at a time.
+export async function getLinkedFilesBatch(leaderboardAddresses: readonly string[]): Promise<LinkedFile[][]> {
+  const addrs = leaderboardAddresses.map(a => a.toLowerCase())
+  const current = await readLinkedFilesFromKV(addrs)
 
   // Fall back to legacy predecessor addresses (v1.0→v1.1 and v1.2→v1.3 migrations).
   // On first hit, lazily migrate the data to the current address key so future
   // reads are fast and don't need to check legacy keys.
-  for (const legacyAddr of legacyAddressesFor(addr)) {
-    const legacyFiles = await readLinkedFilesFromKV(legacyAddr)
-    if (legacyFiles.length > 0) {
-      await saveLinkedFiles(addr, legacyFiles)
-      return legacyFiles
-    }
-  }
+  const legacyLookups = addrs.flatMap((addr, i) =>
+    current[i].length > 0 ? [] : legacyAddressesFor(addr).map(legacyAddr => ({ i, addr, legacyAddr })),
+  )
+  if (legacyLookups.length === 0) return current
 
-  return []
+  const legacyFiles = await readLinkedFilesFromKV(legacyLookups.map(l => l.legacyAddr))
+  const migrations: Promise<void>[] = []
+  legacyLookups.forEach(({ i, addr }, j) => {
+    if (current[i].length > 0 || legacyFiles[j].length === 0) return
+    current[i] = legacyFiles[j]
+    migrations.push(saveLinkedFiles(addr, legacyFiles[j]))
+  })
+  await Promise.all(migrations)
+
+  return current
+}
+
+export async function getLinkedFiles(leaderboardAddress: string): Promise<LinkedFile[]> {
+  return (await getLinkedFilesBatch([leaderboardAddress]))[0]
 }
 
 function legacyToArray(obj: Record<string, unknown>): LinkedFile[] {

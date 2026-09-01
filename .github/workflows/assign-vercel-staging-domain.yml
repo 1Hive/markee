@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: vercel-staging-domain-slots
@@ -29,6 +30,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Assign the lowest available staging domain
+        id: assign
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -37,6 +39,19 @@ jobs:
           BRANCH_NAME: ${{ github.ref_name }}
           SLOT_ACTION: assign
         run: node .github/scripts/manage-vercel-staging-domain.mjs
+
+      - name: Comment staging URL on open PRs
+        if: steps.assign.outputs.assigned_domain != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOMAIN: ${{ steps.assign.outputs.assigned_domain }}
+          BRANCH: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_NUMBER=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "🚀 Staging: https://${DOMAIN}"
+          fi
 
   release:
     if: >-

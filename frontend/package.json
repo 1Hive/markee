@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
+    "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
     "start": "next start",
     "lint": "next lint"
   },

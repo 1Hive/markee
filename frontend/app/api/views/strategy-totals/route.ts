@@ -1,0 +1,74 @@
+// GET /api/views/strategy-totals
+// Returns { fixed: number, streaming: number } — aggregate view counts across all markees
+// grouped by pricing strategy. Reads existing leaderboard KV caches for addresses, then
+// batch-fetches views:total:{address} for each. Result is cached 5 minutes.
+import { kv } from '@vercel/kv'
+import { NextRequest, NextResponse } from 'next/server'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
+
+export const dynamic = 'force-dynamic'
+
+const RESULT_KEY = 'cache:strategy-view-totals'
+const RESULT_TTL = 300
+const RATE_WINDOW = 60
+const RATE_MAX_MISSES = 10
+
+type LBCache = { leaderboards: { address: string; topMarkeeAddress?: string | null }[] }
+
+export async function GET(request: NextRequest) {
+  const cached = await kv.get<{ fixed: number; streaming: number }>(RESULT_KEY)
+  if (cached) {
+    return NextResponse.json(cached, { headers: { 'Cache-Control': 'public, max-age=300' } })
+  }
+
+  // Only gates the cache-miss path -- a fixed-window counter, same helper/limits as
+  // streaming/deposit-manager, so a burst of concurrent misses during cache expiry can't all fan out
+  // into the full multi-KV-call pipeline in parallel.
+  if (!await underRateLimit('views:strategy-totals', clientIp(request), RATE_MAX_MISSES, RATE_WINDOW)) {
+    return NextResponse.json(
+      { fixed: 0, streaming: 0, error: 'rate_limited' },
+      { status: 429, headers: { 'Cache-Control': 'no-store', 'Retry-After': String(RATE_WINDOW) } },
+    )
+  }
+
+  const [oi, sf, gh, st] = await Promise.all([
+    kv.get<LBCache>('cache:openinternet:leaderboards'),
+    kv.get<LBCache>('cache:superfluid:leaderboards'),
+    kv.get<LBCache>('cache:github:leaderboards'),
+    kv.get<LBCache>('cache:streaming:leaderboards'),
+  ])
+
+  const fixedAddrs = [
+    ...(oi?.leaderboards ?? []),
+    ...(sf?.leaderboards ?? []),
+    ...(gh?.leaderboards ?? []),
+  ].map(l => l.address.toLowerCase())
+
+  // Streaming views are tracked against the top markee slot address (not the board contract address),
+  // so look up topMarkeeAddress and fall back to address only if no markee exists yet.
+  const streamingAddrs = (st?.leaderboards ?? [])
+    .map(l => (l.topMarkeeAddress ?? l.address).toLowerCase())
+
+  // Deduplicate in case any address appears in multiple caches
+  const uniqueFixed = [...new Set(fixedAddrs)]
+  const uniqueStreaming = [...new Set(streamingAddrs)]
+  const allAddrs = [...new Set([...uniqueFixed, ...uniqueStreaming])]
+
+  if (allAddrs.length === 0) {
+    return NextResponse.json({ fixed: 0, streaming: 0 })
+  }
+
+  const keys = allAddrs.map(a => `views:total:${a}`)
+  const counts = await kv.mget<number[]>(...keys)
+
+  const viewsMap = new Map<string, number>()
+  allAddrs.forEach((addr, i) => viewsMap.set(addr, counts[i] ?? 0))
+
+  const fixed = uniqueFixed.reduce((sum, a) => sum + (viewsMap.get(a) ?? 0), 0)
+  const streaming = uniqueStreaming.reduce((sum, a) => sum + (viewsMap.get(a) ?? 0), 0)
+
+  const result = { fixed, streaming }
+  await kv.set(RESULT_KEY, result, { ex: RESULT_TTL })
+
+  return NextResponse.json(result, { headers: { 'Cache-Control': 'public, max-age=300' } })
+}

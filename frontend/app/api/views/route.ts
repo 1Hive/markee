@@ -2,6 +2,7 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
+import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 
 function corsHeaders(_origin: string | null): Record<string, string> {
   return {
@@ -13,6 +14,19 @@ function corsHeaders(_origin: string | null): Record<string, string> {
 
 function hashMessage(message: string): string {
   return createHash('md5').update(message.trim().toLowerCase()).digest('hex').slice(0, 8)
+}
+
+// Bare hostname, lowercased, no protocol/path/www — the key both the POST increment and the GET
+// per-URL lookup normalize to, so "https://Example.com/blog" and "example.com" count together.
+function normalizeHost(raw: string): string | null {
+  const trimmed = raw.trim().slice(0, 253) // longest valid hostname
+  if (!trimmed) return null
+  try {
+    const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`
+    return new URL(withProtocol).hostname.replace(/^www\./, '').toLowerCase() || null
+  } catch {
+    return null
+  }
 }
 
 function getClientIp(req: NextRequest): string {
@@ -59,6 +73,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(result, { headers: corsHeaders(origin) })
   }
 
+  // Per-URL view counts (which of a board's verified sites is actually getting traffic) —
+  // callers pass the exact verifiedUrls list, mirroring the `messages` param above.
+  const urlsParam = searchParams.get('urls')
+  if (singleAddress && urlsParam) {
+    const address = singleAddress.toLowerCase().trim()
+    const urls = urlsParam.split('||').filter(Boolean).slice(0, 100)
+    if (urls.length === 0) {
+      return NextResponse.json({}, { headers: corsHeaders(origin) })
+    }
+    const hosts = urls.map(u => normalizeHost(u))
+    const validIdx = hosts.map((h, i) => (h ? i : -1)).filter(i => i !== -1)
+    const validKeys = validIdx.map(i => `views:url:${address}:${hosts[i]}`)
+    const counts = validKeys.length ? await kv.mget<(number | null)[]>(...validKeys) : []
+    const result: Record<string, number> = {}
+    urls.forEach(url => { result[url] = 0 })
+    validIdx.forEach((urlIdx, keyIdx) => {
+      result[urls[urlIdx]] = counts[keyIdx] ?? 0
+    })
+    return NextResponse.json(result, { headers: corsHeaders(origin) })
+  }
+
   // Batch total view counts by address
   const addressParam = searchParams.get('addresses')
   if (!addressParam) {
@@ -72,7 +107,7 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((a) => a.toLowerCase().trim())
     .filter(Boolean)
-    .slice(0, 100)
+    .slice(0, VIEWS_ADDRESS_LIMIT)
 
   if (addresses.length === 0) {
     return NextResponse.json({}, { headers: corsHeaders(origin) })
@@ -104,20 +139,14 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
+  // Optional: which verified site the view came from, reported by that site's own view-tracking
+  // proxy (see lib/embedPrompt/fragments.ts). Same trust model as the rest of this endpoint --
+  // unauthenticated, self-reported -- so this is a "which of your own sites gets traffic" signal
+  // for the board owner, not a hardened analytics source.
+  const host = typeof body.url === 'string' ? normalizeHost(body.url) : null
 
-  // Only production deployments mutate the shared view store. Previews and local dev read the same
-  // store through (so counts look real) but never increment it, keeping preview traffic and bots
-  // out of the production totals.
-  if (process.env.VERCEL_ENV !== 'production') {
-    const [totalViews, messageViews] = await kv.mget<number[]>(
-      `views:total:${address}`,
-      `views:msg:${address}:${msgHash}`,
-    )
-    return NextResponse.json(
-      { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
-      { headers: corsHeaders(origin) },
-    )
-  }
+  // Deliberately unguarded by environment: previews and local dev increment the same shared
+  // counters as production, trading a little noise in the totals for staging that behaves real.
 
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
@@ -140,7 +169,8 @@ export async function POST(req: NextRequest) {
   pipeline.incr(`views:msg:${address}:${msgHash}`)
   pipeline.set(dedupeKey, '1', { ex: 3600 })
   pipeline.incr('views:network:total')
-  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number]>()
+  if (host) pipeline.incr(`views:url:${address}:${host}`)
+  const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number, number?]>()
 
   return NextResponse.json(
     { totalViews, messageViews, counted: true },

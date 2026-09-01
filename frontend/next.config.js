@@ -56,6 +56,8 @@ const cspDirectives = {
     'https://*.farcaster.xyz',
     // Vercel — analytics & speed insights if ever added
     'https://va.vercel-scripts.com',
+    // Web3Forms contact form submission
+    'https://api.web3forms.com',
   ],
   'worker-src':   ["'self'", 'blob:'],
   'manifest-src': ["'self'"],
@@ -71,6 +73,12 @@ const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['h
   .join('; ')
 
 const nextConfig = {
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'img.logo.dev' },
+    ],
+  },
+
   async headers() {
     return [
       // /embed/* — allow iframing from any origin, no X-Frame-Options
@@ -98,6 +106,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/ecosystem', destination: '/create-a-markee', permanent: true },
+      { source: '/ecosystem/platforms/superfluid', destination: '/campaigns/superfluid', permanent: true },
       { source: '/own-the-network', destination: '/owners', permanent: false },
     ]
   },

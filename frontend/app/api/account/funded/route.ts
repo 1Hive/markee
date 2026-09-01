@@ -24,9 +24,16 @@ const LEADERBOARD_ABI = [
   },
 ] as const
 
-// Emitted by individual markee contracts when anyone adds funds
+// Emitted by individual markee contracts when anyone adds funds (v1.1+ standalone-markee boards).
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
+)
+
+// Older partner-strategy boards (e.g. Gardens) emit funds-added from the *leaderboard* contract
+// itself, keyed by markee address, rather than from each markee's own contract. Same intent,
+// different shape -- both must be scanned or partner-board contributions silently disappear.
+const LEGACY_FUNDS_ADDED_EVENT = parseAbiItem(
+  'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
 )
 
 function getClient() {
@@ -61,6 +68,16 @@ interface FundedMessage {
   strategyName: string
   isTop: boolean
   topFundsRaw: string
+  strategy: 'fixed' | 'streaming'
+  rank: number | null
+  flowRateRaw: string
+  platform: string | null
+  admin: string | null
+  verifiedUrls: string[]
+  linkedFiles: unknown[]
+  siteUrl: string | null
+  repoFullName: string | null
+  repoHtmlUrl: string | null
 }
 
 type Board = {
@@ -68,6 +85,13 @@ type Board = {
   name: string
   topMarkeeAddress: string | null
   topFundsAddedRaw: string
+  platform?: string
+  admin?: string
+  verifiedUrls?: string[]
+  linkedFiles?: unknown[]
+  siteUrl?: string | null
+  repoFullName?: string | null
+  repoHtmlUrl?: string | null
 }
 
 // Lump-sum boards: a backer is whoever emitted FundsAdded on a markee.
@@ -84,7 +108,10 @@ async function fixedFunded(
   ])
 
   const leaderboards: Board[] = [
-    ...(sfData?.leaderboards ?? []),
+    // See messages/route.ts for why superfluid's own listing route needs platform/verification
+    // fields backfilled here -- it carries neither today, and streaming-strategy boards are
+    // always verification-gated regardless, so empty is correct.
+    ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
   ].filter((lb: any) => lb.markeeCount > 0)
@@ -104,35 +131,58 @@ async function fixedFunded(
 
   type Entry = { lbIndex: number; markeeAddress: `0x${string}` }
   const entries: Entry[] = []
+  const lbRankMaps = new Map<number, Map<string, number>>()
   for (let i = 0; i < leaderboards.length; i++) {
     const addrs = (markeeListResults[i]?.result as string[]) ?? []
+    const ranks = new Map<string, number>()
+    let rank = 1
     for (const addr of addrs) {
       if (addr && addr !== '0x0000000000000000000000000000000000000000') {
         entries.push({ lbIndex: i, markeeAddress: addr as `0x${string}` })
+        ranks.set(addr.toLowerCase(), rank++)
       }
     }
+    lbRankMaps.set(i, ranks)
   }
 
   if (entries.length === 0) return []
 
   const allMarkeeAddresses = [...new Set(entries.map(e => e.markeeAddress))]
+  const allLeaderboardAddresses = leaderboards.map(lb => lb.address as `0x${string}`)
 
-  // Query FundsAdded on all markee contracts filtered by addedBy == owner
-  const fundsAddedLogs = await client.getLogs({
-    address: allMarkeeAddresses,
-    event: FUNDS_ADDED_EVENT,
-    args: { addedBy: owner as `0x${string}` },
-    fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
-    toBlock: 'latest',
-  }).catch(() => [])
+  // Query both FundsAdded shapes filtered by addedBy == owner: per-markee-contract (v1.1+ boards)
+  // and per-leaderboard-contract keyed by markeeAddress (older partner-strategy boards).
+  const [fundsAddedLogs, legacyFundsAddedLogs] = await Promise.all([
+    client.getLogs({
+      address: allMarkeeAddresses,
+      event: FUNDS_ADDED_EVENT,
+      args: { addedBy: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+      toBlock: 'latest',
+    }).catch(() => []),
+    client.getLogs({
+      address: allLeaderboardAddresses,
+      event: LEGACY_FUNDS_ADDED_EVENT,
+      args: { addedBy: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+      toBlock: 'latest',
+    }).catch(() => []),
+  ])
 
-  if (fundsAddedLogs.length === 0) return []
+  if (fundsAddedLogs.length === 0 && legacyFundsAddedLogs.length === 0) return []
 
   // Aggregate total contributed by user per markee
   const markeeContribs = new Map<string, bigint>()
   for (const log of fundsAddedLogs) {
     const addr = log.address.toLowerCase()
     const amount = (log.args as { amount: bigint }).amount ?? 0n
+    markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
+  }
+  for (const log of legacyFundsAddedLogs) {
+    const args = log.args as { markeeAddress?: string; amount?: bigint }
+    if (!args.markeeAddress) continue
+    const addr = args.markeeAddress.toLowerCase()
+    const amount = args.amount ?? 0n
     markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
   }
 
@@ -165,11 +215,16 @@ async function fixedFunded(
     ]),
   )
 
-  // Build markee → leaderboard lookup
+  // Build markee → leaderboard + rank lookup
   const markeeToLb = new Map<string, typeof leaderboards[0]>()
+  const markeeToRank = new Map<string, number>()
   for (const e of entries) {
     const key = e.markeeAddress.toLowerCase()
-    if (!markeeToLb.has(key)) markeeToLb.set(key, leaderboards[e.lbIndex])
+    if (!markeeToLb.has(key)) {
+      markeeToLb.set(key, leaderboards[e.lbIndex])
+      const r = lbRankMaps.get(e.lbIndex)?.get(key)
+      if (r !== undefined) markeeToRank.set(key, r)
+    }
   }
 
   return externalAddrs.map((addr, i) => {
@@ -189,6 +244,16 @@ async function fixedFunded(
       strategyName: lb?.name ?? 'Unknown Leaderboard',
       isTop,
       topFundsRaw: lb?.topFundsAddedRaw ?? '0',
+      strategy: 'fixed' as const,
+      rank: markeeToRank.get(addr) ?? null,
+      flowRateRaw: '0',
+      platform: lb?.platform ?? null,
+      admin: lb?.admin ?? null,
+      verifiedUrls: lb?.verifiedUrls ?? [],
+      linkedFiles: lb?.linkedFiles ?? [],
+      siteUrl: lb?.siteUrl ?? null,
+      repoFullName: lb?.repoFullName ?? null,
+      repoHtmlUrl: lb?.repoHtmlUrl ?? null,
     }
   })
 }
@@ -249,7 +314,9 @@ async function streamingFunded(
       // Markees the wallet owns belong in "bought", not "funded"
       if (markeeOwner === owner) return null
       const totalFundsAdded = (detailResults[o + 3]?.result as bigint) ?? 0n
-      const contributed = positions.get(b.lb.address.toLowerCase())?.contributed ?? 0n
+      const pos = positions.get(b.lb.address.toLowerCase())
+      const contributed = pos?.contributed ?? 0n
+      const isTop = b.lb.topMarkeeAddress?.toLowerCase() === b.markee
       return {
         address: b.markee,
         message: (detailResults[o]?.result as string) ?? '',
@@ -258,11 +325,21 @@ async function streamingFunded(
         totalContributed: contributed.toString(),
         strategyId: b.lb.address,
         strategyName: b.lb.name ?? 'Unknown Leaderboard',
-        isTop: b.lb.topMarkeeAddress?.toLowerCase() === b.markee,
+        isTop,
         topFundsRaw: b.lb.topFundsAddedRaw ?? '0',
+        strategy: 'streaming' as const,
+        rank: isTop ? 1 : null,
+        flowRateRaw: (pos?.rate ?? 0n).toString(),
+        platform: b.lb.platform ?? null,
+        admin: b.lb.admin ?? null,
+        verifiedUrls: b.lb.verifiedUrls ?? [],
+        linkedFiles: b.lb.linkedFiles ?? [],
+        siteUrl: b.lb.siteUrl ?? null,
+        repoFullName: b.lb.repoFullName ?? null,
+        repoHtmlUrl: b.lb.repoHtmlUrl ?? null,
       }
     })
-    .filter((m): m is FundedMessage => m !== null)
+    .filter((m): m is NonNullable<typeof m> => m !== null)
 }
 
 export async function GET(request: Request) {

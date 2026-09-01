@@ -1,3 +1,5 @@
+import { snapshotKey, type CampaignSnapshot } from '@/lib/superfluid/streamingCampaign'
+
 const DEFAULT_ENDPOINT = 'https://subgraph-endpoints.superfluid.dev/base-mainnet/protocol-v1'
 const ADDR_BATCH = 500
 const PAGE = 1000
@@ -68,6 +70,14 @@ interface BackerMemberRow {
   }
 }
 
+interface CampaignStreamRow extends BackerStreamRow {
+  sender: { id: string }
+}
+
+interface CampaignMemberRow extends BackerMemberRow {
+  account: { id: string }
+}
+
 const BACKER_STREAM_QUERY = `query BackerStreams($sender: String!, $token: String!, $receivers: [String!]!, $skip: Int!) {
   streams(where: { sender: $sender, token: $token, receiver_in: $receivers }, first: ${PAGE}, skip: $skip) {
     receiver { id }
@@ -91,6 +101,43 @@ const BACKER_REFUND_QUERY = `query BackerRefunds($account: String!, $token: Stri
   }
 }`
 
+const CAMPAIGN_STREAM_QUERY = `query CampaignStreams($token: String!, $receivers: [String!]!, $skip: Int!, $block: Int!) {
+  streams(
+    where: { token: $token, receiver_in: $receivers }
+    first: ${PAGE}
+    skip: $skip
+    block: { number: $block }
+  ) {
+    sender { id }
+    receiver { id }
+    updatedAtTimestamp
+    currentFlowRate
+    streamedUntilUpdatedAt
+  }
+}`
+
+const CAMPAIGN_REFUND_QUERY = `query CampaignRefunds($token: String!, $admins: [String!]!, $skip: Int!, $block: Int!) {
+  poolMembers(
+    where: { pool_: { admin_in: $admins, token: $token } }
+    first: ${PAGE}
+    skip: $skip
+    block: { number: $block }
+  ) {
+    account { id }
+    units
+    totalAmountReceivedUntilUpdatedAt
+    syncedPerUnitSettledValue
+    pool {
+      admin { id }
+      updatedAtTimestamp
+      perUnitSettledValue
+      perUnitFlowRate
+    }
+  }
+}`
+
+const META_QUERY = `query SubgraphMeta { _meta { block { number timestamp } } }`
+
 function endpoint(): string {
   return process.env.STREAMING_SUBGRAPH_URL || DEFAULT_ENDPOINT
 }
@@ -111,6 +158,83 @@ async function query<T>(q: string, variables: Record<string, unknown>): Promise<
 
 function carryForward(amount: bigint, rate: bigint, updatedAt: bigint, atTimestamp: bigint): bigint {
   return amount + rate * (atTimestamp > updatedAt ? atTimestamp - updatedAt : 0n)
+}
+
+export async function fetchStreamingSubgraphHead(): Promise<{ number: bigint; timestamp: bigint }> {
+  const data = await query<{ _meta: { block: { number: number; timestamp: number } } }>(META_QUERY, {})
+  return {
+    number: BigInt(data._meta.block.number),
+    timestamp: BigInt(data._meta.block.timestamp),
+  }
+}
+
+// Bulk campaign snapshot at a finalized Base block. Values are cumulative lifetime amounts at
+// `atTimestamp`; callers subtract consecutive snapshots to isolate the campaign interval.
+export async function fetchCampaignSnapshot(
+  boards: readonly string[],
+  token: string,
+  blockNumber: bigint,
+  atTimestamp: bigint,
+): Promise<CampaignSnapshot> {
+  const snapshot: CampaignSnapshot = new Map()
+  if (boards.length === 0) return snapshot
+  if (blockNumber > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Block number exceeds safe integer')
+
+  const tokenId = token.toLowerCase()
+  const addrs = boards.map((board) => board.toLowerCase())
+  const numericBlock = Number(blockNumber)
+
+  for (let i = 0; i < addrs.length; i += ADDR_BATCH) {
+    const batch = addrs.slice(i, i + ADDR_BATCH)
+
+    for (let skip = 0; ; skip += PAGE) {
+      const { streams } = await query<{ streams: CampaignStreamRow[] }>(CAMPAIGN_STREAM_QUERY, {
+        token: tokenId,
+        receivers: batch,
+        skip,
+        block: numericBlock,
+      })
+      for (const stream of streams) {
+        const key = snapshotKey(stream.sender.id, stream.receiver.id)
+        const rate = BigInt(stream.currentFlowRate)
+        const gross = carryForward(
+          BigInt(stream.streamedUntilUpdatedAt),
+          rate,
+          BigInt(stream.updatedAtTimestamp),
+          atTimestamp,
+        )
+        const current = snapshot.get(key) ?? { gross: 0n, refunded: 0n }
+        current.gross += gross
+        snapshot.set(key, current)
+      }
+      if (streams.length < PAGE) break
+    }
+
+    for (let skip = 0; ; skip += PAGE) {
+      const { poolMembers } = await query<{ poolMembers: CampaignMemberRow[] }>(
+        CAMPAIGN_REFUND_QUERY,
+        { token: tokenId, admins: batch, skip, block: numericBlock },
+      )
+      for (const member of poolMembers) {
+        const key = snapshotKey(member.account.id, member.pool.admin.id)
+        const units = BigInt(member.units)
+        const settled = BigInt(member.pool.perUnitSettledValue) - BigInt(member.syncedPerUnitSettledValue)
+        const memberRate = units * BigInt(member.pool.perUnitFlowRate)
+        const refunded = carryForward(
+          BigInt(member.totalAmountReceivedUntilUpdatedAt) + units * settled,
+          memberRate,
+          BigInt(member.pool.updatedAtTimestamp),
+          atTimestamp,
+        )
+        const current = snapshot.get(key) ?? { gross: 0n, refunded: 0n }
+        current.refunded += refunded
+        snapshot.set(key, current)
+      }
+      if (poolMembers.length < PAGE) break
+    }
+  }
+
+  return snapshot
 }
 
 export async function fetchBoardTotals(

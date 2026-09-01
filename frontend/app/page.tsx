@@ -14,11 +14,14 @@ import { formatUsd } from '@/lib/utils'
 import { FixedPriceModal } from '@/components/modals/FixedPriceModal'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { MarkeeWatermark } from '@/components/board-detail/shared'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px'
+const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px 100px'
 const MARKETPLACE_TEASER_ROW_HEIGHT = 36
 
 function extractDomain(url: string): string {
@@ -60,16 +63,26 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
   onClick: () => void
 }) {
   const hasPrice = fixedMarkee.priceWei !== '0' && fixedMarkee.priceWei !== '0x0'
+  const [hover, setHover] = useState(false)
 
   return (
-    <button onClick={onClick} className="reader-card" style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="reader-card"
+      style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}
+    >
+      <MarkeeWatermark show={hover} />
       {views && views.totalViews > 0 && (
         <span className="reader-views">
           <Eye size={10} />
           {formatViews(views.totalViews)}
         </span>
       )}
-      <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={fixedMarkee.strategyAddress}>
+        <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
+      </ModeratedContent>
       {hasPrice && (
         <div className="reader-pill">
           {formatEthCompact(fixedMarkee.priceWei)} ETH to change
@@ -229,7 +242,7 @@ const PLATFORMS = [
 function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
   const [hover, setHover] = useState(false)
   return (
-    <a
+    <Link
       href={p.href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -271,7 +284,7 @@ function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { mar
           <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
         )}
       </div>
-    </a>
+    </Link>
   )
 }
 
@@ -279,7 +292,7 @@ function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { mar
 function PrimaryButton({ href, children }: { href: string; children: React.ReactNode }) {
   const [hover, setHover] = useState(false)
   return (
-    <a
+    <Link
       href={href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -294,14 +307,14 @@ function PrimaryButton({ href, children }: { href: string; children: React.React
       }}
     >
       {children}
-    </a>
+    </Link>
   )
 }
 
 function GhostButton({ href, children }: { href: string; children: React.ReactNode }) {
   const [hover, setHover] = useState(false)
   return (
-    <a
+    <Link
       href={href}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -315,7 +328,7 @@ function GhostButton({ href, children }: { href: string; children: React.ReactNo
       }}
     >
       {children}
-    </a>
+    </Link>
   )
 }
 
@@ -324,7 +337,7 @@ export default function Home() {
   const { markees: fixedMarkees, isLoading: isLoadingFixed } = useFixedMarkees()
   const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
   const [modalMarkee, setModalMarkee] = useState<FixedMarkee | null>(null)
-  const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}`; topFundsAdded: bigint } | null>(null)
+  const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}` } | null>(null)
   const ethPrice = useEthPrice()
 
   // Ecosystem stats for the metrics row + per-platform stats for platform cards
@@ -416,7 +429,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
-      <Header activePage="home" useRegularLinks />
+      <Header activePage="home" />
 
       {/* ── Hero: 3 reader signs ──────────────────────────────────────────── */}
       <section
@@ -494,6 +507,7 @@ export default function Home() {
             <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Current message</span>
             <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Views</span>
             <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: 22, textAlign: 'right' }}>Price to change</span>
+            <span />
           </div>
 
           {/* Partner rows */}
@@ -508,6 +522,7 @@ export default function Home() {
                     {[1, 2, 3, 4, 5].map(j => (
                       <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4, animation: 'pulse 1.5s ease-in-out infinite' }} />
                     ))}
+                    <div />
                   </div>
                 ))
               : top5Eco.map((lb) => {
@@ -530,7 +545,7 @@ export default function Home() {
                       : (lb.name || lb.address.slice(0, 8))
 
                   return (
-                    <a
+                    <Link
                       key={lb.address}
                       href={`/markee/${lb.address}`}
                       style={{
@@ -559,7 +574,11 @@ export default function Home() {
                           <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
                             <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           </span>
-                        ) : null}
+                        ) : (
+                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(248,151,254,0.13)', color: '#F897FE', fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>
+                            {(servedOnLabel[0] || '?').toUpperCase()}
+                          </span>
+                        )}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
                           {servedOnLabel}
                         </span>
@@ -576,13 +595,18 @@ export default function Home() {
 
                       {/* Current message */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
-                        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-                        <div style={{
-                          fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>
-                          {lb.topMessage || '—'}
-                        </div>
+                        {/* ModeratedContent only, no FlagButton -- this whole row is a Link and
+                            FlagButton's handler only stopPropagation()s, not preventDefault()s, so
+                            nesting it here would still navigate on click. The target page has a
+                            working FlagButton already. */}
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+                          <div style={{
+                            fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {lb.topMessage || '—'}
+                          </div>
+                        </ModeratedContent>
                       </div>
 
                       {/* Views */}
@@ -609,7 +633,6 @@ export default function Home() {
                               e.stopPropagation()
                               setBuyModal({
                                 leaderboardAddress: lb.address as `0x${string}`,
-                                topFundsAdded,
                               })
                             }}
                             style={{
@@ -629,7 +652,12 @@ export default function Home() {
                           <span style={{ fontSize: 11, color: '#8A8FBF', fontFamily: MONO }}>—</span>
                         )}
                       </div>
-                    </a>
+
+                      {/* Strategy */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
+                        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+                      </div>
+                    </Link>
                   )
                 })
             }
@@ -692,10 +720,9 @@ export default function Home() {
       />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={buyModal.leaderboardAddress}
-          topFundsAdded={buyModal.topFundsAdded}
+          leaderboardAddress={buyModal.leaderboardAddress}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />

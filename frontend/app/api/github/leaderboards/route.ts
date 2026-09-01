@@ -3,12 +3,16 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles } from '@/lib/github/linkedFiles'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 
 const LEADERBOARD_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const
 
+// Scopes getLogs to just creation events instead of every log the factory has ever emitted
+// (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
 function getClient() {
   return createPublicClient({
     chain: base,
@@ -34,6 +38,11 @@ const FACTORY_ABI = [
     type: 'function',
   },
 ] as const
+
+// ── Creator lookup via factory logs ──────────────────────────────────────────
+// admin() is the beneficiary, not the creator (same issue documented for Superfluid boards).
+// Creator isn't stored on-chain -- derive it from the tx that called createLeaderboard, cached
+// permanently in KV since it never changes.
 
 const LEADERBOARD_ABI = [
   { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
@@ -151,12 +160,18 @@ export async function GET(request: Request) {
       }
     }
 
-    // Read KV linked files and last-known GitHub traffic counts in parallel
-    const [linkedFilesMap, trafficCounts] = await Promise.all([
-      Promise.all(addresses.map(addr => getLinkedFiles(addr))),
+    // Read KV linked files, last-known GitHub traffic counts, and resolved creators in parallel
+    const [linkedFilesMap, trafficCounts, creators] = await Promise.all([
+      getLinkedFilesBatch(addresses),
       kv.mget<({ count: number } | null)[]>(
         ...addresses.map(addr => `views:github:last:${addr.toLowerCase()}`)
       ),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'gh',
+        factories: [LEADERBOARD_FACTORY_ADDRESS],
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+        logLabel: 'github/leaderboards',
+      }),
     ])
 
     // Assemble leaderboard objects
@@ -186,6 +201,7 @@ export async function GET(request: Request) {
         totalFundsRaw: displayTotalFundsWei.toString(),
         markeeCount,
         admin,
+        creator: creators[i] ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFundsRaw.toString(),

@@ -8,21 +8,15 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { useStreamingRows } from '@/hooks/useStreamingRows'
 import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
+import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
-const BG     = '#060A2A'
-const BG2    = '#0A0F3D'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
-const MUTED  = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface GithubLeaderboard {
@@ -40,6 +34,8 @@ interface GithubLeaderboard {
   githubTrafficViews: number | null
   strategy?: Strategy
   effectiveRateRaw?: string
+  admin?: string
+  creator?: string | null
 }
 
 function rowEffectiveRate(lb: GithubLeaderboard): bigint {
@@ -113,13 +109,13 @@ function TableRow({
   }
 
   return (
-    <a
+    <Link
       href={`/markee/${lb.address}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -152,11 +148,12 @@ function TableRow({
       </span>
 
       {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+          </div>
+        </ModeratedContent>
       </div>
 
       {/* VIEWS */}
@@ -209,7 +206,11 @@ function TableRow({
           <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
         )}
       </div>
-    </a>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
+      </div>
+    </Link>
   )
 }
 
@@ -261,7 +262,7 @@ export default function GithubPlatformPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
 
       {/* ── Hero ── */}
       <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>
@@ -420,7 +421,7 @@ export default function GithubPlatformPage() {
           {/* Column headers */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '190px 110px 1fr 74px 120px',
+            gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
             gap: 16,
             padding: '11px 14px',
             borderBottom: `1px solid ${BORDER}`,
@@ -432,15 +433,17 @@ export default function GithubPlatformPage() {
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current Message</span>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Views</span>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Price to Change</span>
+            <span />
           </div>
 
           {/* Rows */}
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
+                <div />
               </div>
             ))
           ) : tableRows.length === 0 ? (
@@ -511,12 +514,9 @@ export default function GithubPlatformPage() {
       <Footer />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          initialMode="create"
-          strategyAddress={buyModal.address as `0x${string}`}
-          topFundsAdded={buyModal.topFundsAdded}
-          platformId="github"
+          leaderboardAddress={buyModal.address}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
-import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, encodedFilePath } from '@/lib/github/linkedFiles'
 
 // ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
 // Emoji and CJK characters occupy 2 columns; everything else occupies 1.
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const fileRes = await fetch(
-        `https://api.github.com/repos/${file.repoFullName}/contents/${encodeURIComponent(file.filePath)}`,
+        `https://api.github.com/repos/${file.repoFullName}/contents/${encodedFilePath(file.filePath)}`,
         { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' } }
       )
       if (!fileRes.ok) {
@@ -318,7 +318,7 @@ export async function POST(request: NextRequest) {
       const updated = currentContent.slice(0, startIdx) + markeeBlock + currentContent.slice(endIdx + foundEnd.length)
 
       const putRes = await fetch(
-        `https://api.github.com/repos/${file.repoFullName}/contents/${encodeURIComponent(file.filePath)}`,
+        `https://api.github.com/repos/${file.repoFullName}/contents/${encodedFilePath(file.filePath)}`,
         {
           method: 'PUT',
           headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },

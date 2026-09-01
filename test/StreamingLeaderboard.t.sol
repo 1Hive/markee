@@ -74,6 +74,12 @@ interface ICFAv1Agreement {
         external returns (bytes memory);
     function updateFlow(ISuperToken token, address receiver, int96 flowRate, bytes calldata ctx)
         external returns (bytes memory);
+    function deleteFlow(ISuperToken token, address sender, address receiver, bytes calldata ctx)
+        external returns (bytes memory);
+}
+
+interface IGDAv1Agreement {
+    function connectPool(ISuperfluidPool pool, bytes calldata ctx) external returns (bytes memory);
 }
 
 /// @notice Base-mainnet fork tests for the Option B streaming strategy. Reads BASE_RPC_URL from env,
@@ -998,6 +1004,85 @@ contract StreamingLeaderboardTest is Test {
         assertEq(board.aggregateRate(m), uint256(uint96(rUp)), "rate not raised by the batch");
         assertEq(board.backerDeposit(backer), required, "deposit not topped up to the new buffer");
         assertEq(board.backerMarkee(backer), m, "backer must stay on the same markee");
+        _notJailed();
+    }
+
+    /// @notice The frontend's "Fund this instead" retarget (buildMoveStreamOps): one payable
+    ///         host.batchCall of wrap → depositBuffer(top-up) → deleteFlow → createFlow(userData=new
+    ///         markee) → connectPool(new pool). updateFlow cannot retarget — onFlowUpdated ignores
+    ///         userData and re-rates backerMarkee[sender] — so the move must delete and re-create.
+    ///         Also asserts backerDeposit survives the delete and only the top-up over it is pulled,
+    ///         not a second full buffer.
+    function test_batchCall_movesStreamToOtherMarkee() public {
+        address a = _newMarkee("a", "alpha");
+        address b = _newMarkee("b", "bravo");
+        int96 rOld = _rate(0.02 ether);
+        address backer = _backer("mover");
+        _open(backer, a, rOld);
+        assertEq(board.backerMarkee(backer), a, "precondition: backing a");
+        uint256 held = board.backerDeposit(backer);
+        assertEq(held, uint256(uint96(rOld)) * BUFFER_PERIOD, "precondition: old buffer held");
+
+        int96 rNew = _rate(0.05 ether);
+        uint256 required = uint256(uint96(rNew)) * BUFFER_PERIOD;
+        uint256 topUp = required - held;
+        uint256 prefund = 0.5 ether;
+        vm.deal(backer, topUp + prefund);
+
+        address cfa = address(
+            ISuperfluid(HOST).getAgreementClass(keccak256("org.superfluid-finance.agreements.ConstantFlowAgreement.v1"))
+        );
+        address gda = address(
+            ISuperfluid(HOST).getAgreementClass(keccak256("org.superfluid-finance.agreements.GeneralDistributionAgreement.v1"))
+        );
+
+        ISuperfluid.Operation[] memory ops = new ISuperfluid.Operation[](5);
+        ops[0] = ISuperfluid.Operation({
+            operationType: uint32(301),
+            target: address(ETHX),
+            data: abi.encodeWithSignature("upgradeByETHTo(address)", backer)
+        });
+        ops[1] = ISuperfluid.Operation({
+            operationType: uint32(301),
+            target: address(board),
+            data: abi.encodeWithSelector(StreamingLeaderboard.depositBuffer.selector, backer, topUp)
+        });
+        ops[2] = ISuperfluid.Operation({
+            operationType: uint32(201),
+            target: cfa,
+            data: abi.encode(
+                abi.encodeWithSelector(ICFAv1Agreement.deleteFlow.selector, ETHX, backer, address(board), new bytes(0)),
+                new bytes(0)
+            )
+        });
+        ops[3] = ISuperfluid.Operation({
+            operationType: uint32(201),
+            target: cfa,
+            data: abi.encode(
+                abi.encodeWithSelector(ICFAv1Agreement.createFlow.selector, ETHX, address(board), rNew, new bytes(0)),
+                abi.encode(b)
+            )
+        });
+        ops[4] = ISuperfluid.Operation({
+            operationType: uint32(201),
+            target: gda,
+            data: abi.encode(
+                abi.encodeWithSelector(IGDAv1Agreement.connectPool.selector, board.poolOf(b), new bytes(0)),
+                new bytes(0)
+            )
+        });
+
+        vm.prank(backer);
+        ISuperfluid(HOST).batchCall{value: topUp + prefund}(ops);
+
+        assertEq(board.backerMarkee(backer), b, "stream must retarget to b");
+        assertEq(board.aggregateRate(a), 0, "a must lose the backer's rate");
+        assertEq(board.aggregateRate(b), uint256(uint96(rNew)), "b must carry the new rate");
+        assertEq(board.backerDeposit(backer), required, "deposit must be topped up, not doubled");
+        assertEq(board.poolOf(a).getUnits(backer), 0, "a's pool units must clear");
+        assertEq(board.poolOf(b).getUnits(backer), uint128(uint96(rNew)), "b's pool units must track the new rate");
+        assertEq(CFA.getFlowrate(ETHX, backer, address(board)), rNew, "CFA flow must run at the new rate");
+        assertEq(board.topMarkee(), b, "b should take the top spot");
         _notJailed();
     }
 

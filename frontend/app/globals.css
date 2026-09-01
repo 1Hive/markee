@@ -133,7 +133,7 @@ img.emoji {
 
 /* ── Reader / sign cards (home hero + featured markee) ─────────────────────── */
 .reader-card {
-  position: relative; width: 100%;
+  position: relative; z-index: 0; width: 100%;
   background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.18);
   border-radius: 16px; padding: clamp(22px,3vw,38px) clamp(20px,3vw,34px);
   backdrop-filter: blur(4px); aspect-ratio: 2 / 1;
@@ -161,10 +161,10 @@ img.emoji {
   font-size: 11px; letter-spacing: 0.5px; color: #8A8FBF; opacity: 0.85;
 }
 .reader-pill {
-  position: absolute; bottom: -16px; left: 50%; display: inline-flex; align-items: center; gap: 6px;
+  position: absolute; bottom: -16px; left: 50%; display: inline-flex; align-items: center; gap: 8px;
   background: #F897FE; color: #060A2A;
   font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
-  font-weight: 700; font-size: 13px; padding: 8px 18px; border-radius: 8px;
+  font-weight: 700; font-size: 13px; padding: 3px 18px 3px 3px; border-radius: 8px;
   white-space: nowrap; box-shadow: 0 8px 28px rgba(248,151,254,0.42);
   transition: opacity 180ms ease, transform 180ms ease; pointer-events: none; z-index: 3;
   opacity: 0; transform: translateX(-50%) translateY(4px);
@@ -198,6 +198,7 @@ img.emoji {
 @keyframes rowHighlight { 0% { background: rgba(248,151,254,0.18); } 100% { background: transparent; } }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes glowPulse { 0%, 100% { opacity: 0.6; box-shadow: 0 0 4px #F897FE; } 50% { opacity: 1; box-shadow: 0 0 10px #F897FE; } }
+@keyframes shimmer { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.9; } }
 .markee-row--new { animation: rowHighlight 1.6s ease-out; }
 
 /* ── Accessibility / performance ────────────────────────────────────────────── */

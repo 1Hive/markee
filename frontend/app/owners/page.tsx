@@ -239,19 +239,18 @@ export default function Owners() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
-      <Header activePage="own" useRegularLinks />
+      <Header activePage="own" />
       {/* Hero */}
       <section style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(123,106,244,0.10), rgba(6,10,42,0))' }}>
         <div className="starfield-bg" />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 760, margin: '0 auto', padding: '80px 40px 64px', textAlign: 'center' as const }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.muted, marginBottom: 20, padding: '6px 14px', background: 'rgba(248,151,254,0.07)', border: `1px solid rgba(248,151,254,0.2)`, borderRadius: 99 }}>
-            Own the Network
-          </div>
           <h1 style={{ margin: 0, fontSize: 'clamp(34px,5vw,56px)', fontWeight: 800, letterSpacing: -2, lineHeight: 1.05, color: C.text }}>
             Become an <span style={{ color: C.pink }}>owner</span> of the Markee network
           </h1>
           <p style={{ margin: '20px auto 0', color: C.text2, fontSize: 18, lineHeight: 1.6, maxWidth: '52ch' }}>
-            Markee is cooperatively owned by MARKEE token holders using <strong style={{ color: C.text }}>Revnets</strong> for token issuance and <strong style={{ color: C.text }}>Gardens</strong> for governance.
+            Markee is cooperatively owned by MARKEE token holders<br />
+            <strong style={{ color: C.text }}>Revnets</strong> for token issuance<br />
+            <strong style={{ color: C.text }}>Gardens</strong> for governance
           </p>
           <RevnetBuyWidget />
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' as const }}>
@@ -290,6 +289,10 @@ export default function Owners() {
 
       {/* Tab content */}
       <section style={{ maxWidth: 1180, margin: '0 auto', padding: '48px 40px 96px' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 18 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+          Own the Network
+        </div>
         {tab === 'how' && <AboutMarkee setTab={setTab} />}
         {tab === 'schedule' && <IssuanceSchedule />}
         {tab === 'team' && <FoundingTeam />}

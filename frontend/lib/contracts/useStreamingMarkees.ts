@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useReadContracts } from 'wagmi'
 import type { Address } from 'viem'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -99,6 +99,27 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
     query: { enabled: enabled && topAddresses.length > 0, refetchInterval: 30_000 },
   })
 
+  // Whether a markee has ever received a single BackerUpdated event (see the /api/streaming/
+  // ever-funded route comment) -- createMarkee happens before the stream-opening batchCall, so an
+  // abandoned or failed flow leaves a real markee on-chain that never actually got backed, which
+  // looks identical to a "lost its bid" message by current state alone. null while loading (nothing
+  // extra is shown until this resolves, to avoid a flash of rows that then disappear).
+  const [everFunded, setEverFunded] = useState<Set<string> | null>(null)
+  useEffect(() => {
+    if (!board) { setEverFunded(null); return }
+    let cancelled = false
+    fetch(`/api/streaming/ever-funded?board=${board}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { markees?: string[] } | null) => {
+        if (!cancelled) setEverFunded(new Set((d?.markees ?? []).map(a => a.toLowerCase())))
+      })
+      // A failed check must still resolve everFunded (to an empty set, same as "none known") --
+      // isLoading now depends on it going non-null, so leaving it null on error would leave the page
+      // stuck on its skeleton forever instead of just under-reporting zero-rate messages like before.
+      .catch(() => { if (!cancelled) setEverFunded(new Set()) })
+    return () => { cancelled = true }
+  }, [board])
+
   const markees = useMemo((): StreamingMarkee[] =>
     topAddresses
       .map((address, i) => ({
@@ -110,8 +131,11 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
         streamRate: (markeeData?.[i * CALLS_PER_MARKEE + 3]?.result as bigint) ?? 0n,
         legacyFloor: (markeeData?.[i * CALLS_PER_MARKEE + 4]?.result as bigint) ?? 0n,
       }))
-      .filter(m => m.rate > 0n),
-    [topAddresses, topRates, markeeData]
+      // Drops the genesis seed Markee (empty message) and any dead-on-arrival Markee that was
+      // created but never actually funded -- both are indistinguishable from a real, currently-idle
+      // message by rate/message alone.
+      .filter(m => m.rate > 0n || (everFunded?.has(m.address.toLowerCase()) ?? false)),
+    [topAddresses, topRates, markeeData, everFunded]
   )
 
   const refetch = useCallback(() => {
@@ -122,7 +146,10 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
   return {
     meta,
     markees,
-    isLoading: isMetaLoading || (topAddresses.length > 0 && isDetailsLoading),
+    // everFunded === null (its fetch hasn't resolved yet) has to count as loading too -- otherwise
+    // zero-rate markees silently drop out of `markees` (see the filter above) while the caller thinks
+    // loading has finished, instead of showing a loading state until they're known one way or the other.
+    isLoading: isMetaLoading || (topAddresses.length > 0 && isDetailsLoading) || (topAddresses.length > 0 && everFunded === null),
     refetch,
   }
 }

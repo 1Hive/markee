@@ -2,13 +2,9 @@
 
 import { useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { MONO, PINK, BG, TEXT, MUTED } from '@/lib/design-tokens'
 
-const MONO = "var(--font-jetbrains-mono),'JetBrains Mono',monospace"
 const SANS = "Manrope,system-ui,sans-serif"
-const PINK = '#F897FE'
-const BG   = '#060A2A'
-const TEXT = '#EDEEFF'
-const MUTED = '#8A8FBF'
 
 interface EmbedData {
   address: string

@@ -21,7 +21,7 @@ export interface StreamingRow {
 
 // Streaming boards placed on `platform`. Empty unless the streaming factory is configured, since the
 // route is inert without it.
-export function useStreamingRows(platform: string): StreamingRow[] {
+export function useStreamingRows(platform?: string): StreamingRow[] {
   const [rows, setRows] = useState<StreamingRow[]>([])
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function useStreamingRows(platform: string): StreamingRow[] {
       .then((data: { leaderboards?: Record<string, unknown>[] } | null) => {
         if (!data || cancelled) return
         setRows((data.leaderboards ?? [])
-          .filter(l => l.platform === platform)
+          .filter(l => !platform || l.platform === platform)
           .map(l => ({
             address: l.address as string,
             name: l.name as string,
