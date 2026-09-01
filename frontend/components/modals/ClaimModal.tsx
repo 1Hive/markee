@@ -147,12 +147,6 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
             )}
           </div>
 
-          {!pending.accruing && pendingEthWei > 0n && (
-            <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-              Your position stopped accruing, this balance is final.
-            </div>
-          )}
-
           <button onClick={handleClaim} disabled={busy || pendingEthWei === 0n} style={btnStyle(true, busy || pendingEthWei === 0n)}>
             {pending.mintsMarkee ? 'Claim MARKEE' : 'Claim ETH'}
           </button>
