@@ -36,14 +36,9 @@ const FRAMEWORK_LABEL: Record<EmbedFramework, string> = {
 }
 
 // ── Core identity ─────────────────────────────────────────────────────────────
-// The canonical-reference line is a deliberate steal from logo.dev's own quickstart prompt: a
-// cheap hedge against exactly the kind of drift that prompted this rewrite in the first place.
 export function coreIdentityFragment({ address, name, buyUrl }: { address: string; name?: string; buyUrl: string }): string {
   const displayName = name || address
-  return `> **Canonical reference:** https://markee.xyz/docs
-> If anything below is outdated or contradicts the live contracts/API, fetch that URL first -- it is the source of truth. Tell me if something looks stale.
-
-# Markee embed setup
+  return `# Markee embed setup
 
 Markee is a protocol where anyone can pay ETH to set the featured message on a leaderboard. The highest total funder holds the top spot; anyone can outbid them to take it.
 
@@ -52,7 +47,18 @@ My leaderboard:
 - Address: ${address}
 - Fallback buy page (works from anywhere, not required for the embedded flow below): ${buyUrl}
 
-Build a fully embedded flow -- visitors buy, edit, and add funds to messages without ever leaving this site. Do not fall back to an iframe.`
+Build a fully embedded flow -- visitors buy, edit, and add funds to messages without ever leaving this site. Do not fall back to an iframe.
+
+**Before you conclude something is wrong, read this:** https://markee.xyz/api/ecosystem/leaderboards is
+the PUBLIC marketplace listing, and it deliberately only includes leaderboards that have completed
+Markee's own "Verify Embed" check -- it's a spam filter for the public listing, not a directory of
+every leaderboard that exists. A brand-new integration's address will not appear there yet, and that
+is expected, not a sign the address is wrong or stale. Build against the address above regardless --
+don't treat its absence from that endpoint as a reason to stop or ask before writing any code. Verification
+itself only checks that \`data-markee-address\` is present in your server-rendered HTML (see the
+implementation notes at the end of this prompt); it does not depend on this fetch succeeding. Once
+verified, the same code you're about to write starts resolving real data automatically -- nothing
+needs to change or redeploy.`
 }
 
 // ── Trigger card & brand watermark ─────────────────────────────────────────────
@@ -276,7 +282,7 @@ export function strategyFragment(strategy: EmbedStrategy, address: string): stri
 const PUBLIC_API_URL = 'https://markee.xyz/api/ecosystem/leaderboards'
 
 export function proxyRouteFragment(framework: EmbedFramework, address: string): string {
-  const commonNote = `Browser fetches to markee.xyz are blocked by CORS on most setups, so this needs a server-side hop. Find your leaderboard by matching \`address\` (case-insensitive) against "${address}" in the response. Useful fields: \`topMessage\`, \`topMessageOwner\`, \`topFundsAddedRaw\`, \`minimumPrice\` (fixed) / \`streamedRateRaw\` (streaming), \`topMarkeeAddress\`.`
+  const commonNote = `Browser fetches to markee.xyz are blocked by CORS on most setups, so this needs a server-side hop. Find your leaderboard by matching \`address\` (case-insensitive) against "${address}" in the response. Useful fields: \`topMessage\`, \`topMessageOwner\`, \`topFundsAddedRaw\`, \`minimumPrice\` (fixed) / \`streamedRateRaw\` (streaming), \`topMarkeeAddress\`. No match yet is expected for a brand-new, not-yet-verified leaderboard (see the note near the top of this prompt) -- have the trigger component fall back to a "be first!" empty state in that case, not an error.`
 
   if (framework === 'nextjs') {
     return `## Data fetching
