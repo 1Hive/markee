@@ -147,10 +147,21 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       .finally(() => setViewsFetching(false))
   }, [markeeAddrKey])
 
+  // The board's ENFORCED top (topMarkee()/topRate(), via useTopSince) can differ from markees[0] --
+  // markees is ordered by getTopMarkees, a LIVE ranking by current rate, while the contract only
+  // actually promotes a new #1 (and starts streaming to them) once claimTop() runs, which the
+  // streaming-keeper cron does periodically, not instantly. Using markees[0] here meant the hero
+  // card (and the row highlighted as "featured" below) could show a message that looked like it was
+  // winning by current rate but wasn't actually the one being paid. Falls back to markees[0] only
+  // while topSince is still loading, so the hero isn't blank on first paint.
+  const enforcedTopMarkee = topSince
+    ? markees.find(m => m.address.toLowerCase() === topSince.address.toLowerCase()) ?? markees[0]
+    : markees[0]
+
   // Track + increment a view for the top message, mirroring the fixed reader. The POST both
   // increments (rate-limited per IP server-side) and returns the current total for display.
-  const topAddress = markees[0]?.address
-  const topMessage = markees[0]?.message
+  const topAddress = enforcedTopMarkee?.address
+  const topMessage = enforcedTopMarkee?.message
   useEffect(() => {
     if (!topAddress || !topMessage) return
     fetch('/api/views', {
@@ -167,11 +178,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       .catch(() => {})
   }, [topAddress, topMessage])
 
-  const topMarkee = markees[0] ?? null
+  const topMarkee = enforcedTopMarkee ?? null
   const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
   // "Total views" in the metrics bar is every message on this board, not just the current top one.
   const totalViewsSum = Array.from(viewsMap.values()).reduce((sum, v) => sum + v, 0)
-  const topMonthlyWei = markees[0]?.rate ? ratePerSecToMonthly(markees[0].rate) : undefined
+  const topMonthlyWei = enforcedTopMarkee?.rate ? ratePerSecToMonthly(enforcedTopMarkee.rate) : undefined
 
   const streamedEthLabel = `${streamedEth.toFixed(6)} ETH`
   // Same "digit visibly ticks ~1x/sec" derivation as the claim card, applied to the USD display --
@@ -299,7 +310,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                       key={m.address}
                       markee={m}
                       rank={i + 1}
-                      featured={i === 0}
+                      // Highlight the ENFORCED top (topSince.address, from topMarkee()), not just
+                      // whichever row currently ranks first by live rate -- see enforcedTopMarkee
+                      // above for why those can differ. Falls back to position 0 only while topSince
+                      // is still loading, so some row is highlighted on first paint.
+                      featured={topSince ? topSince.address.toLowerCase() === m.address.toLowerCase() : i === 0}
                       board={board}
                       boardAdmin={meta?.admin}
                       topSince={topSince}

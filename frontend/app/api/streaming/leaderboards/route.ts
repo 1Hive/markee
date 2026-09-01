@@ -81,20 +81,28 @@ export async function GET(request: Request) {
       return results.flat()
     }
 
+    // topMarkee()/topRate() -- the contract's own ENFORCED top, not getTopMarkees(1), which ranks
+    // live by current aggregate rate. Those two diverge whenever ranking has drifted (someone's rate
+    // just increased and outranks the enforced #1, but claimTop() hasn't run yet to promote them --
+    // the streaming-keeper cron heals this periodically, it isn't instantaneous). Using getTopMarkees
+    // here meant this API -- and everything downstream of it (marketplace, hero cards, embeds) --
+    // could report a "top message" that wasn't actually the one being paid, which is what the
+    // contract's own topMarkee/topRate state actually governs.
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'leaderboardName' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'totalLeaderboardFunds' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'markeeCount' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'beneficiaryAddress' as const },
       { address: addr, abi: StreamingLeaderboardABI, functionName: 'admin' as const },
-      { address: addr, abi: StreamingLeaderboardABI, functionName: 'getTopMarkees' as const, args: [1n] },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'topMarkee' as const },
+      { address: addr, abi: StreamingLeaderboardABI, functionName: 'topRate' as const },
     ])
-    const CALLS_PER_BOARD = 6
+    const CALLS_PER_BOARD = 7
     const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
 
     const topMarkeeAddresses: (`0x${string}` | null)[] = addresses.map((_, i) => {
-      const topResult = metaResults[i * CALLS_PER_BOARD + 5]?.result as [string[], bigint[]] | undefined
-      return (topResult?.[0]?.[0] ?? null) as `0x${string}` | null
+      const addr = metaResults[i * CALLS_PER_BOARD + 5]?.result as `0x${string}` | undefined
+      return addr && addr !== '0x0000000000000000000000000000000000000000' ? addr : null
     })
 
     const markeeCalls = topMarkeeAddresses.flatMap(addr =>
@@ -151,8 +159,8 @@ export async function GET(request: Request) {
       const markeeCount = (metaResults[b + 2]?.result as bigint) ?? 0n
       const beneficiary = (metaResults[b + 3]?.result as string) ?? ''
       const admin       = (metaResults[b + 4]?.result as string) ?? ''
-      const topResult   = metaResults[b + 5]?.result as [string[], bigint[]] | undefined
-      const topRate     = topResult?.[1]?.[0] ?? 0n
+      // b + 5 is topMarkee() (already extracted into topMarkeeAddresses above); b + 6 is topRate().
+      const topRate     = (metaResults[b + 6]?.result as bigint) ?? 0n
 
       let topMessage: string | null = null
       let topMessageOwner: string | null = null
