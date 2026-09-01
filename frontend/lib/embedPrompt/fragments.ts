@@ -6,7 +6,7 @@
 // modal component. Keep it that way -- do not collapse these back into one template literal.
 
 export type EmbedFramework = 'nextjs' | 'react' | 'vue' | 'html' | 'other'
-export type EmbedWallet = 'privy' | 'rainbowkit'
+export type EmbedWallet = 'privy' | 'rainbowkit' | 'other' | 'none'
 export type EmbedAgent = 'claude-code' | 'cursor' | 'codex' | 'copilot' | 'other'
 export type EmbedStrategy = 'fixed' | 'streaming'
 
@@ -114,10 +114,40 @@ This card is also the click target that opens the buy modal below.`
 }
 
 // ── Wallet setup ──────────────────────────────────────────────────────────────
-// wagmi + viem is the one non-negotiable base under either choice -- every contract-call fragment
+// wagmi + viem is the one non-negotiable base under every option -- every contract-call fragment
 // below assumes it. Don't pre-detect whether it's already installed; let the agent figure that out
 // from the target repo.
 export function walletFragment(wallet: EmbedWallet): string {
+  if (wallet === 'none') {
+    return `## Wallet connection: none set up yet
+
+This site doesn't have a wallet library installed. Either of these works well for an embed like this
+-- pick whichever fits your audience, then follow that library's own docs for provider setup. The
+rest of this prompt (contract calls, data fetching, moderation) doesn't depend on which one you pick:
+
+- **Privy** -- simplest to get working cold. Includes an embedded wallet and card-funding out of the
+  box, so visitors who don't already have a crypto wallet can still pay. Good default if you're not
+  sure.
+- **RainbowKit** -- lighter footprint, assumes visitors bring their own wallet (MetaMask, Rabby, etc.)
+  via WalletConnect. Better fit for a crypto-native audience.
+
+Both need \`wagmi\` + \`viem\` underneath, targeting Base (chainId 8453). If you pick Privy, requires
+\`@privy-io/react-auth\` + \`@privy-io/wagmi\`; if RainbowKit, \`@rainbow-me/rainbowkit\` +
+\`@tanstack/react-query\`. Set up the provider stack and a connect button per that library's docs
+before wiring in the buy flow below.`
+  }
+  if (wallet === 'other') {
+    return `## Wallet connection: existing setup
+
+This site already has a wallet connection library in place -- ConnectKit, Web3Modal/AppKit, Dynamic,
+thirdweb, a custom \`wagmi\` connector setup, or similar. Don't replace it or introduce a second
+one. Reuse whatever's already wired up for connect/disconnect; this embed only needs \`wagmi\`'s
+\`useAccount()\` and \`useWriteContract()\` against the existing config, plus a way to trigger the
+site's existing connect flow when a visitor without a wallet clicks the trigger card (close your own
+modal first if the existing connect UI would otherwise stack behind it, matching the RainbowKit
+z-index note elsewhere in this prompt). Confirm Base (chainId 8453) is already in the existing
+config's supported chains -- add it if not.`
+  }
   if (wallet === 'privy') {
     return `## Wallet connection: Privy
 

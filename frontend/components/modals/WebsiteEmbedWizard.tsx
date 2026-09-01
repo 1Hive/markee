@@ -14,11 +14,14 @@ const FRAMEWORKS: { key: EmbedFramework; label: string }[] = [
   { key: 'react', label: 'React' },
   { key: 'vue', label: 'Vue' },
   { key: 'html', label: 'Plain HTML' },
+  { key: 'other', label: 'Other' },
 ]
 
 const WALLETS: { key: EmbedWallet; label: string }[] = [
   { key: 'privy', label: 'Privy' },
   { key: 'rainbowkit', label: 'RainbowKit' },
+  { key: 'other', label: 'Other' },
+  { key: 'none', label: 'None yet' },
 ]
 
 const AGENTS: { key: EmbedAgent; label: string }[] = [

@@ -40,10 +40,21 @@ function detectFramework(deps: Record<string, string>): EmbedFramework | null {
   return null
 }
 
-function detectWallet(deps: Record<string, string>): EmbedWallet | null {
+// Other well-known wallet-connection libraries -- not individually documented in walletFragment (see
+// lib/embedPrompt/fragments.ts's 'other' case), just enough to tell "has some other wallet setup we
+// should leave alone" apart from "genuinely nothing installed yet" once package.json is readable.
+const OTHER_WALLET_DEPS = [
+  'connectkit', '@web3modal/wagmi', '@reown/appkit', '@dynamic-labs/sdk-react-core', 'thirdweb', '@web3-onboard/core',
+]
+
+// Only called once package.json was actually found and parsed -- at that point "no known wallet
+// dep" is real signal ('none'), not just "couldn't tell" (that case is handled by the caller
+// returning wallet: null before this ever runs, which the wizard treats as "leave the UI alone").
+function detectWallet(deps: Record<string, string>): EmbedWallet {
   if (deps['@privy-io/react-auth']) return 'privy'
   if (deps['@rainbow-me/rainbowkit']) return 'rainbowkit'
-  return null
+  if (OTHER_WALLET_DEPS.some(dep => deps[dep])) return 'other'
+  return 'none'
 }
 
 export async function GET(request: NextRequest) {
