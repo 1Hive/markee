@@ -128,7 +128,9 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
               {pending.mintsMarkee && (
                 <InfoTip>
                   An estimate: your streamed ETH mints MARKEE through the RevNet, and the mint rate
-                  falls at each RevNet stage, so claiming later can mint less than shown now.
+                  falls at each RevNet stage, so claiming later can mint less than shown now. If a
+                  better price is available on Uniswap, the buyback hook can route your claim through
+                  it instead -- so you may actually receive more MARKEE than this estimate shows.
                 </InfoTip>
               )}
             </div>
