@@ -1515,6 +1515,15 @@ Then fetch /api/markee/leaderboards in the trigger component.
 Find the entry where address matches "${address}" (case-insensitive).
 Fields: topMessage, topMessageOwner, topFundsAddedRaw, minimumPrice, topMarkeeAddress
 
+This is the PUBLIC marketplace listing -- it only includes leaderboards that have completed Markee's
+own "Verify Embed" check, as a spam filter for the public listing, not a directory of every
+leaderboard that exists. A brand-new integration's address will not appear here yet -- that's
+expected, not a sign the address is wrong. Have the trigger component fall back to a "be first!"
+empty state when there's no match, not an error, and build the rest of this flow regardless.
+Verification itself only checks that the data-markee-address attribute is present in your
+server-rendered HTML (see the implementation notes below) -- it doesn't depend on this fetch
+succeeding. Once verified, this same code starts resolving real data automatically.
+
 ### On-chain reads
 Use wagmi useReadContract / useReadContracts for:
 - minimumPrice, maxMessageLength (in both components or passed as props)

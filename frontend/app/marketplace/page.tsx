@@ -57,7 +57,7 @@ interface Leaderboard {
   isLegacy?: boolean
   // Populated for boards with no inherent platform tag (the shared "For Sale" factory) so Served On
   // can be derived from actual verification instead of a creation-time tag.
-  linkedFiles?: { verified: boolean }[]
+  linkedFiles?: { verified: boolean; repoOwner?: string; repoFullName?: string }[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,15 +71,22 @@ function extractDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
+// GitHub-served boards show the repo org (matching ServedOnCell on /markee/[address]), not a flat
+// "GitHub" label -- falls back to that only if the verified linked file's repoOwner isn't available.
+function verifiedGithubOwner(lb: Leaderboard): string | null {
+  return (lb.linkedFiles ?? []).find(f => f.verified)?.repoOwner ?? null
+}
+
 function servedOnLabel(lb: Leaderboard): string {
-  if (lb.platform === 'github') return 'GitHub'
   if (lb.platform === 'superfluid') return 'Superfluid'
   if (lb.verifiedUrl) {
     const domain = extractDomain(lb.verifiedUrl)
     const extra = (lb.verifiedUrls?.length ?? 1) - 1
     return extra > 0 ? `${domain} +${extra}` : domain
   }
-  if ((lb.linkedFiles ?? []).some(f => f.verified)) return 'GitHub'
+  const githubOwner = verifiedGithubOwner(lb)
+  if (githubOwner) return githubOwner
+  if (lb.platform === 'github' || (lb.linkedFiles ?? []).some(f => f.verified)) return 'GitHub'
   return lb.leaderboardName || lb.address.slice(0, 8) + '...'
 }
 
