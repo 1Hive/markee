@@ -1,7 +1,8 @@
 // Contract addresses and configuration for Markee
 import { base } from 'wagmi/chains'
+import type { Chain } from 'viem'
 // All Markees are deployed on Base (canonical chain)
-export const CANONICAL_CHAIN = base
+export const CANONICAL_CHAIN: Chain = base
 export const CANONICAL_CHAIN_ID = base.id
 // Earliest known Markee factory deployment on Base; avoids scanning logs from genesis.
 export const BASE_MARKEE_EVENTS_FROM_BLOCK = 43_452_028n
@@ -33,7 +34,22 @@ export const FACTORIES = {
   SUPERFLUID: '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' as const,
   OPEN_INTERNET: '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const,
   GITHUB: '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const,
+  // Shared, vertical-agnostic factory for all fixed-price ("For Sale") creation going forward —
+  // mirrors how streaming ("For Rent") boards already aren't split by platform. New boards from here
+  // are verification-gated in /account (see verification-status route) since, unlike the three
+  // factories above, there's no legacy-migration reason to exempt them.
+  FOR_SALE: '0x861D9897eC47421aAFB6321Ee219E88ab485121f' as const,
 } as const
+
+// Block the "For Sale" factory was deployed at — scopes its creation-event getLogs scan instead of
+// walking the whole chain from genesis (tx 0x769a81d4f2be60a9e2dbb278358cf7d19abfcfe2d0a56187c5d7aa21f151c983).
+export const FOR_SALE_FACTORY_DEPLOY_BLOCK = 49_981_127n
+
+// StreamingLeaderboardFactory — deployment is gated on the Superfluid governance setAppRegistrationKey.
+// Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed factory address to light up the streaming listing +
+// create flow; unset/invalid keeps the feature hidden.
+export const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '') as `0x${string}` | ''
+export const STREAMING_ENABLED = /^0x[0-9a-fA-F]{40}$/.test(STREAMING_FACTORY)
 
 // Fixed-price strategy contracts (in use for the fixed-price messages on the home page)
 export const CONTRACTS = {

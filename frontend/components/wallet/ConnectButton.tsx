@@ -1,6 +1,8 @@
 'use client'
+import Link from 'next/link'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
-import { useState } from 'react'
+import { useAccount } from 'wagmi'
+import { useState, useEffect } from 'react'
 import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
@@ -16,10 +18,31 @@ function GlowDot() {
 }
 
 export function ConnectButton() {
-  const { authenticated, login, logout, user } = usePrivy()
+  const { authenticated, ready, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
+  const { address } = useAccount()
   const [menuOpen, setMenuOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  // Before Privy finishes checking for a stored session, `authenticated` just defaults to false --
+  // showing "Connect" here would read as "you're logged out" when the real answer is "still checking."
+  // A neutral pulsing placeholder (sized like the real button, so nothing shifts once it resolves)
+  // avoids that false flash on every fresh page load.
+  if (!mounted || !ready) {
+    return (
+      <div
+        aria-hidden
+        style={{
+          width: 92, height: 33, borderRadius: 8,
+          background: 'rgba(138,143,191,0.12)',
+          animation: 'shimmer 1.4s ease-in-out infinite',
+          flexShrink: 0,
+        }}
+      />
+    )
+  }
 
   if (!authenticated) {
     return (
@@ -38,7 +61,7 @@ export function ConnectButton() {
     )
   }
 
-  const displayAddress = wallets[0]?.address
+  const displayAddress = address ?? wallets[0]?.address
   const displayName = displayAddress
     ? `${displayAddress.slice(0, 6)}…${displayAddress.slice(-4)}`
     : user?.email?.address ?? 'Account'
@@ -104,7 +127,7 @@ export function ConnectButton() {
               boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
             }}
           >
-            <a
+            <Link
               href="/account"
               role="menuitem"
               onClick={() => setMenuOpen(false)}
@@ -118,7 +141,7 @@ export function ConnectButton() {
             >
               <LayoutDashboard size={15} color="#8A8FBF" />
               Dashboard
-            </a>
+            </Link>
             {displayAddress && (
               <button
                 type="button"

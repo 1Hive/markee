@@ -1,3 +1,5 @@
+import { appendFileSync } from "fs";
+
 const requiredEnvironment = [
   "GITHUB_REPOSITORY",
   "GITHUB_TOKEN",
@@ -24,7 +26,7 @@ const {
 } = process.env;
 
 const baseDomain = "markee.xyz";
-const stagingDomainPattern = /^staging-([1-9]\d*)\.markee\.xyz$/;
+const stagingDomainPattern = /^([1-9]\d*)staging\.markee\.xyz$/;
 const vercelApi = process.env.VERCEL_API_URL ?? "https://api.vercel.com";
 const githubApi = process.env.GITHUB_API_URL ?? "https://api.github.com";
 
@@ -124,7 +126,7 @@ const stagingDomains = (await listProjectDomains())
   .sort((left, right) => left.slot - right.slot);
 
 if (stagingDomains.length === 0) {
-  console.log("No staging-N.markee.xyz project domains exist yet");
+  console.log("No Nstaging.markee.xyz project domains exist yet");
 } else {
   console.log("Current staging domain assignments:");
   for (const domain of stagingDomains) {
@@ -156,8 +158,14 @@ const existingAssignment = stagingDomains.find(
   (domain) => domain.gitBranch === branchName,
 );
 
+function setOutput(domain) {
+  const outputFile = process.env.GITHUB_OUTPUT;
+  if (outputFile) appendFileSync(outputFile, `assigned_domain=${domain}\n`);
+}
+
 if (existingAssignment) {
   console.log(`${branchName} already uses https://${existingAssignment.name}`);
+  setOutput(existingAssignment.name);
   process.exit(0);
 }
 
@@ -179,7 +187,7 @@ for (const domain of stagingDomains) {
 let slot = 1;
 while (domainsBySlot.has(slot) && !availableSlots.has(slot)) slot += 1;
 
-const domainName = `staging-${slot}.${baseDomain}`;
+const domainName = `${slot}staging.${baseDomain}`;
 const existingDomain = domainsBySlot.get(slot);
 
 if (existingDomain) {
@@ -194,3 +202,5 @@ if (existingDomain) {
   }
   console.log(`Assigned new domain https://${domainName} to ${branchName}`);
 }
+
+setOutput(domainName);

@@ -9,7 +9,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
 import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useReactions } from '@/hooks/useReactions'
 import { useViews } from '@/hooks/useViews'
 import { PARTNERS } from '@/lib/contracts/usePartnerMarkees'
@@ -389,19 +389,16 @@ export default function PartnerPage() {
 
       <Footer />
 
-      <BuyMessageModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        userMarkee={selectedMarkee}
-        initialMode={modalMode}
-        onSuccess={handleTransactionSuccess}
-        strategyAddress={selectedMarkee
-          ? selectedMarkee.pricingStrategy as `0x${string}`
-          : partner.leaderboardAddress ?? undefined}
-        partnerName={partner.isCooperative ? undefined : partner.name}
-        partnerSplitPercentage={partner.isCooperative ? undefined : partner.percentToBeneficiary / 100}
-        topFundsAdded={markees[0]?.totalFundsAdded}
-      />
+      {partner.leaderboardAddress && (
+        <MarkeeSignModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSuccess={handleTransactionSuccess}
+          leaderboardAddress={partner.leaderboardAddress}
+          initialView={modalMode === 'addFunds' ? 'addFunds' : modalMode === 'updateMessage' ? 'edit' : undefined}
+          initialTargetAddress={selectedMarkee?.address}
+        />
+      )}
     </div>
   )
 }

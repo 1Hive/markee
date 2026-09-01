@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { formatEther } from 'viem'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -8,18 +8,15 @@ import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd } from '@/lib/utils'
-import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
+import { StrategyBadge } from '@/components/StrategyBadge'
+import { useStreamingRows } from '@/hooks/useStreamingRows'
+import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
+import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { ModeratedContent } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
-const BG     = '#060A2A'
-const BG2    = '#0A0F3D'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
-const MUTED  = '#8A8FBF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface GithubLeaderboard {
@@ -35,6 +32,16 @@ interface GithubLeaderboard {
   repoFullName: string | null
   repoAvatarUrl: string | null
   githubTrafficViews: number | null
+  strategy?: Strategy
+  effectiveRateRaw?: string
+  admin?: string
+  creator?: string | null
+}
+
+function rowEffectiveRate(lb: GithubLeaderboard): bigint {
+  return lb.strategy === 'streaming'
+    ? BigInt(lb.effectiveRateRaw || '0')
+    : imputeEffectiveRate(BigInt(lb.totalFundsRaw || '0'))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -79,6 +86,7 @@ function TableRow({
 }) {
   const [hover, setHover] = useState(false)
   const views = lb.githubTrafficViews ?? 0
+  const isStreaming = lb.strategy === 'streaming'
 
   const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
   const totalLabel = ethPrice ? formatUsd(totalEth * ethPrice) : `${totalEth.toFixed(3)} ETH`
@@ -101,13 +109,13 @@ function TableRow({
   }
 
   return (
-    <a
+    <Link
       href={`/markee/${lb.address}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: '190px 110px 1fr 74px 120px',
+        gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -140,10 +148,12 @@ function TableRow({
       </span>
 
       {/* CURRENT MESSAGE */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
-        </div>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+          <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
+          </div>
+        </ModeratedContent>
       </div>
 
       {/* VIEWS */}
@@ -154,7 +164,11 @@ function TableRow({
 
       {/* PRICE TO CHANGE */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {hasTopFunds ? (
+        {isStreaming ? (
+          <span style={{ width: '100%', textAlign: 'center', background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>
+            Stream →
+          </span>
+        ) : hasTopFunds ? (
           <button
             onClick={e => { e.preventDefault(); e.stopPropagation(); onBuy() }}
             style={{
@@ -192,7 +206,11 @@ function TableRow({
           <span style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textAlign: 'right', width: '100%', display: 'block' }}>—</span>
         )}
       </div>
-    </a>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} iconOnly />
+      </div>
+    </Link>
   )
 }
 
@@ -216,12 +234,25 @@ export default function GithubPlatformPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const tableRows = [...leaderboards]
+  const streaming = useStreamingRows('github')
+  const streamRows: GithubLeaderboard[] = useMemo(
+    () => streaming.map(row => ({
+      ...row,
+      repoVerified: false,
+      repoFullName: null,
+      repoAvatarUrl: null,
+      githubTrafficViews: null,
+    })),
+    [streaming],
+  )
+
+  // Fixed-price and streaming rank together on effectiveRate (imputed for fixed, on-chain for streaming).
+  const tableRows = [...leaderboards.map(lb => ({ ...lb, strategy: lb.strategy ?? ('fixed' as const) })), ...streamRows]
     .filter(lb => BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage)
     .sort((a, b) => {
-      const af = BigInt(a.totalFundsRaw || '0')
-      const bf = BigInt(b.totalFundsRaw || '0')
-      return bf > af ? 1 : bf < af ? -1 : 0
+      const ar = rowEffectiveRate(a)
+      const br = rowEffectiveRate(b)
+      return br > ar ? 1 : br < ar ? -1 : 0
     })
 
   const totalEth = parseFloat(totalPlatformFunds)
@@ -231,7 +262,7 @@ export default function GithubPlatformPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
 
       {/* ── Hero ── */}
       <section style={{ position: 'relative', padding: '72px 40px 56px', borderBottom: `1px solid ${BORDER}`, overflow: 'hidden' }}>
@@ -390,7 +421,7 @@ export default function GithubPlatformPage() {
           {/* Column headers */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '190px 110px 1fr 74px 120px',
+            gridTemplateColumns: '190px 110px 1fr 74px 120px 24px',
             gap: 16,
             padding: '11px 14px',
             borderBottom: `1px solid ${BORDER}`,
@@ -402,15 +433,17 @@ export default function GithubPlatformPage() {
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Current Message</span>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>Views</span>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Price to Change</span>
+            <span />
           </div>
 
           {/* Rows */}
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 120px 24px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5].map(j => (
                   <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
+                <div />
               </div>
             ))
           ) : tableRows.length === 0 ? (
@@ -481,12 +514,9 @@ export default function GithubPlatformPage() {
       <Footer />
 
       {buyModal && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          initialMode="create"
-          strategyAddress={buyModal.address as `0x${string}`}
-          topFundsAdded={buyModal.topFundsAdded}
-          platformId="github"
+          leaderboardAddress={buyModal.address}
           onClose={() => setBuyModal(null)}
           onSuccess={() => setBuyModal(null)}
         />

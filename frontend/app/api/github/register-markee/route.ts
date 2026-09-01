@@ -1,44 +1,33 @@
 // app/api/github/register-markee/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
-async function getGithubToken(uid: string): Promise<string | null> {
-  const raw = await kv.get(`github:user:${uid}`)
-  if (!raw) return null
-  const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, string>)
-  return data?.accessToken ?? null
-}
-
+// A timeout or missing file both just mean "not verified yet" here (the panel's own "Check Now"
+// retries with the same bounded fetch), so this stays a plain boolean unlike verify-markee-file's
+// explicit check, which needs to tell the user apart from a genuine not-found.
 async function checkDelimiters(
   token: string,
   repoFullName: string,
   filePath: string,
   leaderboardAddress: string,
 ): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
-      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' } }
-    )
-    if (!res.ok) return false
-    const content = await res.text()
-    const legacyAddrs = legacyAddressesFor(leaderboardAddress)
-    return (content.includes(startDelimiter(leaderboardAddress)) && content.includes(endDelimiter(leaderboardAddress))) ||
-           legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old))) ||
-           (/<!-- MARKEE:START:0x[0-9a-fA-F]{40} -->/.test(content) && /<!-- MARKEE:END:0x[0-9a-fA-F]{40} -->/.test(content))
-  } catch {
-    return false
-  }
+  const result = await fetchGithubFileContent(repoFullName, filePath, token)
+  if (!result.ok) return false
+  const legacyAddrs = legacyAddressesFor(leaderboardAddress)
+  return hasDelimiterPair(result.content, leaderboardAddress) || legacyAddrs.some(old => hasDelimiterPair(result.content, old))
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const uid = request.cookies.get('github_uid')?.value
-    if (!uid) return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
+    const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+    if (!session) return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
 
-    const token = await getGithubToken(uid)
-    if (!token) return NextResponse.json({ error: 'GitHub token not found — please reconnect' }, { status: 401 })
+    const token = session.accessToken
+    // Persist the GitHub numeric id, never the session id, because update-markee-file
+    // and traffic resolve tokens by `github:user:{id}` from these records.
+    const uid = session.githubUserId
 
     const body = await request.json().catch(() => null)
     const { leaderboardAddress, repoFullName, filePath } = (body ?? {}) as {
@@ -60,6 +49,11 @@ export async function POST(request: NextRequest) {
     const repoData = await repoRes.json()
     if (!repoData.permissions?.push)
       return NextResponse.json({ error: `You need push access to ${repoFullName}` }, { status: 403 })
+    // Markee's whole point is public visibility, so a private repo's file was never a valid
+    // verification target -- this is the hard enforcement point (my-repos filters the picker,
+    // repo-files backstops the file-list step, this is what actually persists a link).
+    if (repoData.private)
+      return NextResponse.json({ error: 'Private repositories can\'t be linked to a Markee' }, { status: 403 })
 
     // Check for address-specific delimiters
     const verified = await checkDelimiters(token, repoData.full_name, filePath, normalizedAddress)
@@ -84,7 +78,6 @@ export async function POST(request: NextRequest) {
     await saveLinkedFiles(normalizedAddress, existing)
 
     // Write reverse-lookup key so traffic/route.ts can resolve address → repo + token owner.
-    // Keyed by normalizedAddress; uid is stored as a string (consistent with github:user:{uid}).
     await kv.set(
       `github:contract:${normalizedAddress}`,
       { owner: repoData.owner.login, repo: repoData.name, githubUserId: uid },

@@ -9,13 +9,16 @@ import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
-import { BuyMessageModal, type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { type MarkeeSlot } from '@/components/modals/BuyMessageModal'
+import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { useViews } from '@/hooks/useViews'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
+import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
@@ -140,6 +143,7 @@ export default function WebsiteLeaderboardPage() {
   const leaderboardName  = meta?.[0]?.result as string | undefined
   const totalFunds       = meta?.[1]?.result as bigint | undefined
   const markeeCount      = meta?.[2]?.result as bigint | undefined
+  const boardAdmin       = meta?.[4]?.result as string | undefined
   const topResult        = meta?.[6]?.result as [string[], bigint[]] | undefined
   const topAddresses     = topResult?.[0] ?? []
   const topFunds         = topResult?.[1] ?? []
@@ -315,7 +319,12 @@ export default function WebsiteLeaderboardPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
-                  <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">{topMarkee.message}</p>
+                  <div className="flex items-start gap-2">
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+                      <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">{topMarkee.message}</p>
+                    </ModeratedContent>
+                    <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} compact />
+                  </div>
                   <div className="flex items-center gap-4 mt-3">
                     {topMarkee.name && <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
@@ -418,6 +427,7 @@ export default function WebsiteLeaderboardPage() {
                   rank={idx + 1}
                   formatFunds={formatFunds}
                   leaderboardAddress={leaderboardAddress}
+                  boardAdmin={boardAdmin}
                   trackView={trackView}
                   viewCount={views.get(markee.address.toLowerCase())?.totalViews}
                   onAddFunds={NETWORK_PAUSED ? undefined : () => { setSelectedMarkee(markee); setInitialMode('addFunds'); setBuyModalOpen(true) }}
@@ -432,12 +442,11 @@ export default function WebsiteLeaderboardPage() {
       <Footer />
 
       {buyModalOpen && (
-        <BuyMessageModal
+        <MarkeeSignModal
           isOpen={true}
-          strategyAddress={leaderboardAddress}
-          userMarkee={selectedMarkee}
-          topFundsAdded={markees[0]?.totalFundsAdded}
-          initialMode={initialMode}
+          leaderboardAddress={leaderboardAddress}
+          initialView={initialMode === 'addFunds' ? 'addFunds' : initialMode === 'updateMessage' ? 'edit' : undefined}
+          initialTargetAddress={selectedMarkee?.address}
           onClose={() => { setBuyModalOpen(false); setSelectedMarkee(null); setInitialMode(undefined) }}
           onSuccess={refetch}
         />

@@ -1,22 +1,14 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor } from '@/lib/github/linkedFiles'
-
-async function getGithubToken(uid: string): Promise<string | null> {
-  const raw = await kv.get(`github:user:${uid}`)
-  if (!raw) return null
-  const data = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, string>)
-  return data?.accessToken ?? null
-}
+import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent } from '@/lib/github/linkedFiles'
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 export async function POST(request: NextRequest) {
   try {
-    const uid = request.cookies.get('github_uid')?.value
-    if (!uid) return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
+    const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+    if (!session) return NextResponse.json({ error: 'Not authenticated with GitHub' }, { status: 401 })
 
-    const token = await getGithubToken(uid)
-    if (!token) return NextResponse.json({ error: 'GitHub token not found — please reconnect' }, { status: 401 })
+    const token = session.accessToken
 
     const body = await request.json().catch(() => null)
     const { leaderboardAddress, repoFullName, filePath } = (body ?? {}) as {
@@ -25,22 +17,22 @@ export async function POST(request: NextRequest) {
     if (!leaderboardAddress || !repoFullName || !filePath)
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
-    const fileRes = await fetch(
-      `https://api.github.com/repos/${repoFullName}/contents/${encodeURIComponent(filePath)}`,
-      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3.raw' } }
-    )
-    if (!fileRes.ok)
-      return NextResponse.json({ error: `Could not fetch file from GitHub (${fileRes.status})` }, { status: 400 })
+    const fileResult = await fetchGithubFileContent(repoFullName, filePath, token)
+    if (!fileResult.ok) {
+      return NextResponse.json(
+        { error: fileResult.reason === 'timeout'
+          ? 'GitHub took too long to respond — try again in a moment.'
+          : `Could not fetch the file from GitHub (${fileResult.status}) — check it still exists at that path.` },
+        { status: 400 },
+      )
+    }
 
-    const content = await fileRes.text()
+    const content = fileResult.content
     const normalizedNew = leaderboardAddress.toLowerCase()
     const legacyAddrs = legacyAddressesFor(normalizedNew)
-    const anyMarkeeBlock = /<!-- MARKEE:START:0x[0-9a-fA-F]{40} -->/.test(content) &&
-                           /<!-- MARKEE:END:0x[0-9a-fA-F]{40} -->/.test(content)
     const verified =
-      (content.includes(startDelimiter(normalizedNew)) && content.includes(endDelimiter(normalizedNew))) ||
-      legacyAddrs.some(old => content.includes(startDelimiter(old)) && content.includes(endDelimiter(old))) ||
-      anyMarkeeBlock
+      hasDelimiterPair(content, normalizedNew) ||
+      legacyAddrs.some(old => hasDelimiterPair(content, old))
 
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoFullName && e.filePath === filePath)

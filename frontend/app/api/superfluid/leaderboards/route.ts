@@ -3,7 +3,10 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
+import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
 const BASELINE_PREFIX = 'superfluid:s6:baseline:'
@@ -20,6 +23,8 @@ const SUPERFLUID_FACTORY_ADDRESS = '0xC497187AAa35C26b0008B43C10A6F6300b7eBcad' 
 // v1.3 Superfluid leaderboard (migrated from v1.2 via migrate-to-v13.sh)
 const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as `0x${string}`
 
+// Scopes getLogs to just creation events instead of every log the factory has ever emitted
+// (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
 // Leaderboards excluded from totalPlatformFunds — clearly gamed with recycled ETH
 const GAMED_LEADERBOARD_ADDRESSES = new Set([
   '0x1b4eb52953d865e0dde1c856c2ead826581e2904', // Vivek wants to play (120 ETH)
@@ -36,40 +41,6 @@ const GAMED_LEADERBOARD_ADDRESSES = new Set([
   '0x4ad89044f5f3f324935747a4bce7ba7954d2aaa4', // Gvv (2 ETH)
   '0xc936a036b7727865a696398de30f616be98e266b', // Sup (2 ETH)
 ])
-
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: 'offset', type: 'uint256' },
-      { name: 'limit', type: 'uint256' },
-    ],
-    name: 'getLeaderboards',
-    outputs: [{ name: 'result', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const LEADERBOARD_ABI = [
-  { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  {
-    inputs: [{ name: 'limit', type: 'uint256' }],
-    name: 'getTopMarkees',
-    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const MARKEE_ABI = [
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-] as const
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 
@@ -88,51 +59,6 @@ function getClient() {
 // that called createLeaderboard. Results are cached permanently in KV since
 // creator never changes.
 
-async function resolveCreators(
-  client: ReturnType<typeof getClient>,
-  addresses: readonly `0x${string}`[],
-): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:sf:${a.toLowerCase()}`)
-  const cached = await kv.mget<(string | null)[]>(...keys)
-
-  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
-  if (missingIndices.length === 0) return cached
-
-  try {
-    const logs = await client.getLogs({
-      address: SUPERFLUID_FACTORY_ADDRESS,
-      fromBlock: 0n,
-      toBlock: 'latest',
-    })
-
-    // topics[1] = leaderboard address (first indexed param in the factory event)
-    const lbToTxHash = new Map<string, `0x${string}`>()
-    for (const log of logs) {
-      if (log.topics[1]) {
-        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
-        lbToTxHash.set(addr, log.transactionHash)
-      }
-    }
-
-    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
-    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
-    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
-    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
-
-    await Promise.all(missingIndices.map(i => {
-      const addr = addresses[i].toLowerCase()
-      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
-      if (creator) {
-        cached[i] = creator
-        return kv.set(keys[i], creator) // no TTL — creator never changes
-      }
-    }))
-  } catch (e: any) {
-    console.error('[superfluid/leaderboards] creator lookup error:', e.message)
-  }
-
-  return cached
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -151,7 +77,7 @@ export async function GET(request: Request) {
 
     const addresses = await client.readContract({
       address: SUPERFLUID_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
+      abi: LeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }) as `0x${string}`[]
@@ -176,13 +102,13 @@ export async function GET(request: Request) {
 
     // 2. Multicall — fetch metadata for each leaderboard (7 calls per address)
     const metaCalls = addresses.flatMap(addr => [
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },        // b+0
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },  // b+1
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },            // b+2
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },           // b+3
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'admin' as const },                  // b+4
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'beneficiaryAddress' as const },     // b+5
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] }, // b+6
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },        // b+0
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const },  // b+1
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const },            // b+2
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'minimumPrice' as const },           // b+3
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'admin' as const },                  // b+4
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'beneficiaryAddress' as const },     // b+5
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] }, // b+6
     ])
 
     const metaResults = await chunkedMulticall(metaCalls as Parameters<typeof client.multicall>[0]['contracts'])
@@ -196,8 +122,8 @@ export async function GET(request: Request) {
     const markeeCalls = topMarkeeAddresses.flatMap(addr =>
       addr
         ? [
-            { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
-            { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
+            { address: addr, abi: MarkeeABI, functionName: 'message' as const },
+            { address: addr, abi: MarkeeABI, functionName: 'name' as const },
           ]
         : []
     )
@@ -206,7 +132,12 @@ export async function GET(request: Request) {
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'sf',
+        factories: [SUPERFLUID_FACTORY_ADDRESS],
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+        logLabel: 'superfluid/leaderboards',
+      }),
       boostedListPromise,
     ])
 

@@ -1,6 +1,8 @@
 // frontend/app/api/github/my-repos/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
+
+export const dynamic = 'force-dynamic'
 
 interface GitHubRepo {
   id: number
@@ -14,17 +16,12 @@ interface GitHubRepo {
 }
 
 export async function GET(request: NextRequest) {
-  const uid = request.cookies.get('github_uid')?.value
-  if (!uid) {
+  const session = await resolveSession(request.cookies.get(SESSION_COOKIE)?.value)
+  if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
-  const raw = await kv.get<string>(`github:user:${uid}`)
-  if (!raw) {
-    return NextResponse.json({ error: 'Session expired' }, { status: 401 })
-  }
-
-  const { accessToken } = typeof raw === 'string' ? JSON.parse(raw) : raw
+  const { accessToken } = session
 
   // Fetch all repos the user can push to (own + org + collaborator)
   // GitHub paginates at 100 — fetch first 2 pages (200 repos) which covers 99% of cases
@@ -45,8 +42,12 @@ export async function GET(request: NextRequest) {
   const [page1, page2] = await Promise.all([fetchPage(1), fetchPage(2)])
   const all = [...page1, ...page2]
 
-  // Return all repos — push access check happens server-side at register time
+  // Private repos are excluded, not just unverifiable -- Markee's whole point is public visibility,
+  // so linking a private repo's file never made sense even before the OAuth scope narrowed to
+  // public_repo. register-markee enforces this too (defense in depth); filtering here means a user
+  // never sees a repo they couldn't actually link in the first place.
   const repos = all
+    .filter(r => !r.private)
     .map(r => ({
       id: r.id,
       fullName: r.full_name,

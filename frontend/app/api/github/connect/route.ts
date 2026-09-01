@@ -7,6 +7,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   // Caller passes ?returnTo=modal to get redirected back into the modal after OAuth
   const returnTo = searchParams.get('returnTo') ?? ''
+  // ?popup=1: opened via window.open() rather than a full-page nav (GitHubVerify's Connect/Change
+  // account flow) -- the callback responds with a postMessage + window.close() page instead of a
+  // redirect, so the host page/modal never navigates away.
+  const popup = searchParams.get('popup') === '1'
 
   const state = crypto.randomBytes(16).toString('hex')
 
@@ -17,15 +21,15 @@ export async function GET(request: NextRequest) {
   // Store state with returnTo payload — 10-minute TTL
   await kv.set(
     `github:oauth:state:${state}`,
-    JSON.stringify({ returnTo, origin }),
+    JSON.stringify({ returnTo, origin, popup }),
     { ex: 600 }
   )
 
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID!,
     redirect_uri: process.env.GITHUB_REDIRECT_URI!,
-    // `repo` already includes `public_repo` — requesting both is redundant
-    scope: 'repo read:org',
+    // Markee only ever writes a message block into a public README, so private access is never needed
+    scope: 'public_repo read:org',
     state,
   })
 

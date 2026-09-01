@@ -1,11 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatEther } from 'viem'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { useEthPrice } from '@/hooks/useEthPrice'
+import { StrategyPreviewCard } from '@/components/StrategyPreviewCard'
+import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -60,9 +63,6 @@ function Hero() {
     <section style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${C.border}` }}>
       <div className="starfield-bg" />
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 1100, margin: '0 auto', padding: '80px 40px 64px', textAlign: 'center' as const }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: C.muted, marginBottom: 20, padding: '6px 14px', background: 'rgba(248,151,254,0.07)', border: `1px solid rgba(248,151,254,0.2)`, borderRadius: 99 }}>
-          Raise Funding
-        </div>
         <h1 style={{ margin: 0, fontSize: 'clamp(34px,5.5vw,60px)', fontWeight: 800, letterSpacing: -2, lineHeight: 1.04, color: C.text }}>
           Add Markee to your site<br/>and start <span style={{ color: C.pink }}>earning</span>
         </h1>
@@ -96,6 +96,10 @@ function fmtUsd(n: number): string {
 function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
   return (
     <section style={{ maxWidth: 1100, margin: '0 auto', padding: '56px 40px 16px' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 18 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+        Raise Funding
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
         {PLATFORMS.map(p => (
           <div key={p.key} style={{
@@ -123,15 +127,23 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
             {/* Stats */}
             <div style={{ display: 'flex', gap: 24, flexShrink: 0, paddingLeft: 8, borderLeft: `1px solid ${C.border}` }}>
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
-                  {stats[p.key] != null ? stats[p.key].markees.toLocaleString() : '—'}
-                </div>
+                {stats[p.key] != null ? (
+                  <div style={{ color: C.text, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
+                    {stats[p.key].markees.toLocaleString()}
+                  </div>
+                ) : (
+                  <div style={{ width: 36, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', animation: 'shimmer 1.4s ease-in-out infinite', margin: '0 auto' }} />
+                )}
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>active signs</div>
               </div>
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
-                  {stats[p.key] != null ? fmtUsd(stats[p.key].usd) : '—'}
-                </div>
+                {stats[p.key] != null ? (
+                  <div style={{ color: C.blue, fontWeight: 700, fontFamily: MONO, fontSize: 15 }}>
+                    {fmtUsd(stats[p.key].usd)}
+                  </div>
+                ) : (
+                  <div style={{ width: 44, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', animation: 'shimmer 1.4s ease-in-out infinite', margin: '0 auto' }} />
+                )}
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>raised</div>
               </div>
             </div>
@@ -151,7 +163,7 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
               >
                 Learn More
               </Link>
-              <Link href={`/create-a-markee?platform=${p.key}`} style={{
+              <Link href="/create-a-markee" style={{
                 background: C.pink, color: C.bg, border: 'none',
                 borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700,
                 textDecoration: 'none', whiteSpace: 'nowrap' as const,
@@ -169,33 +181,90 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
 }
 
 // ── How it works ──────────────────────────────────────────────────────────────
+// ── Strategy explainer card — same visual language as create-a-markee's selectable cards, adapted
+// for a link instead of a form selection (no persistent "selected" state to track here). ──
+// Same card create-a-markee's own strategy picker uses -- not a lookalike. Selecting there advances a
+// wizard; here there's no wizard to advance, so onSelect navigates into create-a-markee with that
+// strategy pre-picked instead (?strategy=..., which that page's own useEffect already reads).
+function StrategyExplainerCards() {
+  const router = useRouter()
+  const [strategyViews, setStrategyViews] = useState<{ fixed: number; streaming: number } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/views/strategy-totals')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && typeof d.fixed === 'number') setStrategyViews(d) })
+      .catch(() => {})
+  }, [])
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+      <StrategyPreviewCard strategyKey="fixed" selected={false} onSelect={() => router.push('/create-a-markee?strategy=fixed')} viewCount={strategyViews?.fixed} />
+      <StrategyPreviewCard strategyKey="streaming" selected={false} disabled={!STREAMING_ENABLED} onSelect={() => router.push('/create-a-markee?strategy=streaming')} viewCount={strategyViews?.streaming} />
+    </div>
+  )
+}
+
 function HowItWorks() {
   const steps = [
-    { n: '01', t: 'Choose your platform', d: 'Pick where your Markee will be embedded.' },
-    { n: '02', t: 'Set up your sign', d: 'Add your info and a wallet to receive funds.' },
-    { n: '03', t: 'Activate your Markee', d: 'Embed to your site in just a few clicks.' },
+    {
+      n: '01',
+      t: 'Set up your sign',
+      d: 'Every Markee is either For Sale or For Rent -- pick whichever fits how you want to get paid, then add a name and funding recipient.',
+      extra: (
+        <div style={{ marginTop: 20 }}>
+          <StrategyExplainerCards />
+          <p style={{ margin: '18px 0 0', color: C.text2, fontSize: 13.5, lineHeight: 1.6, maxWidth: '60ch' }}>
+            Either way, the top funded message wins the spot. The difference is how payment works: For Sale is a one-time price; For Rent streams payment continuously, so the winner only pays for the time their message is actually featured.
+          </p>
+          <p style={{ margin: '10px 0 0', color: C.muted, fontSize: 13, lineHeight: 1.6, maxWidth: '60ch' }}>
+            <strong style={{ color: C.text2 }}>Our take:</strong> For Rent suits most signs best — it's more buyer-friendly, since nobody pays for a message that isn't winning. For Sale tends to fit best when you're expecting one large, one-off sponsorship rather than ongoing bidding.
+          </p>
+        </div>
+      ),
+    },
+    { n: '02', t: 'Activate your Markee', d: 'Buy the first message to activate.' },
+    { n: '03', t: 'Embed to your site', d: 'Push your Markee live and start earning.' },
   ]
   return (
     <section id="how" style={{ borderTop: `1px solid ${C.border}`, background: C.bg2 }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '72px 40px' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 14 }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '72px 40px' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 14 }}>
           <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
           How it works
         </div>
         <h2 style={{ margin: '0 0 12px', fontSize: 'clamp(26px,3.6vw,38px)', fontWeight: 800, letterSpacing: -0.8, color: C.text }}>Embed a paid message to any digital space</h2>
-        <p style={{ margin: 0, color: C.text2, fontSize: 16, lineHeight: 1.6, maxWidth: '60ch' }}>
-          Cross-platform, non-intrusive, and kinda fun for people to see.
+        <p style={{ margin: '0 0 48px', color: C.text2, fontSize: 16, lineHeight: 1.6, maxWidth: '60ch' }}>
+          Cross-platform, non-intrusive, and fun for your site's visitors.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, margin: '34px 0 36px' }}>
-          {steps.map(s => (
-            <div key={s.n} style={{ background: 'rgba(6,10,42,0.5)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '20px 22px' }}>
-              <div style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 13, color: C.pink, fontWeight: 700, marginBottom: 10 }}>{s.n}</div>
-              <div style={{ color: C.text, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>{s.t}</div>
-              <div style={{ color: C.muted, fontSize: 13, lineHeight: 1.5 }}>{s.d}</div>
+        <div style={{ display: 'flex', flexDirection: 'column' as const }}>
+          {steps.map((s, i) => (
+            <div key={s.n} style={{ display: 'flex', gap: 24 }}>
+              {/* Rail: numbered dot + connecting line */}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', flexShrink: 0 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 99, flexShrink: 0,
+                  background: `${C.pink}14`, border: `1.5px solid ${C.pink}`, color: C.pink,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: MONO, fontWeight: 700, fontSize: 14,
+                  boxShadow: `0 0 16px rgba(248,151,254,0.25)`,
+                }}>
+                  {s.n}
+                </div>
+                {i < steps.length - 1 && (
+                  <div style={{ width: 1.5, flex: 1, minHeight: 40, background: `linear-gradient(${C.pink}66, ${C.border})`, margin: '6px 0' }} />
+                )}
+              </div>
+              {/* Content */}
+              <div style={{ paddingBottom: i < steps.length - 1 ? 40 : 0, flex: 1, minWidth: 0 }}>
+                <div style={{ color: C.text, fontWeight: 700, fontSize: 20, marginBottom: 8, paddingTop: 6 }}>{s.t}</div>
+                <div style={{ color: C.text2, fontSize: 14.5, lineHeight: 1.6, maxWidth: '54ch' }}>{s.d}</div>
+                {s.extra}
+              </div>
             </div>
           ))}
         </div>
-        <Link href="/create-a-markee" style={{ background: C.pink, color: C.bg, borderRadius: 10, padding: '13px 28px', fontSize: 15, fontWeight: 700, textDecoration: 'none', boxShadow: '0 8px 32px rgba(248,151,254,0.3)', display: 'inline-flex', alignItems: 'center' }}>
+        <Link href="/create-a-markee" style={{ marginTop: 44, background: C.pink, color: C.bg, borderRadius: 10, padding: '13px 28px', fontSize: 15, fontWeight: 700, textDecoration: 'none', boxShadow: '0 8px 32px rgba(248,151,254,0.3)', display: 'inline-flex', alignItems: 'center' }}>
           Create a Markee →
         </Link>
       </div>
@@ -235,6 +304,7 @@ function IntegrateForm() {
   const inputStyle: React.CSSProperties = {
     width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
     padding: '12px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box',
+    fontFamily: 'Manrope, system-ui, sans-serif',
   }
   const labelStyle: React.CSSProperties = {
     display: 'block', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11,
@@ -350,7 +420,7 @@ export default function RaiseFunding() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
-      <Header activePage="raise" useRegularLinks />
+      <Header activePage="raise" />
       <Hero />
       <PlatformPicker stats={platStats} />
       <HowItWorks />

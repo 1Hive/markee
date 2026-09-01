@@ -3,7 +3,11 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
+import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
+import { STREAMING_BASE } from '@/lib/superfluid/streaming'
+import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,22 +24,22 @@ const LEADERBOARD_ABI = [
   },
 ] as const
 
-const MARKEE_ABI = [
-  { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-] as const
-
-// Emitted by individual markee contracts when anyone adds funds
+// Emitted by individual markee contracts when anyone adds funds (v1.1+ standalone-markee boards).
 const FUNDS_ADDED_EVENT = parseAbiItem(
   'event FundsAdded(uint256 amount, uint256 newTotal, address indexed addedBy)'
+)
+
+// Older partner-strategy boards (e.g. Gardens) emit funds-added from the *leaderboard* contract
+// itself, keyed by markee address, rather than from each markee's own contract. Same intent,
+// different shape -- both must be scanned or partner-board contributions silently disappear.
+const LEGACY_FUNDS_ADDED_EVENT = parseAbiItem(
+  'event FundsAdded(address indexed markeeAddress, address indexed addedBy, uint256 amount, uint256 newMarkeeTotal)'
 )
 
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org', {
+    transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org', {
       fetchOptions: { cache: 'no-store' },
     }),
   })
@@ -54,34 +58,65 @@ async function chunkedMulticall(
   return results
 }
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const owner = searchParams.get('owner')?.toLowerCase()
-  if (!owner || !/^0x[0-9a-f]{40}$/.test(owner)) {
-    return NextResponse.json({ error: 'Invalid owner' }, { status: 400 })
-  }
+interface FundedMessage {
+  address: string
+  message: string
+  name: string
+  totalFundsAdded: string
+  totalContributed: string
+  strategyId: string
+  strategyName: string
+  isTop: boolean
+  topFundsRaw: string
+  strategy: 'fixed' | 'streaming'
+  rank: number | null
+  flowRateRaw: string
+  platform: string | null
+  admin: string | null
+  verifiedUrls: string[]
+  linkedFiles: unknown[]
+  siteUrl: string | null
+  repoFullName: string | null
+  repoHtmlUrl: string | null
+}
 
-  // Fetch all platform leaderboards
+type Board = {
+  address: string
+  name: string
+  topMarkeeAddress: string | null
+  topFundsAddedRaw: string
+  platform?: string
+  admin?: string
+  verifiedUrls?: string[]
+  linkedFiles?: unknown[]
+  siteUrl?: string | null
+  repoFullName?: string | null
+  repoHtmlUrl?: string | null
+}
+
+// Lump-sum boards: a backer is whoever emitted FundsAdded on a markee.
+async function fixedFunded(
+  client: ReturnType<typeof getClient>,
+  owner: string,
+  origin: string,
+  headers: HeadersInit,
+): Promise<FundedMessage[]> {
   const [sfData, ghData, oiData] = await Promise.all([
-    fetch(`${origin}/api/superfluid/leaderboards`).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/github/leaderboards`).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/openinternet/leaderboards`).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/superfluid/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/github/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/openinternet/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
   ])
 
-  const leaderboards: Array<{
-    address: string
-    name: string
-    topMarkeeAddress: string | null
-    topFundsAddedRaw: string
-  }> = [
-    ...(sfData?.leaderboards ?? []),
+  const leaderboards: Board[] = [
+    // See messages/route.ts for why superfluid's own listing route needs platform/verification
+    // fields backfilled here -- it carries neither today, and streaming-strategy boards are
+    // always verification-gated regardless, so empty is correct.
+    ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
   ].filter((lb: any) => lb.markeeCount > 0)
 
-  if (leaderboards.length === 0) return NextResponse.json({ funded: [] })
-
-  const client = getClient()
+  if (leaderboards.length === 0) return []
 
   // Get all markee addresses from every leaderboard
   const markeeListResults = await chunkedMulticall(
@@ -96,35 +131,58 @@ export async function GET(request: Request) {
 
   type Entry = { lbIndex: number; markeeAddress: `0x${string}` }
   const entries: Entry[] = []
+  const lbRankMaps = new Map<number, Map<string, number>>()
   for (let i = 0; i < leaderboards.length; i++) {
     const addrs = (markeeListResults[i]?.result as string[]) ?? []
+    const ranks = new Map<string, number>()
+    let rank = 1
     for (const addr of addrs) {
       if (addr && addr !== '0x0000000000000000000000000000000000000000') {
         entries.push({ lbIndex: i, markeeAddress: addr as `0x${string}` })
+        ranks.set(addr.toLowerCase(), rank++)
       }
     }
+    lbRankMaps.set(i, ranks)
   }
 
-  if (entries.length === 0) return NextResponse.json({ funded: [] })
+  if (entries.length === 0) return []
 
   const allMarkeeAddresses = [...new Set(entries.map(e => e.markeeAddress))]
+  const allLeaderboardAddresses = leaderboards.map(lb => lb.address as `0x${string}`)
 
-  // Query FundsAdded on all markee contracts filtered by addedBy == owner
-  const fundsAddedLogs = await client.getLogs({
-    address: allMarkeeAddresses,
-    event: FUNDS_ADDED_EVENT,
-    args: { addedBy: owner as `0x${string}` },
-    fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
-    toBlock: 'latest',
-  }).catch(() => [])
+  // Query both FundsAdded shapes filtered by addedBy == owner: per-markee-contract (v1.1+ boards)
+  // and per-leaderboard-contract keyed by markeeAddress (older partner-strategy boards).
+  const [fundsAddedLogs, legacyFundsAddedLogs] = await Promise.all([
+    client.getLogs({
+      address: allMarkeeAddresses,
+      event: FUNDS_ADDED_EVENT,
+      args: { addedBy: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+      toBlock: 'latest',
+    }).catch(() => []),
+    client.getLogs({
+      address: allLeaderboardAddresses,
+      event: LEGACY_FUNDS_ADDED_EVENT,
+      args: { addedBy: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+      toBlock: 'latest',
+    }).catch(() => []),
+  ])
 
-  if (fundsAddedLogs.length === 0) return NextResponse.json({ funded: [] })
+  if (fundsAddedLogs.length === 0 && legacyFundsAddedLogs.length === 0) return []
 
   // Aggregate total contributed by user per markee
   const markeeContribs = new Map<string, bigint>()
   for (const log of fundsAddedLogs) {
     const addr = log.address.toLowerCase()
     const amount = (log.args as { amount: bigint }).amount ?? 0n
+    markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
+  }
+  for (const log of legacyFundsAddedLogs) {
+    const args = log.args as { markeeAddress?: string; amount?: bigint }
+    if (!args.markeeAddress) continue
+    const addr = args.markeeAddress.toLowerCase()
+    const amount = args.amount ?? 0n
     markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
   }
 
@@ -135,7 +193,7 @@ export async function GET(request: Request) {
     client,
     fundedAddrs.map(addr => ({
       address: addr as `0x${string}`,
-      abi: MARKEE_ABI,
+      abi: MarkeeABI,
       functionName: 'owner' as const,
     })),
   )
@@ -145,26 +203,31 @@ export async function GET(request: Request) {
     return markeeOwner !== owner
   })
 
-  if (externalAddrs.length === 0) return NextResponse.json({ funded: [] })
+  if (externalAddrs.length === 0) return []
 
   // Fetch message, name, totalFundsAdded for externally-funded markees
   const detailResults = await chunkedMulticall(
     client,
     externalAddrs.flatMap(addr => [
-      { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' as const },
-      { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' as const },
-      { address: addr as `0x${string}`, abi: MARKEE_ABI, functionName: 'totalFundsAdded' as const },
+      { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const },
+      { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'name' as const },
+      { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const },
     ]),
   )
 
-  // Build markee → leaderboard lookup
+  // Build markee → leaderboard + rank lookup
   const markeeToLb = new Map<string, typeof leaderboards[0]>()
+  const markeeToRank = new Map<string, number>()
   for (const e of entries) {
     const key = e.markeeAddress.toLowerCase()
-    if (!markeeToLb.has(key)) markeeToLb.set(key, leaderboards[e.lbIndex])
+    if (!markeeToLb.has(key)) {
+      markeeToLb.set(key, leaderboards[e.lbIndex])
+      const r = lbRankMaps.get(e.lbIndex)?.get(key)
+      if (r !== undefined) markeeToRank.set(key, r)
+    }
   }
 
-  const funded = externalAddrs.map((addr, i) => {
+  return externalAddrs.map((addr, i) => {
     const b = i * 3
     const message = (detailResults[b]?.result as string) ?? ''
     const name = (detailResults[b + 1]?.result as string) ?? ''
@@ -181,8 +244,120 @@ export async function GET(request: Request) {
       strategyName: lb?.name ?? 'Unknown Leaderboard',
       isTop,
       topFundsRaw: lb?.topFundsAddedRaw ?? '0',
+      strategy: 'fixed' as const,
+      rank: markeeToRank.get(addr) ?? null,
+      flowRateRaw: '0',
+      platform: lb?.platform ?? null,
+      admin: lb?.admin ?? null,
+      verifiedUrls: lb?.verifiedUrls ?? [],
+      linkedFiles: lb?.linkedFiles ?? [],
+      siteUrl: lb?.siteUrl ?? null,
+      repoFullName: lb?.repoFullName ?? null,
+      repoHtmlUrl: lb?.repoHtmlUrl ?? null,
     }
   })
+}
 
-  return NextResponse.json({ funded })
+// Streaming boards: a backer holds one position per board, recorded on-chain as backerMarkee.
+// There are no FundsAdded logs to scan, and the amount put in is the net ETHx streamed.
+async function streamingFunded(
+  client: ReturnType<typeof getClient>,
+  owner: string,
+  origin: string,
+  headers: HeadersInit,
+): Promise<FundedMessage[]> {
+  const data = await fetch(`${origin}/api/streaming/leaderboards`, { headers })
+    .then(r => r.ok ? r.json() : null).catch(() => null)
+
+  const boards: Board[] = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
+  if (boards.length === 0) return []
+
+  const backedResults = await chunkedMulticall(
+    client,
+    boards.map(lb => ({
+      address: lb.address as `0x${string}`,
+      abi: StreamingLeaderboardABI,
+      functionName: 'backerMarkee' as const,
+      args: [owner as `0x${string}`] as const,
+    })),
+  )
+
+  const backed = boards
+    .map((lb, i) => ({ lb, markee: (backedResults[i]?.result as string | undefined)?.toLowerCase() }))
+    .filter((b): b is { lb: Board; markee: string } =>
+      !!b.markee && b.markee !== '0x0000000000000000000000000000000000000000')
+
+  if (backed.length === 0) return []
+
+  const [detailResults, positions] = await Promise.all([
+    chunkedMulticall(
+      client,
+      backed.flatMap(b => [
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'name' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const },
+        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const },
+      ]),
+    ),
+    fetchBackerPositions(
+      owner,
+      backed.map(b => b.lb.address),
+      STREAMING_BASE.ethx,
+      BigInt(Math.floor(Date.now() / 1000)),
+    ).catch(() => new Map<string, BackerPosition>()),
+  ])
+
+  return backed
+    .map((b, i) => {
+      const o = i * 4
+      const markeeOwner = (detailResults[o + 2]?.result as string | undefined)?.toLowerCase()
+      // Markees the wallet owns belong in "bought", not "funded"
+      if (markeeOwner === owner) return null
+      const totalFundsAdded = (detailResults[o + 3]?.result as bigint) ?? 0n
+      const pos = positions.get(b.lb.address.toLowerCase())
+      const contributed = pos?.contributed ?? 0n
+      const isTop = b.lb.topMarkeeAddress?.toLowerCase() === b.markee
+      return {
+        address: b.markee,
+        message: (detailResults[o]?.result as string) ?? '',
+        name: (detailResults[o + 1]?.result as string) ?? '',
+        totalFundsAdded: totalFundsAdded.toString(),
+        totalContributed: contributed.toString(),
+        strategyId: b.lb.address,
+        strategyName: b.lb.name ?? 'Unknown Leaderboard',
+        isTop,
+        topFundsRaw: b.lb.topFundsAddedRaw ?? '0',
+        strategy: 'streaming' as const,
+        rank: isTop ? 1 : null,
+        flowRateRaw: (pos?.rate ?? 0n).toString(),
+        platform: b.lb.platform ?? null,
+        admin: b.lb.admin ?? null,
+        verifiedUrls: b.lb.verifiedUrls ?? [],
+        linkedFiles: b.lb.linkedFiles ?? [],
+        siteUrl: b.lb.siteUrl ?? null,
+        repoFullName: b.lb.repoFullName ?? null,
+        repoHtmlUrl: b.lb.repoHtmlUrl ?? null,
+      }
+    })
+    .filter((m): m is NonNullable<typeof m> => m !== null)
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const origin = internalOrigin()
+  const owner = searchParams.get('owner')?.toLowerCase()
+  if (!owner || !/^0x[0-9a-f]{40}$/.test(owner)) {
+    return NextResponse.json({ error: 'Invalid owner' }, { status: 400 })
+  }
+
+  const client = getClient()
+  const headers = internalHeaders()
+
+  // One strategy failing should not blank out the other's positions.
+  const [fixed, streaming] = await Promise.all([
+    fixedFunded(client, owner, origin, headers).catch(() => []),
+    streamingFunded(client, owner, origin, headers).catch(() => []),
+  ])
+
+  return NextResponse.json({ funded: [...fixed, ...streaming] })
 }

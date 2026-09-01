@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
-import { CreditCard } from 'lucide-react'
-import { useFundWallet } from '@privy-io/react-auth'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
@@ -13,17 +11,12 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
+import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { ModeratedContent } from '@/components/moderation'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
+import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG     = '#060A2A'
-const BG2    = '#0A0F3D'
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
-const BORDER = 'rgba(138,143,191,0.2)'
-const MUTED  = '#8A8FBF'
-const TEXT   = '#EDEEFF'
 const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 // ── Disabled-button tooltip ───────────────────────────────────────────────────
@@ -53,28 +46,6 @@ function BtnTooltip({ reason, children }: { reason: string | null; children: Rea
   )
 }
 
-// ── TxRing ────────────────────────────────────────────────────────────────────
-function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
-  const done = step === 'success'
-  return (
-    <div style={{
-      width: 72, height: 72, borderRadius: 99, flexShrink: 0,
-      background: done ? PINK : 'transparent',
-      border: done ? 'none' : `2px solid ${PINK}`,
-      borderTopColor: done ? undefined : 'transparent',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      animation: done ? 'none' : 'spin 1s linear infinite',
-      boxShadow: '0 0 32px rgba(248,151,254,0.3)',
-    }}>
-      {done && (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-          <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
-    </div>
-  )
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface FixedPriceModalProps {
   isOpen: boolean
@@ -84,20 +55,21 @@ interface FixedPriceModalProps {
 }
 
 export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: FixedPriceModalProps) {
-  const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
+  const { activeAddress, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
-  const { fundWallet } = useFundWallet({ onUserExited: () => { refetchBalance() } })
+  const { data: balanceData } = useBalance({ address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id })
 
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
+  const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -108,9 +80,10 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
   const markeeEarned = Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum))
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
+  const maxNameLen = 32
 
   useEffect(() => {
-    if (isOpen && fixedMarkee) { setNewMessage(''); setError(null); setHasUserEdited(false); reset() }
+    if (isOpen && fixedMarkee) { setNewMessage(''); setName(''); setError(null); setHasUserEdited(false); setReviewOpen(false); reset() }
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
@@ -161,7 +134,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
         address: fixedMarkee.strategyAddress as `0x${string}`,
         abi: FixedPriceStrategyABI,
         functionName: 'changeMessage',
-        args: [newMessage, ''],
+        args: [newMessage, name.trim()],
         value: priceWei,
         chainId: CANONICAL_CHAIN.id,
       })
@@ -183,16 +156,18 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     : isOverLimit ? 'Message exceeds character limit'
     : !newMessage.trim() ? 'Enter a message to continue'
     : null
-  const stepLabel =
-    txStep === 'signing' ? 'AWAITING SIGNATURE' :
-    txStep === 'pending' ? 'CONFIRMING ONCHAIN' :
-    txStep === 'success' ? 'CONFIRMED' :
-    'CHANGE MESSAGE'
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
     border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
     fontFamily: MONO, fontSize: 13, outline: 'none',
+  }
+  // The message field is the emphasized input (matches MarkeeSignModal/StreamSignModal/
+  // BuyMessageModal's convention) -- attention lands on what you're saying before what you're paying.
+  const messageBoxStyle = {
+    ...inputStyle,
+    border: `1.5px solid ${PINK}`,
+    boxShadow: '0 0 24px rgba(248,151,254,0.08)',
   }
 
   return (
@@ -215,7 +190,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
           border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           fontFamily: 'Manrope, system-ui, sans-serif',
-          color: TEXT, overflow: 'hidden',
+          color: TEXT, overflow: 'visible',
           animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
           maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         }}
@@ -228,7 +203,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
             <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-            {stepLabel}
+            Change Message
           </div>
           <button
             onClick={onClose}
@@ -238,39 +213,32 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
           </button>
         </div>
 
-        {/* ── Tx state ── */}
+        {/* ── Tx state panel ── */}
         {txStep ? (
-          <div style={{ padding: '60px 22px 52px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
-            <TxRing step={txStep} />
-            <div>
-              <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                {txStep === 'signing' && 'Waiting for wallet...'}
-                {txStep === 'pending' && 'Transaction pending on Base'}
-                {txStep === 'success' && '✓ Message updated'}
-              </div>
-              <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
-                {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
-                {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
-                {txStep === 'success' && `"${newMessage}" is now the featured message.`}
-              </div>
-            </div>
-          </div>
+          <TxProgress
+            isSuccess={txStep === 'success'}
+            headline={
+              txStep === 'signing' ? 'Waiting for wallet…' :
+              txStep === 'pending' ? 'Confirming on Base' :
+              'Success! Message updated'
+            }
+          />
 
         ) : isWalletConnectionPending ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
-            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
         ) : !hasWallet || !hasActiveWalletConnection ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
-            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
         ) : isWrongChain ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
-            <p style={{ color: MUTED, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
             <button
               onClick={() => switchChain({ chainId: CANONICAL_CHAIN.id })}
               style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
@@ -284,95 +252,111 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             {/* ── Body ── */}
             <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
 
-              {/* Current message (if set) */}
-              {fixedMarkee.message && (
-                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                  <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
-                </div>
-              )}
-
-              {/* SET YOUR MESSAGE */}
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
-                  Set Your Message
-                </div>
-                <textarea
-                  value={newMessage}
-                  onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
-                  placeholder="the name's mark. agent mark 🕵️"
-                  rows={2}
-                  style={{ ...inputStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : BORDER }}
-                  onFocus={e => { if (!isOverLimit) e.target.style.borderColor = PINK }}
-                  onBlur={e => { e.target.style.borderColor = isOverLimit ? '#FF8E8E' : BORDER }}
-                  disabled={isPending || isConfirming}
+              {reviewOpen ? (
+                <PaymentReviewCard
+                  kind="fixed"
+                  message={newMessage}
+                  amountLabel={`${priceEth} ETH`}
+                  amountUsd={priceUsd != null ? formatUsd(priceUsd) : null}
+                  markeeEarnedLabel={`${markeeEarned.toLocaleString()} MARKEE`}
+                  willWin
+                  chainId={fixedMarkee.chainId}
+                  markeeId={fixedMarkee.markeeAddress}
                 />
-              </div>
-
-              {/* Preview */}
-              <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: 80, marginBottom: 18 }}>
-                <div style={{ fontFamily: MONO, fontSize: 14, color: newMessage ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                  {newMessage || 'Your message will appear here...'}
-                  {newMessage && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
-                </div>
-                <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'flex-end' }}>
-                  <span style={{ color: newMessage.length > maxLen - 20 ? PINK : MUTED }}>{newMessage.length}/{maxLen}</span>
-                </div>
-              </div>
-
-              {/* Price card */}
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Price</div>
-                <div style={{ background: BG, border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '13px 15px' }}>
-                  <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{priceEth} ETH</div>
-                  {priceUsd && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(priceUsd)}</div>}
-                  <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Fixed price to set the featured message</div>
-                  {balanceData && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}`, fontSize: 12, color: MUTED, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span>
-                        Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                        <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)</span>
-                      </span>
-                      {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
+              ) : (
+                <>
+                  {/* Current message (if set) */}
+                  {fixedMarkee.message && (
+                    <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
+                      <ModeratedContent chainId={fixedMarkee.chainId} markeeId={fixedMarkee.markeeAddress}>
+                        <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
+                      </ModeratedContent>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* MARKEE token estimate */}
-              {priceEthNum > 0 && (
-                <div style={{ marginBottom: 18, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
-                  <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
-                  <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString()}</div>
-                  <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
-                </div>
-              )}
-
-              {/* Insufficient balance + fund card */}
-              {insufficientBalance && balanceWarning && (
-                <div style={{ borderRadius: 10, border: '1px solid rgba(255,165,0,0.3)', background: 'rgba(255,165,0,0.08)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
-                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
+                  {/* SET YOUR MESSAGE */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Set Your Message
+                    </div>
+                    <textarea
+                      value={newMessage}
+                      onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
+                      placeholder="Your message here..."
+                      rows={2}
+                      style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
+                      disabled={isPending || isConfirming}
+                    />
+                    <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
+                      {newMessage.length}/{maxLen}
+                    </div>
                   </div>
-                  {authenticated && activeAddress && (
-                    <button
-                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: priceEth } })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      <CreditCard size={13} />
-                      Fund with card
-                    </button>
+
+                  {/* YOUR NAME (optional) — shown before the wallet address wherever this message appears */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Your Name (optional)
+                    </div>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      placeholder="tell the world who wrote this..."
+                      style={inputStyle}
+                      disabled={isPending || isConfirming}
+                    />
+                  </div>
+
+                  {/* Price card — fixed price, no MIN/MAX/WIN presets */}
+                  <div style={{
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 12,
+                    padding: '14px 16px',
+                    background: BG,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 800, color: TEXT }}>{priceEth}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 12, color: MUTED }}>
+                      <span>
+                        {priceUsd != null ? `≈ ${formatUsd(priceUsd)}` : ' '}
+                      </span>
+                      <span>
+                        {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* You'll receive — horizontal */}
+                  {priceEthNum > 0 && (
+                    <div style={{
+                      marginTop: 12, borderRadius: 14, padding: '14px 20px',
+                      background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
+                      border: `1px solid rgba(248,151,254,0.35)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
+                          {markeeEarned.toLocaleString()}
+                        </span>
+                        <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
+                      </div>
+                    </div>
                   )}
-                </div>
+                </>
               )}
 
               {/* Error */}
-              {transactionError && (
-                <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
+              {!reviewOpen && transactionError && (
+                <p style={{ fontSize: 12, color: '#FF8E8E', margin: '14px 0 0' }}>
                   {transactionError}
                 </p>
               )}
+
+              <div style={{ height: 18 }} />
             </div>
 
             {/* ── Footer ── */}
@@ -382,24 +366,37 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
               flexShrink: 0,
             }}>
-              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
-              </div>
-              <BtnTooltip reason={btnDisabledReason}>
-                <button
-                  onClick={handleChangeMessage}
-                  disabled={btnDisabled}
-                  style={{
-                    background: PINK, color: BG, border: 'none', borderRadius: 8,
-                    padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
-                    cursor: btnDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                    opacity: btnDisabled ? 0.4 : 1,
-                    transition: 'opacity 140ms',
-                  }}
-                >
-                  Change Message
-                </button>
-              </BtnTooltip>
+              {reviewOpen ? (
+                <div style={{ width: '100%' }}>
+                  <PaymentReviewFooter
+                    onBack={() => setReviewOpen(false)}
+                    onConfirm={handleChangeMessage}
+                    busy={isPending || isConfirming}
+                    error={transactionError}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
+                    100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+                  </div>
+                  <BtnTooltip reason={btnDisabledReason}>
+                    <button
+                      onClick={() => setReviewOpen(true)}
+                      disabled={btnDisabled}
+                      style={{
+                        background: PINK, color: BG, border: 'none', borderRadius: 8,
+                        padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+                        cursor: btnDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                        opacity: btnDisabled ? 0.4 : 1,
+                        transition: 'opacity 140ms',
+                      }}
+                    >
+                      Review Payment Info
+                    </button>
+                  </BtnTooltip>
+                </>
+              )}
             </div>
           </>
         )}

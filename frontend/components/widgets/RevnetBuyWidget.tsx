@@ -3,18 +3,42 @@
 import { useState } from 'react'
 import { parseEther } from 'viem'
 import { base } from 'viem/chains'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
+import { MONO, PINK, BLUE, BORDER } from '@/lib/design-tokens'
 
-const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const PINK   = '#F897FE'
-const BLUE   = '#7C9CFF'
-const BORDER = 'rgba(138,143,191,0.2)'
 
 // Juicebox v4 uses this sentinel address for native ETH
 const ETH_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+
+// Caps each side of the decimal at 9 digits so a pasted/huge value can't blow out the layout.
+function sanitizeAmountInput(raw: string): string {
+  let cleaned = raw.replace(/[^0-9.]/g, '')
+  const dot = cleaned.indexOf('.')
+  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
+  const [intPart, fracPart] = cleaned.split('.')
+  const cappedInt = (intPart ?? '').slice(0, 9)
+  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
+}
+
+// M/B/T-abbreviated, NaN-safe MARKEE amount display -- shows extra decimal places for sub-10 amounts
+// instead of collapsing to "0" (matches MarkeeSignModal's ReceiveCard).
+function formatMarkeeAmount(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0'
+  if (n >= 999_999e12) return '>999,999T'
+  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
+  if (n < 10) {
+    let decimals = 3
+    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
+    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
+    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
+  }
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
 
 const JB_TERMINAL_PAY_ABI = [
   {
@@ -44,7 +68,8 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   const [message,  setMessage]  = useState('')
 
   const { authenticated, login } = usePrivy()
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
+  const { switchChain } = useSwitchChain()
 
   const { writeContract, data: txHash, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -52,13 +77,18 @@ export function RevnetBuyWidget({ compact = false }: Props) {
     query: { enabled: !!txHash },
   })
 
-  const eth        = parseFloat(amount) || 0
-  const receive    = Math.round(estimateDirectRevnetMarkeeTokens(eth))
+  const parsedEth  = parseFloat(amount)
+  const eth        = Number.isFinite(parsedEth) ? parsedEth : 0
+  const receive    = estimateDirectRevnetMarkeeTokens(Math.max(0, eth))
   const cfg        = REVNET_V6_CONFIG[base.id]
 
   const handleBuy = () => {
     if (!authenticated || !address) { login(); return }
     if (eth <= 0) return
+    if (chain?.id !== base.id) {
+      switchChain?.({ chainId: base.id })
+      return
+    }
     writeContract({
       address: cfg.terminal,
       abi:     JB_TERMINAL_PAY_ABI,
@@ -73,6 +103,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         '0x' as `0x${string}`,
       ],
       value: parseEther(amount),
+      chainId: base.id,
     })
   }
 
@@ -105,7 +136,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
           <input
             value={amount}
             onChange={e => {
-              setAmount(e.target.value.replace(/[^0-9.]/g, ''))
+              setAmount(sanitizeAmountInput(e.target.value))
               if (isSuccess) reset()
             }}
             inputMode="decimal"
@@ -123,7 +154,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 4px 0' }}>
           <span style={{ color: '#8A8FBF', fontSize: 13 }}>You receive</span>
           <span style={{ color: '#F897FE', fontWeight: 800, fontFamily: MONO, fontSize: 18, letterSpacing: -0.3 }}>
-            {receive.toLocaleString()} MARKEE
+            {formatMarkeeAmount(receive)} MARKEE
           </span>
         </div>
 
@@ -147,12 +178,13 @@ export function RevnetBuyWidget({ compact = false }: Props) {
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={2}
-              placeholder="Set an optional message to be displayed publicly on the Revnet."
+              placeholder="Optional, displayed publicly on Revnets"
               style={{
                 width: '100%', boxSizing: 'border-box', resize: 'none',
                 background: '#060A2A', border: `1px solid ${BORDER}`,
                 borderRadius: 11, padding: '11px 14px',
                 color: '#EDEEFF', fontSize: 14, outline: 'none', lineHeight: 1.4,
+                fontFamily: 'Manrope, system-ui, sans-serif',
               }}
             />
           </div>

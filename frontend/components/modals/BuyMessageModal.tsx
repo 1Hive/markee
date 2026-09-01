@@ -3,29 +3,21 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { CreditCard } from 'lucide-react'
-import { useFundWallet } from '@privy-io/react-auth'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { useSuperfluidPoints } from '@/lib/superfluid/useSuperfluidPoints'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd } from '@/lib/utils'
+import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { ModeratedContent } from '@/components/moderation'
 import type { Markee } from '@/types'
+import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
-const BG   = '#060A2A'
-const BG2  = '#0A0F3D'
-const PINK = '#F897FE'
-const BLUE = '#7C9CFF'
-const BORDER = 'rgba(138,143,191,0.2)'
-const MUTED  = '#8A8FBF'
-const TEXT   = '#EDEEFF'
-const TEXT2  = '#B8B6D9'
+const GOLD = '#FFD700'
 const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 const REV_NET_ENABLED_ABI = [
@@ -44,6 +36,7 @@ interface BuyMessageModalProps {
   isOpen: boolean
   onClose: () => void
   userMarkee?: MarkeeSlot | null
+  allMarkees?: MarkeeSlot[]
   initialMode?: 'create' | 'addFunds' | 'updateMessage'
   onSuccess?: () => void
   strategyAddress?: `0x${string}`
@@ -51,6 +44,41 @@ interface BuyMessageModalProps {
   partnerSplitPercentage?: number
   topFundsAdded?: bigint
   platformId?: 'github' | 'superfluid'
+  ctaLabel?: string
+  subtitle?: string
+  title?: string
+  messageLabel?: string
+  messagePlaceholder?: string
+}
+
+// Keeps only digits and the first decimal point, capped at 9 digits on each side of the decimal —
+// matches MarkeeSignModal's sanitizeAmountInput. The amount input here had no sanitization at all
+// (relying only on inputMode="decimal", a mobile keyboard hint with no actual validation).
+function sanitizeAmountInput(raw: string): string {
+  let cleaned = raw.replace(/[^0-9.]/g, '')
+  const dot = cleaned.indexOf('.')
+  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
+  const [intPart, fracPart] = cleaned.split('.')
+  const cappedInt = (intPart ?? '').slice(0, 9)
+  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
+}
+
+// M/B/T-abbreviated, NaN-safe MARKEE amount display — shows extra decimal places for sub-10 and
+// sub-1 amounts instead of collapsing to "0" (e.g. a tiny ETH bid still shows a visible token amount).
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+type SuccessSnap = {
+  tookTop: boolean
+  rank: number | null
+  additionalWei: bigint | null
+  isUpdate: boolean
+  tab: 'create' | 'addFunds' | 'updateMessage'
+  isFirstOnBoard: boolean
 }
 
 type ModalTab = 'create' | 'addFunds' | 'updateMessage'
@@ -64,27 +92,6 @@ function ModalField({ label, children }: { label: string; children: React.ReactN
       </div>
       {children}
     </label>
-  )
-}
-
-function TxRing({ step }: { step: 'signing' | 'pending' | 'success' }) {
-  const done = step === 'success'
-  return (
-    <div style={{
-      width: 72, height: 72, borderRadius: 99, flexShrink: 0,
-      background: done ? PINK : 'transparent',
-      border: done ? 'none' : `2px solid ${PINK}`,
-      borderTopColor: done ? undefined : 'transparent',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      animation: done ? 'none' : 'spin 1s linear infinite',
-      boxShadow: '0 0 32px rgba(248,151,254,0.3)',
-    }}>
-      {done && (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-          <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
-    </div>
   )
 }
 
@@ -120,14 +127,20 @@ export function BuyMessageModal({
   isOpen,
   onClose,
   userMarkee,
+  allMarkees,
   initialMode,
   onSuccess,
   strategyAddress: customStrategyAddress,
   partnerName,
   topFundsAdded,
   platformId,
+  ctaLabel,
+  subtitle,
+  title,
+  messageLabel = 'Set Your Message',
+  messagePlaceholder = 'Your message here...',
 }: BuyMessageModalProps) {
-  const { activeAddress, authenticated, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
+  const { activeAddress, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
@@ -137,19 +150,16 @@ export function BuyMessageModal({
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
+  const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | '2x' | null>('min')
+  const [successSnap, setSuccessSnap] = useState<SuccessSnap | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const { trackBuyMessage, trackAddFunds } = useSuperfluidPoints()
-
-  const { data: balanceData, refetch: refetchBalance } = useBalance({
+  const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined,
     chainId: CANONICAL_CHAIN.id,
-  })
-
-  const { fundWallet } = useFundWallet({
-    onUserExited: () => { refetchBalance() },
   })
 
   const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
@@ -235,23 +245,58 @@ export function BuyMessageModal({
     else if (userMarkee) setActiveTab('addFunds')
     else setActiveTab('create')
     setMessage('')
+    setName('')
+    setAmount('')
     setError(null)
     setHasUserEdited(false)
+    setLastPreset(null)
+    setSuccessSnap(null)
+    setReviewOpen(false)
     reset()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userMarkee, initialMode, isOpen, reset])
 
   useEffect(() => {
     if (!isOpen) return
-    if (hasCompetition && takeFirstAmountFormatted) setAmount(takeFirstAmountFormatted)
-    else setAmount(minimumAmountFormatted)
+    setAmount(minimumAmountFormatted)
+    setLastPreset('min')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   useEffect(() => {
     if (isSuccess && isOpen) {
+      const snap: SuccessSnap = {
+        tookTop: false, rank: null, additionalWei: null,
+        isUpdate: activeTab === 'updateMessage',
+        tab: activeTab,
+        isFirstOnBoard: activeTab === 'create' && (!topFundsAdded || topFundsAdded === 0n),
+      }
+      try {
+        const amountWei = parseEther(amount || '0')
+        const top = topFundsAdded ?? 0n
+        if (activeTab === 'create') {
+          snap.tookTop = top === 0n || amountWei > top
+          if (!snap.tookTop) {
+            snap.rank = allMarkees ? allMarkees.filter(m => m.totalFundsAdded > amountWei).length + 1 : null
+            if (top > 0n) snap.additionalWei = top + MIN_INCREMENT - amountWei
+          }
+        } else if (activeTab === 'addFunds' && userMarkee) {
+          const newTotal = userMarkee.totalFundsAdded + amountWei
+          snap.tookTop = top === 0n || newTotal >= top
+          if (!snap.tookTop) {
+            snap.rank = allMarkees
+              ? allMarkees.filter(m => m.address.toLowerCase() !== userMarkee.address.toLowerCase() && m.totalFundsAdded > newTotal).length + 1
+              : null
+            if (top > 0n) snap.additionalWei = top + MIN_INCREMENT - newTotal
+          }
+        } else if (activeTab === 'updateMessage') {
+          snap.tookTop = !!userIsTopDawg
+        }
+      } catch { /* invalid amount */ }
+      setSuccessSnap(snap)
       setTimeout(() => {
         setMessage('')
+        setName('')
         setAmount('')
         setError(null)
         onSuccess?.()
@@ -259,16 +304,6 @@ export function BuyMessageModal({
       }, 2000)
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
-
-  useEffect(() => {
-    if (!isSuccess || !receipt || !activeAddress || !strategyAddress || activeTab === 'updateMessage') return
-    if (platformId !== 'superfluid') return
-    const txHash = receipt.transactionHash
-    const amountWei = parseEther(amount).toString()
-    if (activeTab === 'addFunds') trackAddFunds(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
-    else trackBuyMessage(activeAddress, amountWei, txHash, strategyAddress).catch(console.error)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess, receipt, activeAddress])
 
   useEffect(() => {
     if (!isSuccess || !strategyAddress || activeTab === 'updateMessage' || platformId !== 'github') return
@@ -315,7 +350,7 @@ export function BuyMessageModal({
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
-      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name], value: amountWei, chainId: CANONICAL_CHAIN.id })
+      writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'createMarkee', args: [message, name.trim()], value: amountWei, chainId: CANONICAL_CHAIN.id })
     } catch (err) {
       logTransactionError(err, 'BuyMessageModal.createMarkee')
       setError(formatTransactionError(err))
@@ -365,26 +400,43 @@ export function BuyMessageModal({
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
   const maxLen = Number(maxMessageLength || 223)
+  const maxNameLen = Number(maxNameLength || 32)
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
-    txStep === 'signing' ? 'AWAITING SIGNATURE' :
-    txStep === 'pending' ? 'CONFIRMING ONCHAIN' :
-    txStep === 'success' ? 'CONFIRMED' :
     activeTab === 'addFunds' ? 'ADD FUNDS' :
     activeTab === 'updateMessage' ? 'UPDATE MESSAGE' :
-    'BUY A NEW MESSAGE'
+    (title ?? 'BUY A NEW MESSAGE')
 
   // Amount section (create + addFunds)
-  const bidNum = parseFloat(amount || '0')
-  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(bidNum)
+  const parsedBid = parseFloat(amount || '0')
+  const bidNum = Number.isFinite(parsedBid) ? parsedBid : 0
+  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, bidNum))
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
+
+  // Review-step prediction: activeTakeFirstAmount is already "total wei needed to take #1" in the
+  // right unit for whichever tab is active (a one-time total for create, an increment for addFunds),
+  // so willWin/shortfall both fall straight out of it without re-deriving the ranking math.
+  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewWillWin = activeTab === 'updateMessage'
+    ? !!userIsTopDawg
+    : !activeTakeFirstAmount || reviewAmountWei >= activeTakeFirstAmount
+  const reviewShortfallWei = !reviewWillWin && activeTakeFirstAmount && activeTakeFirstAmount > reviewAmountWei
+    ? activeTakeFirstAmount - reviewAmountWei : 0n
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
     border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
     fontFamily: MONO, fontSize: 13, outline: 'none',
+  }
+  // The message field is the emphasized input (matches MarkeeSignModal/StreamSignModal's
+  // convention) -- attention lands on what you're saying before what you're paying.
+  const messageBoxStyle = {
+    ...inputStyle,
+    border: `1.5px solid ${PINK}`,
+    boxShadow: '0 0 24px rgba(248,151,254,0.08)',
   }
 
   return (
@@ -407,7 +459,7 @@ export function BuyMessageModal({
           border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           fontFamily: 'Manrope, system-ui, sans-serif',
-          color: TEXT, overflow: 'hidden',
+          color: TEXT, overflow: 'visible',
           animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
           maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         }}
@@ -418,9 +470,14 @@ export function BuyMessageModal({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-            {stepLabel}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              {stepLabel}
+            </div>
+            {subtitle && !txStep && (
+              <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', fontSize: 13, color: MUTED, paddingLeft: 18 }}>{subtitle}</div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -432,21 +489,28 @@ export function BuyMessageModal({
 
         {/* ── Tx state panel ── */}
         {txStep ? (
-          <div style={{ padding: '60px 22px 52px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
-            <TxRing step={txStep} />
-            <div>
-              <div style={{ fontFamily: MONO, fontSize: 13, color: PINK, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                {txStep === 'signing' && 'Waiting for wallet...'}
-                {txStep === 'pending' && 'Transaction pending on Base'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? '✓ Funds added' : (!hasCompetition || selFeatured) ? '🎉 You just took #1' : '✓ Message submitted')}
-              </div>
-              <div style={{ color: MUTED, fontSize: 13, maxWidth: 340, lineHeight: 1.5 }}>
-                {txStep === 'signing' && 'Sign the transaction in your wallet to complete this purchase.'}
-                {txStep === 'pending' && 'Usually under 2 seconds on Base. Sit tight.'}
-                {txStep === 'success' && (activeTab === 'addFunds' ? 'Your funds were added to the message.' : (!hasCompetition || selFeatured) ? `"${message}" is now the #1 Markee. The board is reordering.` : `"${message}" has been added to the leaderboard.`)}
-              </div>
-            </div>
-          </div>
+          <TxProgress
+            isSuccess={txStep === 'success'}
+            headline={
+              txStep === 'signing' ? 'Waiting for wallet…' :
+              txStep === 'pending' ? 'Confirming on Base' :
+              successSnap?.isUpdate ? 'Success! Your message is updated' :
+              successSnap?.isFirstOnBoard ? 'Success! Your Markee is Activated' :
+              successSnap?.tookTop ? 'Success! Your message is now featured' :
+              successSnap?.tab === 'create' ? 'Success! Your message is created' :
+              'Success! Your funds are added'
+            }
+            detail={
+              txStep === 'signing' ? 'Sign the transaction in your wallet.' :
+              txStep === 'pending' ? 'Usually under 2 seconds on Base.' :
+              successSnap?.isUpdate ? 'Your message has been updated on the leaderboard.' :
+              successSnap?.isFirstOnBoard ? 'You\'re the first on this leaderboard!' :
+              successSnap?.tookTop ? 'Your message is now featured at #1.' :
+              successSnap?.additionalWei
+                ? `Add ${parseFloat(formatEther(successSnap.additionalWei)).toFixed(3)} ETH to take the #1 spot.`
+                : 'Your message has been added to the leaderboard.'
+            }
+          />
 
         ) : isWalletConnectionPending ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
@@ -477,6 +541,20 @@ export function BuyMessageModal({
           <>
             {/* ── Compose body ── */}
             <div style={{ padding: '22px 22px 0', overflowY: 'auto', flex: 1 }}>
+              {reviewOpen ? (
+                <PaymentReviewCard
+                  kind="fixed"
+                  message={activeTab === 'addFunds' ? (userMarkee?.message ?? '') : message}
+                  amountLabel={activeTab === 'updateMessage' ? 'Free — message update only' : `${amount || '0'} ETH`}
+                  amountUsd={activeTab !== 'updateMessage' && ethPrice && bidNum > 0 ? formatUsd(bidNum * ethPrice) : null}
+                  markeeEarnedLabel={activeTab === 'updateMessage' ? '0 MARKEE' : `${formatMarkeeAmount(markeeEarned)} MARKEE`}
+                  willWin={reviewWillWin}
+                  minToWinLabel={reviewMinToWinLabel}
+                  chainId={activeTab !== 'create' ? CANONICAL_CHAIN_ID : undefined}
+                  markeeId={activeTab !== 'create' ? userMarkee?.address : undefined}
+                />
+              ) : (
+              <>
               {/* Tabs - only when user owns this markee */}
               {userMarkee && isOwner && (
                 <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, marginBottom: 18 }}>
@@ -499,58 +577,45 @@ export function BuyMessageModal({
                 </div>
               )}
 
-              {/* Create: message + name inputs */}
+              {/* Create: message input */}
               {activeTab === 'create' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
-                  <ModalField label="Set Your Message">
+                  <ModalField label={messageLabel}>
                     <textarea
                       value={message}
                       onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
-                      placeholder="Your message here"
+                      placeholder={messagePlaceholder}
                       rows={2}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
                     />
+                    <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
+                      {message.length}/{maxLen}
+                    </div>
                   </ModalField>
-                  <ModalField label="Name (optional)">
+                  <ModalField label="Your Name (optional)">
                     <input
+                      type="text"
                       value={name}
-                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, Number(maxNameLength || 32))) }}
-                      placeholder="anon"
-                      style={{ ...inputStyle }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      placeholder="tell the world who wrote this..."
+                      style={inputStyle}
                       disabled={isPending || isConfirming}
                     />
                   </ModalField>
                 </div>
               )}
 
-              {/* Message preview (create) or funded message read-only (addFunds) */}
-              {activeTab !== 'updateMessage' && (
-                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', minHeight: activeTab === 'create' ? 80 : undefined, marginBottom: 18 }}>
-                  {activeTab === 'addFunds' ? (
-                    <>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {userMarkee?.message || '—'}
-                      </div>
-                      {userMarkee?.name && (
-                        <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ fontFamily: MONO, fontSize: 14, color: message ? TEXT : MUTED, minHeight: 40, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {message || 'Your message will appear here...'}
-                        {message && <span style={{ color: PINK, animation: 'blink 1s step-end infinite' }}>|</span>}
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontStyle: 'italic' }}>- {name || (activeAddress ? `${activeAddress.slice(0, 6)}…${activeAddress.slice(-4)}` : '0x...')}</span>
-                        <span style={{ color: message.length > maxLen - 20 ? PINK : MUTED }}>{message.length}/{maxLen}</span>
-                      </div>
-                    </>
+              {/* Funded message read-only (addFunds) */}
+              {activeTab === 'addFunds' && (
+                <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee?.address ?? ''}>
+                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                      {userMarkee?.message || <MessageLoading />}
+                    </div>
+                  </ModeratedContent>
+                  {userMarkee?.name && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
                   )}
                 </div>
               )}
@@ -560,7 +625,9 @@ export function BuyMessageModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px' }}>
                     <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                    <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee.address}>
+                      <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
+                    </ModeratedContent>
                   </div>
                   <ModalField label="New Message">
                     <textarea
@@ -568,9 +635,7 @@ export function BuyMessageModal({
                       onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
                       placeholder="Enter your new message..."
                       rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
+                      style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
                     />
                   </ModalField>
@@ -580,52 +645,6 @@ export function BuyMessageModal({
               {/* Amount section (create + addFunds) */}
               {activeTab !== 'updateMessage' && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 10 }}>Amount (ETH)</div>
-
-                  {/* Preset cards */}
-                  {!userIsTopDawg && (
-                    <div style={{ display: 'grid', gridTemplateColumns: hasCompetition ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
-                      {hasCompetition && takeFirstAmountFormatted && (
-                        <button
-                          onClick={() => { setHasUserEdited(true); setAmount(takeFirstAmountFormatted) }}
-                          disabled={isPending || isConfirming}
-                          style={{
-                            textAlign: 'left', cursor: 'pointer',
-                            background: selFeatured ? 'rgba(248,151,254,0.08)' : BG,
-                            border: `1.5px solid ${selFeatured ? PINK : BORDER}`,
-                            borderRadius: 12, padding: '13px 15px',
-                            transition: 'border-color 140ms',
-                          }}
-                        >
-                          <div style={{ color: selFeatured ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Featured Message 👑</div>
-                          <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>{takeFirstAmountFormatted} ETH</div>
-                          {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(parseFloat(takeFirstAmountFormatted) * ethPrice)}</div>}
-                          <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>
-                            {activeTab === 'addFunds' ? 'Additional ETH to take the top spot' : 'Price to take the top spot'}
-                          </div>
-                        </button>
-                      )}
-                      {activeTab !== 'addFunds' && (
-                        <button
-                          onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted) }}
-                          disabled={isPending || isConfirming}
-                          style={{
-                            textAlign: 'left', cursor: 'pointer',
-                            background: selMin ? 'rgba(248,151,254,0.08)' : BG,
-                            border: `1.5px solid ${selMin ? PINK : BORDER}`,
-                            borderRadius: 12, padding: '13px 15px',
-                            transition: 'border-color 140ms',
-                          }}
-                        >
-                          <div style={{ color: selMin ? PINK : TEXT2, fontSize: 13, fontWeight: 600, marginBottom: 5 }}>Minimum</div>
-                          <div style={{ color: TEXT, fontFamily: MONO, fontSize: 17, fontWeight: 800 }}>0.001 ETH</div>
-                          {ethPrice && <div style={{ color: BLUE, fontFamily: MONO, fontSize: 12, marginTop: 2 }}>{formatUsd(0.001 * ethPrice)}</div>}
-                          <div style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Buy a message at the lowest price</div>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
                   {/* #1 spot banner */}
                   {userIsTopDawg && (
                     <div style={{ borderRadius: 10, border: '1.5px solid rgba(255,215,0,0.4)', background: 'rgba(255,215,0,0.08)', padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -637,82 +656,133 @@ export function BuyMessageModal({
                     </div>
                   )}
 
-                  {/* ETH input */}
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={e => { setHasUserEdited(true); setAmount(e.target.value) }}
-                      placeholder={minimumAmountFormatted}
-                      step="0.0001"
-                      style={{ ...inputStyle, fontSize: 18, fontWeight: 600, padding: '14px 56px 14px 16px' }}
-                      disabled={isPending || isConfirming}
-                      onFocus={e => { e.target.style.borderColor = PINK }}
-                      onBlur={e => { e.target.style.borderColor = BORDER }}
-                    />
-                    <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontFamily: MONO, fontSize: 12, color: MUTED, pointerEvents: 'none', userSelect: 'none' }}>
-                      ETH
-                    </span>
-                  </div>
-
-                  {/* Live USD equivalent */}
-                  {ethPrice && bidNum > 0 && (
-                    <div style={{ fontSize: 12, color: BLUE, marginTop: 6, fontFamily: MONO }}>
-                      ≈ {formatUsd(bidNum * ethPrice)}
+                  {/* Price card */}
+                  <div style={{
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 12,
+                    padding: '12px 16px',
+                    background: BG,
+                  }}>
+                    {/* Number + unit inline on left, MIN/MAX on right */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <input
+                          inputMode="decimal"
+                          value={amount}
+                          onChange={e => { setHasUserEdited(true); setAmount(sanitizeAmountInput(e.target.value)); setLastPreset(null) }}
+                          placeholder={minimumAmountFormatted}
+                          disabled={isPending || isConfirming}
+                          style={{
+                            background: 'transparent', border: 'none', outline: 'none',
+                            color: TEXT, fontFamily: MONO, fontSize: 22, fontWeight: 800,
+                            padding: 0,
+                            width: `${Math.max(5, (amount || minimumAmountFormatted).length + 0.5)}ch`,
+                          }}
+                        />
+                        <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>ETH</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {activeTab !== 'addFunds' && (
+                          <button
+                            type="button"
+                            onClick={() => { setHasUserEdited(true); setAmount(minimumAmountFormatted); setLastPreset('min') }}
+                            disabled={isPending || isConfirming}
+                            style={{
+                              border: `1px solid ${lastPreset === 'min' ? PINK : BORDER}`,
+                              background: 'transparent',
+                              color: lastPreset === 'min' ? PINK : TEXT2,
+                              borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
+                              fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
+                              opacity: isPending || isConfirming ? 0.4 : 1,
+                              transition: 'border-color 120ms, color 120ms',
+                            }}
+                          >
+                            MIN
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted); setLastPreset('max') }}
+                          disabled={spendableBalance <= 0n || isPending || isConfirming}
+                          style={{
+                            border: `1px solid ${lastPreset === 'max' ? PINK : BORDER}`,
+                            background: 'transparent',
+                            color: lastPreset === 'max' ? PINK : TEXT2,
+                            borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
+                            fontWeight: 700, cursor: spendableBalance > 0n ? 'pointer' : 'default',
+                            opacity: spendableBalance > 0n && !isPending && !isConfirming ? 1 : 0.4,
+                            transition: 'border-color 120ms, color 120ms',
+                          }}
+                        >
+                          MAX
+                        </button>
+                        {hasCompetition && takeFirstAmountFormatted && !userIsTopDawg && (
+                          <button
+                            type="button"
+                            onClick={() => { setHasUserEdited(true); setAmount(takeFirstAmountFormatted); setLastPreset('win') }}
+                            disabled={isPending || isConfirming}
+                            style={{
+                              border: `1px solid ${lastPreset === 'win' ? GOLD : BORDER}`,
+                              background: 'transparent',
+                              color: lastPreset === 'win' ? GOLD : TEXT2,
+                              borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
+                              fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
+                              opacity: isPending || isConfirming ? 0.4 : 1,
+                              transition: 'border-color 120ms, color 120ms',
+                            }}
+                          >
+                            WIN
+                          </button>
+                        )}
+                        {userIsTopDawg && userMarkee && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const twoX = parseFloat(formatEther(userMarkee.totalFundsAdded)).toFixed(3)
+                              setHasUserEdited(true); setAmount(twoX); setLastPreset('2x')
+                            }}
+                            disabled={isPending || isConfirming}
+                            style={{
+                              border: `1px solid ${lastPreset === '2x' ? GOLD : BORDER}`,
+                              background: 'transparent',
+                              color: lastPreset === '2x' ? GOLD : TEXT2,
+                              borderRadius: 6, padding: '3px 9px', fontFamily: MONO, fontSize: 10.5,
+                              fontWeight: 700, cursor: isPending || isConfirming ? 'default' : 'pointer',
+                              opacity: isPending || isConfirming ? 0.4 : 1,
+                              transition: 'border-color 120ms, color 120ms',
+                            }}
+                          >
+                            2X
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  {/* Balance */}
-                  {balanceData && (
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                    {/* USD equiv + balance */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 11.5, color: MUTED, marginTop: 6 }}>
                       <span>
-                        Balance: {parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH
-                        <span style={{ opacity: 0.72 }}> ({formatEther(FAST_TX_GAS_RESERVE)} ETH kept for gas)</span>
+                        {ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}` : ' '}
                       </span>
-                      {ethPrice && <span style={{ color: BLUE }}>{formatUsd(parseFloat(formatEther(balanceData.value)) * ethPrice)}</span>}
-                      <button
-                        type="button"
-                        onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted) }}
-                        disabled={spendableBalance <= 0n || isPending || isConfirming}
-                        style={{
-                          background: 'transparent', border: 0, padding: 0,
-                          color: BLUE, fontFamily: MONO, fontSize: 12,
-                          cursor: spendableBalance > 0n ? 'pointer' : 'not-allowed',
-                          opacity: spendableBalance > 0n ? 1 : 0.45,
-                        }}
-                      >
-                        Use max
-                      </button>
+                      <span>
+                        {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+                      </span>
                     </div>
-                  )}
-
-                  {/* MARKEE token estimate */}
-                  {bidNum > 0 && (
-                    <div style={{ marginTop: 14, borderRadius: 14, padding: '22px 20px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))', border: `1px solid rgba(248,151,254,0.35)` }}>
-                      <div style={{ color: PINK, fontSize: 15, marginBottom: 6 }}>You&apos;ll receive</div>
-                      <div style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 40, lineHeight: 1, letterSpacing: -1 }}>{markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-                      <div style={{ color: PINK, fontSize: 15, marginTop: 8 }}>MARKEE tokens</div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Insufficient balance + fund card */}
-              {insufficientBalance && balanceWarning && (
-                <div style={{ borderRadius: 10, border: '1px solid rgba(255,165,0,0.3)', background: 'rgba(255,165,0,0.08)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 4px', fontSize: 13, color: '#FFA94D', fontWeight: 600 }}>Insufficient balance</p>
-                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,169,77,0.8)' }}>{balanceWarning}</p>
                   </div>
-                  {authenticated && activeAddress && (
-                    <button
-                      onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount } })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      <CreditCard size={13} />
-                      Fund with card
-                    </button>
-                  )}
+
+                  {/* You'll receive */}
+                  <div style={{
+                    marginTop: 10, boxSizing: 'border-box', borderRadius: 12, padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
+                    border: `1px solid rgba(248,151,254,0.35)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
+                        {formatMarkeeAmount(markeeEarned)}
+                      </span>
+                    </div>
+                    <span style={{ color: PINK, fontSize: 11.5, fontWeight: 400, fontFamily: 'Manrope, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}>MARKEE earned</span>
+                  </div>
                 </div>
               )}
 
@@ -721,6 +791,8 @@ export function BuyMessageModal({
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
                   {transactionError}
                 </p>
+              )}
+              </>
               )}
             </div>
 
@@ -731,24 +803,34 @@ export function BuyMessageModal({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
               flexShrink: 0,
             }}>
+              {reviewOpen ? (
+                <div style={{ width: '100%' }}>
+                  <PaymentReviewFooter
+                    onBack={() => setReviewOpen(false)}
+                    onConfirm={() => {
+                      if (activeTab === 'create') handleCreateMarkee()
+                      else if (activeTab === 'addFunds') handleAddFunds()
+                      else handleUpdateMessage()
+                    }}
+                    busy={isPending || isConfirming}
+                    error={transactionError}
+                  />
+                </div>
+              ) : (
+              <>
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                {activeTab === 'addFunds'
-                  ? 'Funds are added onchain to this message.'
-                  : activeTab === 'updateMessage'
+                {activeTab === 'updateMessage'
                   ? 'Only the message owner can update their message.'
-                  : partnerName
-                  ? <>62% to <span style={{ color: TEXT2 }}>{partnerName}</span> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : beneficiaryAddress
-                  ? <>62% to <a href={`https://basescan.org/address/${beneficiaryAddress}`} target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>{beneficiaryAddress.slice(0, 6)}…{beneficiaryAddress.slice(-4)}</a> · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                  : <>62% to the integration owner · 38% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>}
+                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      62/38 split
+                      <InfoTip>
+                        62% to the sign&apos;s beneficiary<br />38% to Markee&apos;s Revnet<br />Your MARKEE is issued by the Revnet
+                      </InfoTip>
+                    </span>}
               </div>
               <BtnTooltip reason={btnDisabledReason}>
                 <button
-                  onClick={() => {
-                    if (activeTab === 'create') handleCreateMarkee()
-                    else if (activeTab === 'addFunds') handleAddFunds()
-                    else handleUpdateMessage()
-                  }}
+                  onClick={() => setReviewOpen(true)}
                   disabled={btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
@@ -758,9 +840,11 @@ export function BuyMessageModal({
                     transition: 'opacity 140ms',
                   }}
                 >
-                  {activeTab === 'create' ? 'Buy Message' : activeTab === 'addFunds' ? 'Add Funds' : 'Update Message'}
+                  Review Payment Info
                 </button>
               </BtnTooltip>
+              </>
+              )}
             </div>
           </>
         )}

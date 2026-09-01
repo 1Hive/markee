@@ -12,6 +12,10 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
+import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,48 +26,14 @@ const OI_FACTORY_ADDRESSES = [
   '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c', // v1.3 — all OI leaderboards
 ] as const
 
+// Scopes getLogs to just creation events instead of every log the factory has ever emitted
+// (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
 const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
-
-// ─── ABIs ─────────────────────────────────────────────────────────────────────
-
-const FACTORY_ABI = [
-  {
-    inputs: [
-      { name: 'offset', type: 'uint256' },
-      { name: 'limit', type: 'uint256' },
-    ],
-    name: 'getLeaderboards',
-    outputs: [{ name: 'result', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const LEADERBOARD_ABI = [
-  { inputs: [], name: 'leaderboardName', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'minimumPrice', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  {
-    inputs: [{ name: 'limit', type: 'uint256' }],
-    name: 'getTopMarkees',
-    outputs: [{ name: 'topAddresses', type: 'address[]' }, { name: 'topFunds', type: 'uint256[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const MARKEE_ABI = [
-  { inputs: [], name: 'message', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-] as const
 
 // ─── Hardcoded partner meta ───────────────────────────────────────────────────
 // These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
@@ -114,49 +84,6 @@ function getClient() {
 
 // ─── Creator resolution for factory leaderboards ──────────────────────────────
 
-async function resolveCreators(
-  client: ReturnType<typeof getClient>,
-  addresses: readonly `0x${string}`[],
-): Promise<(string | null)[]> {
-  const keys = addresses.map(a => `creator:oi:${a.toLowerCase()}`)
-  const cached = await kv.mget<(string | null)[]>(...keys)
-
-  const missingIndices = addresses.map((_, i) => i).filter(i => !cached[i])
-  if (missingIndices.length === 0) return cached
-
-  try {
-    const logsPerFactory = await Promise.all(
-      OI_FACTORY_ADDRESSES.map(addr => client.getLogs({ address: addr, fromBlock: 0n, toBlock: 'latest' }))
-    )
-    const logs = logsPerFactory.flat()
-
-    const lbToTxHash = new Map<string, `0x${string}`>()
-    for (const log of logs) {
-      if (log.topics[1]) {
-        const addr = (`0x${log.topics[1].slice(26)}`).toLowerCase()
-        lbToTxHash.set(addr, log.transactionHash)
-      }
-    }
-
-    const missingAddrs = missingIndices.map(i => addresses[i].toLowerCase())
-    const hashes = [...new Set(missingAddrs.map(a => lbToTxHash.get(a)).filter((h): h is `0x${string}` => !!h))]
-    const txs = await Promise.all(hashes.map(hash => client.getTransaction({ hash })))
-    const txMap = new Map(txs.map(tx => [tx.hash.toLowerCase(), tx.from.toLowerCase()]))
-
-    await Promise.all(missingIndices.map(i => {
-      const addr = addresses[i].toLowerCase()
-      const creator = txMap.get((lbToTxHash.get(addr) ?? '').toLowerCase())
-      if (creator) {
-        cached[i] = creator
-        return kv.set(keys[i], creator) // permanent — creator never changes
-      }
-    }))
-  } catch (e: any) {
-    console.error('[openinternet/leaderboards] creator lookup error:', e.message)
-  }
-
-  return cached
-}
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -186,19 +113,19 @@ export async function GET(request: Request) {
 
     const addresses = await client.readContract({
       address: OI_FACTORY_ADDRESSES[0],
-      abi: FACTORY_ABI,
+      abi: LeaderboardFactoryABI,
       functionName: 'getLeaderboards',
       args: [0n, 1000n],
     }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'totalLeaderboardFunds' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'markeeCount' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'minimumPrice' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'admin' as const },
-      { address: addr, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees' as const, args: [1n] },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'minimumPrice' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'admin' as const },
+      { address: addr, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] },
     ])
 
     const metaResults = metaCalls.length > 0
@@ -213,22 +140,32 @@ export async function GET(request: Request) {
 
     const markeeCalls = topMarkeeAddresses.flatMap(addr =>
       addr ? [
-        { address: addr, abi: MARKEE_ABI, functionName: 'message' as const },
-        { address: addr, abi: MARKEE_ABI, functionName: 'name' as const },
-        { address: addr, abi: MARKEE_ABI, functionName: 'owner' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'message' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'name' as const },
+        { address: addr, abi: MarkeeABI, functionName: 'owner' as const },
       ] : []
     )
 
     // Resolve creators, fetch markee messages, and read KV meta in parallel
     const metaKeys = addresses.map(a => `oi:meta:${a.toLowerCase()}`)
-    const [markeeResults, creators, kvMetas] = await Promise.all([
+    const [markeeResults, creators, kvMetas, linkedFilesPerAddr] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses),
+      resolveCreators(client, addresses, {
+        keyPrefix: 'oi',
+        factories: OI_FACTORY_ADDRESSES,
+        fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
+        logLabel: 'openinternet/leaderboards',
+      }),
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),
+      // "Served On" falls back to a verified GitHub link when there's no verifiedUrl -- these boards
+      // share the same address-keyed github:markee:{address} KV namespace as forsale/streaming
+      // boards, so a website-platform board can have one too even though this factory predates the
+      // GitHub integration.
+      getLinkedFilesBatch(addresses),
     ])
 
     let markeeCallIndex = 0
@@ -256,6 +193,7 @@ export async function GET(request: Request) {
       const kvMeta = kvMetas[i]
       const partnerMeta = PARTNER_META[addr.toLowerCase()]
       const meta = partnerMeta ?? kvMeta
+      const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,
         name,
@@ -278,6 +216,7 @@ export async function GET(request: Request) {
         verifiedUrl: meta?.verifiedUrl ?? null,
         verifiedUrls: Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [],
         status: (meta?.status as 'pending' | 'verified') ?? 'pending',
+        linkedFiles,
       }
     })
 
