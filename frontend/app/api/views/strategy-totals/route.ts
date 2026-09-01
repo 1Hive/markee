@@ -3,19 +3,32 @@
 // grouped by pricing strategy. Reads existing leaderboard KV caches for addresses, then
 // batch-fetches views:total:{address} for each. Result is cached 5 minutes.
 import { kv } from '@vercel/kv'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 const RESULT_KEY = 'cache:strategy-view-totals'
 const RESULT_TTL = 300
+const RATE_WINDOW = 60
+const RATE_MAX_MISSES = 10
 
 type LBCache = { leaderboards: { address: string; topMarkeeAddress?: string | null }[] }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const cached = await kv.get<{ fixed: number; streaming: number }>(RESULT_KEY)
   if (cached) {
     return NextResponse.json(cached, { headers: { 'Cache-Control': 'public, max-age=300' } })
+  }
+
+  // Only gates the cache-miss path -- a fixed-window counter, same helper/limits as
+  // streaming/deposit-manager, so a burst of concurrent misses during cache expiry can't all fan out
+  // into the full multi-KV-call pipeline in parallel.
+  if (!await underRateLimit('views:strategy-totals', clientIp(request), RATE_MAX_MISSES, RATE_WINDOW)) {
+    return NextResponse.json(
+      { fixed: 0, streaming: 0, error: 'rate_limited' },
+      { status: 429, headers: { 'Cache-Control': 'no-store', 'Retry-After': String(RATE_WINDOW) } },
+    )
   }
 
   const [oi, sf, gh, st] = await Promise.all([

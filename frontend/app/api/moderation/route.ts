@@ -76,7 +76,7 @@ async function isAuthorized(adminAddress: string, markeeId: string): Promise<boo
     )
     return creators.some(c => c?.toLowerCase() === adminAddress.toLowerCase())
   } catch (err) {
-    console.error('[moderation] authorization lookup error:', err)
+    console.error('[moderation] authorization lookup error for markeeId:', markeeId, err)
     return false
   }
 }
