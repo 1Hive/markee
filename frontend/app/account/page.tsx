@@ -1467,7 +1467,15 @@ export default function AccountPage() {
   const [githubBoards, setGithubBoards]         = useState<GithubLeaderboard[]>([])
   const [websiteBoards, setWebsiteBoards]       = useState<WebsiteLeaderboard[]>([])
   const [streamingBoards, setStreamingBoards]   = useState<AnyLeaderboard[]>([])
-  const [isLoading, setIsLoading]               = useState(false)
+  // Starts true, not false: fetchAll() only runs once activeAddress resolves (wallet hydration takes
+  // at least one tick), so a false initial value left a window -- after mount, before the wallet
+  // address arrives -- where isLoading was false AND draftBoards was still empty at the same time.
+  // The eviction effect below only checks isLoading to decide whether draftBoards' emptiness is real,
+  // so that window was enough to bounce a user with genuine pending boards off the tab before the
+  // fetch had even started, with nothing to bounce them back once real data arrived. A disconnected
+  // visitor never sees this: the tab content is gated on hasWallet separately, so isLoading staying
+  // true forever when there's no wallet to fetch for is inert.
+  const [isLoading, setIsLoading]               = useState(true)
 
   // Messages
   const [myMessages, setMyMessages]             = useState<MyMessage[]>([])
