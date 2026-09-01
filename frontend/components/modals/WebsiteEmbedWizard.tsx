@@ -366,7 +366,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
             )}
             {detectResult.kind === 'needsAuth' && (
               <span style={{ color: MUTED, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                This repo looks private (or we don&apos;t have access).
+                It looks like this repo is private.
                 <a
                   href={`/api/github/connect?returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname + window.location.search : '')}`}
                   style={{ color: PINK, fontWeight: 700, textDecoration: 'none' }}

@@ -94,7 +94,7 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
           headline={isSuccess ? (pending.mintsMarkee ? '✓ MARKEE claimed' : '✓ ETH claimed') : isPending ? 'Confirm in your wallet' : 'Settling on Base'}
           detail={isSuccess
             ? (pending.mintsMarkee
-                ? 'Your streamed ETH went through the RevNet and the MARKEE it minted is in your wallet.'
+                ? 'Your payment was made to the RevNet and MARKEE is now in your wallet.'
                 : 'Your earned ETH is in your wallet.')
             : 'Usually under 2 seconds on Base.'}
         />
@@ -117,7 +117,7 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
       ) : nothingPending ? (
         <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
           <p style={{ color: TEXT2, fontSize: 15, lineHeight: 1.6 }}>
-            Nothing to claim yet. Earnings accrue while your stream backs the top message on this board.
+            Nothing to claim. Increase your bid and take the top spot to start earning MARKEE.
           </p>
         </div>
       ) : (
