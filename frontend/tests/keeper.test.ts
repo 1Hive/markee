@@ -14,8 +14,9 @@ interface Call { functionName: string; address: Address; args?: unknown[] }
 
 // Two boards whose enforced top is deadTop. On boardA its backer ran out of money (aggregate 0) while
 // liveTop still streams; on boardB deadTop is still the live #1.
-function fakeChain() {
+function fakeChain(opts: { brokenBoards?: Address[]; failMultiBoardChunks?: boolean } = {}) {
   const writes: { functionName: string; address: Address; args: unknown[] }[] = []
+  const multicalls: number[] = []
   const publicClient = {
     async readContract(args: unknown) {
       const c = args as Call
@@ -24,7 +25,15 @@ function fakeChain() {
     },
     async multicall(args: unknown) {
       const { contracts } = args as { contracts: Call[] }
+      const boardsInChunk = new Set(contracts.map(c => c.address)).size
+      multicalls.push(boardsInChunk)
+      // An oversized board blows the shared eth_call gas cap: viem then reports every read in the
+      // chunk as failed.
+      if (opts.failMultiBoardChunks && boardsInChunk > 1) {
+        return contracts.map(() => ({ status: 'failure', error: new Error('out of gas') }))
+      }
       return contracts.map(c => {
+        if (opts.brokenBoards?.includes(c.address)) return { status: 'failure', error: new Error('execution reverted') }
         if (c.functionName === 'topMarkee') return { status: 'success', result: deadTop }
         if (c.functionName === 'getTopMarkees') {
           return c.address === boardA
@@ -44,7 +53,7 @@ function fakeChain() {
       return `0x${writes.length.toString(16).padStart(64, '0')}` as `0x${string}`
     },
   }
-  return { publicClient, walletClient, writes }
+  return { publicClient, walletClient, writes, multicalls }
 }
 
 test('promotes the live #1 over a drained top and leaves healthy boards alone', async () => {
@@ -68,4 +77,22 @@ test('a failed claimTop is reported and does not stop the run', async () => {
   walletClient.writeContract = async () => { throw new Error('nonce too low') }
   const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
   assert.deepEqual(report.actions.map(a => [a.status, a.detail]), [['error', 'nonce too low']])
+})
+
+test('retries each board alone when a shared read chunk fails, so the heal still lands', async () => {
+  const { publicClient, walletClient, writes, multicalls } = fakeChain({ failMultiBoardChunks: true })
+  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  assert.deepEqual(multicalls, [2, 1, 1])
+  assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
+  assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'confirmed']])
+})
+
+test('a board whose reads fail on their own is reported without blocking the others', async () => {
+  const { publicClient, walletClient, writes } = fakeChain({ brokenBoards: [boardB] })
+  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
+  assert.deepEqual(report.actions.map(a => [a.board, a.status, a.detail]), [
+    [boardA, 'confirmed', undefined],
+    [boardB, 'error', 'execution reverted'],
+  ])
 })

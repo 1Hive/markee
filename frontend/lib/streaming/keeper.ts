@@ -81,38 +81,65 @@ async function fetchAllBoards(client: KeeperPublicClient, factory: Address): Pro
 }
 
 type TopRead = { status: 'success'; result: unknown } | { status: 'failure'; error: unknown }
+type TopState = { topMarkee: Address; liveTop?: Address; liveRate: bigint }
+type TopLookup = { state: TopState } | { error: unknown }
 
-async function healTops(p: RunKeeperParams, boards: Address[], actions: KeeperAction[], log: (m: string) => void) {
-  if (boards.length === 0) return
+// Boards per multicall. getTopMarkees sorts every markee on the board (O(n^2)), and all boards in one
+// eth_call share the RPC's gas cap, so keep chunks small and retry any failed board on its own: an
+// oversized board then only loses its own heal instead of taking its chunk-mates down with it.
+const TOP_READ_CHUNK = 10
+
+async function readTopChunk(client: KeeperPublicClient, boards: Address[]): Promise<Map<Address, TopLookup>> {
+  const out = new Map<Address, TopLookup>()
   let reads: TopRead[]
   try {
-    reads = (await p.publicClient.multicall({
+    reads = (await client.multicall({
       allowFailure: true,
       contracts: boards.flatMap(board => [
         { address: board, abi: [BOARD_TOP_MARKEE], functionName: 'topMarkee' },
         { address: board, abi: [BOARD_GET_TOP_MARKEES], functionName: 'getTopMarkees', args: [1n] },
       ]),
     })) as TopRead[]
-  } catch (e) {
-    for (const board of boards) actions.push({ board, kind: 'claimTop', status: 'error', detail: shortErr(e) })
-    log(`top reads failed: ${shortErr(e)}`)
-    return
+  } catch (error) {
+    for (const board of boards) out.set(board, { error })
+    return out
   }
-
-  for (let i = 0; i < boards.length; i++) {
-    const board = boards[i]
+  boards.forEach((board, i) => {
     const topRead = reads[2 * i]
     const liveRead = reads[2 * i + 1]
-    const readFailed = (error: unknown) => {
-      actions.push({ board, kind: 'claimTop', status: 'error', detail: shortErr(error) })
-      log(`claimTop check failed on ${board}: ${shortErr(error)}`)
-    }
-    if (topRead.status === 'failure') { readFailed(topRead.error); continue }
-    if (liveRead.status === 'failure') { readFailed(liveRead.error); continue }
-    const topMarkee = topRead.result as Address
+    if (topRead.status === 'failure') return out.set(board, { error: topRead.error })
+    if (liveRead.status === 'failure') return out.set(board, { error: liveRead.error })
     const [tops, rates] = liveRead.result as readonly [readonly Address[], readonly bigint[]]
-    const liveTop = tops[0]
-    const liveRate = rates[0] ?? 0n
+    out.set(board, { state: { topMarkee: topRead.result as Address, liveTop: tops[0], liveRate: rates[0] ?? 0n } })
+  })
+  return out
+}
+
+async function readTops(client: KeeperPublicClient, boards: Address[]): Promise<Map<Address, TopLookup>> {
+  const out = new Map<Address, TopLookup>()
+  for (let i = 0; i < boards.length; i += TOP_READ_CHUNK) {
+    const chunk = boards.slice(i, i + TOP_READ_CHUNK)
+    const results = await readTopChunk(client, chunk)
+    for (const board of chunk) {
+      let lookup = results.get(board)!
+      if ('error' in lookup && chunk.length > 1) lookup = (await readTopChunk(client, [board])).get(board)!
+      out.set(board, lookup)
+    }
+  }
+  return out
+}
+
+async function healTops(p: RunKeeperParams, boards: Address[], actions: KeeperAction[], log: (m: string) => void) {
+  const tops = await readTops(p.publicClient, boards)
+
+  for (const board of boards) {
+    const lookup = tops.get(board)!
+    if ('error' in lookup) {
+      actions.push({ board, kind: 'claimTop', status: 'error', detail: shortErr(lookup.error) })
+      log(`claimTop check failed on ${board}: ${shortErr(lookup.error)}`)
+      continue
+    }
+    const { topMarkee, liveTop, liveRate } = lookup.state
     if (!liveTop || liveRate === 0n || getAddress(liveTop) === getAddress(topMarkee)) continue
 
     const action: KeeperAction = { board, kind: 'claimTop', status: 'planned', challenger: liveTop }

@@ -4,8 +4,12 @@ This route heals streaming boards. It calls `claimTop` on every board whose live
 (`getTopMarkees[0]`, ranked by `effectiveRate`) has drifted from the enforced `topMarkee` (a decay, a
 stream decrease, or a liquidated top backer, none of which the SuperApp inflow callbacks can auto-heal).
 `claimTop` is permissionless and money-safe, so the signer is a throwaway gas-funded hot wallet with no
-on-chain privileges. It covers every board each tick (two reads per board in one multicall), so a top
-that ran out of money is demoted within one schedule interval of the sentinel closing its stream.
+on-chain privileges. It covers every board each tick, so a top that ran out of money is demoted within
+one schedule interval of the sentinel closing its stream.
+
+Reads go out as multicalls of ten boards. `getTopMarkees` sorts every markee on a board (O(n^2)) and all
+boards in one `eth_call` share the RPC's gas cap, so a board whose read fails inside a shared chunk is
+retried on its own: an oversized board only loses its own heal, never its chunk-mates'.
 
 The keeper does not settle: each backer claims their own RevNet share from the UI (`ClaimModal`, which
 calls `settle([backer])`).
