@@ -1,5 +1,5 @@
 /**
- * Streaming keeper — heals on-chain ranking lag and flushes RevNet settlement.
+ * Streaming keeper — heals on-chain ranking lag.
  *
  * Vercel cron calls it on a schedule (a periodic poll, not an event trigger: the decay/decrease
  * that staled the title fires no tx and no event), sending the platform's cron secret:
@@ -7,13 +7,13 @@
  *   GET /api/cron/streaming-keeper
  *   Authorization: Bearer <CRON_SECRET>
  *
- * For each streaming board the factory knows about it calls claimTop when the live #1
- * (getTopMarkees[0]) has drifted from the enforced topMarkee (a decay/decrease the inflow
- * callbacks can't auto-heal), and settle() to flush each backer's accrued RevNet share. Both
- * are permissionless and money-safe, so the signer is a throwaway gas-funded hot wallet.
+ * For every streaming board the factory knows about it calls claimTop wherever the live #1
+ * (getTopMarkees[0]) has drifted from the enforced topMarkee (a decay/decrease/liquidation the
+ * inflow callbacks can't auto-heal). claimTop is permissionless and money-safe, so the signer is a
+ * throwaway gas-funded hot wallet. Backers settle their own RevNet share from the UI.
  *
- * KEEPER_PRIVATE_KEY (hot wallet) is the only var this route owns; auth, RPC and the log-scan
- * start reuse CRON_SECRET, NEXT_PUBLIC_BASE_RPC_URL/ALCHEMY_BASE_URL and STREAMING_FROM_BLOCK.
+ * KEEPER_PRIVATE_KEY (hot wallet) is the only var this route owns; auth and RPC reuse
+ * CRON_SECRET and NEXT_PUBLIC_BASE_RPC_URL/ALCHEMY_BASE_URL.
  * Inert unless NEXT_PUBLIC_STREAMING_FACTORY is set (STREAMING_ENABLED).
  */
 
@@ -31,6 +31,8 @@ export const maxDuration = 300
 // One signer, one nonce sequence: overlapping runs would collide.
 const LOCK_KEY = 'streaming:keeper:lock'
 const LOCK_TTL = maxDuration + 30
+// One multicall reads every board's top; give a slow RPC more than viem's 10s default.
+const RPC_TIMEOUT_MS = 60_000
 
 function authorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
@@ -55,7 +57,7 @@ async function handle(req: NextRequest) {
   const key = process.env.KEEPER_PRIVATE_KEY
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'
 
-  const publicClient = createPublicClient({ chain: base, transport: http(rpc) })
+  const publicClient = createPublicClient({ chain: base, transport: http(rpc, { timeout: RPC_TIMEOUT_MS }) })
   let walletClient: ReturnType<typeof createWalletClient> | undefined
   let account: Address | undefined
 
@@ -68,7 +70,7 @@ async function handle(req: NextRequest) {
     }
     const signer = privateKeyToAccount(key as `0x${string}`)
     account = signer.address
-    walletClient = createWalletClient({ account: signer, chain: base, transport: http(rpc) })
+    walletClient = createWalletClient({ account: signer, chain: base, transport: http(rpc, { timeout: RPC_TIMEOUT_MS }) })
   }
 
   const canProceed = dryRun || await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: LOCK_TTL }) === 'OK'
