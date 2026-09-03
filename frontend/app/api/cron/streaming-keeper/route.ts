@@ -24,6 +24,7 @@ import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { runKeeper } from '@/lib/streaming/keeper'
 import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { logger } from '@/lib/server/logger'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -86,7 +87,7 @@ async function handle(req: NextRequest) {
   } catch (e) {
     // Full detail goes to the function logs only: viem errors embed the RPC URL (API key included)
     // and revert data, which don't belong in a response that dashboards may capture.
-    console.error('[streaming-keeper] run failed:', e)
+    await logger.error('streaming-keeper run failed', e, { dryRun })
     return NextResponse.json({ error: 'keeper run failed, see function logs' }, { status: 500 })
   } finally {
     if (!dryRun) await kv.del(LOCK_KEY)

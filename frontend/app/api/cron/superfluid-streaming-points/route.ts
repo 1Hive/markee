@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logger } from '@/lib/server/logger'
 import { kv } from '@vercel/kv'
 import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardFactoryABI } from '@/lib/contracts/abis'
@@ -304,9 +305,9 @@ export async function GET(request: NextRequest) {
       events: allEvents.length,
     })
   } catch (error) {
-    console.error('[superfluid-streaming-points]', error)
+    await logger.error('superfluid-streaming-points failed', error, { dryRun })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Streaming campaign scoring failed' },
+      { error: 'Streaming campaign scoring failed' },
       { status: 500 },
     )
   }
