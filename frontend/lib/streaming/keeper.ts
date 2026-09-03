@@ -103,13 +103,12 @@ async function healTops(p: RunKeeperParams, boards: Address[], actions: KeeperAc
     const board = boards[i]
     const topRead = reads[2 * i]
     const liveRead = reads[2 * i + 1]
-    if (topRead.status !== 'success' || liveRead.status !== 'success') {
-      const failed = topRead.status !== 'success' ? topRead : liveRead
-      const detail = failed.status === 'failure' ? shortErr(failed.error) : 'read failed'
-      actions.push({ board, kind: 'claimTop', status: 'error', detail })
-      log(`claimTop check failed on ${board}: ${detail}`)
-      continue
+    const readFailed = (error: unknown) => {
+      actions.push({ board, kind: 'claimTop', status: 'error', detail: shortErr(error) })
+      log(`claimTop check failed on ${board}: ${shortErr(error)}`)
     }
+    if (topRead.status === 'failure') { readFailed(topRead.error); continue }
+    if (liveRead.status === 'failure') { readFailed(liveRead.error); continue }
     const topMarkee = topRead.result as Address
     const [tops, rates] = liveRead.result as readonly [readonly Address[], readonly bigint[]]
     const liveTop = tops[0]
