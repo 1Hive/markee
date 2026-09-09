@@ -313,6 +313,8 @@ function ForRentSuperfluidBadge() {
       <button
         onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
         title="For Rent signs earn Superfluid rewards"
+        aria-expanded={open}
+        aria-haspopup="dialog"
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: 20, height: 20, padding: 0,
@@ -320,13 +322,15 @@ function ForRentSuperfluidBadge() {
           cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
         }}
       >
-        <img src="/partners/superfluid.png" alt="Superfluid" width={13} height={13} style={{ objectFit: 'contain', borderRadius: '50%', display: 'block' }} />
+        <Image src="/partners/superfluid.png" alt="Superfluid" width={13} height={13} style={{ objectFit: 'contain', borderRadius: '50%', display: 'block' }} />
       </button>
       {open && (
         <div
+          role="dialog"
+          aria-label="Superfluid rewards"
           style={{
             position: 'absolute', top: '100%', right: 0, marginTop: 8, zIndex: 20,
-            width: 220, background: '#0A0F3D', border: `1px solid ${GREEN}40`,
+            width: 220, background: BG2, border: `1px solid ${GREEN}40`,
             borderRadius: 8, padding: '10px 12px',
             fontFamily: MONO, fontSize: 11, lineHeight: 1.5, color: TEXT2,
             boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
