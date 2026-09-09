@@ -140,7 +140,9 @@ if (action === "release") {
   );
 
   for (const domain of assignedDomains) {
-    await updateDomain(domain.name, "");
+    // Vercel's domain PATCH rejects an empty string for gitBranch ("Invalid `gitBranch`
+    // property") -- null is what actually clears it back to unassigned.
+    await updateDomain(domain.name, null);
     console.log(`Released ${domain.name} from deleted branch ${branchName}`);
   }
 
