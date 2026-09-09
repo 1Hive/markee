@@ -291,6 +291,33 @@ function StrategyFilterTag({ strategy, active, onClick }: { strategy: Strategy; 
   )
 }
 
+// ── "Earns SUP" badge on the For Rent filter tag — every message bought on a For Rent sign also
+// earns Superfluid SUP points; links out to the campaign page showing all For Rent signs plus the
+// points leaderboard. A sibling overlay (not nested in the filter button) so its own click doesn't
+// also toggle the strategy filter.
+function ForRentSuperfluidBadge() {
+  return (
+    <Link
+      href="/campaigns/superfluid"
+      onClick={e => e.stopPropagation()}
+      title="Messages bought on For Rent signs also earn SUP rewards from Superfluid — see the leaderboard"
+      style={{
+        position: 'absolute', top: -7, right: -7, zIndex: 1,
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        background: GREEN, color: '#04150A',
+        border: `1.5px solid ${BG}`,
+        borderRadius: 99, padding: '2px 6px 2px 5px',
+        fontFamily: MONO, fontSize: 8.5, fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase',
+        textDecoration: 'none', whiteSpace: 'nowrap',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+      }}
+    >
+      <img src="/partners/superfluid.png" alt="" width={10} height={10} style={{ objectFit: 'contain', borderRadius: '50%' }} />
+      Earns SUP
+    </Link>
+  )
+}
+
 // ── Pagination button ─────────────────────────────────────────────────────────
 function PagerBtn({ children, active, disabled, onClick }: { children: React.ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
   return (
@@ -809,7 +836,10 @@ export default function MarketplacePage() {
               All
             </button>
             <StrategyFilterTag strategy="fixed" active={strategyFilter === 'fixed'} onClick={() => setStrategyFilter('fixed')} />
-            <StrategyFilterTag strategy="streaming" active={strategyFilter === 'streaming'} onClick={() => setStrategyFilter('streaming')} />
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <StrategyFilterTag strategy="streaming" active={strategyFilter === 'streaming'} onClick={() => setStrategyFilter('streaming')} />
+              <ForRentSuperfluidBadge />
+            </span>
           </div>
         </div>
 
