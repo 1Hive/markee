@@ -291,30 +291,58 @@ function StrategyFilterTag({ strategy, active, onClick }: { strategy: Strategy; 
   )
 }
 
-// ── "Earns SUP" badge on the For Rent filter tag — every message bought on a For Rent sign also
-// earns Superfluid SUP points; links out to the campaign page showing all For Rent signs plus the
-// points leaderboard. A sibling overlay (not nested in the filter button) so its own click doesn't
-// also toggle the strategy filter.
+// ── Superfluid logo badge on the For Rent filter tag — every message bought on a For Rent sign
+// also earns Superfluid SUP points. A sibling overlay (not nested in the filter button) so its own
+// click doesn't also toggle the strategy filter. Click opens a small popover instead of navigating
+// straight away, since the badge itself is icon-only with no room for explanatory text.
 function ForRentSuperfluidBadge() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
   return (
-    <Link
-      href="/campaigns/superfluid"
-      onClick={e => e.stopPropagation()}
-      title="Messages bought on For Rent signs also earn SUP rewards from Superfluid — see the leaderboard"
-      style={{
-        position: 'absolute', top: -7, right: -7, zIndex: 1,
-        display: 'inline-flex', alignItems: 'center', gap: 3,
-        background: GREEN, color: '#04150A',
-        border: `1.5px solid ${BG}`,
-        borderRadius: 99, padding: '2px 6px 2px 5px',
-        fontFamily: MONO, fontSize: 8.5, fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase',
-        textDecoration: 'none', whiteSpace: 'nowrap',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
-      }}
-    >
-      <img src="/partners/superfluid.png" alt="" width={10} height={10} style={{ objectFit: 'contain', borderRadius: '50%' }} />
-      Earns SUP
-    </Link>
+    <div ref={ref} style={{ position: 'absolute', bottom: -5, right: -5, zIndex: 1 }}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        title="For Rent signs earn Superfluid rewards"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 15, height: 15, padding: 0,
+          background: GREEN, border: `1.5px solid ${BG}`, borderRadius: '50%',
+          cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+        }}
+      >
+        <img src="/partners/superfluid.png" alt="Superfluid" width={9} height={9} style={{ objectFit: 'contain', borderRadius: '50%', display: 'block' }} />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute', top: '100%', right: 0, marginTop: 8, zIndex: 20,
+            width: 220, background: '#0A0F3D', border: `1px solid ${GREEN}40`,
+            borderRadius: 8, padding: '10px 12px',
+            fontFamily: MONO, fontSize: 11, lineHeight: 1.5, color: TEXT2,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}
+        >
+          For Rent messages are boosted by Superfluid. Earn rewards and see the leaderboard at{' '}
+          <Link
+            href="/campaigns/superfluid"
+            onClick={e => e.stopPropagation()}
+            style={{ color: GREEN, textDecoration: 'underline' }}
+          >
+            markee.xyz/campaigns/superfluid
+          </Link>
+        </div>
+      )}
+    </div>
   )
 }
 
