@@ -309,18 +309,18 @@ function ForRentSuperfluidBadge() {
   }, [open])
 
   return (
-    <div ref={ref} style={{ position: 'absolute', bottom: -5, right: -5, zIndex: 1 }}>
+    <div ref={ref} style={{ position: 'absolute', bottom: -6, right: -6, zIndex: 1 }}>
       <button
         onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
         title="For Rent signs earn Superfluid rewards"
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 15, height: 15, padding: 0,
+          width: 20, height: 20, padding: 0,
           background: GREEN, border: `1.5px solid ${BG}`, borderRadius: '50%',
           cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
         }}
       >
-        <img src="/partners/superfluid.png" alt="Superfluid" width={9} height={9} style={{ objectFit: 'contain', borderRadius: '50%', display: 'block' }} />
+        <img src="/partners/superfluid.png" alt="Superfluid" width={13} height={13} style={{ objectFit: 'contain', borderRadius: '50%', display: 'block' }} />
       </button>
       {open && (
         <div
