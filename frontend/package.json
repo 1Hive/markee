@@ -7,6 +7,7 @@
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
+    "test:keeper": "tsx --test tests/keeper.test.ts",
     "start": "next start",
     "lint": "next lint"
   },

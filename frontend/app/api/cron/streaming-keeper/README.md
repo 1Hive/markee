@@ -1,10 +1,18 @@
 # Streaming keeper
 
-This route heals streaming boards: it calls `claimTop` when a board's live #1 (`getTopMarkees[0]`,
-ranked by `effectiveRate`) has drifted from the enforced `topMarkee` (a decay or a stream decrease the
-SuperApp inflow callbacks can't auto-heal), and `settle` to flush each backer's accrued RevNet share.
-Both calls are permissionless and money-safe, so the signer is a throwaway gas-funded hot wallet with no
-on-chain privileges.
+This route heals streaming boards. It calls `claimTop` on every board whose live #1
+(`getTopMarkees[0]`, ranked by `effectiveRate`) has drifted from the enforced `topMarkee` (a decay, a
+stream decrease, or a liquidated top backer, none of which the SuperApp inflow callbacks can auto-heal).
+`claimTop` is permissionless and money-safe, so the signer is a throwaway gas-funded hot wallet with no
+on-chain privileges. It covers every board each tick, so a top that ran out of money is demoted within
+one schedule interval of the sentinel closing its stream.
+
+Reads go out as multicalls of ten boards. `getTopMarkees` sorts every markee on a board (O(n^2)) and all
+boards in one `eth_call` share the RPC's gas cap, so a board whose read fails inside a shared chunk is
+retried on its own: an oversized board only loses its own heal, never its chunk-mates'.
+
+The keeper does not settle: each backer claims their own RevNet share from the UI (`ClaimModal`, which
+calls `settle([backer])`).
 
 ## Trigger
 
@@ -25,10 +33,9 @@ shared with the rest of the app.
 | Var | Purpose |
 |---|---|
 | `NEXT_PUBLIC_STREAMING_FACTORY` | Gates the whole feature. Until set, the route no-ops (`skipped: streaming disabled`). |
-| `KEEPER_PRIVATE_KEY` | Gas-funded hot wallet that signs `claimTop`/`settle`. |
+| `KEEPER_PRIVATE_KEY` | Gas-funded hot wallet that signs `claimTop`. Without it every scheduled run returns `500 no signer configured` and nothing is healed. |
 | `CRON_SECRET` | Shared with the other cron routes; Vercel cron sends it as the Bearer token. |
 | `NEXT_PUBLIC_BASE_RPC_URL` / `ALCHEMY_BASE_URL` | Base RPC, same precedence as the streaming reads. |
-| `STREAMING_FROM_BLOCK` | Set it to the factory deploy block: without it the `BackerUpdated` scan only looks back 50k blocks, and a backer whose last stream change predates that window is missed by `settle`. Shared with `/api/streaming/leaderboards`, which reads it `bounded` (clamped to the 50k window) because it is a request-path read; the keeper is the only unbounded consumer, since scan cost grows as the deploy block recedes. |
 
 ## Testing without the scheduler
 
