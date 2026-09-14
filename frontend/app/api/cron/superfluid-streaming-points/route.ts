@@ -124,13 +124,13 @@ async function fetchFollowerWallet(fid: number): Promise<string | null> {
 async function buildFarcasterEvents(campaignId: number, storedAwardedFids?: number[]) {
   const followers = await fetchFollowerFids()
   const awardedFids = new Set(storedAwardedFids)
+  let legacyAwardKeys: string[] = []
 
   // Existing campaigns stored one key per follower. Read those keys in one command
   // the first time, then persist the compact list in CampaignState below.
   if (storedAwardedFids === undefined && followers.length > 0) {
-    const legacyAwards = await kv.mget<(boolean | null)[]>(
-      ...followers.map((follower) => farcasterAwardKey(campaignId, follower.fid)),
-    )
+    legacyAwardKeys = followers.map((follower) => farcasterAwardKey(campaignId, follower.fid))
+    const legacyAwards = await kv.mget<(boolean | null)[]>(...legacyAwardKeys)
     followers.forEach((follower, index) => {
       if (legacyAwards[index]) awardedFids.add(follower.fid)
     })
@@ -154,6 +154,7 @@ async function buildFarcasterEvents(campaignId: number, storedAwardedFids?: numb
     followers: followers.length,
     events,
     awardedFids: [...awardedFids, ...newlyAwardedFids],
+    legacyAwardKeys,
   }
 }
 
@@ -302,6 +303,7 @@ export async function GET(request: NextRequest) {
           followers: state.farcasterFollowerCount ?? state.farcasterAwardedFids?.length ?? 0,
           events: [] as CampaignPointsEvent[],
           awardedFids: state.farcasterAwardedFids ?? [],
+          legacyAwardKeys: [] as string[],
         }
     const allEvents = [...streamingEvents, ...farcaster.events]
 
@@ -320,6 +322,17 @@ export async function GET(request: NextRequest) {
       state.pointNumerators = pointNumerators
       state.completed = canFinalize && previousBlock === targetBlock
       await kv.set(campaignStateKey(campaign.id), state)
+      if (farcaster.legacyAwardKeys.length > 0) {
+        try {
+          await kv.del(...farcaster.legacyAwardKeys)
+        } catch (error) {
+          logger.warn('superfluid-streaming-points legacy key cleanup failed', {
+            campaignId: campaign.id,
+            keys: farcaster.legacyAwardKeys.length,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
     }
 
     return NextResponse.json({

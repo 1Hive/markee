@@ -3,8 +3,6 @@ import { withServerError } from '@/lib/server/withServerError'
 import { logger } from '@/lib/server/logger'
 
 const CACHE_TTL = 15 * 60
-const STALE_TTL = 24 * 60 * 60
-const CACHE_CONTROL = `public, s-maxage=${CACHE_TTL}, stale-while-revalidate=${STALE_TTL}`
 
 export const revalidate = CACHE_TTL
 
@@ -56,9 +54,7 @@ export const GET = withServerError('GET /api/eth-price', async () => {
           errors,
         })
       }
-      return NextResponse.json({ usd }, {
-        headers: { 'Cache-Control': CACHE_CONTROL },
-      })
+      return NextResponse.json({ usd })
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error))
     }
