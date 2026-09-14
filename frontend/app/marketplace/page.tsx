@@ -291,6 +291,65 @@ function StrategyFilterTag({ strategy, active, onClick }: { strategy: Strategy; 
   )
 }
 
+// ── Superfluid logo badge on the For Rent filter tag — every message bought on a For Rent sign
+// also earns Superfluid SUP points. A sibling overlay (not nested in the filter button) so its own
+// click doesn't also toggle the strategy filter. Click opens a small popover instead of navigating
+// straight away, since the badge itself is icon-only with no room for explanatory text.
+function ForRentSuperfluidBadge() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  return (
+    <div ref={ref} style={{ position: 'absolute', bottom: -6, right: -6, zIndex: 1 }}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        title="For Rent signs earn Superfluid rewards"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 20, height: 20, padding: 0,
+          background: GREEN, border: `1.5px solid ${BG}`, borderRadius: '50%',
+          cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+        }}
+      >
+        <Image src="/partners/superfluid.png" alt="Superfluid" width={13} height={13} style={{ objectFit: 'contain', borderRadius: '50%', display: 'block' }} />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Superfluid rewards"
+          style={{
+            position: 'absolute', top: '100%', right: 0, marginTop: 8, zIndex: 20,
+            width: 220, background: BG2, border: `1px solid ${GREEN}40`,
+            borderRadius: 8, padding: '10px 12px',
+            fontFamily: MONO, fontSize: 11, lineHeight: 1.5, color: TEXT2,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}
+        >
+          For Rent messages are boosted by Superfluid. Earn rewards and see the leaderboard at{' '}
+          <Link
+            href="/campaigns/superfluid"
+            onClick={e => e.stopPropagation()}
+            style={{ color: GREEN, textDecoration: 'underline' }}
+          >
+            markee.xyz/campaigns/superfluid
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Pagination button ─────────────────────────────────────────────────────────
 function PagerBtn({ children, active, disabled, onClick }: { children: React.ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
   return (
@@ -809,7 +868,10 @@ export default function MarketplacePage() {
               All
             </button>
             <StrategyFilterTag strategy="fixed" active={strategyFilter === 'fixed'} onClick={() => setStrategyFilter('fixed')} />
-            <StrategyFilterTag strategy="streaming" active={strategyFilter === 'streaming'} onClick={() => setStrategyFilter('streaming')} />
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <StrategyFilterTag strategy="streaming" active={strategyFilter === 'streaming'} onClick={() => setStrategyFilter('streaming')} />
+              <ForRentSuperfluidBadge />
+            </span>
           </div>
         </div>
 
