@@ -30,6 +30,7 @@ export const maxDuration = 300
 
 const REORG_SAFETY_BLOCKS = 100n
 const API_BATCH_SIZE = 100
+const FARCASTER_SCAN_INTERVAL = 6 * 60 * 60
 
 interface CampaignState {
   lastBlock: string
@@ -37,6 +38,9 @@ interface CampaignState {
   snapshot: Record<string, { gross: string; refunded: string }>
   pointNumerators: Record<string, string>
   awardedPoints: Record<string, number>
+  farcasterAwardedFids?: number[]
+  farcasterLastScanAt?: number
+  farcasterFollowerCount?: number
   completed?: boolean
 }
 
@@ -117,12 +121,25 @@ async function fetchFollowerWallet(fid: number): Promise<string | null> {
   return address && /^0x[0-9a-fA-F]{40}$/.test(address) ? address.toLowerCase() : null
 }
 
-async function buildFarcasterEvents(campaignId: number) {
+async function buildFarcasterEvents(campaignId: number, storedAwardedFids?: number[]) {
   const followers = await fetchFollowerFids()
+  const awardedFids = new Set(storedAwardedFids)
+  let legacyAwardKeys: string[] = []
+
+  // Existing campaigns stored one key per follower. Read those keys in one command
+  // the first time, then persist the compact list in CampaignState below.
+  if (storedAwardedFids === undefined && followers.length > 0) {
+    legacyAwardKeys = followers.map((follower) => farcasterAwardKey(campaignId, follower.fid))
+    const legacyAwards = await kv.mget<(boolean | null)[]>(...legacyAwardKeys)
+    followers.forEach((follower, index) => {
+      if (legacyAwards[index]) awardedFids.add(follower.fid)
+    })
+  }
+
   const events: CampaignPointsEvent[] = []
-  const awardedFids: number[] = []
+  const newlyAwardedFids: number[] = []
   for (const follower of followers) {
-    if (await kv.get(farcasterAwardKey(campaignId, follower.fid))) continue
+    if (awardedFids.has(follower.fid)) continue
     const account = await fetchFollowerWallet(follower.fid)
     if (!account) continue
     events.push({
@@ -131,9 +148,14 @@ async function buildFarcasterEvents(campaignId: number) {
       points: 1,
       uniqueId: `campaign:${campaignId}:fid:${follower.fid}`,
     })
-    awardedFids.push(follower.fid)
+    newlyAwardedFids.push(follower.fid)
   }
-  return { followers: followers.length, events, awardedFids }
+  return {
+    followers: followers.length,
+    events,
+    awardedFids: [...awardedFids, ...newlyAwardedFids],
+    legacyAwardKeys,
+  }
 }
 
 async function pushInBatches(events: CampaignPointsEvent[]) {
@@ -273,7 +295,16 @@ export async function GET(request: NextRequest) {
         uniqueId: `campaign:${campaign.id}:stream:${account}:block:${targetBlock}:${target}`,
       })
     }
-    const farcaster = await buildFarcasterEvents(campaign.id)
+    const shouldScanFarcaster = !state.farcasterLastScanAt
+      || now - state.farcasterLastScanAt >= FARCASTER_SCAN_INTERVAL
+    const farcaster = shouldScanFarcaster
+      ? await buildFarcasterEvents(campaign.id, state.farcasterAwardedFids)
+      : {
+          followers: state.farcasterFollowerCount ?? state.farcasterAwardedFids?.length ?? 0,
+          events: [] as CampaignPointsEvent[],
+          awardedFids: state.farcasterAwardedFids ?? [],
+          legacyAwardKeys: [] as string[],
+        }
     const allEvents = [...streamingEvents, ...farcaster.events]
 
     if (!dryRun) {
@@ -281,14 +312,27 @@ export async function GET(request: NextRequest) {
       for (const event of streamingEvents) {
         state.awardedPoints[event.account] = targets[event.account]
       }
-      await Promise.all(farcaster.awardedFids.map((fid) =>
-        kv.set(farcasterAwardKey(campaign.id, fid), true),
-      ))
+      if (shouldScanFarcaster) {
+        state.farcasterAwardedFids = farcaster.awardedFids
+        state.farcasterLastScanAt = now
+        state.farcasterFollowerCount = farcaster.followers
+      }
       state.lastBlock = previousBlock.toString()
       state.snapshot = serializeSnapshot(previousSnapshot)
       state.pointNumerators = pointNumerators
       state.completed = canFinalize && previousBlock === targetBlock
       await kv.set(campaignStateKey(campaign.id), state)
+      if (farcaster.legacyAwardKeys.length > 0) {
+        try {
+          await kv.del(...farcaster.legacyAwardKeys)
+        } catch (error) {
+          logger.warn('superfluid-streaming-points legacy key cleanup failed', {
+            campaignId: campaign.id,
+            keys: farcaster.legacyAwardKeys.length,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
     }
 
     return NextResponse.json({
@@ -300,6 +344,7 @@ export async function GET(request: NextRequest) {
       fromBlock: storedState?.lastBlock ?? startBlock.toString(),
       toBlock: targetBlock.toString(),
       streamingAwards: streamingEvents.length,
+      farcasterScanned: shouldScanFarcaster,
       farcasterFollowers: farcaster.followers,
       farcasterAwards: farcaster.events.length,
       events: allEvents.length,
