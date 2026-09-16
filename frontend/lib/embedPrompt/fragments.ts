@@ -36,16 +36,26 @@ const FRAMEWORK_LABEL: Record<EmbedFramework, string> = {
 }
 
 // ── Core identity ─────────────────────────────────────────────────────────────
-export function coreIdentityFragment({ address, name, buyUrl }: { address: string; name?: string; buyUrl: string }): string {
+export function coreIdentityFragment(
+  { address, name, buyUrl, strategy }: { address: string; name?: string; buyUrl: string; strategy: EmbedStrategy },
+): string {
   const displayName = name || address
+  const rankingLine = strategy === 'streaming'
+    ? 'Markee is a protocol where anyone can pay ETH to set the featured message on a leaderboard. On this leaderboard, backers pay by streaming a continuous ETH/month rate (Superfluid) instead of a lump sum -- the highest current *rate* holds the top spot, not the highest cumulative total, and anyone can overtake it by streaming faster.'
+    : 'Markee is a protocol where anyone can pay ETH to set the featured message on a leaderboard. The highest total funder holds the top spot; anyone can outbid them to take it.'
+  const sourceRefLine = strategy === 'streaming'
+    ? 'the streaming contract at `contracts/v1.3/streaming/StreamingLeaderboard.sol` and the reference frontend implementation under `frontend/lib/superfluid/streaming.ts` and `frontend/hooks/use*StreamFlow.ts`'
+    : 'the leaderboard contract at `contracts/v1.3/Leaderboard.sol` and the reference frontend implementation at `frontend/components/modals/BuyMessageModal.tsx`'
   return `# Markee embed setup
 
-Markee is a protocol where anyone can pay ETH to set the featured message on a leaderboard. The highest total funder holds the top spot; anyone can outbid them to take it.
+${rankingLine}
 
 My leaderboard:
 - Name: ${displayName}
 - Address: ${address}
 - Fallback buy page (works from anywhere, not required for the embedded flow below): ${buyUrl}
+
+**If you have web access, use it before writing any transaction code:** Markee's contracts and frontend are open source at https://github.com/1Hive/markee. This prompt describes the on-chain interface and UX in enough detail to build correctly without fetching anything -- but the source is the actual ground truth, and cross-checking it against ${sourceRefLine} costs a few minutes against the cost of a wrong transaction shipping to real visitors. If you don't have web access, everything below is accurate as written; proceed without it.
 
 Build a fully embedded flow -- visitors buy, edit, and add funds to messages without ever leaving this site. Do not fall back to an iframe.
 
@@ -80,23 +90,30 @@ an embedded widget -- but its shape should be unmistakably Markee:
   "X.XXX ETH to change" (fixed) or "X.XXX ETH/mo to back" (streaming), or "be first!" if there's no
   message yet. Fade in with a slight upward translate, not an instant show/hide.
 - **Brand watermark (required on every integration, not optional styling):** the real Markee logo,
-  translucent purple, centered in the trigger card behind the message text -- not recreated
+  translucent, centered in the trigger card behind the message text -- not recreated
   letterforms (an earlier version of this spec tried approximating "MAR"/"KEE" as plain text in a
   guessed font and the two words visibly mismatched in weight) and not blend-mode or CSS-mask tricks
   to hide the logo's own background (earlier versions of this spec tried that too, chasing a
   corner-bled placement that collided with message text and, for the masked version, ran into
   inconsistent real-world support for the CSS \`mask-mode\` property that made it render as nothing
-  at all). Use https://markee.xyz/markee-logo-purple.png as a plain, low-opacity image -- purple at
-  low opacity reads reasonably against light and dark card backgrounds alike, so there's no
-  light/dark branching to get wrong:
+  at all). Use the light or dark logo mark -- **not the purple one** -- picking whichever actually
+  reads against the card's own background, the same background you already identified while matching
+  this site's theme (see below): a light card background -> \`https://markee.xyz/markee-logo-dark.png\`
+  (near-black mark), a dark card background -> \`https://markee.xyz/markee-logo-light.png\` (near-white
+  mark). If this card's background switches with the site's own light/dark mode, swap the watermark's
+  \`src\` alongside whatever mechanism you already used to make the rest of the modal theme-aware (a
+  \`data-theme\` attribute, a dark-mode class, a \`prefers-color-scheme\` media query) rather than
+  picking one variant and leaving it fixed:
   \`\`\`
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1; display:flex; align-items:center; justify-content:center">
-    <img src="https://markee.xyz/markee-logo-purple.png" alt="" aria-hidden style="
+    <img src="https://markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
       height:100%; width:auto;
       opacity:{hover ? 0.16 : 0}; transition:opacity 220ms;
     " />
   </div>
   \`\`\`
+  (swap the \`src\` to \`markee-logo-light.png\` for a dark card background, per the rule above)
+
   Sized to the card's own height (\`height:100%\` against the wrapper's \`inset:0\`, which makes the
   wrapper exactly the card's own size) rather than a fixed pixel range -- this way it's correctly
   proportioned whether the trigger card is short or tall, with no per-integration size tuning needed.
@@ -241,37 +258,78 @@ Low-balance state: an inline banner, not just a disabled button -- see the walle
 function streamingStrategyFragment(address: string): string {
   return `## Contract interaction: For Rent (streaming)
 
-This leaderboard uses a streaming strategy built on Superfluid: backers pay a continuous ETHx flow rate (ETH/month) instead of a lump sum, and the top spot is held by whoever's cumulative stream is largest. Backing costs nothing upfront beyond a small refundable deposit -- payment only accrues while your message is live.
+This leaderboard uses a streaming strategy built on Superfluid: backers pay a continuous ETHx flow rate (ETH/month) instead of a lump sum. The top spot is held by whoever's *current rate* is highest -- promotion is automatic (it flips inside the contract's own inflow callback the instant a challenger's rate clears the incumbent's), but **demotion is not**: if the top backer's rate drops, the contract only heals the ranking when someone calls the permissionless \`claimTop(challengerMarkee)\` on the new-rightful #1. Call it yourself right after any rate change that could affect ranking (yours or, if you're polling, anyone's) -- don't assume the top spot updates on its own.
 
-This is more involved than a normal payable call. Don't reach for a generic Superfluid SDK snippet here -- our contract wraps CFA/GDA with buffer deposits and per-message pools, and the SDK's plain \`createFlow\` doesn't know about that. Use the exact operation sequence below.
+This is more involved than a normal payable call, and it does not compose the way a generic Superfluid SDK snippet assumes. Don't reach for \`sf.cfaV1.createFlow\` or similar -- our contract wraps CFA/GDA with buffer deposits and per-message pools, tags every flow with the target message via \`userData\`, and behaves differently on create vs. update in a way that will silently misroute a payment if you guess. Use the exact sequences below.
 
 Leaderboard contract: ${address} (Base, chainId 8453)
 Superfluid contracts (Base): host \`0x4C073B3baB6d8826b8C5b229f3cfdC1eC6E47E74\`, ETHx (super token) \`0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93\`, CFAv1Forwarder \`0xcfA132E353cB4E398080B9700609bb008eceB125\`
 
 Reads:
 - \`minimumMonthlyRate() view -> uint256\` (wei/month floor)
-- \`backerMarkee(address) view -> address\` -- which message an address currently backs, if any
+- \`backerMarkee(address) view -> address\` -- which message an address currently backs, if any. **A backer can only ever stream to one message on a given board at a time** -- Superfluid's CFA allows exactly one flow per (sender, receiver) pair, and the receiver here is always the board contract itself, not the individual message. Before opening a new stream, check this (or the CFAv1Forwarder read below) and branch into "update rate" or "switch message" instead, per the flows below.
 - \`backerDeposit(address) view -> uint256\`
 - \`poolOf(markeeAddress) view -> address\` -- the GDA refund pool for a given message (needed below)
-- CFAv1Forwarder's \`getFlowrate(token, sender, receiver) view -> int96\` -- cheaper read than going through the host
+- \`topMarkee() view -> address\` / \`topRate() view -> uint256\` -- the contract's own enforced #1 and its rate. Use these for "what does changing the top message cost", not \`getTopMarkees\`, which recomputes live ranking and can disagree with the enforced #1 during the (usually brief) window before a pending \`claimTop\` heals it.
+- CFAv1Forwarder's \`getFlowrate(token, sender, receiver) view -> int96\` -- cheaper read than going through the host; also how you detect an existing stream to gate the create-vs-update-vs-switch branch above.
 
 Resolve the CFA and GDA agreement class addresses dynamically via \`host.getAgreementClass(agreementId)\` rather than hardcoding them -- Superfluid can redeploy agreement classes.
 
-### Opening or updating a stream
+### Creating a message before backing it
 
-Four batched operations via \`host.batchCall(operations[])\`, in this exact order:
-1. **Wrap** -- \`ETHx.upgradeByETHTo(backer)\`, payable with the ETH you're sending in. Must run first so the host's ETH balance is drained before the later value-0 forwards.
-2. **Deposit buffer** -- \`board.depositBuffer(backer, bufferAmount)\`, forwarded to the backer. Superfluid requires a security deposit (~4x the monthly rate) on top of the money that actually streams.
-3. **Create or update the flow** -- \`cfa.createFlow(ethx, board, ratePerSec, ctx)\` (or \`updateFlow\` if this backer already has an open stream to this board), called as an agreement operation with the target *markee* address ABI-encoded into \`userData\` so the board's callback can associate the flow with the right message.
+Backing only works on a message that already exists on this board. If the visitor is backing a brand-new message (not adding to or switching between existing ones), create it first, as its own transaction, before any of the streaming batches below:
+\`\`\`
+board.createMarkee(message, name) -> markeeAddress   // no payment -- creates the message, unfunded
+\`\`\`
+This emits \`MarkeeCreated(markeeAddress, owner, message, name)\`; decode the new address from the receipt logs (or from \`markees(markees.length - 1)\`). Skipping this and streaming straight to an address that was never created reverts with \`UnknownMarkee\` -- the board's inbound-flow callback checks \`isMarkeeOnLeaderboard[markee]\` before accepting anything.
+
+The pool for the new message is created in the same \`createMarkee\` transaction, but RPC nodes can lag a block or two behind -- poll \`poolOf(markeeAddress)\` until it's non-zero before including it in the batch below, rather than reading it once and assuming it's ready.
+
+So the full "back a brand-new message" sequence is three separate transactions: **createMarkee → approve → batchCall (below)**, not one.
+
+### Opening a stream (first stream to this board)
+
+Batched via \`host.batchCall(operations[])\`, in this exact order:
+1. **Wrap** (only if needed) -- \`ETHx.upgradeByETHTo(backer)\`, payable with the ETH you're sending in. Must run first when present so the host's ETH balance is drained before the later value-0 forwards. **Omit this op entirely** if the backer's existing ETHx balance already covers what's needed below -- \`upgradeByETH\` reverts on a zero amount, it isn't safe to always include with value 0.
+2. **Deposit buffer** -- \`board.depositBuffer(backer, bufferAmount)\`, forwarded to the backer, where \`bufferAmount = ratePerSec * 14400\`. That constant is Base Superfluid's liquidation period in seconds -- **4 hours of the stream's own per-second rate, not "4x the monthly rate"** (those numbers differ by a factor of ~730). Read it from the board's \`BUFFER_PERIOD\` rather than hardcoding, in case it's ever reconfigured.
+3. **Create the flow** -- \`cfa.createFlow(ethx, board, ratePerSec, ctx)\`, called as an agreement operation with the target *markee* address ABI-encoded into \`userData\` so the board's callback can associate the flow with the right message. This only works for a backer's **first** stream to this board -- see "Updating your rate" and "Switching which message you back" below for an existing backer.
 4. **Connect the pool** -- \`gda.connectPool(poolOf(markee), ctx)\`, called as an agreement operation. **This is not optional**: an unconnected backer's wallet drains at the full stream rate while their refund accrues unclaimed in the pool, which can get them liquidated even though they're technically being refunded.
+
+How much to wrap: the deposit buffer above, plus however much runway (ETHx) you want the stream funded with up front -- e.g. 3 months at the chosen rate is a reasonable default. If the backer already holds enough ETHx to cover both, skip the wrap op (see step 1).
 
 Important: the ERC20 \`approve\` that authorizes step 2's pull must be sent as its **own transaction beforehand**, not batched in -- operations forwarded through the batch run with the forwarder contract as \`msg.sender\`, so an in-batch approve would authorize the wrong account.
 
-Monthly-rate math: \`ratePerSec = weiPerMonth / 2_628_000\` (2,628,000 seconds/month), rounded up so the effective monthly cost never comes in under what was quoted.
+### Updating your rate (same message you already back)
+
+If \`backerMarkee(you)\` already equals the message you're funding, changing the amount is a **rate update on the same flow**, not a new one: \`cfa.updateFlow(ethx, board, newRatePerSec, ctx)\`, no \`userData\` needed (the board looks up your message from \`backerMarkee[sender]\`, not from the call). The pool is already connected from your original stream. If the new rate needs more buffer than your current deposit covers, add a \`depositBuffer\` top-up (and a wrap, if needed) to the same batch, before the \`updateFlow\` op.
+
+### Switching which message you back
+
+To move an existing stream to a **different** message on the same board, do **not** call \`updateFlow\` with a different address in \`userData\` -- the board's update callback ignores \`userData\` entirely and keeps charging whatever message \`backerMarkee[sender]\` already points to, so the payment keeps flowing to the old message while the UI shows the new one. Instead, batch:
+1. \`cfa.deleteFlow(ethx, backer, board, ctx)\` -- closes the old flow (frees \`backerMarkee\`, zeroes your units on the old message's pool)
+2. \`cfa.createFlow(ethx, board, ratePerSec, ctx)\` -- with the new message's address in \`userData\`, exactly like opening a fresh stream
+3. \`gda.connectPool(poolOf(newMarkee), ctx)\` -- your existing pool connection was to the old message's pool; the new one needs its own
+
+Your existing \`backerDeposit\` survives the delete (deposits are tracked per-backer, not per-message), so only include a \`depositBuffer\` top-up if the new rate needs more than what's already deposited.
+
+### Deposit / rate math
+
+- Buffer required for a given rate: \`ratePerSec * BUFFER_PERIOD\` (BUFFER_PERIOD = 14400, i.e. 4 hours -- see above).
+- Converting a quoted ETH/month figure to \`ratePerSec\`: **floor first** (\`weiPerMonth / 2_628_000\`), and only round up if that floored rate would recover to less than the board's \`minimumMonthlyRate()\` when multiplied back out. Ceiling-only is simpler but overshoots every rate that isn't an exact multiple of 2,628,000 (e.g. a clean 0.001 ETH/mo quote would silently charge 0.001000000000512 ETH/mo) -- boards intentionally set \`minimumMonthlyRate\` a hair under round numbers specifically so the floored value still clears it.
+- \`board.minimumPrice()\` is an alias for \`minimumMonthlyRate()\`, kept for ABI compatibility with the fixed-price side -- either name works.
+
+### What this embed does not need to build
+
+Nothing on markee.xyz's own frontend currently exposes "stop streaming" or \`withdrawDeposit()\` as UI -- there's no reference implementation to mirror, and it's fine to leave both out of a first pass. If you do add them: a backer stops paying by driving their flow rate to \`0\` via the CFA forwarder's \`setFlowrate(ethx, board, 0)\` (equivalent to \`deleteFlow\`), and \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything, once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise).
 
 ### Buy flow UX (match this, don't invent your own layout)
 
-Same three-mode shape as the fixed-strategy flow (create / add-funds-equivalent / update-message), but the amount card shows an ETH/month rate instead of a lump sum, with **MIN, MAX, WIN** presets: MIN = \`minimumMonthlyRate()\`, MAX = spendable balance divided by however many months of runway you're asking the visitor to fund upfront, WIN = the rate needed to overtake the current top stream. Show the estimated runway ("~N days at this rate") next to the amount. Submit button: "Start Streaming" (new) or "Update Rate" (existing backer).`
+Before rendering the flow, check \`backerMarkee(connectedAddress)\` against this board: it determines which of three cases you're in.
+- **No existing stream on this board**: message textarea (char counter against \`maxMessageLength\`) + optional name input if backing a brand-new message (runs \`createMarkee\` first, see above) -- or skip straight to the amount card if backing an existing message. Amount card shows an ETH/month rate with **MIN, MAX, WIN** presets: MIN = \`minimumMonthlyRate()\`, MAX = spendable balance divided by however many months of runway you're asking the visitor to fund upfront, WIN = the rate needed to overtake \`topRate()\` (hidden if backing the current #1 already). Submit: "Start Streaming" → the opening-a-stream batch above.
+- **Already backing this exact message**: same amount card, prefilled with the current rate. Submit: "Update Rate" → the rate-update flow above.
+- **Already backing a different message on this board**: same amount card, but submitting switches the stream to the new message via the switch flow above, not a rate update. Submit: "Switch & Fund" (or similar -- make it clear this moves the existing stream, it does not add a second one).
+
+Show the estimated runway ("~N days at this rate", from the prefund ETHx balance divided by the rate) next to the amount input in every case.`
 }
 
 export function strategyFragment(strategy: EmbedStrategy, address: string): string {
@@ -282,7 +340,7 @@ export function strategyFragment(strategy: EmbedStrategy, address: string): stri
 const PUBLIC_API_URL = 'https://markee.xyz/api/ecosystem/leaderboards'
 
 export function proxyRouteFragment(framework: EmbedFramework, address: string): string {
-  const commonNote = `Browser fetches to markee.xyz are blocked by CORS on most setups, so this needs a server-side hop. Find your leaderboard by matching \`address\` (case-insensitive) against "${address}" in the response. Useful fields: \`topMessage\`, \`topMessageOwner\`, \`topFundsAddedRaw\`, \`minimumPrice\` (fixed) / \`streamedRateRaw\` (streaming), \`topMarkeeAddress\`. No match yet is expected for a brand-new, not-yet-verified leaderboard (see the note near the top of this prompt) -- have the trigger component fall back to a "be first!" empty state in that case, not an error.`
+  const commonNote = `Browser fetches to markee.xyz are blocked by CORS on most setups, so this needs a server-side hop. Find your leaderboard by matching \`address\` (case-insensitive) against "${address}" in the response. Useful fields: \`topMessage\`, \`topMessageOwner\`, \`topMarkeeAddress\`, and the price to display -- \`minimumPrice\` (fixed) or, for streaming, \`topRateRaw\`/\`effectiveRateRaw\` (the top message's own wei/sec rate). **Don't use \`streamedRateRaw\` as the price** -- that field is the board's total combined inflow across every backed message, not what it costs to take #1. A brand-new, not-yet-verified leaderboard won't appear in this response at all (verification gates the entire board out of this public listing, not just its top message -- see the note near the top of this prompt), so a live, paid message can legitimately render as "no data yet" here for a while. Have the trigger component fall back to a "be first!" empty state in that case, not an error -- it's expected, not a sign anything is broken.`
 
   if (framework === 'nextjs') {
     return `## Data fetching
@@ -291,13 +349,17 @@ ${commonNote}
 
 Create \`app/api/markee/leaderboards/route.ts\`:
 \`\`\`ts
-export async function GET() {
-  const res = await fetch('${PUBLIC_API_URL}', { next: { revalidate: 60 } })
+export async function GET(req: Request) {
+  // Forward ?bust=1 from your own client (see "after a successful transaction" below) so a
+  // post-purchase re-fetch can skip both this route's cache and markee.xyz's own upstream cache --
+  // without it, a re-fetch right after a transaction can still return the pre-transaction value.
+  const bust = new URL(req.url).searchParams.get('bust') === '1'
+  const res = await fetch(\`${PUBLIC_API_URL}\${bust ? '?bust=1' : ''}\`, bust ? { cache: 'no-store' } : { next: { revalidate: 60 } })
   if (!res.ok) return Response.json({ leaderboards: [] }, { status: res.status })
   return Response.json(await res.json())
 }
 \`\`\`
-Then fetch \`/api/markee/leaderboards\` (same-origin) from your client code, polling every 60s.`
+Then fetch \`/api/markee/leaderboards\` (same-origin) from your client code, polling every 60s, and \`/api/markee/leaderboards?bust=1\` once right after a successful transaction.`
   }
 
   return `## Data fetching
@@ -306,9 +368,10 @@ ${commonNote}
 
 Add a minimal server-side proxy in ${FRAMEWORK_LABEL[framework]} -- a serverless function (Vercel/Netlify/Cloudflare function) is the lightest-weight option if you don't already run a backend:
 \`\`\`
-GET /api/markee/leaderboards  ->  fetch('${PUBLIC_API_URL}')  ->  return the JSON as-is
+GET /api/markee/leaderboards            ->  fetch('${PUBLIC_API_URL}')          ->  return the JSON as-is
+GET /api/markee/leaderboards?bust=1     ->  fetch('${PUBLIC_API_URL}?bust=1')   ->  return the JSON as-is, uncached
 \`\`\`
-Cache the upstream response for ~60s (in-memory or your platform's edge cache) and fetch your own \`/api/markee/leaderboards\` endpoint from the client, polling on the same interval.`
+Cache the non-\`bust\` response for ~60s (in-memory or your platform's edge cache); never cache the \`bust=1\` response. Fetch your own \`/api/markee/leaderboards\` endpoint from the client, polling on the same 60s interval, and hit the \`?bust=1\` variant once right after a successful transaction -- without it, that re-fetch can still return the pre-transaction value even seconds later, since it's passing through this cache and markee.xyz's own upstream cache.`
 }
 
 // ── View tracking ────────────────────────────────────────────────────────────
@@ -317,36 +380,22 @@ Cache the upstream response for ~60s (in-memory or your platform's edge cache) a
 export function viewTrackingFragment(): string {
   return `## View tracking
 
-Add a proxy route to forward view increments (same CORS reasoning as data fetching):
+Unlike the other endpoints in this prompt, **don't proxy this one** -- \`/api/views\` already sends \`Access-Control-Allow-Origin: *\`, so it's directly callable from the browser, and it needs to be: it dedupes by the *caller's* IP (1 increment per IP per markee per hour), and a server-side proxy would make every one of your visitors' views arrive from your server's single IP, collapsing your whole site's traffic into roughly one counted view per hour.
 
-\`\`\`ts
-// app/api/markee/views/route.ts (adapt the path/syntax to your framework)
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null)
-  if (!body?.address || !body?.message) return Response.json({ error: 'Missing fields' }, { status: 400 })
-  const res = await fetch('https://markee.xyz/api/views', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  return Response.json(await res.json())
-}
-\`\`\`
-
-Fire this once per session, the first time the top message renders. Include \`url: window.location.origin\` so markee.xyz can show which of your verified sites is actually getting traffic:
+Call \`https://www.markee.xyz/api/views\` (the \`www\` subdomain specifically -- the bare \`markee.xyz\` apex redirects API routes to \`www\`, and a redirect on a CORS preflight fails in the browser rather than following it). Fire this once per session, the first time the top message renders. Include \`url: window.location.origin\` so markee.xyz can show which of your verified sites is actually getting traffic:
 \`\`\`ts
 const viewTracked = useRef(false)
 useEffect(() => {
   if (!topMessage || !topMarkeeAddress || viewTracked.current) return
   viewTracked.current = true
-  fetch('/api/markee/views', {
+  fetch('https://www.markee.xyz/api/views', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address: topMarkeeAddress, message: topMessage, url: window.location.origin }),
   }).catch(() => {})
 }, [topMessage, topMarkeeAddress])
 \`\`\`
-Rate-limited server-side to 1 increment per IP per markee per hour, so calling this on every page load is safe.`
+Safe to call on every page load -- the server-side dedup (keyed by the real visitor IP, which only works because this call comes straight from their browser) handles repeats.`
 }
 
 // ── Moderation ───────────────────────────────────────────────────────────────
@@ -408,7 +457,7 @@ Don't import Markee's own color palette. Before building the modal, read this si
 export function buildEmbedPrompt({ address, name, strategy, framework, wallet, agent }: BuildEmbedPromptInput): string {
   const buyUrl = `https://markee.xyz/markee/${address}`
   const sections = [
-    coreIdentityFragment({ address, name, buyUrl }),
+    coreIdentityFragment({ address, name, buyUrl, strategy }),
     triggerCardFragment(),
     walletFragment(wallet),
     strategyFragment(strategy, address),
@@ -419,7 +468,8 @@ export function buildEmbedPrompt({ address, name, strategy, framework, wallet, a
     themeAdoptionFragment(),
     `## Implementation notes
 - The \`data-markee-address="${address.toLowerCase()}"\` attribute must be present on the widget's server-rendered HTML for integration verification -- setting it only via \`useEffect\`/\`document.setAttribute()\` runs client-side only and won't be detected. This is the one hard requirement for the "Verify Embed" step on markee.xyz.
-- Poll the leaderboard data every 60 seconds; re-fetch immediately (with a ~3s delay for the transaction to index) after a successful transaction.
+- Poll the leaderboard data every 60 seconds. After a successful transaction, re-fetch with \`?bust=1\` appended to your own proxy route's fetch of the upstream markee.xyz endpoint (and have your proxy forward it) -- the upstream data passes through multiple stacked ~60s server caches, so a plain re-fetch shortly after a transaction will very likely still return the pre-transaction value. \`?bust=1\` skips all of them for one request; don't pass it on regular page loads.
+- Before creating any new file or route, check whether this repo already has one that does the same job (an existing API proxy layer, an existing env-var naming convention, an existing Superfluid/wallet setup) and extend that instead of assuming a blank slate -- these instructions describe the shape of what's needed, not a mandate to create every file listed here from scratch regardless of what's already present.
 - Style to match this site's existing design system (see above) -- the pattern works with any CSS approach.
 
 Please look at this codebase and implement the embed. Choose an appropriate location for the trigger (header, footer, sidebar widget). Match the existing code style, and keep it minimal.`,

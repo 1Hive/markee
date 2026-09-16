@@ -151,7 +151,7 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
                 </button>
               )}
               {platform === 'github' ? (
-                <EmbedPanel address={leaderboard.address} name={leaderboard.name} platform="github" />
+                <EmbedPanel address={leaderboard.address} />
               ) : (
                 <WebsiteEmbedWizard
                   address={leaderboard.address} name={leaderboard.name} strategy={leaderboard.strategy ?? 'fixed'}
