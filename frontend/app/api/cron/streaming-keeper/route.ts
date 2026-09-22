@@ -60,7 +60,6 @@ async function handle(req: NextRequest) {
 
   const publicClient = createPublicClient({ chain: base, transport: http(rpc, { timeout: RPC_TIMEOUT_MS }) })
   let walletClient: ReturnType<typeof createWalletClient> | undefined
-  let account: Address | undefined
 
   if (!dryRun) {
     if (!key) return NextResponse.json({ error: 'no signer configured' }, { status: 500 })
@@ -70,7 +69,6 @@ async function handle(req: NextRequest) {
       return NextResponse.json({ error: 'malformed signer configured' }, { status: 500 })
     }
     const signer = privateKeyToAccount(key as `0x${string}`)
-    account = signer.address
     walletClient = createWalletClient({ account: signer, chain: base, transport: http(rpc, { timeout: RPC_TIMEOUT_MS }) })
   }
 
@@ -81,7 +79,6 @@ async function handle(req: NextRequest) {
     const report = await runKeeper({
       publicClient,
       walletClient,
-      account,
       factory: STREAMING_FACTORY as Address,
       log: (m) => console.log('[streaming-keeper]', m),
     })
