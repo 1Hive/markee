@@ -47,6 +47,7 @@ function fakeChain(opts: { brokenBoards?: Address[]; failMultiBoardChunks?: bool
   }
   const walletClient = {
     chain: undefined,
+    account: keeper,
     async writeContract(args: unknown) {
       const c = args as Call
       writes.push({ functionName: c.functionName, address: c.address, args: c.args ?? [] })
@@ -58,7 +59,7 @@ function fakeChain(opts: { brokenBoards?: Address[]; failMultiBoardChunks?: bool
 
 test('promotes the live #1 over a drained top and leaves healthy boards alone', async () => {
   const { publicClient, walletClient, writes } = fakeChain()
-  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  const report = await runKeeper({ publicClient, walletClient, factory })
 
   assert.equal(report.boards, 2)
   assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
@@ -75,13 +76,13 @@ test('dry run plans the claimTop without signing', async () => {
 test('a failed claimTop is reported and does not stop the run', async () => {
   const { publicClient, walletClient } = fakeChain()
   walletClient.writeContract = async () => { throw new Error('nonce too low') }
-  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  const report = await runKeeper({ publicClient, walletClient, factory })
   assert.deepEqual(report.actions.map(a => [a.status, a.detail]), [['error', 'nonce too low']])
 })
 
 test('retries each board alone when a shared read chunk fails, so the heal still lands', async () => {
   const { publicClient, walletClient, writes, multicalls } = fakeChain({ failMultiBoardChunks: true })
-  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  const report = await runKeeper({ publicClient, walletClient, factory })
   assert.deepEqual(multicalls, [2, 1, 1])
   assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
   assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'confirmed']])
@@ -89,7 +90,7 @@ test('retries each board alone when a shared read chunk fails, so the heal still
 
 test('a board whose reads fail on their own is reported without blocking the others', async () => {
   const { publicClient, walletClient, writes } = fakeChain({ brokenBoards: [boardB] })
-  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  const report = await runKeeper({ publicClient, walletClient, factory })
   assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
   assert.deepEqual(report.actions.map(a => [a.board, a.status, a.detail]), [
     [boardA, 'confirmed', undefined],
@@ -105,7 +106,7 @@ test('retries each board alone when the whole multicall throws, so the heal stil
     if (new Set(contracts.map(c => c.address)).size > 1) throw new Error('request timed out')
     return multicall(args)
   }
-  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  const report = await runKeeper({ publicClient, walletClient, factory })
   assert.deepEqual(multicalls, [1, 1])
   assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
   assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'confirmed']])
