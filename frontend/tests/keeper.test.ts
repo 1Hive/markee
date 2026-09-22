@@ -96,3 +96,17 @@ test('a board whose reads fail on their own is reported without blocking the oth
     [boardB, 'error', 'execution reverted'],
   ])
 })
+
+test('retries each board alone when the whole multicall throws, so the heal still lands', async () => {
+  const { publicClient, walletClient, writes, multicalls } = fakeChain()
+  const multicall = publicClient.multicall
+  publicClient.multicall = async (args: unknown) => {
+    const { contracts } = args as { contracts: Call[] }
+    if (new Set(contracts.map(c => c.address)).size > 1) throw new Error('request timed out')
+    return multicall(args)
+  }
+  const report = await runKeeper({ publicClient, walletClient, account: keeper, factory })
+  assert.deepEqual(multicalls, [1, 1])
+  assert.deepEqual(writes, [{ functionName: 'claimTop', address: boardA, args: [liveTop] }])
+  assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'confirmed']])
+})
