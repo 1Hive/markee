@@ -9,6 +9,7 @@ type KeeperPublicClient = {
 }
 type KeeperWalletClient = {
   chain?: unknown
+  account?: unknown
   writeContract(args: unknown): Promise<Hex>
 }
 
@@ -38,7 +39,6 @@ export interface RunKeeperParams {
   publicClient: KeeperPublicClient
   // Omit walletClient to plan only (dry run): actions are reported as 'planned', nothing is sent.
   walletClient?: KeeperWalletClient
-  account?: Address
   factory: Address
   log?: (msg: string) => void
 }
@@ -144,18 +144,19 @@ async function healTops(p: RunKeeperParams, boards: Address[], actions: KeeperAc
 
     const action: KeeperAction = { board, kind: 'claimTop', status: 'planned', challenger: liveTop }
     actions.push(action)
-    if (!p.walletClient || !p.account) {
+    if (!p.walletClient?.account) {
       action.detail = 'dry-run'
       continue
     }
     try {
-      // Deliberately no `account` override here: p.account is a bare Address string (route.ts passes
-      // signer.address, not the signer itself), and viem treats an `account` override on writeContract
-      // as a JSON-RPC Account reference -- it defers signing to the node via eth_sendTransaction instead
-      // of signing locally, which every RPC provider (Alchemy included) rejects: node providers never
-      // custody keys. Omitting it here falls back to walletClient.account, the real LocalAccount the
-      // client was created with (route.ts's `createWalletClient({ account: signer, ... })`), so viem
-      // signs locally and calls eth_sendRawTransaction as intended.
+      // Deliberately no `account` override here: viem treats an `account` override on writeContract as
+      // a JSON-RPC Account reference -- it defers signing to the node via eth_sendTransaction instead of
+      // signing locally, which every RPC provider (Alchemy included) rejects, since node providers never
+      // custody keys. A bare Address string is exactly what that override looks like, which is what
+      // caused this bug the first time -- there is no `account` field on RunKeeperParams to pass by
+      // mistake anymore. Omitting the override here falls back to walletClient.account, the real
+      // LocalAccount the client was created with (route.ts's `createWalletClient({ account: signer,
+      // ... })`), so viem signs locally and calls eth_sendRawTransaction as intended.
       const hash = await p.walletClient.writeContract({
         address: board, abi: [BOARD_CLAIM_TOP], functionName: 'claimTop', args: [liveTop],
         chain: p.walletClient.chain,
