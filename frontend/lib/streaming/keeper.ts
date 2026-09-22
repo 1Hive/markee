@@ -149,9 +149,16 @@ async function healTops(p: RunKeeperParams, boards: Address[], actions: KeeperAc
       continue
     }
     try {
+      // Deliberately no `account` override here: p.account is a bare Address string (route.ts passes
+      // signer.address, not the signer itself), and viem treats an `account` override on writeContract
+      // as a JSON-RPC Account reference -- it defers signing to the node via eth_sendTransaction instead
+      // of signing locally, which every RPC provider (Alchemy included) rejects: node providers never
+      // custody keys. Omitting it here falls back to walletClient.account, the real LocalAccount the
+      // client was created with (route.ts's `createWalletClient({ account: signer, ... })`), so viem
+      // signs locally and calls eth_sendRawTransaction as intended.
       const hash = await p.walletClient.writeContract({
         address: board, abi: [BOARD_CLAIM_TOP], functionName: 'claimTop', args: [liveTop],
-        account: p.account, chain: p.walletClient.chain,
+        chain: p.walletClient.chain,
       })
       action.txHash = hash
       const receipt = await p.publicClient.waitForTransactionReceipt({ hash })
