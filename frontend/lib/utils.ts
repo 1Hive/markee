@@ -42,8 +42,11 @@ export function getDisplayName(markee: Markee, ensName?: string | null): string 
 // they are about to send.
 export const FAST_TX_GAS_RESERVE = 200000000000000n // 0.0002 ETH
 
+// format=webp is required, not cosmetic: logo.dev defaults to JPEG, which has no alpha channel, so
+// any transparent source logo gets flattened onto a white matte -- the "white border" around every
+// non-square logo pulled through this helper. retina=true requests a 2x asset for the display size.
 export function logoDevUrl(domain: string, size = 32): string {
-  return `https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=${size}`
+  return `https://img.logo.dev/${domain}?token=pk_V2lLjqQVQHahGBEhZYWN0g&size=${size}&format=webp&retina=true`
 }
 
 // Compact MARKEE token amounts. Small values keep enough decimals to stay non-zero.
