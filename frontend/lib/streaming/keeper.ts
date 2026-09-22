@@ -160,7 +160,8 @@ async function healTops(p: RunKeeperParams, boards: Address[], actions: KeeperAc
     } catch (e) {
       action.status = 'error'
       action.detail = shortErr(e)
-      log(`claimTop(${liveTop}) on ${board} failed: ${shortErr(e)}`)
+      const diag = e as { status?: number; details?: string; name?: string; cause?: { status?: number; details?: string; name?: string } }
+      log(`claimTop(${liveTop}) on ${board} failed: ${shortErr(e)} [diag status=${diag?.status ?? diag?.cause?.status} name=${diag?.name} cause=${diag?.cause?.name} details=${diag?.details ?? diag?.cause?.details}]`)
     }
   }
 }
