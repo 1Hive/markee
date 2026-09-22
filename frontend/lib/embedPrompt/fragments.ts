@@ -98,15 +98,15 @@ an embedded widget -- but its shape should be unmistakably Markee:
   inconsistent real-world support for the CSS \`mask-mode\` property that made it render as nothing
   at all). Use the light or dark logo mark -- **not the purple one** -- picking whichever actually
   reads against the card's own background, the same background you already identified while matching
-  this site's theme (see below): a light card background -> \`https://markee.xyz/markee-logo-dark.png\`
-  (near-black mark), a dark card background -> \`https://markee.xyz/markee-logo-light.png\` (near-white
+  this site's theme (see below): a light card background -> \`https://www.markee.xyz/markee-logo-dark.png\`
+  (near-black mark), a dark card background -> \`https://www.markee.xyz/markee-logo-light.png\` (near-white
   mark). If this card's background switches with the site's own light/dark mode, swap the watermark's
   \`src\` alongside whatever mechanism you already used to make the rest of the modal theme-aware (a
   \`data-theme\` attribute, a dark-mode class, a \`prefers-color-scheme\` media query) rather than
   picking one variant and leaving it fixed:
   \`\`\`
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1; display:flex; align-items:center; justify-content:center">
-    <img src="https://markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
+    <img src="https://www.markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
       height:100%; width:auto;
       opacity:{hover ? 0.16 : 0}; transition:opacity 220ms;
     " />
@@ -174,6 +174,8 @@ config's supported chains -- add it if not.`
   if (wallet === 'privy') {
     return `## Wallet connection: Privy
 
+If this repo already has Privy wired up, extend that setup -- add Base to its supported chains if missing, reuse its existing provider stack and env var name, don't stand up a second \`PrivyProvider\`/wagmi config or a differently-named app-id variable next to the existing one. The rest of this section assumes you're setting Privy up fresh.
+
 Requires: \`@privy-io/react-auth\`, \`@privy-io/wagmi\`, \`wagmi\`, \`viem\`.
 
 Provider order matters:
@@ -192,6 +194,8 @@ Chain: Base (chainId 8453). Set \`NEXT_PUBLIC_PRIVY_APP_ID\` (or your framework'
 If a visitor doesn't have enough ETH, Privy's \`useFundWallet\` (also from \`@privy-io/react-auth\`) opens a card-funding flow: \`fundWallet({ address, options: { chain: base, amount } })\`. Use this for the low-balance banner instead of just showing an error.`
   }
   return `## Wallet connection: RainbowKit
+
+If this repo already has RainbowKit wired up -- likely, since you're reading this because it was detected or selected -- extend that existing config instead of the steps below: add Base to its \`chains\` if missing, reuse whatever env var it already reads for the WalletConnect project ID, and reuse its existing provider stack. Standing up a second \`getDefaultConfig\`/\`WagmiProvider\` alongside the real one, or introducing a second env var under a different name for the same project ID, is the single most common way this section goes wrong. Only follow the steps below if there's genuinely no existing RainbowKit setup in this repo.
 
 Requires: \`@rainbow-me/rainbowkit\`, \`wagmi\`, \`viem\`, \`@tanstack/react-query\`.
 
@@ -258,7 +262,7 @@ Low-balance state: an inline banner, not just a disabled button -- see the walle
 function streamingStrategyFragment(address: string): string {
   return `## Contract interaction: For Rent (streaming)
 
-This leaderboard uses a streaming strategy built on Superfluid: backers pay a continuous ETHx flow rate (ETH/month) instead of a lump sum. The top spot is held by whoever's *current rate* is highest -- promotion is automatic (it flips inside the contract's own inflow callback the instant a challenger's rate clears the incumbent's), but **demotion is not**: if the top backer's rate drops, the contract only heals the ranking when someone calls the permissionless \`claimTop(challengerMarkee)\` on the new-rightful #1. Call it yourself right after any rate change that could affect ranking (yours or, if you're polling, anyone's) -- don't assume the top spot updates on its own.
+This leaderboard uses a streaming strategy built on Superfluid: backers pay a continuous ETHx flow rate (ETH/month) instead of a lump sum. The top spot is held by whoever's *current rate* is highest -- promotion is automatic (it flips inside the contract's own inflow callback the instant a challenger's rate clears the incumbent's), but **demotion is not**: if the top backer's rate drops, the contract only heals the ranking when someone calls the permissionless \`claimTop(challengerMarkee)\` on the new-rightful #1. This is not a safe no-op to call speculatively after every rate change -- it reverts \`AlreadyTop\` if you pass the current top, or \`NotHigherThanTop\` if you pass anything that hasn't actually overtaken it, which is true most of the time nothing needs healing. Only call it when \`getTopMarkees(1)[0]\` (the live, recomputed ranking) disagrees with \`topMarkee()\` (the contract's enforced #1) -- and when it does, pass \`getTopMarkees(1)[0]\` as the challenger.
 
 This is more involved than a normal payable call, and it does not compose the way a generic Superfluid SDK snippet assumes. Don't reach for \`sf.cfaV1.createFlow\` or similar -- our contract wraps CFA/GDA with buffer deposits and per-message pools, tags every flow with the target message via \`userData\`, and behaves differently on create vs. update in a way that will silently misroute a payment if you guess. Use the exact sequences below.
 
@@ -270,10 +274,16 @@ Reads:
 - \`backerMarkee(address) view -> address\` -- which message an address currently backs, if any. **A backer can only ever stream to one message on a given board at a time** -- Superfluid's CFA allows exactly one flow per (sender, receiver) pair, and the receiver here is always the board contract itself, not the individual message. Before opening a new stream, check this (or the CFAv1Forwarder read below) and branch into "update rate" or "switch message" instead, per the flows below.
 - \`backerDeposit(address) view -> uint256\`
 - \`poolOf(markeeAddress) view -> address\` -- the GDA refund pool for a given message (needed below)
-- \`topMarkee() view -> address\` / \`topRate() view -> uint256\` -- the contract's own enforced #1 and its rate. Use these for "what does changing the top message cost", not \`getTopMarkees\`, which recomputes live ranking and can disagree with the enforced #1 during the (usually brief) window before a pending \`claimTop\` heals it.
+- \`topMarkee() view -> address\` -- the contract's own enforced #1 (see below for why this, not \`getTopMarkees\`, is also what should drive your trigger card's display).
+- \`effectiveRate(markee) view -> uint256\` -- the real bar a challenger must clear to take #1 from \`markee\`: \`max(live aggregate rate, a decaying legacy floor)\` for boards migrated from a lump-sum leaderboard, or just the live rate on a natively-created one. **Use \`effectiveRate(topMarkee())\` for your WIN preset**, not \`topRate()\` (see next bullet) -- they only agree on boards with no legacy floor.
+- \`topRate() view -> uint256\` -- the contract's last-recorded stream amount for the current #1, used internally for the beneficiary's payout share. It is *not* always the same as the actual promotion threshold: a migrated board can hold #1 on a legacy floor while its live \`aggregateRate\` (what \`topRate\` reflects) is lower or zero, so \`topRate()\` can understate what a challenger actually needs to overtake it. Don't use it for WIN.
 - CFAv1Forwarder's \`getFlowrate(token, sender, receiver) view -> int96\` -- cheaper read than going through the host; also how you detect an existing stream to gate the create-vs-update-vs-switch branch above.
 
 Resolve the CFA and GDA agreement class addresses dynamically via \`host.getAgreementClass(agreementId)\` rather than hardcoding them -- Superfluid can redeploy agreement classes.
+
+### Sourcing the trigger card's message
+
+Don't source the trigger card's displayed message solely from the listing API below (the proxy route in "Data fetching") -- that response omits this board entirely until it passes Markee's verification check (see the core note near the top of this prompt), so a brand-new integration would show the empty "be first!" state even while its top message is live and paid for. Instead, read \`topMarkee()\` directly (already in your reads above) and, when it's not the zero address, call \`message()\`/\`name()\`/\`owner()\` on that address the same way you would for any other markee -- this is on-chain and correct regardless of verification status. Show "be first!" only when \`topMarkee()\` itself is the zero address, not when the listing API has no entry for this board yet. (\`getTopMarkees\` also works for this, but recomputes live ranking off every registered markee and can briefly disagree with the enforced \`topMarkee()\` before a pending \`claimTop\` heals it -- prefer \`topMarkee()\` for what the trigger card shows.)
 
 ### Creating a message before backing it
 
@@ -281,7 +291,9 @@ Backing only works on a message that already exists on this board. If the visito
 \`\`\`
 board.createMarkee(message, name) -> markeeAddress   // no payment -- creates the message, unfunded
 \`\`\`
-This emits \`MarkeeCreated(markeeAddress, owner, message, name)\`; decode the new address from the receipt logs (or from \`markees(markees.length - 1)\`). Skipping this and streaming straight to an address that was never created reverts with \`UnknownMarkee\` -- the board's inbound-flow callback checks \`isMarkeeOnLeaderboard[markee]\` before accepting anything.
+This emits \`MarkeeCreated(markeeAddress, owner, message, name)\`; decode the new address from the receipt logs (or read \`markeeCount()\` then call \`markees(markeeCount() - 1)\`). Skipping this and streaming straight to an address that was never created reverts with \`UnknownMarkee\` -- the board's inbound-flow callback checks \`isMarkeeOnLeaderboard[markee]\` before accepting anything.
+
+**If the visitor already backs a different message on this board**, creating a new one doesn't give you a fourth option -- \`createMarkee\` itself is fine (any wallet can call it, whether or not it's currently streaming), but a backer can only ever have one open flow to this board (see the CFA one-flow-per-pair note below), so a plain "open a fresh stream to the new message" batch reverts while their old stream is still live. This isn't supported as its own flow, matching markee.xyz's own reference implementation (\`useCreateStreamFlow\`), which blocks it with "You already have an active stream to this board. Stop it first...". Tell the visitor to stop their current stream first (see "What this embed does not need to build" below), then create and back the new message as a fresh first stream -- or, if you want to support it in one step, create the message, then move their existing stream to it via the switch flow below instead of the opening-a-stream flow.
 
 The pool for the new message is created in the same \`createMarkee\` transaction, but RPC nodes can lag a block or two behind -- poll \`poolOf(markeeAddress)\` until it's non-zero before including it in the batch below, rather than reading it once and assuming it's ready.
 
@@ -320,14 +332,15 @@ Your existing \`backerDeposit\` survives the delete (deposits are tracked per-ba
 
 ### What this embed does not need to build
 
-Nothing on markee.xyz's own frontend currently exposes "stop streaming" or \`withdrawDeposit()\` as UI -- there's no reference implementation to mirror, and it's fine to leave both out of a first pass. If you do add them: a backer stops paying by driving their flow rate to \`0\` via the CFA forwarder's \`setFlowrate(ethx, board, 0)\` (equivalent to \`deleteFlow\`), and \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything, once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise).
+Nothing on markee.xyz's own frontend currently exposes "stop streaming" or \`withdrawDeposit()\` as UI -- there's no reference implementation to mirror, and it's fine to leave both out of a first pass, with one exception: if you're going with the "block, don't combine" option for the already-streaming-elsewhere case above, the visitor needs *some* way to stop their existing stream before they can start a new one, so build at minimum a bare stop action for that path. A backer stops paying by driving their flow rate to \`0\` via the CFA forwarder's \`setFlowrate(ethx, board, 0)\` (equivalent to \`deleteFlow\`), and \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything, once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise).
 
 ### Buy flow UX (match this, don't invent your own layout)
 
-Before rendering the flow, check \`backerMarkee(connectedAddress)\` against this board: it determines which of three cases you're in.
-- **No existing stream on this board**: message textarea (char counter against \`maxMessageLength\`) + optional name input if backing a brand-new message (runs \`createMarkee\` first, see above) -- or skip straight to the amount card if backing an existing message. Amount card shows an ETH/month rate with **MIN, MAX, WIN** presets: MIN = \`minimumMonthlyRate()\`, MAX = spendable balance divided by however many months of runway you're asking the visitor to fund upfront, WIN = the rate needed to overtake \`topRate()\` (hidden if backing the current #1 already). Submit: "Start Streaming" → the opening-a-stream batch above.
+Before rendering the flow, check \`backerMarkee(connectedAddress)\` against this board: it determines which of four cases you're in.
+- **No existing stream on this board, backing an existing message**: skip straight to the amount card. Amount card shows an ETH/month rate with **MIN, MAX, WIN** presets: MIN = \`minimumMonthlyRate()\`, MAX = spendable balance divided by however many months of runway you're asking the visitor to fund upfront, WIN = the rate needed to overtake \`effectiveRate(topMarkee())\` -- not \`topRate()\`, see the Reads section above -- hidden if backing the current #1 already. Submit: "Start Streaming" → the opening-a-stream batch above.
+- **No existing stream on this board, backing a brand-new message**: message textarea (char counter against \`maxMessageLength\`) + optional name input, runs \`createMarkee\` first (see above), then the same amount card and submit as the previous case.
 - **Already backing this exact message**: same amount card, prefilled with the current rate. Submit: "Update Rate" → the rate-update flow above.
-- **Already backing a different message on this board**: same amount card, but submitting switches the stream to the new message via the switch flow above, not a rate update. Submit: "Switch & Fund" (or similar -- make it clear this moves the existing stream, it does not add a second one).
+- **Already backing a different message on this board**: same amount card, but submitting switches the stream to the new message via the switch flow above, not a rate update. Submit: "Switch & Fund" (or similar -- make it clear this moves the existing stream, it does not add a second one). If the visitor wants to back a brand-new message while already streaming elsewhere, see the note on this in "Creating a message before backing it" above -- it isn't a fifth case here, it's this case (switch) preceded by a \`createMarkee\` call, or an explicit block telling them to stop their existing stream first.
 
 Show the estimated runway ("~N days at this rate", from the prefund ETHx balance divided by the rate) next to the amount input in every case.`
 }
