@@ -44,7 +44,7 @@ export function coreIdentityFragment(
     ? 'Markee is a protocol where anyone can pay ETH to set the featured message on a leaderboard. On this leaderboard, backers pay by streaming a continuous ETH/month rate (Superfluid) instead of a lump sum -- the highest current *rate* holds the top spot, not the highest cumulative total, and anyone can overtake it by streaming faster.'
     : 'Markee is a protocol where anyone can pay ETH to set the featured message on a leaderboard. The highest total funder holds the top spot; anyone can outbid them to take it.'
   const sourceRefLine = strategy === 'streaming'
-    ? 'the streaming contract at `contracts/v1.3/streaming/StreamingLeaderboard.sol` and the reference frontend implementation under `frontend/lib/superfluid/streaming.ts` and `frontend/hooks/use*StreamFlow.ts`'
+    ? 'the streaming contract at `contracts/v1.3/streaming/StreamingLeaderboard.sol` and the reference frontend implementation under `frontend/lib/superfluid/streaming.ts` and `frontend/hooks/useCreateStreamFlow.ts`, `useUpdateStreamRateFlow.ts`, `useMoveStreamFlow.ts`'
     : 'the leaderboard contract at `contracts/v1.3/Leaderboard.sol` and the reference frontend implementation at `frontend/components/modals/BuyMessageModal.tsx`'
   return `# Markee embed setup
 
@@ -106,7 +106,7 @@ an embedded widget -- but its shape should be unmistakably Markee:
   picking one variant and leaving it fixed:
   \`\`\`
   <div style="position:absolute; inset:0; overflow:hidden; border-radius:inherit; pointer-events:none; z-index:-1; display:flex; align-items:center; justify-content:center">
-    <img src="https://www.markee.xyz/markee-logo-dark.png" alt="" aria-hidden style="
+    <img src="https://www.markee.xyz/markee-logo-dark.png" alt="" aria-hidden="true" style="
       height:100%; width:auto;
       opacity:{hover ? 0.16 : 0}; transition:opacity 220ms;
     " />
