@@ -111,7 +111,7 @@ type Step = 'questions' | 'prompt' | 'verifying' | 'verified'
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
   const [step, setStep] = useState<Step>('questions')
   const [framework, setFramework] = useState<EmbedFramework | null>('nextjs')
-  const [wallet, setWallet] = useState<EmbedWallet>('privy')
+  const [wallet, setWallet] = useState<EmbedWallet>('none')
   const [agent, setAgent] = useState<EmbedAgent | null>('claude-code')
   const [siteUrl, setSiteUrl] = useState('')
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)

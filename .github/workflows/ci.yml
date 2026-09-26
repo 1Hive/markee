@@ -38,3 +38,6 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Embed prompt matches the reference modals
+        run: npm run test:embed-prompt
