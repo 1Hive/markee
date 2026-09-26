@@ -12,10 +12,17 @@ function normalizedSource(file: string): string {
   return readFileSync(join(root, file), 'utf8').replace(/&apos;/g, "'").replace(/\{' '\}/g, ' ')
 }
 
+// A label has to appear as displayed text -- bounded by JSX/string delimiters or whitespace -- not
+// just as a substring, so "Edit" can't be satisfied by an identifier like hasUserEdited.
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function appearsAsText(source: string, label: string): boolean {
+  return new RegExp(`(^|[>'"\`\\s{(])${escapeRegExp(label)}($|[<'"\`\\s})])`).test(source)
+}
+
 for (const [group, { file, ...labels }] of Object.entries(UI_COPY)) {
   test(`embed prompt copy still matches ${file}`, () => {
     const source = normalizedSource(file)
-    const missing = Object.entries(labels).filter(([, label]) => !source.includes(label))
+    const missing = Object.entries(labels).filter(([, label]) => !appearsAsText(source, label))
     assert.deepEqual(
       missing, [],
       `UI_COPY.${group} has labels no longer found in ${file} -- update the prompt to match the modal's new copy`,
@@ -33,8 +40,9 @@ for (const strategy of strategies) {
     assert.ok(prompt.includes(UI_COPY.fixedModal.existingDivider))
     assert.ok(prompt.includes(UI_COPY.fixedModal.review))
     assert.ok(!prompt.includes('Switch & Fund'), 'old radio-list streaming layout')
-    assert.ok(!prompt.includes('to back'), 'pill copy is "to rent" on markee.xyz')
+    assert.ok(!/ETH\/mo to back\b/.test(prompt), 'pill copy is "to rent" on markee.xyz')
     assert.ok(!prompt.includes('BuyMessageModal'), 'stale reference implementation')
+    assert.ok(!/setMessage\(newMessage\)` on the markee contract itself/.test(prompt), 'owner edits go through board.updateMessage')
     assert.ok(!/\[object Object\]|\bNaN\b|: undefined\b/.test(prompt), 'bad interpolation')
   })
 }

@@ -51,6 +51,9 @@ export const UI_COPY = {
     ownerOnly: 'As the message owner, only you can change this.',
     freeUpdate: 'Free — message update only',
     connect: 'Connect your wallet to continue.',
+    successLive: 'Success! Your message is live',
+    successFunded: 'Success! Funds added to the sign',
+    successUpdated: 'Success! Your message is updated',
   },
   streamingModal: {
     file: 'components/modals/StreamSignModal.tsx',
@@ -78,6 +81,21 @@ export const UI_COPY = {
     stepStart: 'Start Stream',
     stepMove: 'Move Stream',
     stepUpdate: 'Update Stream',
+    split: '62/38 split',
+    review: 'Review Payment Info',
+    enterDifferentRate: 'Enter a different rate',
+    successLive: 'Success! Your message is live',
+    successFunded: 'Success! Funds added to the sign',
+    successMoved: 'Success! Your stream moved to this message',
+    successRate: 'Success! Your rate is updated',
+    waitingWallet: 'Waiting for wallet…',
+    confirming: 'Confirming on Base',
+  },
+  streamStatus: {
+    file: 'components/board-detail/shared.tsx',
+    active: 'Active',
+    notWinning: 'Not Winning',
+    stopped: 'Stopped',
   },
   review: {
     file: 'components/modals/StreamUI.tsx',
@@ -105,6 +123,8 @@ export const UI_COPY = {
     streamingNow: 'Streaming now',
     notStreaming: 'Bids not streaming',
     yourStreams: 'Your streams',
+    depositPlaceholder: 'Amount to deposit (ETH)',
+    withdrawPlaceholder: 'Amount to withdraw (ETHx)',
   },
   createStreamFlow: {
     file: 'hooks/useCreateStreamFlow.ts',
@@ -251,7 +271,13 @@ export function walletFragment(wallet: EmbedWallet): string {
   if (wallet === 'none') {
     return `## Wallet connection: none set up yet
 
-This site doesn't have a wallet library installed. Use plain \`wagmi\` with its built-in connectors --
+This site doesn't appear to have a wallet library installed. **Check first:** if the repo already has
+\`wagmi\`, \`@wagmi/core\`, a \`WagmiProvider\`, or any wallet-connection kit (Privy, RainbowKit,
+ConnectKit, AppKit, Dynamic, thirdweb...), don't follow this section -- reuse that existing setup,
+add Base (8453) to its chains if missing, and only add what's below that it lacks. A second wagmi
+config or provider stack next to an existing one is the most common way this goes wrong.
+
+Otherwise, use plain \`wagmi\` with its built-in connectors --
 **no third-party account, dashboard signup, API key, or domain allowlist needed**, so this works the
 moment it deploys. Don't reach for Privy, Dynamic, RainbowKit, or any other hosted wallet service
 here; each one needs the site owner to register an app and configure keys before anything works.
@@ -284,13 +310,20 @@ That's what makes this a real replacement for an embedded-wallet service rather 
 crypto-natives-only setup. Keep the connector's default preference (which offers both Smart Wallet
 creation and the existing Coinbase Wallet app/extension) unless you have a reason to narrow it.
 
-Connect UI: build a small chooser from \`useConnect()\`'s \`connectors\` -- one button per connector,
-labelled from \`connector.name\` ("Browser Wallet" is a clearer label than "Injected" for the
-\`injected()\` entry; hide it when \`window.ethereum\` is undefined, since it can't do anything then),
-calling \`connect({ connector })\`. Show it in place of the buy modal's body when no wallet is
+Connect UI: build a small chooser from \`useConnect()\`'s \`connectors\` -- one button per wallet,
+labelled from \`connector.name\`, calling \`connect({ connector })\`. wagmi also auto-discovers installed
+extension wallets (EIP-6963), so that list can contain the same wallet twice (e.g. a discovered
+"Coinbase Wallet" extension next to the \`coinbaseWallet()\` connector) plus the generic \`injected()\`
+entry: dedupe by \`connector.name\`, and show the generic \`injected()\` entry (labelled "Browser
+Wallet", not "Injected") only when no extension was discovered and \`window.ethereum\` exists. Show it in place of the buy modal's body when no wallet is
 connected (see the modal spec below), matching markee.xyz's "${UI_COPY.fixedModal.connect}" state, with the
 connected address + a disconnect action once connected. If \`useAccount().chainId\` isn't 8453, show a
 "Switch to Base" button calling \`switchChain({ chainId: 8453 })\`.
+
+Not a React site (Vue, plain HTML/JS)? The same setup works through \`@wagmi/core\`, which has no
+React dependency: \`createConfig\` with the same connectors, then \`getConnectors\`, \`connect\`,
+\`disconnect\`, \`watchAccount\`, \`switchChain\`, \`readContract\`, \`writeContract\` and
+\`waitForTransactionReceipt\` in place of the hooks named throughout this prompt.
 
 Optional, only if the site owner wants it: \`walletConnect({ projectId })\` adds QR-code connection
 for mobile wallets, but needs a free project ID from https://cloud.reown.com -- leave it out by
@@ -507,13 +540,13 @@ function mainViewMockup(): string {
     line(`  ${spread('(2) take me to the top ^', `0.001 ETH/mo [${s.manage}]`)}`, 'the row this wallet backs'),
     line(`  ${spread('    [eye] 1', '- 0x809C...7714  YOU       ')}`),
     divider(f.newDivider),
-    line(`  ${spread(f.messageLabel.toUpperCase(), '0/222')}`),
-    line(`  ${`[ Your message here... (222 max)`.padEnd(W - 5)}]`, 'accent-colored border'),
+    line(`  ${spread(f.messageLabel.toUpperCase(), '0/<max>')}`),
+    line(`  ${`[ Your message here... (<max> max)`.padEnd(W - 5)}]`, 'accent-colored border'),
     line(`  ${f.nameLabel.toUpperCase()}`),
     line(`  ${`[ ${f.namePlaceholder}`.padEnd(W - 5)}]`),
     rule + '  <- pinned footer, always visible',
     line(`  ${'[ amount card -- per strategy'.padEnd(W - 5)}]`),
-    line(`  [ 7.304   MARKEE earned ]   ${'[ primary button'.padEnd(W - 33)}]`),
+    line(`  ${`[ 7.304   ${s.earned} ]`.padEnd(30)}${'[ primary button'.padEnd(W - 35)}]`),
     line(`  ${spread('', `${f.split} (i)`)}`),
     rule,
   ].join('\n')
@@ -534,14 +567,14 @@ ${mainViewMockup()}
 - **Existing messages** (hidden entirely, both dividers included, when the board has none): the centered divider label "${f.existingDivider}", then one row per message in ranked order -- a rank circle (filled with the accent color for #1, which also gets a subtle highlighted row background), the message in bold monospace truncated to one line, and under it the meta line: eye icon + view count on the left, "- <name or 0x1234...abcd>" on the right, plus a small "YOU" pill when the connected wallet owns it. Right side: the message's amount, then the row's action button(s). Cap this list at about two rows tall with its own scroll -- it's secondary to composing below. Then the divider "${f.newDivider}".
 - **Compose:** "${f.messageLabel}" label with a live \`n/maxMessageLength\` counter, a two-row textarea (placeholder "Your message here... (<max> max)") styled as the emphasized input -- accent-colored border with a faint glow -- then "${f.nameLabel}" with an input (placeholder "${f.namePlaceholder}", capped at \`maxNameLength\`).
 - **Pinned footer:** the amount card, then a two-column row -- the MARKEE "earned" tile (accent gradient background, big number on the left, label on the right) and the primary button, equal height -- then "${f.split}" right-aligned with an info tooltip reading "62% to the sign's beneficiary / 38% to Markee's Revnet / Your MARKEE is issued by the Revnet".
-- **View counts:** \`GET https://www.markee.xyz/api/views?addresses=<comma-separated markee addresses>\` returns \`{ "<address>": { "totalViews": n } }\`. It's CORS-open; call it straight from the browser.
+- **View counts:** \`GET https://www.markee.xyz/api/views?addresses=<comma-separated markee addresses>\` returns \`{ "<address>": { "totalViews": n } }\`, keyed by **lowercased** address -- lowercase before looking rows up, or every checksummed address from \`getTopMarkees\` reads as 0. At most 100 addresses per call. It's CORS-open; call it straight from the browser.
 
 Every other view (Add Funds, Edit, Fund, Manage) replaces the body with that view's content, a "← Back" link at the top, and a **footer bar**: a note on the left, the primary button on the right.
 
 Shared states and behavior:
 - **Not connected:** replace the body with "${f.connect}" and your connect chooser (see the wallet section). **Wrong network:** "Switch to Base to use Markee." with a "Switch to Base" button.
 - **Review step before every payment:** the primary button always reads "${f.review}". Clicking it swaps the view's content for a review card and the footer for "Back" / "${r.confirm}" ("Confirming…" while busy); the wallet prompt only opens on "${r.confirm}". The review card: the message in a bordered box, then rows "${r.paying}" (amount, plus "(≈ $X)" if you have an ETH price) -> "${r.depositing}" (For Rent, when this transaction wraps ETH) or "${r.runway}" (For Rent, when it doesn't) -> "${r.earn}" (MARKEE estimate) -> an outcome banner (copy per strategy below).
-- **Transaction progress:** while signing/confirming, replace the body with a progress panel -- "Waiting for wallet…" while the wallet prompt is open, then "Confirming on Base" with "Usually under 2 seconds on Base.", then a success headline (per strategy) with "The sign will refresh in a moment." Multi-transaction flows show a checklist of their steps in this panel. About two seconds after success, return to the main view and refetch with \`?bust=1\`.
+- **Transaction progress:** while signing/confirming, replace the body with a progress panel -- "${UI_COPY.streamingModal.waitingWallet}" while the wallet prompt is open, then "${UI_COPY.streamingModal.confirming}" with "Usually under 2 seconds on Base.", then a success headline (per strategy) with "The sign will refresh in a moment." Multi-transaction flows show a checklist of their steps in this panel. About two seconds after success, return to the main view and refetch with \`?bust=1\`.
 - **Validation:** check message/amount problems when the button is clicked and show the error inline (message errors under the textarea, everything else above the button) rather than disabling the button ahead of time. The exception is insufficient balance, which disables the button up front with a tooltip "You don't have enough ETH for this" and shows the low-balance notice.
 - **Closing:** backdrop click and Escape close the modal -- except once the visitor has typed or changed something and no transaction is in flight, so a stray click can't throw away a drafted message.
 - **Moderation:** flagged messages are left out of the lists entirely (see Moderation).
@@ -574,46 +607,47 @@ function fixedBuyFlowFragment(): string {
 
 **Review outcome banner:** green "${r.fixedWin}" when the amount takes or keeps #1; otherwise red "${r.fixedLose} — needs X.XXX ETH to take the top spot", where X is the shortfall to WIN.
 
-**Success headlines:** "Success! Your message is live" (new message), "Success! Funds added to the sign" (add funds), "Success! Your message is updated" (edit).`
+**Success headlines:** "${f.successLive}" (new message), "${f.successFunded}" (add funds), "${f.successUpdated}" (edit).`
 }
 
 function streamingBuyFlowFragment(): string {
   const s = UI_COPY.streamingModal
   const r = UI_COPY.review
   const d = UI_COPY.depositManager
+  const st = UI_COPY.streamStatus
   return `## Buy modal views: For Rent
 
 Rates are entered in ETHx per month everywhere. Read \`backerMarkee(connectedWallet)\` as soon as a wallet connects -- it decides each row's button and which write flow each submit uses (see the contract section above).
 
 **Main view** -- title "${s.title}".
-- Rows: every message except the empty genesis seed and ones that were never funded, in \`getTopMarkees\` order. Amount column: the message's effective rate to 3 decimals ("0.004 ETH/mo"). Button: "${s.manage}" on the row the connected wallet currently backs, "${s.fund}" on every other row.
+- Rows: \`getTopMarkees\` order, minus the board's genesis seed (empty message) and dead-on-arrival messages. Keep a message if its current rate is above 0 **or** it has ever been backed -- i.e. at least one \`BackerUpdated(address indexed backer, address indexed markee, uint256 flowRate, uint256 newAggregate)\` event from the board names it as \`markee\` (a \`createMarkee\` whose stream was abandoned leaves a real message with no such event; a stream that was later stopped still has one, and markee.xyz keeps listing it). Scan those logs once from the board's creation block and cache the result -- "ever backed" never becomes false again. Amount column: the message's effective rate to 3 decimals ("0.004 ETH/mo"). Button: "${s.manage}" on the row the connected wallet currently backs, "${s.fund}" on every other row.
 - **Rate card** -- three lines:
-  1. The large editable rate followed by an "${s.unit}" unit; presets **MIN, WIN** on the right (no MAX). MIN = \`minimumMonthlyRate()\` rounded **up** to the nearest 0.001 ETH for display. WIN = the next whole multiple of the board minimum above the current #1: \`(floor(topMonthly / minMonthly) + 1) * minMonthly\`, where \`topMonthly = effectiveRate(topMarkee()) * 2_628_000\`. Prefill WIN when there's a funded #1, otherwise MIN.
+  1. The large editable rate followed by an "${s.unit}" unit; presets **MIN, WIN** on the right (no MAX). MIN = \`minimumMonthlyRate()\` rounded **up** to the nearest 0.001 ETH for display. WIN = the next whole multiple of the board minimum above the current #1: \`(floor(topMonthly / minMonthly) + 1) * minMonthly\`, where \`topMonthly = effectiveRate(topMarkee()) * 2_628_000\`, then round the result **up** to 6 decimals before putting it in the input -- boards created since the minimum was lowered have \`minimumMonthlyRate = 999999997884000\` (0.001 ETH/mo floored to a whole wei-per-second rate), so the raw multiple is e.g. 0.001999999995768 where the visitor should see 0.002. Rounding up keeps it above the current #1, and the floor-first conversion below still charges at least the exact multiple. Prefill WIN when there's a funded #1, otherwise MIN.
   2. "≈ $X/mo" on the left; on the right "ETHx Balance 0.015" if the wallet holds any ETHx, otherwise "ETH Balance 0.123", with an info tip: "${d.balanceTip}"
   3. A divider, then "${s.depositManagerLink}" on the left (opens the Deposit Manager, below). On the right: when the auto-deposit (see "How much to wrap" above) is nonzero, the ETH this transaction will wrap ("0.0120 ETH", info tip "Your first transaction will deposit 0.0120 ETH as ETHx, enough to stream for 3mo 0d 0h. Go to the Deposit Manager to deposit a different amount than this."); otherwise the runway as "3mo 24d 10h" (info tip "How long your message can stream for based on your ETHx balance. To add more, go to the Deposit Manager.").
 - Earned tile: "N ${s.earned}" for the rate entered.
 - Primary button: "${s.buy}", or "Deposit 0.012 ${s.buyWithDeposit}" when the auto-deposit is nonzero -> review -> the brand-new-message sequence (createMarkee -> approve -> batch). Progress checklist: "${s.stepCreate}", "${s.stepApprove}", then "Deposit ETH & ${s.stepStart}" (or just "${s.stepStart}" when nothing is wrapped). Before any of it, apply the already-streaming block described in "Creating a message before backing it".
 
 **Fund Message view** (from "${s.fund}") -- title "${s.fundTitle}".
-- The target message box with a rank badge (gold outline when it's #1) and its meta line. If the connected wallet owns the message, a small pencil button edits its text inline: a textarea with "Save" / "Cancel", calling \`setMessage(newMessage)\` on the markee contract itself (not the board), then "✓ Message updated".
+- The target message box with a rank badge (gold outline when it's #1) and its meta line. If the connected wallet owns the message, a small pencil button edits its text inline: a textarea with "Save" / "Cancel", calling the **board's** \`updateMessage(markeeAddress, newMessage)\` (it checks the caller owns the message) -- **not** \`setMessage\` on the markee contract, which only the board itself may call and reverts for everyone else. Then "✓ Message updated".
 - The rate card (at #1, WIN reads **2X** and doubles this message's current rate), then the earned tile full-width.
-- Footer: "62/38 split" on the left, "Review Payment Info" on the right. Submit uses the open-a-stream batch if the wallet backs nothing on this board, or the switch batch if it backs a different message. Checklist: "${s.stepApprove}", then "Deposit ETH & ${s.stepStart}" / "${s.stepStart}" (new stream) or "Deposit ETH & ${s.stepMove}" / "${s.stepMove}" (switch).
+- Footer: "${s.split}" on the left, "${s.review}" on the right. Submit uses the open-a-stream batch if the wallet backs nothing on this board, or the switch batch if it backs a different message. Checklist: "${s.stepApprove}", then "Deposit ETH & ${s.stepStart}" / "${s.stepStart}" (new stream) or "Deposit ETH & ${s.stepMove}" / "${s.stepMove}" (switch).
 
 **Manage Your Stream view** (from "${s.manage}") -- title "${s.manageTitle}".
 - "${s.messageFunding}" label (with the pencil edit if the wallet owns it) over the message box.
-- A status box: a status dot and label -- **Active** (green: this message is #1 and the stream is paying), **Not Winning** (gold: the stream is open but refunded 100% while it isn't #1), **Stopped** (red: flow rate is 0) -- a rank badge, and "featured 3d 4h" while it holds #1. Then a stat grid: "${s.totalStreamed}" (ETH actually paid, net of refunds), "${s.ethxBalance}", "${s.runsOut}" ("~12.4 days"; red and bold under 7 days), and "MARKEE earned" (accrued so far). If this message has never been #1 and nothing has accrued, replace the grid with "${s.neverWon}" "${s.totalStreamed}" and "MARKEE earned" need the stream's event history; if you'd rather not replay those events, keep "${s.ethxBalance}" and "${s.runsOut}" and leave the other two out instead of estimating them.
+- A status box: a status dot and label -- **${st.active}** (green: this message is #1 and the stream is paying), **${st.notWinning}** (gold: the stream is open but refunded 100% while it isn't #1), **${st.stopped}** (red: flow rate is 0) -- a rank badge, and "featured 3d 4h" while it holds #1. Then a stat grid: "${s.totalStreamed}" (ETH actually paid, net of refunds), "${s.ethxBalance}", "${s.runsOut}" ("~12.4 days"; red and bold under 7 days), and "MARKEE earned" (accrued so far). If this message has never been #1 and nothing has accrued, replace the grid with "${s.neverWon}" "${s.totalStreamed}" and "MARKEE earned" need the stream's event history; if you'd rather not replay those events, keep "${s.ethxBalance}" and "${s.runsOut}" and leave the other two out instead of estimating them.
 - "${s.newRate}" label over the same rate card, prefilled with WIN (2X when already #1).
-- Footer left: "${s.cancelStream}" (when Active) or "${s.cancelBid}" (when Not Winning) -> \`setFlowrate(ethx, board, 0)\` on the CFAv1Forwarder; after cancelling, if a deposit is still held: "${s.depositStays} ${s.depositManagerLink}". Footer right: "Review Payment Info", disabled with the tooltip "Enter a different rate" until the rate changes (or "Minimum is X ETH/mo" below the floor) -> the rate-update batch, checklist "${s.stepApprove}", "${s.stepUpdate}".
+- Footer left: "${s.cancelStream}" (when ${st.active}) or "${s.cancelBid}" (when ${st.notWinning}) -> \`setFlowrate(ethx, board, 0)\` on the CFAv1Forwarder; after cancelling, if a deposit is still held: "${s.depositStays} ${s.depositManagerLink}". Footer right: "${s.review}", disabled with the tooltip "${s.enterDifferentRate}" until the rate changes (or "Minimum is X ETH/mo" below the floor) -> the rate-update batch, checklist "${s.stepApprove}", "${s.stepUpdate}".
 
 **Deposit Manager** (opened from any "${s.depositManagerLink}" link): a second modal stacked above the first, titled "${d.title}", with "← Back" closing just it.
 - "${d.runsOut}" with an info tip "${d.runsOutTip}", a countdown formatted "2mo 14d 06h 42m 09s" that ticks every second, and a progress bar (full at 3 months or more; yellow under a week, red under a day). Hidden when nothing is streaming.
-- An "${d.balance}" card (same info tip as the rate card): the balance, visibly decreasing at the wallet's outgoing stream rate; "${d.deposit}" and "${d.withdraw}" toggle buttons, where the selected one expands an amount input ("Amount to deposit (ETH)" / "Amount to withdraw (ETHx)") with "Wallet ETH: …" and "ETHx Balance: …" above it, and 1mo / 2mo / 3mo shortcuts (deposit, while streaming) or a percent-of-balance slider. Deposit = ETHx \`upgradeByETH()\` (payable); Withdraw = ETHx \`downgradeToETH(amount)\`. After confirmation: "✓ Deposit confirmed" (or "✓ Withdrawal confirmed") with a "View on Basescan ↗" link.
+- An "${d.balance}" card (same info tip as the rate card): the balance, visibly decreasing at the wallet's outgoing stream rate; "${d.deposit}" and "${d.withdraw}" toggle buttons, where the selected one expands an amount input ("${d.depositPlaceholder}" / "${d.withdrawPlaceholder}") with "Wallet ETH: …" and "ETHx Balance: …" above it, and 1mo / 2mo / 3mo shortcuts (deposit, while streaming) or a percent-of-balance slider. Deposit = ETHx \`upgradeByETH()\` (payable); Withdraw = ETHx \`downgradeToETH(amount)\`. After confirmation: "✓ Deposit confirmed" (or "✓ Withdrawal confirmed") with a "View on Basescan ↗" link.
 - Two tiles: "${d.streamingNow}" (green; total ETH/mo of the wallet's winning streams, "N messages winning") and "${d.notStreaming}" (total ETH/mo of its non-winning bids).
 - "${d.yourStreams}": markee.xyz lists the wallet's streams across every board through a server endpoint that isn't open to other origins. Here, list this board's stream (a wallet has at most one per board: \`backerMarkee\` + \`getFlowrate\`), and add a "Manage all your Markee streams →" link to https://www.markee.xyz/account.
 
 **Review outcome banner:** when the rate takes or keeps #1, green "${r.rentWin}" with the note "${r.rentWinNote}" Otherwise, gold "${r.rentLose}", then bold "Add X ETH/mo to take the top spot", then the note "${r.rentLoseNote}"
 
-**Success headlines:** "Success! Your message is live" (new message), "Success! Funds added to the sign" (new stream to an existing message), "Success! Your stream moved to this message" (switch), "Success! Your rate is updated" (rate change).`
+**Success headlines:** "${s.successLive}" (new message), "${s.successFunded}" (new stream to an existing message), "${s.successMoved}" (switch), "${s.successRate}" (rate change).`
 }
 
 export function buyFlowFragment(strategy: EmbedStrategy): string {

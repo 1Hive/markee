@@ -54,6 +54,9 @@ function detectWallet(deps: Record<string, string>): EmbedWallet {
   if (deps['@privy-io/react-auth']) return 'privy'
   if (deps['@rainbow-me/rainbowkit']) return 'rainbowkit'
   if (OTHER_WALLET_DEPS.some(dep => deps[dep])) return 'other'
+  // A hand-rolled wagmi setup is still an existing wallet config to extend -- 'none' would tell the
+  // agent to create a second one alongside it.
+  if (deps['wagmi'] || deps['@wagmi/core']) return 'other'
   return 'none'
 }
 
