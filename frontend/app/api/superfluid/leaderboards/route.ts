@@ -48,7 +48,7 @@ function getClient() {
   return createPublicClient({
     chain: base,
     transport: http(
-      process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org',
+      process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
       { fetchOptions: { cache: 'no-store' } }, // prevent Next.js caching RPC responses
     ),
   })
