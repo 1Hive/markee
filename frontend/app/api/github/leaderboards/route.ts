@@ -16,7 +16,7 @@ const LEADERBOARD_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2'
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org', {
+    transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org', {
       // cache: 'no-store' bypasses both Next.js data cache and any HTTP-level
       // caching layer in front of Alchemy so every bust=1 call reads current state.
       fetchOptions: { cache: 'no-store' },
