@@ -4,9 +4,25 @@ import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { useAccount } from 'wagmi'
 import { useState, useEffect } from 'react'
 import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
+import { useModerationQueue } from '@/hooks/useModerationQueue'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const BORDER = 'rgba(138,143,191,0.2)'
+
+function QueueBadge({ n }: { n: number }) {
+  return (
+    <span
+      aria-label={`${n} messages to review`}
+      style={{
+        minWidth: 18, height: 18, borderRadius: 99, padding: '0 5px', boxSizing: 'border-box',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        background: '#FFB020', color: '#060A2A', fontSize: 10, fontWeight: 700, fontFamily: MONO,
+      }}
+    >
+      {n > 99 ? '99+' : n}
+    </span>
+  )
+}
 
 function GlowDot() {
   return (
@@ -25,6 +41,7 @@ export function ConnectButton() {
   const [copied, setCopied] = useState(false)
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  const { items: queueItems } = useModerationQueue()
 
   // Before Privy finishes checking for a stored session, `authenticated` just defaults to false --
   // showing "Connect" here would read as "you're logged out" when the real answer is "still checking."
@@ -106,6 +123,7 @@ export function ConnectButton() {
       >
         <GlowDot />
         {displayName}
+        {queueItems.length > 0 && <QueueBadge n={queueItems.length} />}
         <ChevronDown size={14} style={{ transform: menuOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 160ms' }} />
       </button>
 
@@ -141,6 +159,7 @@ export function ConnectButton() {
             >
               <LayoutDashboard size={15} color="#8A8FBF" />
               Dashboard
+              {queueItems.length > 0 && <span style={{ marginLeft: 'auto' }}><QueueBadge n={queueItems.length} /></span>}
             </Link>
             {displayAddress && (
               <button

@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/streaming-keeper",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/moderation-scan",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
