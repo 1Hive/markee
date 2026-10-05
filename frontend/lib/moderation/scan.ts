@@ -4,7 +4,7 @@ import { parseAbiItem } from 'viem'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { observeMessage, type MessageObservation, type ModerationItem } from '@/lib/moderation/queue'
 import {
-  CURSORS_KEY, boardMarkeesKey, flagKey, getModerationClient, itemKey, listModeratedBoards, pendingKey, readFlagged, readItems,
+  BASELINE_KEY, CURSORS_KEY, boardMarkeesKey, flagKey, getModerationClient, itemKey, listModeratedBoards, pendingKey, readFlagged, readItems,
 } from '@/lib/moderation/server'
 
 const BOARD_EVENTS = [
@@ -144,6 +144,8 @@ async function observe(client: Client, touches: Touch[], toBlock: bigint): Promi
 export async function runModerationScan(): Promise<ScanReport> {
   const client = getModerationClient()
   const [listed, latest] = await Promise.all([listModeratedBoards(), client.getBlockNumber()])
+  await kv.set(BASELINE_KEY, latest.toString(), { nx: true })
+  const baseline = BigInt((await kv.get<string>(BASELINE_KEY)) ?? latest.toString())
   const cursors = listed.length > 0
     ? await kv.hmget<Record<string, string>>(CURSORS_KEY, ...listed.map(b => b.address))
     : null
@@ -167,7 +169,10 @@ export async function runModerationScan(): Promise<ScanReport> {
     const pipeline = kv.pipeline()
     let writes = discovered.size
     observations.forEach((obs, i) => {
-      const next: ModerationItem | null = observeMessage(prevs[i] ?? null, obs, flaggedSet.has(flagKey(obs.markee)))
+      const next: ModerationItem | null = observeMessage(prevs[i] ?? null, obs, {
+        flagged: flaggedSet.has(flagKey(obs.markee)),
+        preexisting: BigInt(obs.blockNumber) <= baseline,
+      })
       if (!next) return
       writes++
       pipeline.set(itemKey(next.markee), next)

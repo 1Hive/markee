@@ -114,7 +114,7 @@ All stored in Vercel KV. Client hooks (`useViews`, `useReactions`) call the API 
 | Moderation pending index | `moderation:pending:{board}` (ZSET by block time) | Feeds `GET /api/moderation/queue` |
 | Moderation scan cursors | `moderation:cursors` (HASH board → block), `moderation:board:{board}:markees` | Last scanned block per board, and the known markees per board (streaming edits are logged on the markee itself) |
 
-The `/api/cron/moderation-scan` cron (every 5 min) scans every v1.x fixed and streaming board from its own cursor for `MarkeeCreated`, `MarkeeMigratedFromLegacy`, `MarkeeRegistered` and `MessageUpdated`, plus `MessageChanged` on streaming markees. It reads each touched markee's current text and queues it as `pending`. Any change to the text re-queues a reviewed item, so an approval covers specific text. The `/account` Moderation tab lists the queue (one wallet signature opens it for 24h) and posts `approve` / `flag` batches to `POST /api/moderation`.
+The `/api/cron/moderation-scan` cron (every 5 min) scans every v1.x fixed and streaming board from its own cursor for `MarkeeCreated`, `MarkeeMigratedFromLegacy`, `MarkeeRegistered` and `MessageUpdated`, plus `MessageChanged` on streaming markees. It reads each touched markee's current text and queues it as `pending`. Text already live at `moderation:baseline` (the block of the first scan) starts as `approved`. Any change to the text re-queues a reviewed item, so an approval covers specific text. The `/account` Moderation tab lists the queue (one wallet signature opens it for 24h) and posts `approve` / `flag` batches to `POST /api/moderation`.
 
 MARKEE ERC20 (all chains): `0xF6627cF19317C33B457f77452876e6e297c4942F`
 

@@ -52,13 +52,19 @@ export function reviewMessage(action: ModerationAction, chainId: number | string
 }
 
 // Approval covers specific text, so any change to it owes a fresh review. An item that was still
-// pending keeps the text a moderator last saw, not the intermediate one nobody reviewed.
-export function observeMessage(prev: ModerationItem | null, obs: MessageObservation, alreadyFlagged: boolean): ModerationItem | null {
+// pending keeps the text a moderator last saw, not the intermediate one nobody reviewed. Text that
+// was already live before the queue existed starts out approved.
+export function observeMessage(
+  prev: ModerationItem | null,
+  obs: MessageObservation,
+  { flagged, preexisting }: { flagged: boolean; preexisting: boolean },
+): ModerationItem | null {
   if (prev && prev.message === obs.message) return null
   const previousMessage = prev ? (prev.status === 'pending' ? prev.previousMessage : prev.message) : null
+  const firstStatus: ModerationStatus = flagged ? 'flagged' : preexisting ? 'approved' : 'pending'
   return {
     ...obs,
-    status: !prev && alreadyFlagged ? 'flagged' : 'pending',
+    status: prev ? 'pending' : firstStatus,
     kind: previousMessage === null ? 'created' : 'edited',
     previousMessage,
     reviewedBy: null,
