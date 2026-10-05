@@ -99,7 +99,6 @@ export async function POST(req: NextRequest) {
       success: true,
       action,
       keys: ids.map(flagKey),
-      key: flagKey(ids[0]),
       flagged: await readFlagged(),
     })
   } catch (error) {

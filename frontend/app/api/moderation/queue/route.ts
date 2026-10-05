@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const signature = params.get('signature') as `0x${string}` | null
   const timestamp = Number(params.get('timestamp'))
 
-  if (!moderator || !/^0x[0-9a-f]{40}$/.test(moderator) || !signature || !Number.isInteger(timestamp)) {
+  if (!moderator || !/^0x[0-9a-f]{40}$/.test(moderator) || !signature || !/^0x[0-9a-fA-F]+$/.test(signature) || !Number.isInteger(timestamp)) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
