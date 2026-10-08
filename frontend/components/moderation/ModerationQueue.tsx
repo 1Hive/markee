@@ -46,9 +46,7 @@ function QueueRow({ item, busy, onReview }: { item: ModerationItem; busy: boolea
           <span style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{item.name || 'Anonymous'}</span>
           <a href={`https://basescan.org/address/${item.author}`} target="_blank" rel="noreferrer" style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textDecoration: 'none' }}>{fmtAddr(item.author)}</a>
           {item.at > 0 && (
-            <a href={`https://basescan.org/tx/${item.txHash}`} target="_blank" rel="noreferrer" style={{ color: MUTED, fontSize: 12, textDecoration: 'none' }}>
-              {formatDistanceToNow(item.at * 1000, { addSuffix: true })}
-            </a>
+            <span style={{ color: MUTED, fontSize: 12 }}>{formatDistanceToNow(item.at * 1000, { addSuffix: true })}</span>
           )}
         </div>
         <p style={{ margin: 0, color: TEXT, fontSize: 15, lineHeight: 1.45, wordBreak: 'break-word' }}>{item.message || <em style={{ color: MUTED }}>empty message</em>}</p>

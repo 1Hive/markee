@@ -1,22 +1,19 @@
 import 'server-only'
 import { kv } from '@vercel/kv'
-import { parseAbiItem } from 'viem'
-import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
-import { observeMessage, type MessageObservation, type ModerationItem } from '@/lib/moderation/queue'
-import {
-  BASELINE_KEY, CURSORS_KEY, boardMarkeesKey, flagKey, getModerationClient, itemKey, listModeratedBoards, pendingKey, readFlagged, readItems,
-} from '@/lib/moderation/server'
+import { FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
+import { observeMessage, type MessageObservation } from '@/lib/moderation/queue'
+import { BASELINE_KEY, flagKey, getModerationClient, itemKey, pendingKey, readFlagged, readItems } from '@/lib/moderation/server'
 
-const BOARD_EVENTS = [
-  parseAbiItem('event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name, uint256 amount)'),
-  parseAbiItem('event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name)'),
-  parseAbiItem('event MarkeeMigratedFromLegacy(address indexed newMarkeeAddress, address indexed oldMarkeeAddress, address indexed owner, uint256 historicalFunds)'),
-  parseAbiItem('event MarkeeRegistered(address indexed markeeAddress, address indexed pool)'),
-  parseAbiItem('event MessageUpdated(address indexed markeeAddress, address indexed updatedBy, string newMessage)'),
+const PAGE_ABI = [
+  {
+    inputs: [{ name: 'offset', type: 'uint256' }, { name: 'limit', type: 'uint256' }],
+    name: 'getLeaderboards', outputs: [{ type: 'address[]' }], stateMutability: 'view', type: 'function',
+  },
+  {
+    inputs: [{ name: 'offset', type: 'uint256' }, { name: 'limit', type: 'uint256' }],
+    name: 'getMarkees', outputs: [{ type: 'address[]' }], stateMutability: 'view', type: 'function',
+  },
 ] as const
-
-// Streaming markees accept setMessage from their owner directly, which only the markee itself logs.
-const MARKEE_MESSAGE_CHANGED = parseAbiItem('event MessageChanged(string newMessage, address indexed changedBy)')
 
 const MARKEE_ABI = [
   { inputs: [], name: 'message', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function' },
@@ -24,24 +21,19 @@ const MARKEE_ABI = [
   { inputs: [], name: 'owner', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
 
-const ADDRESS_CHUNK = 200
-const READ_CHUNK = 50
+const PAGE_SIZE = 1000n
+const BOARD_CHUNK = 500
+const MARKEE_CHUNK = 500
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 type Client = ReturnType<typeof getModerationClient>
-
-interface Touch {
-  markee: string
-  board: string
-  blockNumber: bigint
-  logIndex: number
-  txHash: string
-}
+type CallResult = { status: string; result?: unknown }
 
 export interface ScanReport {
   boards: number
-  toBlock: string
-  touched: number
+  markees: number
   queued: number
+  baseline: boolean
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -50,143 +42,93 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out
 }
 
-function markeeOf(log: { eventName: string; args: Record<string, unknown> }): string | undefined {
-  const addr = log.eventName === 'MarkeeMigratedFromLegacy' ? log.args.newMarkeeAddress : log.args.markeeAddress
-  return typeof addr === 'string' ? addr.toLowerCase() : undefined
-}
-
-type ScannedBoard = { address: string; strategy: string; fromBlock: bigint }
-
-async function collectTouches(client: Client, boards: ScannedBoard[], toBlock: bigint) {
-  const touches = new Map<string, Touch>()
-  const record = (t: Touch) => {
-    const prev = touches.get(t.markee)
-    if (!prev || t.blockNumber > prev.blockNumber || (t.blockNumber === prev.blockNumber && t.logIndex > prev.logIndex)) {
-      touches.set(t.markee, t)
-    }
-  }
-
-  const byFromBlock = new Map<bigint, ScannedBoard[]>()
-  boards.forEach(b => byFromBlock.set(b.fromBlock, [...(byFromBlock.get(b.fromBlock) ?? []), b]))
-  const groups = [...byFromBlock.entries()].map(([fromBlock, members]) => ({ fromBlock, members }))
-
-  const boardLogs = (await Promise.all(groups.flatMap(({ fromBlock, members }) =>
-    chunk(members.map(b => b.address as `0x${string}`), ADDRESS_CHUNK).map(address =>
-      client.getLogs({ address, events: BOARD_EVENTS, fromBlock, toBlock }),
+async function multicallChunked(client: Client, contracts: unknown[], size: number, blockNumber: bigint): Promise<CallResult[]> {
+  const results = await Promise.all(
+    chunk(contracts, size).map(slice =>
+      client.multicall({ contracts: slice as Parameters<Client['multicall']>[0]['contracts'], blockNumber, batchSize: 0 }),
     ),
-  ))).flat()
-
-  const discovered = new Map<string, Set<string>>()
-  for (const log of boardLogs) {
-    const markee = markeeOf(log as unknown as { eventName: string; args: Record<string, unknown> })
-    if (!markee) continue
-    const board = log.address.toLowerCase()
-    record({ markee, board, blockNumber: log.blockNumber ?? 0n, logIndex: log.logIndex ?? 0, txHash: log.transactionHash ?? '' })
-    if (!discovered.has(board)) discovered.set(board, new Set())
-    discovered.get(board)!.add(markee)
-  }
-
-  const streamingBoards = boards.filter(b => b.strategy === 'streaming')
-  const known = await Promise.all(streamingBoards.map(b => kv.smembers(boardMarkeesKey(b.address))))
-  const boardOfMarkee = new Map<string, string>()
-  streamingBoards.forEach((b, i) => (known[i] ?? []).forEach(m => boardOfMarkee.set(m, b.address)))
-
-  const markeeLogs = (await Promise.all(groups.flatMap(({ fromBlock, members }) => {
-    const streamingMembers = new Set(members.filter(b => b.strategy === 'streaming').map(b => b.address))
-    const markees = [...boardOfMarkee].filter(([, board]) => streamingMembers.has(board)).map(([m]) => m as `0x${string}`)
-    return chunk(markees, ADDRESS_CHUNK).map(address =>
-      client.getLogs({ address, event: MARKEE_MESSAGE_CHANGED, fromBlock, toBlock }),
-    )
-  }))).flat()
-  for (const log of markeeLogs) {
-    const markee = log.address.toLowerCase()
-    const board = boardOfMarkee.get(markee)
-    if (!board) continue
-    record({ markee, board, blockNumber: log.blockNumber ?? 0n, logIndex: log.logIndex ?? 0, txHash: log.transactionHash ?? '' })
-  }
-
-  return { touches: [...touches.values()], discovered }
+  )
+  return results.flat() as CallResult[]
 }
 
-async function observe(client: Client, touches: Touch[], toBlock: bigint): Promise<MessageObservation[]> {
-  const reads = (await Promise.all(
-    chunk(touches, READ_CHUNK).map(slice =>
-      client.multicall({
-        blockNumber: toBlock,
-        contracts: slice.flatMap(t => MARKEE_ABI.map(fn => ({ address: t.markee as `0x${string}`, abi: MARKEE_ABI, functionName: fn.name }))),
-      }),
-    ),
-  )).flat()
-
-  const blockNumbers = [...new Set(touches.map(t => t.blockNumber))]
-  const timestamps = new Map<bigint, number>()
-  for (const slice of chunk(blockNumbers, 20)) {
-    const blocks = await Promise.all(slice.map(blockNumber => client.getBlock({ blockNumber })))
-    blocks.forEach(b => timestamps.set(b.number, Number(b.timestamp)))
-  }
-
-  return touches.map((t, i) => ({
-    markee: t.markee,
-    board: t.board,
-    message: (reads[i * 3]?.result as string | undefined) ?? '',
-    name: (reads[i * 3 + 1]?.result as string | undefined) ?? '',
-    author: ((reads[i * 3 + 2]?.result as string | undefined) ?? '').toLowerCase(),
-    blockNumber: t.blockNumber.toString(),
-    txHash: t.txHash,
-    at: timestamps.get(t.blockNumber) ?? 0,
-  }))
+function addresses(result: CallResult | undefined): string[] {
+  if (result?.status !== 'success' || !Array.isArray(result.result)) return []
+  return (result.result as string[]).filter(a => a && a !== ZERO_ADDRESS).map(a => a.toLowerCase())
 }
 
-// Scans every listed board from its own cursor and folds each touched markee's current on-chain text
-// into its moderation item. Cursors are per board, so a board the listing routes miss on one run (or
-// list for the first time) is scanned from where it left off once it shows up, and they only advance
-// after every write lands.
+// The same boards the listing routes show: the v1.3 factories (earlier versions were migrated
+// into them), the migrated partner boards, and the streaming factory.
+async function listBoards(client: Client, blockNumber: bigint): Promise<string[]> {
+  const factories: string[] = [...Object.values(FACTORIES), ...(STREAMING_ENABLED ? [STREAMING_FACTORY] : [])]
+  const pages = await multicallChunked(
+    client,
+    factories.map(f => ({ address: f as `0x${string}`, abi: PAGE_ABI, functionName: 'getLeaderboards' as const, args: [0n, PAGE_SIZE] as const })),
+    BOARD_CHUNK,
+    blockNumber,
+  )
+  const boards = [...pages.flatMap(addresses), ...Object.values(V13_LEADERBOARDS).map(b => b.toLowerCase())]
+  return [...new Set(boards)]
+}
+
+// Reads every markee's current text with batched eth_calls (no log scans) and diffs it against the
+// stored items. A markee seen for the first time is a new message, changed text is an edit. The
+// first run records the baseline, so everything already live then starts approved.
 export async function runModerationScan(): Promise<ScanReport> {
   const client = getModerationClient()
-  const [listed, latest] = await Promise.all([listModeratedBoards(), client.getBlockNumber()])
-  await kv.set(BASELINE_KEY, latest.toString(), { nx: true })
-  const baseline = BigInt((await kv.get<string>(BASELINE_KEY)) ?? latest.toString())
-  const cursors = listed.length > 0
-    ? await kv.hmget<Record<string, string>>(CURSORS_KEY, ...listed.map(b => b.address))
-    : null
-  const boards = listed
-    .map(b => ({ ...b, fromBlock: cursors?.[b.address] ? BigInt(cursors[b.address]) + 1n : BASE_MARKEE_EVENTS_FROM_BLOCK }))
-    .filter(b => b.fromBlock <= latest)
+  const [block, baseline] = await Promise.all([client.getBlock({ blockTag: 'latest' }), kv.get(BASELINE_KEY)])
+  const isBaseline = !baseline
 
-  const report: ScanReport = { boards: boards.length, toBlock: latest.toString(), touched: 0, queued: 0 }
-  if (boards.length === 0) return report
+  const boards = await listBoards(client, block.number)
+  const markeePages = await multicallChunked(
+    client,
+    boards.map(b => ({ address: b as `0x${string}`, abi: PAGE_ABI, functionName: 'getMarkees' as const, args: [0n, PAGE_SIZE] as const })),
+    BOARD_CHUNK,
+    block.number,
+  )
+  const pairs = boards.flatMap((board, i) => addresses(markeePages[i]).map(markee => ({ board, markee })))
 
-  const { touches, discovered } = await collectTouches(client, boards, latest)
-  report.touched = touches.length
+  const reads = await multicallChunked(
+    client,
+    pairs.flatMap(p => MARKEE_ABI.map(fn => ({ address: p.markee as `0x${string}`, abi: MARKEE_ABI, functionName: fn.name }))),
+    MARKEE_CHUNK * MARKEE_ABI.length,
+    block.number,
+  )
 
-  if (touches.length > 0) {
-    const [observations, prevs, flagged] = await Promise.all([
-      observe(client, touches, latest),
-      readItems(touches.map(t => t.markee)),
-      readFlagged(),
-    ])
-    const flaggedSet = new Set(flagged)
-    const pipeline = kv.pipeline()
-    let writes = discovered.size
-    observations.forEach((obs, i) => {
-      const next: ModerationItem | null = observeMessage(prevs[i] ?? null, obs, {
-        flagged: flaggedSet.has(flagKey(obs.markee)),
-        preexisting: BigInt(obs.blockNumber) <= baseline,
-      })
-      if (!next) return
-      writes++
-      pipeline.set(itemKey(next.markee), next)
-      if (next.status === 'pending') {
-        pipeline.zadd(pendingKey(next.board), { score: next.at, member: next.markee })
-        report.queued++
-      } else {
-        pipeline.zrem(pendingKey(next.board), next.markee)
-      }
+  const observations: MessageObservation[] = []
+  pairs.forEach((p, i) => {
+    const [message, name, owner] = reads.slice(i * 3, i * 3 + 3)
+    if (message?.status !== 'success') return
+    observations.push({
+      markee: p.markee,
+      board: p.board,
+      message: message.result as string,
+      name: name?.status === 'success' ? (name.result as string) : '',
+      author: owner?.status === 'success' ? (owner.result as string).toLowerCase() : '',
+      blockNumber: block.number.toString(),
+      at: Number(block.timestamp),
     })
-    discovered.forEach((markees, board) => pipeline.sadd(boardMarkeesKey(board), ...([...markees] as [string, ...string[]])))
-    if (writes > 0) await pipeline.exec()
-  }
+  })
 
-  await kv.hset(CURSORS_KEY, Object.fromEntries(boards.map(b => [b.address, latest.toString()])))
+  const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline }
+  if (observations.length === 0) return report
+
+  const [prevs, flagged] = await Promise.all([readItems(observations.map(o => o.markee)), readFlagged()])
+  const flaggedSet = new Set(flagged)
+  const pipeline = kv.pipeline()
+  let writes = 0
+  observations.forEach((obs, i) => {
+    const next = observeMessage(prevs[i] ?? null, obs, { flagged: flaggedSet.has(flagKey(obs.markee)), preexisting: isBaseline })
+    if (!next) return
+    writes++
+    pipeline.set(itemKey(next.markee), next)
+    if (next.status === 'pending') {
+      pipeline.zadd(pendingKey(next.board), { score: next.at, member: next.markee })
+      report.queued++
+    } else {
+      pipeline.zrem(pendingKey(next.board), next.markee)
+    }
+  })
+  if (writes > 0) await pipeline.exec()
+  if (isBaseline) await kv.set(BASELINE_KEY, block.number.toString())
   return report
 }

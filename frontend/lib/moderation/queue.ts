@@ -12,7 +12,6 @@ export interface ModerationItem {
   // The text a moderator last reviewed, or the text this edit replaced while a review was still owed.
   previousMessage: string | null
   blockNumber: string
-  txHash: string
   at: number
   reviewedBy: string | null
   reviewedAt: number | null
@@ -25,7 +24,6 @@ export interface MessageObservation {
   name: string
   author: string
   blockNumber: string
-  txHash: string
   at: number
 }
 

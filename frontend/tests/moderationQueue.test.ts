@@ -14,7 +14,6 @@ function obs(message: string, blockNumber = '100'): MessageObservation {
     name: 'alice',
     author: '0xcccccccccccccccccccccccccccccccccccccccc',
     blockNumber,
-    txHash: '0x01',
     at: Number(blockNumber),
   }
 }

@@ -7,12 +7,10 @@ import { internalHeaders, internalOrigin } from '@/lib/internal-origin'
 import type { ModerationItem } from '@/lib/moderation/queue'
 
 export const FLAGGED_KEY = 'moderation:flagged'
-export const CURSORS_KEY = 'moderation:cursors'
 export const BASELINE_KEY = 'moderation:baseline'
 export const SCAN_LOCK_KEY = 'moderation:scan:lock'
 export const itemKey = (markee: string) => `moderation:item:${base.id}:${markee.toLowerCase()}`
 export const pendingKey = (board: string) => `moderation:pending:${board.toLowerCase()}`
-export const boardMarkeesKey = (board: string) => `moderation:board:${board.toLowerCase()}:markees`
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 

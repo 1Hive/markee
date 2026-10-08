@@ -4,8 +4,8 @@
  *   GET /api/cron/moderation-scan
  *   Authorization: Bearer <CRON_SECRET>
  *
- * Scans every v1.x fixed and streaming board for new messages and edits since that board's stored
- * cursor block and queues each changed message for review (see lib/moderation/scan.ts).
+ * Reads every fixed and streaming markee's current text and queues new messages and edits for
+ * review (see lib/moderation/scan.ts).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
