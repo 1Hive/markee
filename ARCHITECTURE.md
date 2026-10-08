@@ -109,7 +109,11 @@ All stored in Vercel KV. Client hooks (`useViews`, `useReactions`) call the API 
 | Per-message views | `views:msg:{address}:{msgHash}` | MD5 of first 8 chars of message |
 | Emoji reactions | `reactions:v2:{markeeAddress}` (HSET) | Requires ≥100 MARKEE tokens; 1 change/user/30s |
 | Balance cache | `balance:markee:{address}:{chainId}` | 5 min TTL — ERC20 `balanceOf` via viem |
-| Moderation flags | `moderation:flagged` (Redis SET) | Admin wallet signature required |
+| Moderation flags | `moderation:flagged` (Redis SET of `8453:{lowercase markee}`) | Signed by a global admin or the board's admin/creator |
+| Moderation review state | `moderation:item:8453:{markee}` | `pending` / `approved` / `flagged`, the current text, the last reviewed text, `reviewedBy`/`reviewedAt` |
+| Moderation pending index | `moderation:pending:{board}` (ZSET by detection time) | Feeds `GET /api/moderation/queue` |
+
+The `/api/cron/moderation-scan` cron (every 5 min) lists every board from the v1.3 and streaming factories (`getLeaderboards`) plus the migrated partner boards, reads every markee's `message()`, `name()` and `owner()` with batched multicalls, and diffs the text against the stored items. No logs are scanned. A markee seen for the first time is queued as a new message and changed text as an edit, so an approval covers specific text. Text already live at the first scan (`moderation:baseline`) starts as `approved`. The `/account` Moderation tab lists the queue (one wallet signature opens it for 24h) and posts `approve` / `flag` batches to `POST /api/moderation`.
 
 MARKEE ERC20 (all chains): `0xF6627cF19317C33B457f77452876e6e297c4942F`
 

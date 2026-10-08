@@ -39,6 +39,8 @@ interface ModerationContextValue {
   isFlagged: (chainId: number | string, markeeId: string) => boolean
   /** Toggle flag state (must pass canModerate for the same board info). Returns new flag state. */
   toggleFlag: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => Promise<boolean>
+  /** Replace the flagged set with a fresh list from the moderation API */
+  replaceFlagged: (flagged: string[]) => void
   /** Loading state for initial fetch */
   isLoading: boolean
 }
@@ -49,6 +51,7 @@ const ModerationContext = createContext<ModerationContextValue>({
   canModerate: () => false,
   isFlagged: () => false,
   toggleFlag: async () => false,
+  replaceFlagged: () => {},
   isLoading: true,
 })
 
@@ -79,7 +82,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         const res = await fetch(MODERATION_API)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
-        setFlaggedSet(new Set(data.flagged ?? []))
+        setFlaggedSet(new Set((data.flagged ?? []).map((k: string) => k.toLowerCase())))
       } catch (err) {
         console.error('[moderation] Failed to fetch flagged list:', err)
       } finally {
@@ -90,12 +93,17 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const toKey = (chainId: number | string, markeeId: string) =>
-    `${chainId}:${markeeId}`
+    `${chainId}:${markeeId.toLowerCase()}`
 
   const isFlagged = useCallback(
     (chainId: number | string, markeeId: string) =>
       flaggedSet.has(toKey(chainId, markeeId)),
     [flaggedSet]
+  )
+
+  const replaceFlagged = useCallback(
+    (flagged: string[]) => setFlaggedSet(new Set(flagged.map(k => k.toLowerCase()))),
+    []
   )
 
   const canModerate = useCallback(
@@ -149,7 +157,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         }
 
         const data = await res.json()
-        setFlaggedSet(new Set(data.flagged ?? []))
+        replaceFlagged(data.flagged ?? [])
         return action === 'flag'
       } catch (err) {
         console.error('[moderation] toggleFlag error:', err)
@@ -163,12 +171,12 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return currentlyFlagged
       }
     },
-    [address, canModerate, flaggedSet, signMessageAsync]
+    [address, canModerate, flaggedSet, signMessageAsync, replaceFlagged]
   )
 
   return (
     <ModerationContext.Provider
-      value={{ flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, toggleFlag, isLoading }}
+      value={{ flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, toggleFlag, replaceFlagged, isLoading }}
     >
       {children}
     </ModerationContext.Provider>

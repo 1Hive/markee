@@ -27,7 +27,8 @@ import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { formatEther } from 'viem'
 import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
+import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Abi } from 'viem'
 
@@ -341,7 +342,7 @@ function Overview({ raised, active, bought, contributed, loaded }: { raised: big
 }
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
-type TabId = 'pending' | 'live' | 'archive' | 'bought'
+type TabId = 'pending' | 'live' | 'archive' | 'bought' | 'moderation'
 
 function useNarrow() {
   const [narrow, setNarrow] = useState(false)
@@ -355,13 +356,14 @@ function useNarrow() {
   return narrow
 }
 
-function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number } }) {
+function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number; moderation: number | null } }) {
   const narrow = useNarrow()
   const [menuOpen, setMenuOpen] = useState(false)
   const items: { key: TabId; label: string; n: number; amber?: boolean; muted?: boolean }[] = [
     ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Pending Setup', n: counts.pending, amber: true }] : []),
     { key: 'live',  label: 'My Live Markees',        n: counts.live },
     { key: 'bought', label: "Messages I've Bought",  n: counts.bought },
+    ...(counts.moderation !== null ? [{ key: 'moderation' as const, label: 'Moderation', n: counts.moderation, amber: counts.moderation > 0 }] : []),
     ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive, muted: true }] : []),
   ]
 
@@ -1476,6 +1478,8 @@ export default function AccountPage() {
   // visitor never sees this: the tab content is gated on hasWallet separately, so isLoading staying
   // true forever when there's no wallet to fetch for is inert.
   const [isLoading, setIsLoading]               = useState(true)
+  const { isAdmin: isGlobalModerator } = useModeration()
+  const moderationQueue = useModerationQueue()
 
   // Messages
   const [myMessages, setMyMessages]             = useState<MyMessage[]>([])
@@ -1759,6 +1763,8 @@ export default function AccountPage() {
   const draftBoards = useMemo(() =>
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
 
+  const isModerator = isGlobalModerator || allBoards.length > 0
+
   // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
   // or off the default Pending Setup landing tab once loading confirms there was never anything
   // pending to begin with. Gated on !isLoading -- draftBoards/archivedBoards both start at length 0
@@ -1768,7 +1774,8 @@ export default function AccountPage() {
     if (isLoading) return
     if (tab === 'pending' && draftBoards.length === 0) setTab('live')
     if (tab === 'archive' && archivedBoards.length === 0) setTab('live')
-  }, [tab, isLoading, draftBoards.length, archivedBoards.length])
+    if (tab === 'moderation' && !isModerator) setTab('live')
+  }, [tab, isLoading, draftBoards.length, archivedBoards.length, isModerator])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
@@ -1848,7 +1855,7 @@ export default function AccountPage() {
         {mounted && hasWallet ? (
           <>
             <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
-              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length }} />
+              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length, moderation: isModerator ? moderationQueue.items.length : null }} />
             </div>
 
             <div style={{ paddingTop: 28 }}>
@@ -1924,6 +1931,8 @@ export default function AccountPage() {
                   />
                 )
               )}
+
+              {tab === 'moderation' && <ModerationQueue />}
 
               {/* ── Archive ── */}
               {tab === 'archive' && (
@@ -2018,6 +2027,7 @@ export default function AccountPage() {
         )}
       </div>
 
+      {mounted && isModerator && <ModerationToast onReview={() => setTab('moderation')} />}
       <Footer />
 
       {/* My Live Markees' price-to-change button -- same modal any visitor would see for that

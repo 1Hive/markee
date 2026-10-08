@@ -9,6 +9,7 @@
     "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
     "test:keeper": "tsx --test tests/keeper.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
+    "test:moderation": "tsx --test tests/moderationQueue.test.ts",
     "start": "next start",
     "lint": "next lint"
   },
