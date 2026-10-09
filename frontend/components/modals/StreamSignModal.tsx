@@ -28,7 +28,7 @@ import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMar
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { useCreateStreamFlow, type CreateStreamCalc } from '@/hooks/useCreateStreamFlow'
 import { useOpenStreamFlow } from '@/hooks/useOpenStreamFlow'
 import { useMoveStreamFlow } from '@/hooks/useMoveStreamFlow'
@@ -282,7 +282,7 @@ function ReceiveCard({ monthly, compact = true }: { monthly: string; compact?: b
 
 // Views (left) / "- author" + YOU badge (right). Shared by the leaderboard row and the
 // current-message preview box in the Fund sub-view.
-function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: string }) {
+function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: MUTED, fontSize: 11.5, flexShrink: 0 }}>
@@ -340,7 +340,7 @@ function SignRow({
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={subtitle} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{monthlyEth} ETH/mo</span>
@@ -1089,7 +1089,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                             <MessageMeta
                               views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                               isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                              authorLabel={target.name || fmtAddr(target.owner)}
+                              authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                             />
                           </div>
                         </>
@@ -1177,7 +1177,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           <MessageMeta
                             views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                             isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                            authorLabel={target.name || fmtAddr(target.owner)}
+                            authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                           />
                         </div>
                       </div>

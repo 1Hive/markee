@@ -15,7 +15,7 @@ import { EmbedModal } from '@/components/modals/EmbedModal'
 import { useStreamingMarkees, type StreamingMarkee, type StreamingBoardMeta } from '@/lib/contracts/useStreamingMarkees'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { STREAMING_BASE, CFA_FORWARDER_ABI, ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
@@ -577,7 +577,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
         <TxHistoryToggle expanded={historyOpen} onClick={() => setHistoryOpen(v => !v)} rank={rank} />
 
         <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {displayName}
+          <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
           {isOwner && <span style={{ color: PINK }}> · yours</span>}
         </span>
 

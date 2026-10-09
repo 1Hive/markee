@@ -109,11 +109,15 @@ All stored in Vercel KV. Client hooks (`useViews`, `useReactions`) call the API 
 | Per-message views | `views:msg:{address}:{msgHash}` | MD5 of first 8 chars of message |
 | Emoji reactions | `reactions:v2:{markeeAddress}` (HSET) | Requires ≥100 MARKEE tokens; 1 change/user/30s |
 | Balance cache | `balance:markee:{address}:{chainId}` | 5 min TTL — ERC20 `balanceOf` via viem |
-| Moderation flags | `moderation:flagged` (Redis SET of `8453:{lowercase markee}`) | Signed by a global admin or the board's admin/creator |
-| Moderation review state | `moderation:item:8453:{markee}` | `pending` / `approved` / `flagged`, the current text, the last reviewed text, `reviewedBy`/`reviewedAt` |
-| Moderation pending index | `moderation:pending:{board}` (ZSET by detection time) | Feeds `GET /api/moderation/queue` |
+| Moderation flags (board) | `moderation:flagged` (Redis SET of `8453:{lowercase markee}`) | Set by the board's owners or added moderators; hidden on every site (embeds read these) |
+| Moderation flags (site) | `moderation:flagged:site` (same format) | Set by global admins (`lib/moderation/config.ts`); hidden on markee.xyz only |
+| Board moderators | `moderation:moderators:{board}` | `{ moderators, updatedAt, updatedBy }`, signed by an owner (on-chain admin or creator). Owners always moderate and aren't stored |
+| Moderation review state | `moderation:item:8453:{markee}` | The current text, the last reviewed text, and a `reviews.board` / `reviews.site` review each (`pending` / `approved` / `flagged`, `reviewedBy`/`reviewedAt`) |
+| Moderation pending index | `moderation:pending:{board}` (board reviews) and `moderation:pending:site` (site reviews), ZSETs by detection time | Feeds `GET /api/moderation/queue` |
 
-The `/api/cron/moderation-scan` cron (every 5 min) lists every board from the v1.3 and streaming factories (`getLeaderboards`) plus the migrated partner boards, reads every markee's `message()`, `name()` and `owner()` with batched multicalls, and diffs the text against the stored items. No logs are scanned. A markee seen for the first time is queued as a new message and changed text as an edit, so an approval covers specific text. Text already live at the first scan (`moderation:baseline`) starts as `approved`. The `/account` Moderation tab lists the queue (one wallet signature opens it for 24h) and posts `approve` / `flag` batches to `POST /api/moderation`.
+The `/api/cron/moderation-scan` cron (every 5 min) pages through every board from the v1.3 and streaming factories (`leaderboardCount` + `getLeaderboards`) plus the migrated partner boards. For each board it reads the newest 1000 markees (`markeeCount` + `getMarkees`) plus the top 50 (`getTopMarkees`), so an old message funded back to the top is still covered. It reads their `message()`, `name()` and `owner()` with batched multicalls and diffs the text against the stored items. No logs are scanned. A markee seen for the first time is queued as a new message and changed text as an edit, in both review scopes, so an approval covers specific text. Text already live at the first scan (`moderation:baseline`) starts as `approved`.
+
+Each message gets two independent reviews. A board's owners and the moderators they add review it in the `board` scope, and their flags hide the message everywhere. markee.xyz's global admins review every board in the `site` scope, and their flags hide it on markee.xyz only. A flag hides the message's author (name or wallet) along with the text. The `/account` Moderation tab reads `GET /api/moderation/queue?moderator=` (public, no signature) and posts signed `approve` / `flag` batches to `POST /api/moderation`, which apply in every scope the signer holds for each markee. Owners manage moderators in each board's Admin panel (`POST /api/moderation/moderators`), and anyone can read the list from `GET /api/moderation/moderators?board=`.
 
 MARKEE ERC20 (all chains): `0xF6627cF19317C33B457f77452876e6e297c4942F`
 

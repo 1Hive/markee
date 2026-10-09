@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
-import { ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { ChevronDown, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import type { ModerationAction, ModerationItem, QueueBoard } from '@/lib/moderation/queue'
@@ -34,7 +34,7 @@ function ActionButton({ label, color, icon, busy, onClick }: { label: string; co
   )
 }
 
-function QueueRow({ item, busy, onReview }: { item: ModerationItem; busy: boolean; onReview: (action: ModerationAction) => void }) {
+function QueueRow({ item, busy, onReview, flaggedView = false }: { item: ModerationItem; busy: boolean; onReview: (action: ModerationAction) => void; flaggedView?: boolean }) {
   const edited = item.kind === 'edited'
   return (
     <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', padding: '14px 16px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
@@ -57,51 +57,74 @@ function QueueRow({ item, busy, onReview }: { item: ModerationItem; busy: boolea
         )}
       </div>
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        <ActionButton label="Approve" color={GREEN} icon={<ShieldCheck size={14} />} busy={busy} onClick={() => onReview('approve')} />
-        <ActionButton label="Flag" color={RED} icon={<ShieldAlert size={14} />} busy={busy} onClick={() => onReview('flag')} />
+        {flaggedView ? (
+          <ActionButton label="Unflag" color={GREEN} icon={<ShieldCheck size={14} />} busy={busy} onClick={() => onReview('approve')} />
+        ) : (
+          <>
+            <ActionButton label="Approve" color={GREEN} icon={<ShieldCheck size={14} />} busy={busy} onClick={() => onReview('approve')} />
+            <ActionButton label="Flag" color={RED} icon={<ShieldAlert size={14} />} busy={busy} onClick={() => onReview('flag')} />
+          </>
+        )}
       </div>
     </div>
   )
 }
 
-function BoardGroup({ board, items, busyIds, onReview }: {
+// Where this viewer's flags on a board take effect: a board moderator's hide the message on every
+// site showing the board, a global admin's only on markee.xyz.
+function ScopeChip({ board }: { board: QueueBoard }) {
+  const everywhere = board.scopes.includes('board')
+  return (
+    <span
+      title={everywhere ? 'You moderate this board, so a flag hides the message on every site showing it.' : 'You review this board as a markee.xyz admin, so a flag hides the message on markee.xyz only.'}
+      style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}
+    >
+      {everywhere ? 'Flags hide everywhere' : 'Flags hide on markee.xyz only'}
+    </span>
+  )
+}
+
+function BoardGroup({ board, items, busyIds, onReview, flaggedView = false }: {
   board: QueueBoard
   items: ModerationItem[]
   busyIds: Set<string>
   onReview: (action: ModerationAction, items: ModerationItem[]) => void
+  flaggedView?: boolean
 }) {
   const allBusy = items.every(it => busyIds.has(it.markee))
   return (
     <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden', background: BG2 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
         <Link href={`/markee/${board.address}`} style={{ color: TEXT, fontWeight: 700, fontSize: 15, textDecoration: 'none' }}>{board.name}</Link>
-        <span style={{ fontFamily: MONO, fontSize: 12, color: AMBER, background: `${AMBER}1E`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>
-        {items.length > 1 && (
+        <span style={{ fontFamily: MONO, fontSize: 12, color: flaggedView ? RED : AMBER, background: `${flaggedView ? RED : AMBER}1E`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>
+        <ScopeChip board={board} />
+        {items.length > 1 && !flaggedView && (
           <div style={{ marginLeft: 'auto' }}>
             <ActionButton label={`Approve all ${items.length}`} color={GREEN} icon={<ShieldCheck size={14} />} busy={allBusy} onClick={() => onReview('approve', items)} />
           </div>
         )}
       </div>
       {items.map(it => (
-        <QueueRow key={itemId(it)} item={it} busy={busyIds.has(it.markee)} onReview={action => onReview(action, [it])} />
+        <QueueRow key={itemId(it)} item={it} busy={busyIds.has(it.markee)} onReview={action => onReview(action, [it])} flaggedView={flaggedView} />
       ))}
     </div>
   )
 }
 
+function groupByBoard(items: ModerationItem[], boards: QueueBoard[]) {
+  const byBoard = new Map<string, ModerationItem[]>()
+  items.forEach(it => byBoard.set(it.board, [...(byBoard.get(it.board) ?? []), it]))
+  return boards.filter(b => byBoard.has(b.address)).map(b => ({ board: b, items: byBoard.get(b.address)! }))
+}
+
 export function ModerationQueue() {
-  const { unlocked, unlock, review, items, boards, isLoading, error } = useModerationQueue()
+  const { review, items, flagged, boards, isLoading, error } = useModerationQueue()
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
-  const [unlocking, setUnlocking] = useState(false)
+  const [showFlagged, setShowFlagged] = useState(false)
 
-  const groups = useMemo(() => {
-    const byBoard = new Map<string, ModerationItem[]>()
-    items.forEach(it => byBoard.set(it.board, [...(byBoard.get(it.board) ?? []), it]))
-    return boards
-      .filter(b => byBoard.has(b.address))
-      .map(b => ({ board: b, items: byBoard.get(b.address)! }))
-  }, [items, boards])
+  const groups = useMemo(() => groupByBoard(items, boards), [items, boards])
+  const flaggedGroups = useMemo(() => groupByBoard(flagged, boards), [flagged, boards])
 
   const handleReview = async (action: ModerationAction, targets: ModerationItem[]) => {
     const ids = targets.map(t => t.markee)
@@ -117,24 +140,6 @@ export function ModerationQueue() {
     }
   }
 
-  if (!unlocked) {
-    return (
-      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '28px 24px', maxWidth: 560 }}>
-        <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: TEXT, fontFamily: SANS }}>Review messages on your boards</h2>
-        <p style={{ margin: '0 0 18px', color: TEXT2, fontSize: 14, lineHeight: 1.5 }}>
-          New messages and edits on every board you moderate land here. Sign once with your wallet to open the queue for the next 24 hours.
-        </p>
-        <button
-          onClick={async () => { setUnlocking(true); try { await unlock() } catch { /* user rejected */ } finally { setUnlocking(false) } }}
-          disabled={unlocking}
-          style={{ padding: '10px 18px', background: PINK, color: '#060A2A', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, fontFamily: MONO, cursor: unlocking ? 'wait' : 'pointer', opacity: unlocking ? 0.6 : 1 }}
-        >
-          {unlocking ? 'Waiting for signature…' : 'Open moderation queue'}
-        </button>
-      </div>
-    )
-  }
-
   if (isLoading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -147,36 +152,49 @@ export function ModerationQueue() {
     return <p style={{ color: RED, fontSize: 14 }}>Could not load the moderation queue. It retries every minute.</p>
   }
 
-  if (groups.length === 0) {
-    return (
-      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '28px 24px', textAlign: 'center' }}>
-        <ShieldCheck size={28} color={GREEN} style={{ marginBottom: 10 }} />
-        <p style={{ margin: 0, color: TEXT, fontWeight: 700, fontSize: 15 }}>All caught up</p>
-        <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13 }}>
-          {boards.length === 0 ? 'You do not moderate any boards yet.' : `Nothing waiting on ${boards.length === 1 ? 'your board' : `your ${boards.length} boards`}.`}
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {actionError && <p style={{ margin: 0, color: RED, fontSize: 13 }}>{actionError}</p>}
-      {groups.map(g => (
+      {groups.length === 0 ? (
+        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '28px 24px', textAlign: 'center' }}>
+          <ShieldCheck size={28} color={GREEN} style={{ marginBottom: 10 }} />
+          <p style={{ margin: 0, color: TEXT, fontWeight: 700, fontSize: 15 }}>All caught up</p>
+          <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13 }}>
+            {boards.length === 0 ? 'You do not moderate any boards yet.' : `Nothing waiting on ${boards.length === 1 ? 'your board' : `your ${boards.length} boards`}.`}
+          </p>
+        </div>
+      ) : groups.map(g => (
         <BoardGroup key={g.board.address} board={g.board} items={g.items} busyIds={busyIds} onReview={handleReview} />
       ))}
+
+      {flaggedGroups.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <button
+            onClick={() => setShowFlagged(v => !v)}
+            aria-expanded={showFlagged}
+            style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', padding: 0, color: TEXT2, fontFamily: SANS, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+          >
+            <ShieldAlert size={15} color={RED} />
+            Flagged ({flagged.length})
+            <ChevronDown size={14} style={{ transform: showFlagged ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+          </button>
+          {showFlagged && flaggedGroups.map(g => (
+            <BoardGroup key={g.board.address} board={g.board} items={g.items} busyIds={busyIds} onReview={handleReview} flaggedView />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // Pops up when the poll brings in items that were not in the queue when the page loaded.
 export function ModerationToast({ onReview }: { onReview: () => void }) {
-  const { items, unlocked, isLoading } = useModerationQueue()
+  const { items, isLoading } = useModerationQueue()
   const seen = useRef<Set<string> | null>(null)
   const [fresh, setFresh] = useState(0)
 
   useEffect(() => {
-    if (!unlocked || isLoading) return
+    if (isLoading) return
     const ids = items.map(itemId)
     if (seen.current === null) {
       seen.current = new Set(ids)
@@ -185,7 +203,7 @@ export function ModerationToast({ onReview }: { onReview: () => void }) {
     const added = ids.filter(id => !seen.current!.has(id))
     ids.forEach(id => seen.current!.add(id))
     if (added.length > 0) setFresh(n => n + added.length)
-  }, [items, unlocked, isLoading])
+  }, [items, isLoading])
 
   useEffect(() => {
     if (fresh === 0) return

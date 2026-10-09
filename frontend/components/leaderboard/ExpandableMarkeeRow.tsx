@@ -6,7 +6,7 @@ import { Eye, Pencil } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { TxHistoryToggle, TxHistoryPanel } from '@/components/board-detail/shared'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -95,7 +95,7 @@ export function ExpandableMarkeeRow({
 
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {displayName}
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
           </span>
           {isOwner && (
             <span style={{ background: `${PURP}33`, color: PURP, fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, borderRadius: 99, padding: '1px 7px', flexShrink: 0 }}>
