@@ -1,19 +1,18 @@
 /**
  * Moderation API Route
  *
- * GET  /api/moderation          → Returns all flagged markee keys
- * POST /api/moderation          → Flag, unflag, or approve markees (global admin, or each markee's
- *                                  board's on-chain admin/creator, see authorizedMarkees)
+ * GET  /api/moderation          → Flagged markee keys:
+ *                                    flagged     -- board flags, set by a board's owner or the
+ *                                                   moderators they added. Every site showing the
+ *                                                   board hides these (embeds read this field).
+ *                                    siteFlagged -- markee.xyz-only flags, set by global admins.
+ * POST /api/moderation          → Flag, unflag, or approve markees. Applies in every scope the
+ *                                  signer holds for each markee (see authorizedScopes).
  *
  * Markee keys use the format: `{chainId}:{lowercase markeeId}` to support multi-chain.
  *
- * Storage: Vercel KV (Upstash Redis). Flags live in a single Set for O(1) lookups; review state for
- * the /account queue lives per markee (see lib/moderation/scan.ts).
- *
- How to add to your site:
- *   - Drop this file into your app/api/moderation/route.ts
- *   - Ensure @vercel/kv is installed and KV_REST_API_URL + KV_REST_API_TOKEN are set
- *   - Update ADMIN_ADDRESSES in lib/moderation/config.ts
+ * Storage: Vercel KV (Upstash Redis). Flags live in one Set per scope for O(1) lookups; review state
+ * for the /account queue lives per markee (see lib/moderation/scan.ts).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -21,19 +20,30 @@ import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction } from '@/lib/moderation/queue'
 import {
-  FLAGGED_KEY, authorizedMarkees, flagKey, flagKeyVariants, itemKey, pendingKey, readFlagged, readItems,
+  FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
 } from '@/lib/moderation/server'
 
 const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS })
+}
 
 // ── GET: list all flagged keys ───────────────────────────────────────
 
 export async function GET() {
   try {
-    return NextResponse.json({ flagged: await readFlagged() })
+    const { board, site } = await readAllFlagged()
+    return NextResponse.json({ flagged: board, siteFlagged: site }, { headers: CORS })
   } catch (error) {
     console.error('[moderation] GET error:', error)
-    return NextResponse.json({ flagged: [] })
+    return NextResponse.json({ flagged: [], siteFlagged: [] }, { headers: CORS })
   }
 }
 
@@ -76,30 +86,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
-    const allowed = await authorizedMarkees(adminAddress, ids)
-    if (ids.some(id => !allowed.has(id.toLowerCase()))) {
+    const scopes = await authorizedScopes(adminAddress, ids)
+    if (ids.some(id => !scopes.has(id.toLowerCase()))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
     const items = await readItems(ids)
     const pipeline = kv.pipeline()
     ids.forEach((id, i) => {
-      if (action === 'flag') pipeline.sadd(FLAGGED_KEY, flagKey(id))
-      else pipeline.srem(FLAGGED_KEY, ...flagKeyVariants(id))
+      const held = scopes.get(id.toLowerCase())!
+      held.forEach(scope => {
+        if (action === 'flag') pipeline.sadd(FLAGGED_KEYS[scope], flagKey(id))
+        else pipeline.srem(FLAGGED_KEYS[scope], ...flagKeyVariants(id))
+      })
 
       const item = items[i]
       if (item) {
-        pipeline.set(itemKey(id), reviewItem(item, action, adminAddress, now))
-        pipeline.zrem(pendingKey(item.board), item.markee)
+        pipeline.set(itemKey(id), reviewItem(item, action, adminAddress, now, held))
+        held.forEach(scope => pipeline.zrem(pendingKey(scope, item.board), item.markee))
       }
     })
     await pipeline.exec()
 
+    const { board, site } = await readAllFlagged()
     return NextResponse.json({
       success: true,
       action,
       keys: ids.map(flagKey),
-      flagged: await readFlagged(),
+      flagged: board,
+      siteFlagged: site,
     })
   } catch (error) {
     console.error('[moderation] POST error:', error)

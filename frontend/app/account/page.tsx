@@ -27,7 +27,7 @@ import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { formatEther } from 'viem'
 import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, BoardModerators, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Abi } from 'viem'
@@ -1091,11 +1091,10 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
         )}
       </div>
 
-      {/* Extension point: per-integration moderators are out of scope for now -- nothing like this
-          has ever existed (lib/moderation/config.ts is a single flat platform-wide admin allowlist;
-          a past attempt to add partner-specific moderators to that same list was explicitly reverted:
-          "Honeyswap moderators belong in the Honeyswap repo, not here"). If/when a per-integration
-          moderator system exists, it renders here, admin-gated like the settings section above. */}
+      {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
+          lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
+          boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
+      {!isLegacyFixed && <BoardModerators board={lb.address} />}
     </div>
   )
 }
@@ -1763,7 +1762,8 @@ export default function AccountPage() {
   const draftBoards = useMemo(() =>
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
 
-  const isModerator = isGlobalModerator || allBoards.length > 0
+  // Boards the wallet created, plus any it was added to as a moderator (the queue lists those).
+  const isModerator = isGlobalModerator || allBoards.length > 0 || moderationQueue.boards.length > 0
 
   // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
   // or off the default Pending Setup landing tab once loading confirms there was never anything

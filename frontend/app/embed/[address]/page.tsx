@@ -12,6 +12,7 @@ interface EmbedData {
   topMarkeeAddress: string | null
   message: string
   name: string
+  flagged?: boolean
   totalFundsAdded: string
   updatedAt: string
 }
@@ -86,7 +87,7 @@ export default function EmbedPage() {
             </>
           ) : (
             <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>
-              {data ? 'No message yet — be the first.' : 'Loading…'}
+              {data?.flagged ? 'Content unavailable' : data ? 'No message yet — be the first.' : 'Loading…'}
             </span>
           )}
         </div>

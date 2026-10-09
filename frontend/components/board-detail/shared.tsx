@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
 import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
 import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User, Zap } from 'lucide-react'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -1433,7 +1433,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   </div>
                 ) : (
                   <p className="text-sm text-[#EDEEFF]">
-                    <span className="font-semibold">Updated Name</span> to <span className="font-medium">{event.name || '(cleared)'}</span>
+                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator}>{event.name || '(cleared)'}</ModeratedAuthor></span>
                   </p>
                 )}
                 {event.actor && (

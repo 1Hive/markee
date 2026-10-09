@@ -26,17 +26,19 @@ interface FlagButtonProps {
 }
 
 export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compact = false }: FlagButtonProps) {
-  const { canModerate, isFlagged, toggleFlag } = useModeration()
+  const { canModerate, canUnflag, isFlagged, toggleFlag } = useModeration()
   const [isToggling, setIsToggling] = useState(false)
 
   if (!canModerate(boardAdmin, boardCreator)) return null
 
   const flagged = isFlagged(chainId, markeeId)
+  // A global admin can't lift a flag the board's own moderators set.
+  const locked = flagged && !canUnflag(chainId, markeeId, boardAdmin, boardCreator)
   const iconSize = compact ? 14 : 16
 
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent card click-through
-    if (isToggling) return
+    if (isToggling || locked) return
 
     setIsToggling(true)
     try {
@@ -49,7 +51,7 @@ export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compac
   return (
     <button
       onClick={handleClick}
-      disabled={isToggling}
+      disabled={isToggling || locked}
       className={`
         flex items-center gap-1 rounded transition-all
         ${compact ? 'p-1' : 'px-2 py-1'}
@@ -57,9 +59,9 @@ export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compac
           ? 'bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30'
           : 'bg-[#0A0F3D]/50 border border-[#8A8FBF]/30 text-[#8A8FBF] hover:bg-[#8A8FBF]/20 hover:border-[#8A8FBF]/50'
         }
-        ${isToggling ? 'opacity-50 cursor-wait' : 'cursor-pointer'}
+        ${isToggling ? 'opacity-50 cursor-wait' : locked ? 'cursor-not-allowed' : 'cursor-pointer'}
       `}
-      title={flagged ? 'Unflag this message' : 'Flag this message'}
+      title={locked ? "Flagged by this board's moderators" : flagged ? 'Unflag this message' : 'Flag this message'}
     >
       {flagged ? (
         <ShieldAlert size={iconSize} />
