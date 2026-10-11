@@ -146,17 +146,23 @@ export interface ModeratedBoard {
 
 type ListedBoard = { address: string; name?: string; platform?: string; admin?: string | null; creator?: string | null; isLegacy?: boolean }
 
-// Every v1.x fixed and streaming board, from the same listing routes /account reads, cached for a
-// minute since every connected wallet polls the queue. Legacy TopDawg strategies are excluded: they
-// are not Leaderboard contracts, so the scan never reads them.
+// Every v1.x fixed and streaming board, from the same listing routes /account reads, with added
+// moderators merged in. Cached for a minute since every connected wallet polls the queue, and
+// cleared when an owner saves moderators (see clearModeratedBoards). Legacy TopDawg strategies are
+// excluded: they are not Leaderboard contracts, so the scan never reads them.
 export async function listModeratedBoards(): Promise<ModeratedBoard[]> {
   const cached = await kv.get<ModeratedBoard[]>(BOARDS_CACHE_KEY).catch(() => null)
-  const listed = cached ?? await listBoardsUncached()
-  if (!cached) await kv.set(BOARDS_CACHE_KEY, listed, { ex: BOARDS_CACHE_TTL }).catch(() => {})
+  if (cached) return cached
 
-  // Added moderators are read fresh so a change to the list shows up on the next poll.
+  const listed = await listBoardsUncached()
   const added = await readBoardModerators(listed.map(b => b.address))
-  return listed.map((b, i) => ({ ...b, moderators: [...new Set([...b.moderators, ...added[i].moderators])] }))
+  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...b.moderators, ...added[i].moderators])] }))
+  await kv.set(BOARDS_CACHE_KEY, boards, { ex: BOARDS_CACHE_TTL }).catch(() => {})
+  return boards
+}
+
+export async function clearModeratedBoards(): Promise<void> {
+  await kv.del(BOARDS_CACHE_KEY).catch(() => {})
 }
 
 async function listBoardsUncached(): Promise<ModeratedBoard[]> {

@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     const items = await readItems(ids)
+    const reviewedAt = Math.floor(Date.now() / 1000)
     const pipeline = kv.pipeline()
     ids.forEach((id, i) => {
       const held = scopes.get(id.toLowerCase())!
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
       const item = items[i]
       if (item) {
-        pipeline.set(itemKey(id), reviewItem(item, action, adminAddress, now, held))
+        pipeline.set(itemKey(id), reviewItem(item, action, adminAddress, reviewedAt, held))
         held.forEach(scope => pipeline.zrem(pendingKey(scope, item.board), item.markee))
       }
     })

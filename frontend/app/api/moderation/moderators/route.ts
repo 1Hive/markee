@@ -12,7 +12,7 @@ import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
 import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
-import { moderatorsKey, readBoardModerators, readBoardOwners, type BoardModerators } from '@/lib/moderation/server'
+import { clearModeratedBoards, moderatorsKey, readBoardModerators, readBoardOwners, type BoardModerators } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,8 +61,17 @@ export async function POST(req: NextRequest) {
     }
     const board = rawBoard?.toLowerCase()
     const owner = rawOwner?.toLowerCase()
-    if (!board || !ADDRESS.test(board) || !owner || !ADDRESS.test(owner) || !signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp) || !Array.isArray(rawModerators)) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    if (!board || !ADDRESS.test(board)) {
+      return NextResponse.json({ error: 'Missing or invalid board address' }, { status: 400 })
+    }
+    if (!owner || !ADDRESS.test(owner)) {
+      return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
+    }
+    if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+      return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
+    }
+    if (!Array.isArray(rawModerators)) {
+      return NextResponse.json({ error: 'moderators must be a list of wallet addresses' }, { status: 400 })
     }
 
     const moderators = normalizeModerators(rawModerators)
@@ -100,6 +109,7 @@ export async function POST(req: NextRequest) {
       updatedBy: owner,
     }
     await kv.set(moderatorsKey(board), next)
+    await clearModeratedBoards()
     return NextResponse.json(await boardState(board))
   } catch (error) {
     console.error('[moderation/moderators] POST error:', error)

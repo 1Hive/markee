@@ -48,13 +48,14 @@ export function useModerationQueue() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         replaceFlagged(await res.json())
         const done = new Set(ids.map(id => id.toLowerCase()))
-        queryClient.setQueryData<QueueResponse>(moderationQueueKey(addr), prev =>
-          prev ? { ...prev, items: prev.items.filter(it => !done.has(it.markee)), flagged: prev.flagged.filter(it => !done.has(it.markee)) } : prev,
-        )
+        queryClient.setQueryData<QueueResponse>(moderationQueueKey(addr), prev => {
+          if (!prev) return prev
+          const moved = action === 'flag' ? prev.items.filter(it => done.has(it.markee)) : []
+          return { ...prev, items: prev.items.filter(it => !done.has(it.markee)), flagged: [...moved, ...prev.flagged.filter(it => !done.has(it.markee))] }
+        })
       }
     } finally {
-      // A flag moves the item into the flagged list, and a failed batch leaves the earlier ones
-      // committed, so refetch either way rather than guess.
+      // A failed batch leaves the earlier ones committed, so refetch either way to show what landed.
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(addr) })
     }
   }, [addr, signMessageAsync, replaceFlagged, queryClient])
