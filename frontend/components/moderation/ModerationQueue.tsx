@@ -50,7 +50,12 @@ function QueueRow({ item, busy, onReview, flaggedView = false }: { item: Moderat
           )}
         </div>
         <p style={{ margin: 0, color: TEXT, fontSize: 15, lineHeight: 1.45, wordBreak: 'break-word' }}>{item.message || <em style={{ color: MUTED }}>empty message</em>}</p>
-        {edited && item.previousMessage !== null && (
+        {edited && item.previousName != null && item.previousName !== item.name && (
+          <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>
+            renamed from <span style={{ textDecoration: 'line-through' }}>{item.previousName || 'Anonymous'}</span>
+          </p>
+        )}
+        {edited && item.previousMessage !== null && item.previousMessage !== item.message && (
           <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>
             was <span style={{ textDecoration: 'line-through' }}>{item.previousMessage || 'empty'}</span>
           </p>

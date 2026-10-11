@@ -133,7 +133,8 @@ export async function runModerationScan(): Promise<ScanReport> {
     block.number,
   )
 
-  const observations: MessageObservation[] = []
+  // A failed name read keeps the stored name, so it never reads as a rename.
+  const observations: (Omit<MessageObservation, 'name'> & { name: string | null })[] = []
   pairs.forEach((p, i) => {
     const [message, name, owner] = reads.slice(i * 3, i * 3 + 3)
     if (message?.status !== 'success') return
@@ -141,7 +142,7 @@ export async function runModerationScan(): Promise<ScanReport> {
       markee: p.markee,
       board: p.board,
       message: message.result as string,
-      name: name?.status === 'success' ? (name.result as string) : '',
+      name: name?.status === 'success' ? (name.result as string) : null,
       author: owner?.status === 'success' ? (owner.result as string).toLowerCase() : '',
       blockNumber: block.number.toString(),
       at: Number(block.timestamp),
@@ -155,7 +156,8 @@ export async function runModerationScan(): Promise<ScanReport> {
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
   const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)
-    const next = observeMessage(prevs[i] ?? null, obs, {
+    const prev = prevs[i] ?? null
+    const next = observeMessage(prev, { ...obs, name: obs.name ?? prev?.name ?? '' }, {
       flagged: { board: flaggedSets.board.has(key), site: flaggedSets.site.has(key) },
       preexisting: isBaseline,
     })

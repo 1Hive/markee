@@ -23,6 +23,8 @@ export interface ModerationItem {
   author: string
   // The text a moderator last reviewed, or the text this edit replaced while a review was still owed.
   previousMessage: string | null
+  // The same for the author's display name. Absent on items stored before names were reviewed.
+  previousName?: string | null
   blockNumber: string
   at: number
   reviews: Record<ModerationScope, ScopeReview>
@@ -84,7 +86,7 @@ export function normalizeItem(raw: ModerationItem | null): ModerationItem | null
   return { ...raw, reviews: { board: review, site: { ...review } } }
 }
 
-// Approval covers specific text, so any change to it owes a fresh review in every scope. An item
+// Approval covers specific text and name, so any change to either owes a fresh review in every scope. An item
 // still owed a review keeps the text a moderator last saw, not the intermediate one nobody reviewed.
 // Text that was already live before the queue existed starts out approved.
 export function observeMessage(
@@ -92,8 +94,10 @@ export function observeMessage(
   obs: MessageObservation,
   { flagged, preexisting }: { flagged: Record<ModerationScope, boolean>; preexisting: boolean },
 ): ModerationItem | null {
-  if (prev && prev.message === obs.message) return null
-  const previousMessage = prev ? (isPendingIn(prev, SCOPES) ? prev.previousMessage : prev.message) : null
+  if (prev && prev.message === obs.message && prev.name === obs.name) return null
+  const owed = prev && isPendingIn(prev, SCOPES)
+  const previousMessage = prev ? (owed ? prev.previousMessage : prev.message) : null
+  const previousName = prev ? (owed ? prev.previousName ?? prev.name : prev.name) : null
   const review = (scope: ModerationScope): ScopeReview => ({
     status: prev ? 'pending' : flagged[scope] ? 'flagged' : preexisting ? 'approved' : 'pending',
     reviewedBy: null,
@@ -103,6 +107,7 @@ export function observeMessage(
     ...obs,
     kind: previousMessage === null ? 'created' : 'edited',
     previousMessage,
+    previousName,
     reviews: { board: review('board'), site: review('site') },
   }
 }

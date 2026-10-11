@@ -130,3 +130,19 @@ test('the moderator list is signed in a canonical order', () => {
   assert.deepEqual(list, ['0xaa', '0xbb'])
   assert.equal(moderatorsMessage(8453, '0xBoard', list, 7), 'markee-moderation:moderators:8453:0xboard:0xaa,0xbb:7')
 })
+
+test('a rename owes a fresh review even when the text is unchanged', () => {
+  const approved = reviewItem(observeMessage(null, obs('gm'), fresh)!, 'approve', reviewer, 1, BOTH)
+  const renamed = observeMessage(approved, { ...obs('gm', '101'), name: 'mallory' }, fresh)!
+  assert.deepEqual(statuses(renamed), ['pending', 'pending'])
+  assert.equal(renamed.kind, 'edited')
+  assert.equal(renamed.previousName, 'alice')
+  assert.equal(observeMessage(approved, obs('gm', '101'), fresh), null)
+})
+
+test('a rename while a review is owed keeps the name a moderator last saw', () => {
+  const approved = reviewItem(observeMessage(null, obs('gm'), fresh)!, 'approve', reviewer, 1, BOTH)
+  const first = observeMessage(approved, { ...obs('gm', '101'), name: 'bob' }, fresh)!
+  const second = observeMessage(first, { ...obs('gm', '102'), name: 'mallory' }, fresh)!
+  assert.equal(second.previousName, 'alice')
+})
