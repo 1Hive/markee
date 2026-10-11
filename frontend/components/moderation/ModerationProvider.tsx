@@ -20,6 +20,7 @@ import {
 } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import { ADMIN_ADDRESSES, MODERATION_API } from '@/lib/moderation/config'
+import { reviewMessage } from '@/lib/moderation/queue'
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -170,8 +171,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
 
       try {
         const timestamp = Math.floor(Date.now() / 1000)
-        const message = `markee-moderation:${action}:${chainId}:${markeeId}:${timestamp}`
-        const signature = await signMessageAsync({ message })
+        const signature = await signMessageAsync({ message: reviewMessage(action, chainId, [markeeId], timestamp) })
 
         // Guess the scope the server will use (see authorizedScopes); its response replaces both sets.
         if (action === 'flag') {
@@ -185,7 +185,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            markeeId,
+            markeeIds: [markeeId],
             chainId,
             action,
             adminAddress: address,

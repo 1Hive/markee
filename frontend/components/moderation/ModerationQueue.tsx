@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ChevronDown, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
-import type { ModerationAction, ModerationItem, QueueBoard } from '@/lib/moderation/queue'
+import { MAX_REVIEW_BATCH, type ModerationAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
 
 const SANS  = 'Manrope, system-ui, sans-serif'
 const AMBER = '#FFB020'
@@ -92,6 +92,7 @@ function BoardGroup({ board, items, busyIds, onReview, flaggedView = false }: {
   flaggedView?: boolean
 }) {
   const allBusy = items.every(it => busyIds.has(it.markee))
+  const signatures = Math.ceil(items.length / MAX_REVIEW_BATCH)
   return (
     <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden', background: BG2 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
@@ -100,7 +101,7 @@ function BoardGroup({ board, items, busyIds, onReview, flaggedView = false }: {
         <ScopeChip board={board} />
         {items.length > 1 && !flaggedView && (
           <div style={{ marginLeft: 'auto' }}>
-            <ActionButton label={`Approve all ${items.length}`} color={GREEN} icon={<ShieldCheck size={14} />} busy={allBusy} onClick={() => onReview('approve', items)} />
+            <ActionButton label={`Approve all ${items.length}${signatures > 1 ? ` (${signatures} signatures)` : ''}`} color={GREEN} icon={<ShieldCheck size={14} />} busy={allBusy} onClick={() => onReview('approve', items)} />
           </div>
         )}
       </div>
