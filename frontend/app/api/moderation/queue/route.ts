@@ -43,13 +43,15 @@ export async function GET(req: NextRequest) {
     const all = (await readItems(markees)).filter((it): it is ModerationItem => !!it && scopesOf.has(it.board))
 
     const boardFlagged = new Set(flags.board)
+    // A board flag already hides the message on markee.xyz, so a site review would change nothing.
+    const siteReviewIsMoot = (it: ModerationItem, scopes: ModerationScope[]) =>
+      scopes.length === 1 && scopes[0] === 'site' && boardFlagged.has(flagKey(it.markee))
     const items: ModerationItem[] = []
     const flagged: ModerationItem[] = []
     all.forEach(it => {
       const scopes = scopesOf.get(it.board)!
       if (isFlaggedIn(it, scopes)) flagged.push(it)
-      // A board flag already hides the message on markee.xyz, so a site review would change nothing.
-      else if (isPendingIn(it, scopes) && !(scopes.length === 1 && scopes[0] === 'site' && boardFlagged.has(flagKey(it.markee)))) items.push(it)
+      else if (isPendingIn(it, scopes) && !siteReviewIsMoot(it, scopes)) items.push(it)
     })
     items.sort((a, b) => b.at - a.at)
     flagged.sort((a, b) => b.at - a.at)

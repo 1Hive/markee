@@ -81,7 +81,9 @@ async function listBoards(client: Client, blockNumber: bigint): Promise<string[]
   const factories: string[] = [...Object.values(FACTORIES), ...(STREAMING_ENABLED ? [STREAMING_FACTORY] : [])]
   const counts = await multicallChunked(client, factories.map(f => call(f, 'leaderboardCount')), BOARD_CHUNK, blockNumber)
   const pageCalls = factories.flatMap((f, i) => {
-    const total = count(counts[i]) ?? PAGE_SIZE
+    const counted = count(counts[i])
+    if (counted === null) console.warn(`[moderation/scan] leaderboardCount failed on ${f}, reading only its first page`)
+    const total = counted ?? PAGE_SIZE
     const offsets: bigint[] = []
     for (let offset = 0n; offset < total; offset += PAGE_SIZE) offsets.push(offset)
     return offsets.map(offset => call(f, 'getLeaderboards', [offset, PAGE_SIZE]))

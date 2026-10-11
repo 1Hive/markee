@@ -160,7 +160,13 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
       if (currentlyFlagged && !canUnflag(chainId, markeeId, boardAdmin, boardCreator)) return true
       const action = currentlyFlagged ? 'unflag' : 'flag'
       const owner = ownsBoard(boardAdmin, boardCreator)
-      const previous = { board: boardFlagged, site: siteFlagged }
+      const wasFlagged = { board: boardFlagged.has(key), site: siteFlagged.has(key) }
+      const withKey = (on: boolean) => (prev: Set<string>) => {
+        const next = new Set(prev)
+        if (on) next.add(key)
+        else next.delete(key)
+        return next
+      }
 
       try {
         const timestamp = Math.floor(Date.now() / 1000)
@@ -169,12 +175,10 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
 
         // Guess the scope the server will use (see authorizedScopes); its response replaces both sets.
         if (action === 'flag') {
-          const setScope = owner ? setBoardFlagged : setSiteFlagged
-          setScope(prev => new Set(prev).add(key))
+          (owner ? setBoardFlagged : setSiteFlagged)(withKey(true))
         } else {
-          const without = (prev: Set<string>) => { const next = new Set(prev); next.delete(key); return next }
-          setSiteFlagged(without)
-          if (owner) setBoardFlagged(without)
+          setSiteFlagged(withKey(false))
+          if (owner) setBoardFlagged(withKey(false))
         }
 
         const res = await fetch(MODERATION_API, {
@@ -198,8 +202,9 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return action === 'flag'
       } catch (err) {
         console.error('[moderation] toggleFlag error:', err)
-        setBoardFlagged(previous.board)
-        setSiteFlagged(previous.site)
+        // Only this markee is rolled back, so another toggle in flight keeps its own update.
+        setBoardFlagged(withKey(wasFlagged.board))
+        setSiteFlagged(withKey(wasFlagged.site))
         return currentlyFlagged
       }
     },
