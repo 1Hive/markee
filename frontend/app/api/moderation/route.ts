@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     // Verify the caller actually controls the wallet they claim
     const message = reviewMessage(action, chainId, ids, timestamp)
-    const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature })
+    const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
     if (!valid) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
