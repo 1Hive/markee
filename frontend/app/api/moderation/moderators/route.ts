@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
     const board = rawBoard?.toLowerCase()
     const owner = rawOwner?.toLowerCase()
-    if (!board || !ADDRESS.test(board) || !owner || !ADDRESS.test(owner) || !signature || !Number.isInteger(timestamp) || !Array.isArray(rawModerators)) {
+    if (!board || !ADDRESS.test(board) || !owner || !ADDRESS.test(owner) || !signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp) || !Array.isArray(rawModerators)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -74,13 +74,13 @@ export async function POST(req: NextRequest) {
     }
 
     const now = Math.floor(Date.now() / 1000)
-    if (Math.abs(now - timestamp!) > 300) {
+    if (Math.abs(now - timestamp) > 300) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     }
 
     const valid = await verifyMessage({
       address: owner as `0x${string}`,
-      message: moderatorsMessage(base.id, board, moderators, timestamp!),
+      message: moderatorsMessage(base.id, board, moderators, timestamp),
       signature,
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
@@ -90,13 +90,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Only this board's owner can change its moderators" }, { status: 403 })
     }
     // Replaying an older signed list would undo a later change.
-    if (timestamp! <= current.updatedAt) {
+    if (timestamp <= current.updatedAt) {
       return NextResponse.json({ error: 'A newer moderator list was already saved. Reload and try again.' }, { status: 409 })
     }
 
     const next: BoardModerators = {
       moderators: moderators.filter(m => !owners.includes(m)),
-      updatedAt: timestamp!,
+      updatedAt: timestamp,
       updatedBy: owner,
     }
     await kv.set(moderatorsKey(board), next)

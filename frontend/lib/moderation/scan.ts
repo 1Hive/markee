@@ -92,23 +92,21 @@ async function listBoards(client: Client, blockNumber: bigint): Promise<string[]
 }
 
 async function listMarkees(client: Client, boards: string[], blockNumber: bigint): Promise<{ board: string; markee: string }[]> {
-  const meta = await multicallChunked(
-    client,
-    boards.flatMap(b => [call(b, 'markeeCount'), call(b, 'getTopMarkees', [TOP_MARKEES])]),
-    BOARD_CHUNK * 2,
-    blockNumber,
-  )
+  const [counts, tops] = await Promise.all([
+    multicallChunked(client, boards.map(b => call(b, 'markeeCount')), BOARD_CHUNK, blockNumber),
+    multicallChunked(client, boards.map(b => call(b, 'getTopMarkees', [TOP_MARKEES])), BOARD_CHUNK, blockNumber),
+  ])
   const recent = await multicallChunked(
     client,
     boards.map((b, i) => {
-      const total = count(meta[i * 2]) ?? 0n
+      const total = count(counts[i]) ?? 0n
       return call(b, 'getMarkees', [total > RECENT_MARKEES ? total - RECENT_MARKEES : 0n, RECENT_MARKEES])
     }),
     BOARD_CHUNK,
     blockNumber,
   )
   return boards.flatMap((board, i) => {
-    const top = meta[i * 2 + 1]
+    const top = tops[i]
     const topAddresses = top?.status === 'success' ? addresses({ status: 'success', result: (top.result as unknown[])[0] }) : []
     return [...new Set([...addresses(recent[i]), ...topAddresses])].map(markee => ({ board, markee }))
   })

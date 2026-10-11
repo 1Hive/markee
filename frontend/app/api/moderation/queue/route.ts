@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       if (global) scopes.push('site')
       return scopes.length > 0 ? [{ address: b.address, name: b.name, platform: b.platform, scopes }] : []
     })
-    if (boards.length === 0) return NextResponse.json(EMPTY, { headers: { 'Cache-Control': 'no-store' } })
+    if (boards.length === 0) return NextResponse.json(EMPTY, { headers: { 'Cache-Control': 'private, no-store' } })
 
     const scopesOf = new Map(boards.map(b => [b.address, b.scopes]))
     const boardScoped = boards.filter(b => b.scopes.includes('board'))
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     flagged.sort((a, b) => b.at - a.at)
 
     const response: QueueResponse = { boards, items, flagged }
-    return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json(response, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[moderation/queue] GET error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

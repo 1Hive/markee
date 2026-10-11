@@ -122,16 +122,18 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
     [flaggedSet]
   )
 
-  const canModerate = useCallback(
+  const ownsBoard = useCallback(
     (boardAdmin?: string | null, boardCreator?: string | null): boolean => {
-      if (isAdminUser) return true
-      if (!address) return false
-      const wallet = address.toLowerCase()
-      if (boardAdmin && boardAdmin.toLowerCase() === wallet) return true
-      if (boardCreator && boardCreator.toLowerCase() === wallet) return true
-      return false
+      const wallet = address?.toLowerCase()
+      return !!wallet && (boardAdmin?.toLowerCase() === wallet || boardCreator?.toLowerCase() === wallet)
     },
-    [isAdminUser, address]
+    [address]
+  )
+
+  const canModerate = useCallback(
+    (boardAdmin?: string | null, boardCreator?: string | null): boolean =>
+      isAdminUser || ownsBoard(boardAdmin, boardCreator),
+    [isAdminUser, ownsBoard]
   )
 
   const isHidden = useCallback(
@@ -140,15 +142,13 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
     [isFlagged, canModerate]
   )
 
-  // Global admins flag in the site scope only, so a board flag stays up unless they also moderate the board.
+  // Global admins flag in the site scope only, so a board flag stays up unless they also own the board.
+  // Added moderators can lift board flags too (see authorizedScopes), but this provider does not know
+  // them, so they work through the /account queue instead.
   const canUnflag = useCallback(
-    (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): boolean => {
-      if (!canModerate(boardAdmin, boardCreator)) return false
-      if (!boardFlagged.has(toKey(chainId, markeeId))) return true
-      const wallet = address?.toLowerCase()
-      return !!wallet && (boardAdmin?.toLowerCase() === wallet || boardCreator?.toLowerCase() === wallet)
-    },
-    [canModerate, boardFlagged, address]
+    (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): boolean =>
+      boardFlagged.has(toKey(chainId, markeeId)) ? ownsBoard(boardAdmin, boardCreator) : canModerate(boardAdmin, boardCreator),
+    [boardFlagged, ownsBoard, canModerate]
   )
 
   const toggleFlag = useCallback(
@@ -159,12 +159,23 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
       const currentlyFlagged = flaggedSet.has(key)
       if (currentlyFlagged && !canUnflag(chainId, markeeId, boardAdmin, boardCreator)) return true
       const action = currentlyFlagged ? 'unflag' : 'flag'
-      // Which list the flag lands in is the server's call (see authorizedScopes); the response replaces both.
+      const owner = ownsBoard(boardAdmin, boardCreator)
+      const previous = { board: boardFlagged, site: siteFlagged }
 
       try {
         const timestamp = Math.floor(Date.now() / 1000)
         const message = `markee-moderation:${action}:${chainId}:${markeeId}:${timestamp}`
         const signature = await signMessageAsync({ message })
+
+        // Guess the scope the server will use (see authorizedScopes); its response replaces both sets.
+        if (action === 'flag') {
+          const setScope = owner ? setBoardFlagged : setSiteFlagged
+          setScope(prev => new Set(prev).add(key))
+        } else {
+          const without = (prev: Set<string>) => { const next = new Set(prev); next.delete(key); return next }
+          setSiteFlagged(without)
+          if (owner) setBoardFlagged(without)
+        }
 
         const res = await fetch(MODERATION_API, {
           method: 'POST',
@@ -187,10 +198,12 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return action === 'flag'
       } catch (err) {
         console.error('[moderation] toggleFlag error:', err)
+        setBoardFlagged(previous.board)
+        setSiteFlagged(previous.site)
         return currentlyFlagged
       }
     },
-    [address, canModerate, canUnflag, flaggedSet, signMessageAsync, replaceFlagged]
+    [address, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged]
   )
 
   return (
