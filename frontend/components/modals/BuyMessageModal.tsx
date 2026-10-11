@@ -12,7 +12,7 @@ import { formatTransactionError, logTransactionError } from '@/lib/transactionEr
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
-import { ModeratedContent } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -615,7 +615,7 @@ export function BuyMessageModal({
                     </div>
                   </ModeratedContent>
                   {userMarkee?.name && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee.address}>{userMarkee.name}</ModeratedAuthor></div>
                   )}
                 </div>
               )}
