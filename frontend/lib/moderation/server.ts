@@ -61,6 +61,10 @@ export function flagKey(markee: string): string {
   return `${base.id}:${markee.toLowerCase()}`
 }
 
+export function markeeOfFlagKey(key: string): string {
+  return key.slice(key.indexOf(':') + 1)
+}
+
 export function flagKeyVariants(markee: string): string[] {
   const keys = [flagKey(markee)]
   try { keys.push(`${base.id}:${getAddress(markee)}`) } catch { /* not an address */ }

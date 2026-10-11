@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     await logger.error('moderation scan failed', e)
     return NextResponse.json({ error: 'moderation scan failed, see function logs' }, { status: 500 })
   } finally {
-    await kv.del(SCAN_LOCK_KEY)
+    // The lock TTL clears it if this delete fails.
+    await kv.del(SCAN_LOCK_KEY).catch(() => {})
   }
 }

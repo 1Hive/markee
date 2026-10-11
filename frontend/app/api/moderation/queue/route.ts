@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
-import { PENDING_SITE_KEY, flagKey, isGlobalAdmin, listModeratedBoards, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
+import { PENDING_SITE_KEY, flagKey, isGlobalAdmin, listModeratedBoards, markeeOfFlagKey, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const [pending, flags] = await Promise.all([pipeline.exec<string[][]>(), readAllFlagged()])
 
     // Flagged markees are only known by key, so read them all and keep the viewer's boards below.
-    const flaggedMarkees = [...new Set([...flags.board, ...(global ? flags.site : [])])].map(k => k.split(':')[1])
+    const flaggedMarkees = [...new Set([...flags.board, ...(global ? flags.site : [])])].map(markeeOfFlagKey)
     const markees = [...new Set([...pending.flat(), ...flaggedMarkees])]
     const all = (await readItems(markees)).filter((it): it is ModerationItem => !!it && scopesOf.has(it.board))
 
