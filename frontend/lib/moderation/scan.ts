@@ -35,6 +35,7 @@ const RECENT_MARKEES = 1000n
 const TOP_MARKEES = 50n
 const BOARD_CHUNK = 500
 const MARKEE_CHUNK = 500
+const WRITE_CHUNK = 500
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 type Client = ReturnType<typeof getModerationClient>
@@ -152,24 +153,27 @@ export async function runModerationScan(): Promise<ScanReport> {
 
   const [prevs, flagged] = await Promise.all([readItems(observations.map(o => o.markee)), readAllFlagged()])
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
-  const pipeline = kv.pipeline()
-  let writes = 0
-  observations.forEach((obs, i) => {
+  const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)
     const next = observeMessage(prevs[i] ?? null, obs, {
       flagged: { board: flaggedSets.board.has(key), site: flaggedSets.site.has(key) },
       preexisting: isBaseline,
     })
-    if (!next) return
-    writes++
-    pipeline.set(itemKey(next.markee), next)
-    SCOPES.forEach(scope => {
-      if (next.reviews[scope].status === 'pending') pipeline.zadd(pendingKey(scope, next.board), { score: next.at, member: next.markee })
-      else pipeline.zrem(pendingKey(scope, next.board), next.markee)
-    })
-    if (isPendingIn(next, SCOPES)) report.queued++
+    return next ? [next] : []
   })
-  if (writes > 0) await pipeline.exec()
+  // Upstash caps a request body, and a baseline run writes every markee at once.
+  for (const batch of chunk(changed, WRITE_CHUNK)) {
+    const pipeline = kv.pipeline()
+    batch.forEach(next => {
+      pipeline.set(itemKey(next.markee), next)
+      SCOPES.forEach(scope => {
+        if (next.reviews[scope].status === 'pending') pipeline.zadd(pendingKey(scope, next.board), { score: next.at, member: next.markee })
+        else pipeline.zrem(pendingKey(scope, next.board), next.markee)
+      })
+    })
+    await pipeline.exec()
+  }
+  report.queued = changed.filter(next => isPendingIn(next, SCOPES)).length
   if (isBaseline) await kv.set(BASELINE_KEY, block.number.toString())
   return report
 }
