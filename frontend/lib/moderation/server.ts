@@ -17,6 +17,8 @@ export const FLAGGED_KEYS: Record<ModerationScope, string> = {
   site: 'moderation:flagged:site',
 }
 export const PENDING_SITE_KEY = 'moderation:pending:site'
+const READ_CHUNK = 500
+
 export const itemKey = (markee: string) => `moderation:item:${base.id}:${markee.toLowerCase()}`
 export const moderatorsKey = (board: string) => `moderation:moderators:${board.toLowerCase()}`
 // Board reviews are indexed per board, site reviews in one index across every board.
@@ -195,8 +197,10 @@ async function listBoardsUncached(): Promise<ModeratedBoard[]> {
   return [...boards.values()]
 }
 
+// Chunked so a full scan's read stays under Upstash's response size cap.
 export async function readItems(markees: string[]): Promise<(ModerationItem | null)[]> {
-  if (markees.length === 0) return []
-  const rows = await kv.mget<(ModerationItem | null)[]>(...markees.map(itemKey))
-  return rows.map(normalizeItem)
+  const chunks: string[][] = []
+  for (let i = 0; i < markees.length; i += READ_CHUNK) chunks.push(markees.slice(i, i + READ_CHUNK))
+  const rows = await Promise.all(chunks.map(c => kv.mget<(ModerationItem | null)[]>(...c.map(itemKey))))
+  return rows.flat().map(normalizeItem)
 }
