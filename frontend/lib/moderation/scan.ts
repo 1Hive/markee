@@ -39,7 +39,7 @@ const WRITE_CHUNK = 500
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 type Client = ReturnType<typeof getModerationClient>
-type CallResult = { status: string; result?: unknown }
+type CallResult = { status: 'success' | 'failure'; result?: unknown }
 
 export interface ScanReport {
   boards: number
@@ -148,6 +148,9 @@ export async function runModerationScan(): Promise<ScanReport> {
       at: Number(block.timestamp),
     })
   })
+
+  const unnamed = observations.filter(o => o.name === null).length
+  if (unnamed > 0) console.warn(`[moderation/scan] name read failed for ${unnamed} markees, kept their stored names`)
 
   const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline }
   if (observations.length === 0) return report

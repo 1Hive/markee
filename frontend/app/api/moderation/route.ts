@@ -18,13 +18,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
-import { MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction } from '@/lib/moderation/queue'
 import {
   FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
 } from '@/lib/moderation/server'
 
 const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
-const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -70,10 +69,10 @@ export async function POST(req: NextRequest) {
     if (!ACTIONS.includes(action)) {
       return NextResponse.json({ error: 'Invalid action. Use "flag", "unflag" or "approve".' }, { status: 400 })
     }
-    if (ids.length > MAX_REVIEW_BATCH || ids.some(id => !ADDRESS.test(id))) {
+    if (ids.length > MAX_REVIEW_BATCH || ids.some(id => !ADDRESS_PATTERN.test(id))) {
       return NextResponse.json({ error: 'Invalid markee ids' }, { status: 400 })
     }
-    if (!ADDRESS.test(adminAddress)) {
+    if (!ADDRESS_PATTERN.test(adminAddress)) {
       return NextResponse.json({ error: 'Invalid admin address' }, { status: 400 })
     }
 

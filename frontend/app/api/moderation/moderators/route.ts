@@ -11,12 +11,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
-import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
 import { clearModeratedBoards, moderatorsKey, readBoardModerators, readBoardOwners, type BoardModerators } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
 
-const ADDRESS = /^0x[0-9a-f]{40}$/
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -39,7 +38,7 @@ async function boardState(board: string) {
 
 export async function GET(req: NextRequest) {
   const board = req.nextUrl.searchParams.get('board')?.toLowerCase()
-  if (!board || !ADDRESS.test(board)) {
+  if (!board || !ADDRESS_PATTERN.test(board)) {
     return NextResponse.json({ error: 'Missing or invalid board address' }, { status: 400, headers: CORS })
   }
   try {
@@ -61,10 +60,10 @@ export async function POST(req: NextRequest) {
     }
     const board = rawBoard?.toLowerCase()
     const owner = rawOwner?.toLowerCase()
-    if (!board || !ADDRESS.test(board)) {
+    if (!board || !ADDRESS_PATTERN.test(board)) {
       return NextResponse.json({ error: 'Missing or invalid board address' }, { status: 400 })
     }
-    if (!owner || !ADDRESS.test(owner)) {
+    if (!owner || !ADDRESS_PATTERN.test(owner)) {
       return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
     }
     if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
@@ -75,7 +74,7 @@ export async function POST(req: NextRequest) {
     }
 
     const moderators = normalizeModerators(rawModerators)
-    if (moderators.some(m => !ADDRESS.test(m))) {
+    if (moderators.some(m => !ADDRESS_PATTERN.test(m))) {
       return NextResponse.json({ error: 'Every moderator must be a wallet address' }, { status: 400 })
     }
     if (moderators.length > MAX_BOARD_MODERATORS) {

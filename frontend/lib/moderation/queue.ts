@@ -1,5 +1,9 @@
 export type ModerationStatus = 'pending' | 'approved' | 'flagged'
 export type ModerationAction = 'flag' | 'unflag' | 'approve'
+// The queue approves rather than unflags, since approving also settles the item's pending review.
+export type QueueAction = Exclude<ModerationAction, 'unflag'>
+
+export const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
 // Two independent reviews per message:
 //   board -- the board's owner and the moderators they add. Their flags hide the message on every

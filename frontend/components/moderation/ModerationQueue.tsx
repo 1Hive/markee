@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ChevronDown, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
-import { MAX_REVIEW_BATCH, type ModerationAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
+import { MAX_REVIEW_BATCH, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
 
 const SANS  = 'Manrope, system-ui, sans-serif'
 const AMBER = '#FFB020'
@@ -34,7 +34,7 @@ function ActionButton({ label, color, icon, busy, onClick }: { label: string; co
   )
 }
 
-function QueueRow({ item, busy, onReview, flaggedView = false }: { item: ModerationItem; busy: boolean; onReview: (action: ModerationAction) => void; flaggedView?: boolean }) {
+function QueueRow({ item, busy, onReview, flaggedView = false }: { item: ModerationItem; busy: boolean; onReview: (action: QueueAction) => void; flaggedView?: boolean }) {
   const edited = item.kind === 'edited'
   return (
     <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', padding: '14px 16px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
@@ -93,7 +93,7 @@ function BoardGroup({ board, items, busyIds, onReview, flaggedView = false }: {
   board: QueueBoard
   items: ModerationItem[]
   busyIds: Set<string>
-  onReview: (action: ModerationAction, items: ModerationItem[]) => void
+  onReview: (action: QueueAction, items: ModerationItem[]) => void
   flaggedView?: boolean
 }) {
   const allBusy = items.every(it => busyIds.has(it.markee))
@@ -132,7 +132,7 @@ export function ModerationQueue() {
   const groups = useMemo(() => groupByBoard(items, boards), [items, boards])
   const flaggedGroups = useMemo(() => groupByBoard(flagged, boards), [flagged, boards])
 
-  const handleReview = async (action: ModerationAction, targets: ModerationItem[]) => {
+  const handleReview = async (action: QueueAction, targets: ModerationItem[]) => {
     const ids = targets.map(t => t.markee)
     setActionError(null)
     setBusyIds(prev => new Set([...prev, ...ids]))

@@ -6,9 +6,10 @@ import { useAccount, useSignMessage } from 'wagmi'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { useModeration } from '@/components/moderation/ModerationProvider'
-import { MAX_REVIEW_BATCH, reviewMessage, type ModerationAction, type QueueResponse } from '@/lib/moderation/queue'
+import { MAX_REVIEW_BATCH, reviewMessage, type QueueAction, type QueueResponse } from '@/lib/moderation/queue'
 
 const POLL_MS = 60_000
+const IDLE_POLL_MS = 5 * 60_000
 
 export const moderationQueueKey = (address: string | undefined) => ['moderation-queue', address?.toLowerCase()]
 
@@ -25,7 +26,8 @@ export function useModerationQueue() {
   const queueQuery = useQuery({
     queryKey,
     enabled: !!addr,
-    refetchInterval: POLL_MS,
+    // A wallet that moderates nothing checks back less often, in case an owner adds it.
+    refetchInterval: query => (query.state.data?.boards.length ? POLL_MS : IDLE_POLL_MS),
     queryFn: async (): Promise<QueueResponse> => {
       const res = await fetch(`${MODERATION_API}/queue?moderator=${addr}`, { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -33,7 +35,7 @@ export function useModerationQueue() {
     },
   })
 
-  const review = useCallback(async (action: ModerationAction, markeeIds: string[]) => {
+  const review = useCallback(async (action: QueueAction, markeeIds: string[]) => {
     if (!addr || markeeIds.length === 0) return
     try {
       for (let i = 0; i < markeeIds.length; i += MAX_REVIEW_BATCH) {

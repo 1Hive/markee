@@ -175,7 +175,8 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
 
         // Guess the scope the server will use (see authorizedScopes); its response replaces both sets.
         if (action === 'flag') {
-          (owner ? setBoardFlagged : setSiteFlagged)(withKey(true))
+          if (owner) setBoardFlagged(withKey(true))
+          if (isAdminUser) setSiteFlagged(withKey(true))
         } else {
           setSiteFlagged(withKey(false))
           if (owner) setBoardFlagged(withKey(false))
@@ -208,7 +209,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return currentlyFlagged
       }
     },
-    [address, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged]
+    [address, isAdminUser, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged]
   )
 
   return (

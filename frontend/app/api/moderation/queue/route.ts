@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
 import { PENDING_SITE_KEY, flagKey, isGlobalAdmin, listModeratedBoards, markeeOfFlagKey, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +16,7 @@ const EMPTY: QueueResponse = { boards: [], items: [], flagged: [] }
 
 export async function GET(req: NextRequest) {
   const moderator = req.nextUrl.searchParams.get('moderator')?.toLowerCase()
-  if (!moderator || !/^0x[0-9a-f]{40}$/.test(moderator)) {
+  if (!moderator || !ADDRESS_PATTERN.test(moderator)) {
     return NextResponse.json({ error: 'Missing or invalid moderator address' }, { status: 400 })
   }
 
