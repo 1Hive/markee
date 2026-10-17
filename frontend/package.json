@@ -10,7 +10,9 @@
     "test:keeper": "tsx --test tests/keeper.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:sdk": "tsx --test tests/sdk.test.ts tests/sdk-cache.test.ts",
+    "test:sdk:fork": "tsx --test --test-concurrency=1 tests/sdk-fork.test.ts tests/sdk-community-fork.test.ts"
   },
   "dependencies": {
     "@apollo/client": "^3.8.5",
