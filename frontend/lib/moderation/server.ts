@@ -123,7 +123,7 @@ export async function readBoardOwners(boards: string[]): Promise<string[][]> {
 // Derives each markee's board on-chain (never from the caller) and returns the scopes the moderator
 // reviews it in: `board` where they own or were added as a moderator of that board, `site` for
 // global admins. A markee missing from the map can't be reviewed by this moderator.
-export async function authorizedScopes(moderator: string, markeeIds: string[]): Promise<Map<string, ModerationScope[]>> {
+export async function authorizedScopes(moderator: string, markeeIds: string[]): Promise<{ scopes: Map<string, ModerationScope[]>; boardMap: Map<string, string> }> {
   const mod = moderator.toLowerCase()
   const strategyReads = await getModerationClient().multicall({
     contracts: markeeIds.map(id => ({ address: id as `0x${string}`, abi: PRICING_STRATEGY_ABI, functionName: 'pricingStrategy' as const })),
@@ -139,13 +139,17 @@ export async function authorizedScopes(moderator: string, markeeIds: string[]): 
   const global = isGlobalAdmin(mod)
 
   const scopes = new Map<string, ModerationScope[]>()
+  const boardMap = new Map<string, string>()
   markeeIds.forEach((id, i) => {
     const s: ModerationScope[] = []
     if (boardOf[i] && moderatedBoards.has(boardOf[i]!)) s.push('board')
     if (global) s.push('site')
-    if (s.length > 0) scopes.set(id.toLowerCase(), s)
+    if (s.length > 0) {
+      scopes.set(id.toLowerCase(), s)
+      if (boardOf[i]) boardMap.set(id.toLowerCase(), boardOf[i]!)
+    }
   })
-  return scopes
+  return { scopes, boardMap }
 }
 
 export interface ModeratedBoard {
@@ -208,7 +212,7 @@ async function listBoardsUncached(): Promise<ModeratedBoard[]> {
       existing.moderators = [...new Set([...existing.moderators, ...moderators])]
       return
     }
-    boards.set(address, { address, name: lb.name ?? 'Untitled board', platform, strategy, moderators: [...new Set(moderators)] })
+    boards.set(address, { address, name: lb.name || 'Untitled board', platform, strategy, moderators: [...new Set(moderators)] })
   }
 
   sf.forEach(lb => add(lb, 'superfluid', 'fixed'))

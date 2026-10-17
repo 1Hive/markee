@@ -431,7 +431,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address}>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
               {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
               {lb.topMarkeeOwner && (
                 <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>

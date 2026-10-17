@@ -23,14 +23,16 @@ test.describe('/account — no wallet', () => {
 // ── Moderation queue API (public GET) ────────────────────────────────────────
 
 test.describe('/api/moderation/queue', () => {
-  test('returns JSON with an items array', async ({ request }) => {
-    const res = await request.get('/api/moderation/queue?board=0x0000000000000000000000000000000000000001')
+  test('returns JSON with boards/items/flagged arrays for a valid moderator', async ({ request }) => {
+    const res = await request.get('/api/moderation/queue?moderator=0x0000000000000000000000000000000000000001')
     expect(res.status()).toBe(200)
     const body = await res.json()
     expect(Array.isArray(body.items)).toBe(true)
+    expect(Array.isArray(body.boards)).toBe(true)
+    expect(Array.isArray(body.flagged)).toBe(true)
   })
 
-  test('responds 400 when board param is missing', async ({ request }) => {
+  test('responds 400 when moderator param is missing', async ({ request }) => {
     const res = await request.get('/api/moderation/queue')
     expect(res.status()).toBe(400)
   })

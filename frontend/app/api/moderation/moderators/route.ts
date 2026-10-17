@@ -133,44 +133,44 @@ export async function PATCH(req: NextRequest) {
     const board = rawBoard?.toLowerCase()
     const owner = rawOwner?.toLowerCase()
     if (!board || !ADDRESS_PATTERN.test(board)) {
-      return NextResponse.json({ error: 'Missing or invalid board address' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing or invalid board address' }, { status: 400, headers: CORS })
     }
     if (!owner || !ADDRESS_PATTERN.test(owner)) {
-      return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400, headers: CORS })
     }
     if (!frequency || !EMAIL_FREQUENCIES.includes(frequency as EmailFrequency)) {
-      return NextResponse.json({ error: `frequency must be one of: ${EMAIL_FREQUENCIES.join(', ')}` }, { status: 400 })
+      return NextResponse.json({ error: `frequency must be one of: ${EMAIL_FREQUENCIES.join(', ')}` }, { status: 400, headers: CORS })
     }
     if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
-      return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400, headers: CORS })
     }
     const now = Math.floor(Date.now() / 1000)
     if (Math.abs(now - timestamp) > 300) {
-      return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
+      return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
     }
     const valid = await verifyMessage({
       address: owner as `0x${string}`,
       message: emailFreqMessage(base.id, board, frequency as EmailFrequency, timestamp),
       signature,
     }).catch(() => false)
-    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
 
     const [owners] = await readBoardOwners([board])
     if (!owners.includes(owner)) {
-      return NextResponse.json({ error: "Only this board's owner can change email settings" }, { status: 403 })
+      return NextResponse.json({ error: "Only this board's owner can change email settings" }, { status: 403, headers: CORS })
     }
     const stored = await kv.get<{ timestamp: number }>(emailFreqKey(board) + ':meta').catch(() => null)
     if (stored && timestamp <= stored.timestamp) {
-      return NextResponse.json({ error: 'A newer frequency was already saved. Reload and try again.' }, { status: 409 })
+      return NextResponse.json({ error: 'A newer frequency was already saved. Reload and try again.' }, { status: 409, headers: CORS })
     }
 
     await Promise.all([
       kv.set(emailFreqKey(board), frequency),
       kv.set(emailFreqKey(board) + ':meta', { timestamp }),
     ])
-    return NextResponse.json(await boardState(board))
+    return NextResponse.json(await boardState(board), { headers: CORS })
   } catch (error) {
     console.error('[moderation/moderators] PATCH error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: CORS })
   }
 }

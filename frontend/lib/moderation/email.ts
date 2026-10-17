@@ -84,14 +84,12 @@ export async function sendNewItemNotifications(
   const toNotify = boardAddrs.filter((_, i) => freqs[i] === 'every')
   if (toNotify.length === 0) return { sent: 0, errors: 0 }
 
-  let sent = 0
-  let errors = 0
-  for (const boardAddr of toNotify) {
+  const results = await Promise.all(toNotify.map(async boardAddr => {
     const board = boardMap.get(boardAddr)
-    if (!board) continue
+    if (!board) return { sent: 0, errors: 0 }
     const count = pendingByBoard[boardAddr] ?? 0
     const recipients = await readNotifyEmails(board.moderators)
-    for (const { email } of recipients) {
+    const sends = await Promise.all(recipients.map(async ({ email }) => {
       try {
         await sendEmail({
           sender: FROM,
@@ -99,14 +97,16 @@ export async function sendNewItemNotifications(
           subject: `${count} new message${count !== 1 ? 's' : ''} pending review on "${board.name}"`,
           htmlContent: buildHtml(board.name, board.address, count),
         })
-        sent++
+        return 1
       } catch (e) {
         console.error('[moderation/email] send failed to', email, e)
-        errors++
+        return 0
       }
-    }
-  }
-  return { sent, errors }
+    }))
+    const sent = sends.filter(Boolean).length
+    return { sent, errors: sends.length - sent }
+  }))
+  return results.reduce((acc, r) => ({ sent: acc.sent + r.sent, errors: acc.errors + r.errors }), { sent: 0, errors: 0 })
 }
 
 // Called by the daily digest cron. Sends to daily-frequency boards that have pending items.
@@ -121,14 +121,11 @@ export async function sendDailyDigest(boards: ModeratedBoard[]): Promise<Notific
     dailyBoards.map(b => kv.zcard(pendingKey('board', b.address)).catch(() => 0)),
   )
 
-  let sent = 0
-  let errors = 0
-  for (let i = 0; i < dailyBoards.length; i++) {
+  const results = await Promise.all(dailyBoards.map(async (board, i) => {
     const count = counts[i] ?? 0
-    if (count < 1) continue
-    const board = dailyBoards[i]
+    if (count < 1) return { sent: 0, errors: 0 }
     const recipients = await readNotifyEmails(board.moderators)
-    for (const { email } of recipients) {
+    const sends = await Promise.all(recipients.map(async ({ email }) => {
       try {
         await sendEmail({
           sender: FROM,
@@ -136,12 +133,14 @@ export async function sendDailyDigest(boards: ModeratedBoard[]): Promise<Notific
           subject: `Daily summary: ${count} message${count !== 1 ? 's' : ''} pending review on "${board.name}"`,
           htmlContent: buildHtml(board.name, board.address, count),
         })
-        sent++
+        return 1
       } catch (e) {
         console.error('[moderation/email] daily digest send failed to', email, e)
-        errors++
+        return 0
       }
-    }
-  }
-  return { sent, errors }
+    }))
+    const sent = sends.filter(Boolean).length
+    return { sent, errors: sends.length - sent }
+  }))
+  return results.reduce((acc, r) => ({ sent: acc.sent + r.sent, errors: acc.errors + r.errors }), { sent: 0, errors: 0 })
 }

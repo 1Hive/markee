@@ -162,7 +162,7 @@ export async function runModerationScan(): Promise<ScanReport> {
   const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)
     const prev = prevs[i] ?? null
-    const next = observeMessage(prev, { ...obs, name: obs.name ?? prev?.name ?? '' }, {
+    const next = observeMessage(prev, { ...obs, name: obs.name || prev?.name || '' }, {
       flagged: { board: flaggedSets.board.has(key), site: flaggedSets.site.has(key) },
       preexisting: isBaseline,
     })

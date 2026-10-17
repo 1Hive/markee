@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
-import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, SCOPES, reviewItem, reviewMessage, type ModerationAction, type ModerationItem } from '@/lib/moderation/queue'
 import {
   FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
 } from '@/lib/moderation/server'
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
-    const scopes = await authorizedScopes(adminAddress, ids)
+    const { scopes, boardMap } = await authorizedScopes(adminAddress, ids)
     if (ids.some(id => !scopes.has(id.toLowerCase()))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
@@ -104,10 +104,32 @@ export async function POST(req: NextRequest) {
         else pipeline.srem(FLAGGED_KEYS[scope], ...flagKeyVariants(id))
       })
 
-      const item = items[i]
+      let item = items[i]
+      // When a moderator flags a markee that has never been scanned, create a stub item so the
+      // flag appears in the queue immediately rather than waiting for the next cron run.
+      if (!item && action === 'flag') {
+        const board = boardMap.get(id.toLowerCase())
+        if (board) {
+          const review = () => ({ status: 'flagged' as const, reviewedBy: adminAddress, reviewedAt })
+          item = {
+            markee: id.toLowerCase(),
+            board,
+            kind: 'created',
+            message: '',
+            name: '',
+            author: '',
+            previousMessage: null,
+            blockNumber: '0',
+            at: reviewedAt,
+            reviews: { board: review(), site: review() },
+          } satisfies ModerationItem
+        }
+      }
       if (item) {
         pipeline.set(itemKey(id), reviewItem(item, action, adminAddress, reviewedAt, held))
-        held.forEach(scope => pipeline.zrem(pendingKey(scope, item.board), item.markee))
+        // Flagged items surface via FLAGGED_KEYS (already written above), not the pending sorted set.
+        // Stub items (first flag, never scanned) were never in pending, so nothing to remove.
+        if (items[i]) held.forEach(scope => pipeline.zrem(pendingKey(scope, item!.board), item!.markee))
       }
     })
     await pipeline.exec()

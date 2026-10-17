@@ -114,13 +114,15 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
     fetchFlagged()
   }, [replaceFlagged])
 
-  const toKey = (chainId: number | string, markeeId: string) =>
-    `${chainId}:${markeeId.toLowerCase()}`
+  const toKey = useCallback(
+    (chainId: number | string, markeeId: string) => `${chainId}:${markeeId.toLowerCase()}`,
+    []
+  )
 
   const isFlagged = useCallback(
     (chainId: number | string, markeeId: string) =>
       flaggedSet.has(toKey(chainId, markeeId)),
-    [flaggedSet]
+    [flaggedSet, toKey]
   )
 
   const ownsBoard = useCallback(
@@ -149,7 +151,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
   const canUnflag = useCallback(
     (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): boolean =>
       boardFlagged.has(toKey(chainId, markeeId)) ? ownsBoard(boardAdmin, boardCreator) : canModerate(boardAdmin, boardCreator),
-    [boardFlagged, ownsBoard, canModerate]
+    [boardFlagged, ownsBoard, canModerate, toKey]
   )
 
   const toggleFlag = useCallback(
@@ -209,7 +211,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return currentlyFlagged
       }
     },
-    [address, isAdminUser, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged]
+    [address, isAdminUser, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged, toKey]
   )
 
   return (
