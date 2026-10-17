@@ -50,3 +50,14 @@ jobs:
 
       - name: Moderation queue state machine
         run: npm run test:moderation
+
+      - name: Email notification message format
+        run: npm run test:email-notifications
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          BASE_URL: http://localhost:3000
