@@ -46,6 +46,8 @@ export interface ScanReport {
   markees: number
   queued: number
   baseline: boolean
+  // Board address → count of newly queued pending items this run (empty when baseline or no new items).
+  pendingByBoard: Record<string, number>
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -152,7 +154,7 @@ export async function runModerationScan(): Promise<ScanReport> {
   const unnamed = observations.filter(o => o.name === null).length
   if (unnamed > 0) console.warn(`[moderation/scan] name read failed for ${unnamed} markees, kept their stored names`)
 
-  const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline }
+  const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline, pendingByBoard: {} }
   if (observations.length === 0) return report
 
   const [prevs, flagged] = await Promise.all([readItems(observations.map(o => o.markee)), readAllFlagged()])
@@ -178,7 +180,13 @@ export async function runModerationScan(): Promise<ScanReport> {
     })
     await pipeline.exec()
   }
-  report.queued = changed.filter(next => isPendingIn(next, SCOPES)).length
+  const pendingItems = changed.filter(next => isPendingIn(next, SCOPES))
+  report.queued = pendingItems.length
+  if (!isBaseline) {
+    for (const item of pendingItems) {
+      report.pendingByBoard[item.board] = (report.pendingByBoard[item.board] ?? 0) + 1
+    }
+  }
   if (isBaseline) await kv.set(BASELINE_KEY, block.number.toString())
   return report
 }

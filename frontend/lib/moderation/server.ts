@@ -22,6 +22,18 @@ const READ_CHUNK = 500
 export const itemKey = (markee: string) => `moderation:item:${base.id}:${markee.toLowerCase()}`
 export const moderatorsKey = (board: string) => `moderation:moderators:${board.toLowerCase()}`
 export const emailFreqKey = (board: string) => `moderation:email-freq:${board.toLowerCase()}`
+export const notifyKey = (wallet: string) => `moderation:notify:email:${wallet.toLowerCase()}`
+
+export interface NotifySubscription { email: string; subscribedAt: number }
+
+export async function readNotifyEmails(wallets: string[]): Promise<{ wallet: string; email: string }[]> {
+  if (wallets.length === 0) return []
+  const rows = await kv.mget<(NotifySubscription | null)[]>(...wallets.map(notifyKey))
+  return wallets.flatMap((wallet, i) => {
+    const email = rows[i]?.email
+    return email ? [{ wallet, email }] : []
+  })
+}
 // Board reviews are indexed per board, site reviews in one index across every board.
 export const pendingKey = (scope: ModerationScope, board: string) =>
   scope === 'site' ? PENDING_SITE_KEY : `moderation:pending:${board.toLowerCase()}`

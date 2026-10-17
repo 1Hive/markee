@@ -78,6 +78,10 @@ export function emailFreqMessage(chainId: number | string, board: string, freque
   return `markee-moderation:email-freq:${chainId}:${board.toLowerCase()}:${frequency}:${timestamp}`
 }
 
+export function notifyEmailMessage(chainId: number | string, wallet: string, email: string, timestamp: number): string {
+  return `markee-moderation:notify-email:${chainId}:${wallet.toLowerCase()}:${email.toLowerCase()}:${timestamp}`
+}
+
 // Lowercased, deduped and sorted, so the client and the server sign over the same list.
 export function normalizeModerators(addresses: string[]): string[] {
   return [...new Set(addresses.map(a => a.trim().toLowerCase()))].sort()

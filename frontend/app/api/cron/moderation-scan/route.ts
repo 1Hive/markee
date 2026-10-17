@@ -11,7 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { runModerationScan } from '@/lib/moderation/scan'
-import { SCAN_LOCK_KEY } from '@/lib/moderation/server'
+import { SCAN_LOCK_KEY, listModeratedBoards } from '@/lib/moderation/server'
+import { sendNewItemNotifications } from '@/lib/moderation/email'
 import { logger } from '@/lib/server/logger'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +36,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const report = await runModerationScan()
+    if (Object.keys(report.pendingByBoard).length > 0) {
+      const boards = await listModeratedBoards().catch(() => [])
+      const { sent, errors } = await sendNewItemNotifications(report.pendingByBoard, boards)
+      return NextResponse.json({ ok: true, ...report, emailsSent: sent, emailErrors: errors })
+    }
     return NextResponse.json({ ok: true, ...report })
   } catch (e) {
     await logger.error('moderation scan failed', e)
