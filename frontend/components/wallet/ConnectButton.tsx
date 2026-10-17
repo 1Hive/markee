@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth'
 import { useAccount } from 'wagmi'
 import { useState, useEffect } from 'react'
 import { ChevronDown, LogOut, RefreshCw, User } from 'lucide-react'
@@ -78,6 +78,7 @@ export function AccountButton() {
 export function ConnectButton() {
   const { authenticated, ready, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
+  const { connectWallet } = useConnectWallet()
   const { address } = useAccount()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -126,7 +127,7 @@ export function ConnectButton() {
 
   const handleChangeAccount = () => {
     setMenuOpen(false)
-    login()
+    connectWallet()
   }
 
   const handleDisconnect = async () => {
