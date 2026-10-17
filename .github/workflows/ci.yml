@@ -41,3 +41,12 @@ jobs:
 
       - name: Embed prompt matches the reference modals
         run: npm run test:embed-prompt
+
+      - name: Streaming campaign math
+        run: npm run test:streaming-campaign
+
+      - name: Keeper logic
+        run: npm run test:keeper
+
+      - name: Moderation queue state machine
+        run: npm run test:moderation
