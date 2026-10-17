@@ -737,7 +737,11 @@ useEffect(() => {
 }, [])
 const isFlagged = (markeeAddr: string) => flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`)
 \`\`\`
-If the current top message is flagged, show "Content unavailable" instead of the text, but still let the modal open so visitors can buy a new top message. In any message-picker list, omit flagged entries entirely.`
+\`flagged\` holds the messages this board's own moderators hid: its owner, plus any wallets the owner added as moderators on markee.xyz (Dashboard -> the board's Admin panel -> Moderators). Their flags apply on every site showing the board, so honour them here. Ignore \`siteFlagged\` if present -- those are markee.xyz's own admin flags and only apply on markee.xyz.
+
+If the current top message is flagged, show "Content unavailable" instead of the text **and hide its author** (the name, or the wallet address when there's no name) -- names are free text too. Still let the modal open so visitors can buy a new top message. In any message-picker list, omit flagged entries entirely.
+
+To show who moderates the board (e.g. a "Report to moderators" link), \`GET https://markee.xyz/api/moderation/moderators?board=<board address>\` returns \`{ owners: string[], moderators: string[] }\` (lowercase addresses, CORS-open). Moderators review and flag on markee.xyz; your site only reads the result.`
 }
 
 // ── Health endpoint ─────────────────────────────────────────────────────────

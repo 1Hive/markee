@@ -14,7 +14,7 @@ import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
@@ -230,7 +230,7 @@ function ReceiveCard({ amount, compact = true }: { amount: string; compact?: boo
 
 // Views (left) / "- author" + YOU badge (right). Shared by the leaderboard row and the
 // current-message preview boxes in Add Funds / Edit Message.
-function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: string }) {
+function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: MUTED, fontSize: 11.5, flexShrink: 0 }}>
@@ -287,7 +287,7 @@ function SignRow({
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={subtitle} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{eth} ETH</span>
@@ -822,7 +822,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       <MessageMeta
                         views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                         isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                        authorLabel={target.name || fmtAddr(target.owner)}
+                        authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                       />
                     </div>
                   </div>
@@ -866,7 +866,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                         <MessageMeta
                           views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                           isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                          authorLabel={target.name || fmtAddr(target.owner)}
+                          authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                         />
                       </div>
                     </div>

@@ -26,8 +26,9 @@ import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/component
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { formatEther } from 'viem'
-import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
+import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, BoardModerators, useModeration } from '@/components/moderation'
+import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Abi } from 'viem'
 
@@ -307,41 +308,53 @@ function InfoTip({ text }: { text: string }) {
   )
 }
 
-function Overview({ raised, active, bought, contributed, loaded }: { raised: bigint; active: number; bought: number; contributed: bigint; loaded: boolean }) {
-  const cells = [
-    { n: fmtEth(raised),      label: 'total raised',    color: PINK,  tip: 'Funds raised by Markees you created. This is not ETH you spent buying messages.' },
-    { n: String(active),      label: 'active signs',    color: GREEN, tip: 'Your live Markees with funded messages. Website Markees also need a verified integration to count here.' },
-    { n: String(bought),      label: 'messages bought', color: TEXT,  tip: 'Paid messages you own. Zero-fund placeholder Markees are not counted.' },
-    { n: fmtEth(contributed), label: 'contributed',     color: BLUE,  tip: 'Total ETH you put into messages, including messages you bought and messages you funded.' },
-  ]
+function OverviewStatCard({ n, label, color, tip, loaded }: { n: string; label: string; color: string; tip: string; loaded: boolean }) {
+  if (!loaded) return (
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
+        <div style={{ width: 80, height: 22, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+      </div>
+      <div style={{ width: 100, height: 13, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+    </div>
+  )
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-      {loaded ? cells.map((c, i) => (
-        <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <GlowDot size={8} color={c.color} />
-              <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: c.color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{c.n}</span>
-            </div>
-            <InfoTip text={c.tip} />
-          </div>
-          <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{c.label}</div>
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <GlowDot size={8} color={color} />
+          <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{n}</span>
         </div>
-      )) : [1, 2, 3, 4].map(i => (
-        <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
-            <div style={{ width: 80, height: 22, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
-          </div>
-          <div style={{ width: 100, height: 13, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+        <InfoTip text={tip} />
+      </div>
+      <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{label}</div>
+    </div>
+  )
+}
+
+function Overview({ raised, active, bought, contributed, loaded }: { raised: bigint; active: number; bought: number; contributed: bigint; loaded: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>As a Creator</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+          <OverviewStatCard n={fmtEth(raised)} label="total raised" color={PINK} tip="Funds raised by Markees you created. This is not ETH you spent buying messages." loaded={loaded} />
+          <OverviewStatCard n={String(active)} label="active signs" color={GREEN} tip="Your live Markees with funded messages. Website Markees also need a verified integration to count here." loaded={loaded} />
         </div>
-      ))}
+      </div>
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>As a Buyer</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+          <OverviewStatCard n={String(bought)} label="messages bought" color={TEXT} tip="Paid messages you own. Zero-fund placeholder Markees are not counted." loaded={loaded} />
+          <OverviewStatCard n={fmtEth(contributed)} label="contributed" color={BLUE} tip="Total ETH you put into messages, including messages you bought and messages you funded." loaded={loaded} />
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
-type TabId = 'pending' | 'live' | 'archive' | 'bought'
+type TabId = 'pending' | 'live' | 'archive' | 'bought' | 'moderation'
 
 function useNarrow() {
   const [narrow, setNarrow] = useState(false)
@@ -355,13 +368,14 @@ function useNarrow() {
   return narrow
 }
 
-function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number } }) {
+function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number; moderation: number | null } }) {
   const narrow = useNarrow()
   const [menuOpen, setMenuOpen] = useState(false)
   const items: { key: TabId; label: string; n: number; amber?: boolean; muted?: boolean }[] = [
-    ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Pending Setup', n: counts.pending, amber: true }] : []),
-    { key: 'live',  label: 'My Live Markees',        n: counts.live },
-    { key: 'bought', label: "Messages I've Bought",  n: counts.bought },
+    ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Not Yet Activated', n: counts.pending, amber: true }] : []),
+    ...(counts.moderation !== null ? [{ key: 'moderation' as const, label: 'Moderation Queue', n: counts.moderation, amber: counts.moderation > 0 }] : []),
+    { key: 'live',  label: 'My Markees',              n: counts.live },
+    { key: 'bought', label: 'Messages Bought',        n: counts.bought },
     ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive, muted: true }] : []),
   ]
 
@@ -623,56 +637,55 @@ function compareBySpentOrRank<T extends { isTop: boolean; rank?: number | null }
   return as > bs ? 1 : as < bs ? -1 : 0
 }
 
-// ── Awaiting Activation table ─────────────────────────────────────────────────
-const ACTIVATION_COLS = '1fr 150px 220px 160px'
-
+// ── Not Yet Activated card list ───────────────────────────────────────────────
 function ActivationTable({ markees, onActivate, onArchive }: {
   markees: AnyLeaderboard[]
   onActivate: (lb: AnyLeaderboard) => void
   onArchive: (address: string) => void
 }) {
-  const fmtAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
+  const fmtBeneficiary = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
   return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 640, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ACTIVATION_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Markee Name', 'Pricing Strategy', 'Beneficiary', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-        </div>
-        {markees.map(lb => (
-          <div
-            key={lb.address}
-            onClick={() => window.location.href = `/markee/${lb.address}`}
-            style={{ display: 'grid', gridTemplateColumns: ACTIVATION_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <MarkeeNameCell lb={lb} />
-            <div>
-              <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {markees.map(lb => (
+        <div
+          key={lb.address}
+          style={{
+            background: BG2,
+            border: `1px solid ${BORDER}`,
+            borderLeft: `4px solid ${AMBER}`,
+            borderRadius: 10,
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+          }}
+        >
+          <span style={{ fontSize: 18, flexShrink: 0 }}>🚩</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontWeight: 700, color: TEXT, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name}</span>
+              <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
             </div>
-            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtAddr(lb.admin)}</span>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                onClick={e => { e.stopPropagation(); onActivate(lb) }}
-                style={{ background: 'transparent', color: TEXT2, border: `1px solid ${TEXT2}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-              >
-                Activate Markee
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); onArchive(lb.address) }}
-                title="Archive"
-                style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'color 120ms, border-color 120ms' }}
-                onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = TEXT2; el.style.borderColor = `${MUTED}66` }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
-              >
-                Archive
-              </button>
-            </div>
+            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>
+              pays out to {fmtBeneficiary(lb.admin)}
+            </span>
           </div>
-        ))}
-      </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <button
+              onClick={() => onArchive(lb.address)}
+              style={{ background: 'transparent', color: MUTED, border: 'none', fontSize: 13, cursor: 'pointer', fontFamily: SANS, padding: '4px 8px' }}
+            >
+              Archive
+            </button>
+            <button
+              onClick={() => onActivate(lb)}
+              style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(248,151,254,0.28)' }}
+            >
+              Activate
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -918,8 +931,8 @@ function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: (
   )
 }
 
-const ACTIVE_COLS = '180px 1fr 90px 130px 160px 96px 110px'
-const ACTIVE_HEADERS_LEFT = ['Served on', 'Current Message', 'Strategy'] as const
+const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
+const ACTIVE_HEADERS_LEFT = ['Served on', 'Current Message'] as const
 
 // Same formulas the marketplace's price-to-change button uses (priceToOvertake/monthlyRateLabel),
 // applied here to My Live Markees rows so the owner sees the identical price a visitor would.
@@ -960,8 +973,8 @@ function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: bo
   )
 }
 
-function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPriceButton, ethPrice }: {
-  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; onOpenPriceButton: () => void; ethPrice: number | null
+function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, ethPrice }: {
+  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; ethPrice: number | null
 }) {
   const isStreaming = lb.strategy === 'streaming'
   const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
@@ -976,6 +989,7 @@ function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPrice
     >
       <ServedOnCell lb={lb} onAddToSite={onAddToSite} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
         <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
           <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
             {lb.topMessage || 'No message yet'}
@@ -985,32 +999,20 @@ function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPrice
           <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
-      </div>
       <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
       <div style={{ textAlign: 'right' as const }}>
         {hasActiveStream
           ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
-          : <span style={{ color: MUTED }}>—</span>
+          : <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2 }}>{priceButtonLabel(lb, ethPrice)}</span>
         }
-      </div>
-      <div onClick={e => e.stopPropagation()}>
-        <button
-          onClick={onOpenPriceButton}
-          style={{ width: '100%', textAlign: 'center' as const, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' as const, boxShadow: '0 2px 10px rgba(248,151,254,0.28)' }}
-        >
-          {priceButtonLabel(lb, ethPrice)}
-        </button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
         <button
           onClick={onToggleExpand}
           aria-expanded={expanded}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: expanded ? `${PINK}14` : 'transparent', color: expanded ? PINK : TEXT2, border: `1px solid ${expanded ? 'rgba(248,151,254,0.35)' : BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms, background 120ms' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: expanded ? `${PINK}14` : 'transparent', color: expanded ? PINK : TEXT2, border: `1px solid ${expanded ? 'rgba(248,151,254,0.35)' : BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms, background 120ms' }}
         >
-          Admin
-          <ChevronDown size={13} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+          Manage →
         </button>
       </div>
     </div>
@@ -1020,10 +1022,9 @@ function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPrice
 // Wraps ActiveTableRow with the click-to-expand admin panel -- replaces the old bare "Manage" button
 // (View leaderboard / Edit website info / Embed) entirely; the previously unexposed admin-only
 // contract settings now live in the panel below, gated to the connected admin.
-function LiveMarkeeAdminRow({ lb, onAddToSite, onOpenPriceButton, ethPrice, activeAddress, onSuccess }: {
+function LiveMarkeeAdminRow({ lb, onAddToSite, ethPrice, activeAddress, onSuccess }: {
   lb: AnyLeaderboard
   onAddToSite: () => void
-  onOpenPriceButton: () => void
   ethPrice: number | null
   activeAddress: string | undefined
   onSuccess: () => void
@@ -1031,7 +1032,7 @@ function LiveMarkeeAdminRow({ lb, onAddToSite, onOpenPriceButton, ethPrice, acti
   const [expanded, setExpanded] = useState(false)
   return (
     <div>
-      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} onOpenPriceButton={onOpenPriceButton} ethPrice={ethPrice} />
+      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} ethPrice={ethPrice} />
       {expanded && (
         <LiveMarkeeAdminPanel lb={lb} activeAddress={activeAddress} onSuccess={onSuccess} />
       )}
@@ -1055,53 +1056,55 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
   return (
     <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Admin Settings</div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Settings</div>
         {!isAdmin ? (
           <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Only this Markee's admin wallet can change these.</p>
         ) : isLegacyFixed ? (
           <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Admin settings aren't available for legacy boards from this dashboard.</p>
         ) : isStreaming ? (
           <div>
-            <AdminSettingRow label="Minimum Monthly Rate (wei/sec)" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
             <AdminSettingRow
-              label="Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
+              label="Transfer Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
+              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
+            />
+          </div>
+        ) : (lb as BaseLeaderboard).verificationGated ? (
+          <div>
+            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="minimumPrice" setterName="setMinimumPrice" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow
+              label="Transfer Admin" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="admin" setterName="setAdminAddress" inputType="address"
+              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
             />
           </div>
         ) : (
-          // Only setBeneficiaryAddress and setAdmin are confirmed present, onlyAdmin-gated, and
-          // creator-controllable across every fixed-board contract version still in use (v1.1-v1.3).
-          // The RevNet routing settings (terminal/projectId/percentToBeneficiary/enabled/
-          // platformFeeReceiver/percentToPlatformFeeReceiver) were pulled: v1.3 -- what every "For
-          // Sale" board created today actually runs -- doesn't even have those setters anymore
-          // (contracts/v1.3/Leaderboard.sol has no such functions at all; they're fixed at deploy
-          // time by the Cooperative's factory config), and where they do exist on older v1.1/v1.2
-          // boards, showing them here as if any board's creator could tune RevNet routing was
-          // misleading regardless of technical onlyAdmin gating.
           <div>
-            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
             <AdminSettingRow
-              label="Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
+              label="Transfer Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
+              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
             />
           </div>
         )}
       </div>
 
-      {/* Extension point: per-integration moderators are out of scope for now -- nothing like this
-          has ever existed (lib/moderation/config.ts is a single flat platform-wide admin allowlist;
-          a past attempt to add partner-specific moderators to that same list was explicitly reverted:
-          "Honeyswap moderators belong in the Honeyswap repo, not here"). If/when a per-integration
-          moderator system exists, it renders here, admin-gated like the settings section above. */}
+      {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
+          lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
+          boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
+      {!isLegacyFixed && <BoardModerators board={lb.address} />}
     </div>
   )
 }
 
-function ActiveTable({ markees, onAddToSite, onOpenPriceButton, ethPrice, activeAddress, onSuccess }: {
+function ActiveTable({ markees, onAddToSite, ethPrice, activeAddress, onSuccess }: {
   markees: AnyLeaderboard[]
   onAddToSite: (lb: AnyLeaderboard) => void
-  onOpenPriceButton: (lb: AnyLeaderboard) => void
   ethPrice: number | null
   activeAddress: string | undefined
   onSuccess: () => void
@@ -1110,16 +1113,15 @@ function ActiveTable({ markees, onAddToSite, onOpenPriceButton, ethPrice, active
 
   return (
     <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 840, background: BG2 }}>
+      <div style={{ minWidth: 700, background: BG2 }}>
         <div style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
           {ACTIVE_HEADERS_LEFT.map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
+            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
           ))}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Streaming</span>
-          <span />
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Winning Bid</span>
           <span />
         </div>
         {sorted.map(lb => (
@@ -1127,7 +1129,6 @@ function ActiveTable({ markees, onAddToSite, onOpenPriceButton, ethPrice, active
             key={lb.address}
             lb={lb}
             onAddToSite={() => onAddToSite(lb)}
-            onOpenPriceButton={() => onOpenPriceButton(lb)}
             ethPrice={ethPrice}
             activeAddress={activeAddress}
             onSuccess={onSuccess}
@@ -1476,6 +1477,8 @@ export default function AccountPage() {
   // visitor never sees this: the tab content is gated on hasWallet separately, so isLoading staying
   // true forever when there's no wallet to fetch for is inert.
   const [isLoading, setIsLoading]               = useState(true)
+  const { isAdmin: isGlobalModerator } = useModeration()
+  const moderationQueue = useModerationQueue()
 
   // Messages
   const [myMessages, setMyMessages]             = useState<MyMessage[]>([])
@@ -1759,6 +1762,9 @@ export default function AccountPage() {
   const draftBoards = useMemo(() =>
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
 
+  // Boards the wallet created, plus any it was added to as a moderator (the queue lists those).
+  const isModerator = isGlobalModerator || allBoards.length > 0 || moderationQueue.boards.length > 0
+
   // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
   // or off the default Pending Setup landing tab once loading confirms there was never anything
   // pending to begin with. Gated on !isLoading -- draftBoards/archivedBoards both start at length 0
@@ -1768,7 +1774,8 @@ export default function AccountPage() {
     if (isLoading) return
     if (tab === 'pending' && draftBoards.length === 0) setTab('live')
     if (tab === 'archive' && archivedBoards.length === 0) setTab('live')
-  }, [tab, isLoading, draftBoards.length, archivedBoards.length])
+    if (tab === 'moderation' && !isModerator) setTab('live')
+  }, [tab, isLoading, draftBoards.length, archivedBoards.length, isModerator])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
@@ -1848,7 +1855,7 @@ export default function AccountPage() {
         {mounted && hasWallet ? (
           <>
             <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
-              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length }} />
+              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length, moderation: isModerator ? moderationQueue.items.length : null }} />
             </div>
 
             <div style={{ paddingTop: 28 }}>
@@ -1870,7 +1877,7 @@ export default function AccountPage() {
                     {inactiveBoards.length > 0 && (
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT2 }}>Ready to Activate</h2>
+                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: AMBER }}>Not Yet Activated</h2>
                           <CountBadge n={inactiveBoards.length} />
                         </div>
                         <ActivationTable
@@ -1917,13 +1924,14 @@ export default function AccountPage() {
                   <ActiveTable
                     markees={activeBoards}
                     onAddToSite={handleOpenAddToSite}
-                    onOpenPriceButton={lb => setPriceButtonTarget(lb)}
                     ethPrice={ethPrice}
                     activeAddress={activeAddress}
                     onSuccess={() => activeAddress && fetchAll(activeAddress)}
                   />
                 )
               )}
+
+              {tab === 'moderation' && <ModerationQueue />}
 
               {/* ── Archive ── */}
               {tab === 'archive' && (
@@ -1945,9 +1953,18 @@ export default function AccountPage() {
                 )
               )}
 
-              {/* ── Messages I've Bought (Bought + Funded, stacked) ── */}
+              {/* ── Messages Bought (Showing Now + Outbid sections) ── */}
               {tab === 'bought' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                  {/* Summary line */}
+                  {!isLoadingMessages && myMessages.length > 0 && (
+                    <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
+                      <span style={{ color: GREEN, fontWeight: 600 }}>{myMessages.filter(m => m.isTop).length} showing now</span>
+                      {' · '}
+                      <span>{myMessages.filter(m => !m.isTop).length} outbid</span>
+                    </div>
+                  )}
+
                   {isLoadingMessages ? (
                     <div style={{ overflow: 'auto' }}>
                       <div style={{ minWidth: 800, background: BG2 }}>
@@ -1958,15 +1975,31 @@ export default function AccountPage() {
                         ))}
                       </div>
                     </div>
-                  ) : myMessages.length > 0 ? (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Bought</h2>
-                        <CountBadge n={myMessages.length} />
-                      </div>
-                      <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
-                    </div>
-                  ) : null}
+                  ) : (
+                    <>
+                      {/* Showing now */}
+                      {myMessages.filter(m => m.isTop).length > 0 && (
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Showing now</h2>
+                            <CountBadge n={myMessages.filter(m => m.isTop).length} />
+                          </div>
+                          <BoughtTable items={myMessages.filter(m => m.isTop)} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
+                        </div>
+                      )}
+
+                      {/* Outbid */}
+                      {myMessages.filter(m => !m.isTop).length > 0 && (
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT2 }}>Outbid</h2>
+                            <CountBadge n={myMessages.filter(m => !m.isTop).length} />
+                          </div>
+                          <BoughtTable items={myMessages.filter(m => !m.isTop)} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {isLoadingFunded ? (
                     <div style={{ overflow: 'auto' }}>
@@ -1981,7 +2014,7 @@ export default function AccountPage() {
                   ) : fundedMessages.length > 0 ? (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Funded</h2>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Funded by me</h2>
                         <CountBadge n={fundedMessages.length} />
                       </div>
                       <FundedTable items={fundedMessages} ethPrice={ethPrice} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt(m.totalContributed), topFunds: BigInt(m.topFundsRaw), name: m.name })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
@@ -2018,6 +2051,7 @@ export default function AccountPage() {
         )}
       </div>
 
+      {mounted && isModerator && <ModerationToast onReview={() => setTab('moderation')} />}
       <Footer />
 
       {/* My Live Markees' price-to-change button -- same modal any visitor would see for that

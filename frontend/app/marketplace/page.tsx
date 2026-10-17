@@ -17,7 +17,7 @@ import { StrategyBadge } from '@/components/StrategyBadge'
 import { SECONDS_IN_MONTH, STRATEGIES, type Strategy } from '@/lib/strategy'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
-import { ModeratedContent } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -431,12 +431,14 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
-            {lb.topMarkeeOwner && (
-              <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
-                {lb.topMarkeeOwner.slice(0, 6)}...{lb.topMarkeeOwner.slice(-4)}
-              </span>
-            )}
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address}>
+              {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
+              {lb.topMarkeeOwner && (
+                <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
+                  {lb.topMarkeeOwner.slice(0, 6)}...{lb.topMarkeeOwner.slice(-4)}
+                </span>
+              )}
+            </ModeratedAuthor>
           </div>
 
           {/* hover pill -- brand watermark now lives as the large MarkeeWatermark behind the whole

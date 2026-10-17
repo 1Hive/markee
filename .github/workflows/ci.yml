@@ -41,3 +41,23 @@ jobs:
 
       - name: Embed prompt matches the reference modals
         run: npm run test:embed-prompt
+
+      - name: Streaming campaign math
+        run: npm run test:streaming-campaign
+
+      - name: Keeper logic
+        run: npm run test:keeper
+
+      - name: Moderation queue state machine
+        run: npm run test:moderation
+
+      - name: Email notification message format
+        run: npm run test:email-notifications
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          BASE_URL: http://localhost:3000
