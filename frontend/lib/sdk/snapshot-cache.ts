@@ -108,4 +108,3 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
     }
   }
 }
-

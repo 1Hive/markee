@@ -338,4 +338,3 @@ test('storage failing during refresh preserves the previously loaded balance', a
   assert.equal(result.data, '42')
   assert.equal(result.stale, true)
 })
-
