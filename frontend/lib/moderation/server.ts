@@ -155,8 +155,11 @@ export async function listModeratedBoards(): Promise<ModeratedBoard[]> {
   if (cached) return cached
 
   const listed = await listBoardsUncached()
-  const added = await readBoardModerators(listed.map(b => b.address))
-  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...b.moderators, ...added[i].moderators])] }))
+  const addresses = listed.map(b => b.address)
+  // readBoardOwners reads creator:* KV keys for all platforms directly, covering Superfluid boards
+  // where lb.creator is null until the creator visits /account (lb.admin is the beneficiary there).
+  const [added, owners] = await Promise.all([readBoardModerators(addresses), readBoardOwners(addresses)])
+  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...owners[i], ...b.moderators, ...added[i].moderators])] }))
   await kv.set(BOARDS_CACHE_KEY, boards, { ex: BOARDS_CACHE_TTL }).catch(() => {})
   return boards
 }
