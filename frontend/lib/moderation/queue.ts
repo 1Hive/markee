@@ -71,6 +71,13 @@ export function moderatorsMessage(chainId: number | string, board: string, moder
   return `markee-moderation:moderators:${chainId}:${board.toLowerCase()}:${moderators.join(',')}:${timestamp}`
 }
 
+export type EmailFrequency = 'every' | 'daily' | 'off'
+export const EMAIL_FREQUENCIES: EmailFrequency[] = ['every', 'daily', 'off']
+
+export function emailFreqMessage(chainId: number | string, board: string, frequency: EmailFrequency, timestamp: number): string {
+  return `markee-moderation:email-freq:${chainId}:${board.toLowerCase()}:${frequency}:${timestamp}`
+}
+
 // Lowercased, deduped and sorted, so the client and the server sign over the same list.
 export function normalizeModerators(addresses: string[]): string[] {
   return [...new Set(addresses.map(a => a.trim().toLowerCase()))].sort()

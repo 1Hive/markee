@@ -21,6 +21,7 @@ const READ_CHUNK = 500
 
 export const itemKey = (markee: string) => `moderation:item:${base.id}:${markee.toLowerCase()}`
 export const moderatorsKey = (board: string) => `moderation:moderators:${board.toLowerCase()}`
+export const emailFreqKey = (board: string) => `moderation:email-freq:${board.toLowerCase()}`
 // Board reviews are indexed per board, site reviews in one index across every board.
 export const pendingKey = (scope: ModerationScope, board: string) =>
   scope === 'site' ? PENDING_SITE_KEY : `moderation:pending:${board.toLowerCase()}`

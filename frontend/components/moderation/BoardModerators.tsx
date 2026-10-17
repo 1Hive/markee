@@ -16,7 +16,7 @@ import { isAddress } from 'viem'
 import { Check, Plus, X } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
+import { EMAIL_FREQUENCIES, MAX_BOARD_MODERATORS, emailFreqMessage, moderatorsMessage, normalizeModerators, type EmailFrequency } from '@/lib/moderation/queue'
 import { moderationQueueKey } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG } from '@/lib/design-tokens'
 
@@ -28,6 +28,7 @@ interface ModeratorsState {
   owners: string[]
   moderators: string[]
   updatedAt: number | null
+  emailFrequency: EmailFrequency
 }
 
 function fmtAddr(a: string) {
@@ -84,6 +85,12 @@ export function BoardModerators({ board }: { board: string }) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
 
+  // Email frequency
+  const [editingFreq, setEditingFreq] = useState(false)
+  const [freqDraft, setFreqDraft] = useState<EmailFrequency | null>(null)
+  const [savingFreq, setSavingFreq] = useState(false)
+  const [freqError, setFreqError] = useState<string | null>(null)
+
   useEffect(() => { if (data && draft === null) setDraft(data.moderators) }, [data, draft])
   useEffect(() => {
     if (!justSaved) return
@@ -137,6 +144,37 @@ export function BoardModerators({ board }: { board: string }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  const saveFrequency = async () => {
+    if (!me || !freqDraft) return
+    setSavingFreq(true)
+    setFreqError(null)
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const signature = await signMessageAsync({ message: emailFreqMessage(CANONICAL_CHAIN_ID, board, freqDraft, timestamp) })
+      const res = await fetch(`${MODERATION_API}/moderators`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ board, frequency: freqDraft, owner: me, signature, timestamp }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      queryClient.setQueryData(queryKey, body)
+      setEditingFreq(false)
+      setFreqDraft(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : ''
+      if (!/reject|denied/i.test(message)) setFreqError(message || 'Could not save. Try again.')
+    } finally {
+      setSavingFreq(false)
+    }
+  }
+
+  const EMAIL_FREQ_LABELS: Record<EmailFrequency, string> = {
+    every: 'Every new message',
+    daily: 'Daily round-up',
+    off: 'Off',
   }
 
   return (
@@ -227,6 +265,70 @@ export function BoardModerators({ board }: { board: string }) {
             </>
           ) : (
             <p style={{ margin: '10px 0 0', color: MUTED, fontSize: 12.5 }}>Only this board's owner can change its moderators.</p>
+          )}
+        </div>
+      )}
+
+      {/* Email frequency */}
+      {!isLoading && !error && (
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${BORDER}`, maxWidth: 520 }}>
+          {!editingFreq ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: TEXT2, fontSize: 12.5 }}>How often should moderators get emails?</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT, fontWeight: 600 }}>
+                  {EMAIL_FREQ_LABELS[data?.emailFrequency ?? 'off']}
+                </span>
+                {isOwner && (
+                  <button
+                    onClick={() => { setFreqDraft(data?.emailFrequency ?? 'off'); setEditingFreq(true); setFreqError(null) }}
+                    style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '5px 12px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <span style={{ color: TEXT2, fontSize: 12.5 }}>How often should moderators get emails?</span>
+              <div style={{ display: 'inline-flex', borderRadius: 8, border: `1px solid ${BORDER}`, overflow: 'hidden', alignSelf: 'flex-end' }}>
+                {EMAIL_FREQUENCIES.map(freq => (
+                  <button
+                    key={freq}
+                    onClick={() => setFreqDraft(freq)}
+                    style={{
+                      padding: '8px 16px', border: 'none', fontFamily: MONO, fontSize: 12.5, fontWeight: freqDraft === freq ? 700 : 500, cursor: 'pointer',
+                      background: freqDraft === freq ? PINK : 'transparent',
+                      color: freqDraft === freq ? BG : TEXT2,
+                      transition: 'background 120ms, color 120ms',
+                    }}
+                  >
+                    {EMAIL_FREQ_LABELS[freq]}
+                  </button>
+                ))}
+              </div>
+              {freqDraft === 'daily' && (
+                <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>Sent only on days with at least 1 new message.</p>
+              )}
+              {freqError && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{freqError}</p>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => { setEditingFreq(false); setFreqDraft(null); setFreqError(null) }}
+                  disabled={savingFreq}
+                  style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 12.5, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveFrequency}
+                  disabled={savingFreq || !freqDraft}
+                  style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: savingFreq ? 'wait' : 'pointer', opacity: savingFreq ? 0.6 : 1 }}
+                >
+                  {savingFreq ? 'Confirm in wallet…' : 'Save'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

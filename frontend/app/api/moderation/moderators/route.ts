@@ -11,14 +11,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
-import { ADDRESS_PATTERN, MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
-import { clearModeratedBoards, moderatorsKey, readBoardModerators, readBoardOwners, type BoardModerators } from '@/lib/moderation/server'
+import { ADDRESS_PATTERN, EMAIL_FREQUENCIES, MAX_BOARD_MODERATORS, emailFreqMessage, moderatorsMessage, normalizeModerators, type EmailFrequency } from '@/lib/moderation/queue'
+import { clearModeratedBoards, emailFreqKey, moderatorsKey, readBoardModerators, readBoardOwners, type BoardModerators } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS, PATCH',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
@@ -27,12 +27,17 @@ export async function OPTIONS() {
 }
 
 async function boardState(board: string) {
-  const [[owners], [added]] = await Promise.all([readBoardOwners([board]), readBoardModerators([board])])
+  const [[owners], [added], emailFreq] = await Promise.all([
+    readBoardOwners([board]),
+    readBoardModerators([board]),
+    kv.get<EmailFrequency>(emailFreqKey(board)).catch(() => null),
+  ])
   return {
     board,
     owners,
     moderators: added.moderators.filter(m => !owners.includes(m)),
     updatedAt: added.updatedAt || null,
+    emailFrequency: emailFreq ?? 'off' as EmailFrequency,
   }
 }
 
@@ -112,6 +117,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(await boardState(board))
   } catch (error) {
     console.error('[moderation/moderators] POST error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { board: rawBoard, frequency, owner: rawOwner, signature, timestamp } = await req.json() as {
+      board?: string
+      frequency?: string
+      owner?: string
+      signature?: `0x${string}`
+      timestamp?: number
+    }
+    const board = rawBoard?.toLowerCase()
+    const owner = rawOwner?.toLowerCase()
+    if (!board || !ADDRESS_PATTERN.test(board)) {
+      return NextResponse.json({ error: 'Missing or invalid board address' }, { status: 400 })
+    }
+    if (!owner || !ADDRESS_PATTERN.test(owner)) {
+      return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
+    }
+    if (!frequency || !EMAIL_FREQUENCIES.includes(frequency as EmailFrequency)) {
+      return NextResponse.json({ error: `frequency must be one of: ${EMAIL_FREQUENCIES.join(', ')}` }, { status: 400 })
+    }
+    if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+      return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
+    }
+    const now = Math.floor(Date.now() / 1000)
+    if (Math.abs(now - timestamp) > 300) {
+      return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
+    }
+    const valid = await verifyMessage({
+      address: owner as `0x${string}`,
+      message: emailFreqMessage(base.id, board, frequency as EmailFrequency, timestamp),
+      signature,
+    }).catch(() => false)
+    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+
+    const [[owners]] = await Promise.all([readBoardOwners([board])])
+    if (!owners.includes(owner)) {
+      return NextResponse.json({ error: "Only this board's owner can change email settings" }, { status: 403 })
+    }
+
+    await kv.set(emailFreqKey(board), frequency)
+    return NextResponse.json(await boardState(board))
+  } catch (error) {
+    console.error('[moderation/moderators] PATCH error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

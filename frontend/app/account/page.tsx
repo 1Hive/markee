@@ -1057,35 +1057,31 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
   return (
     <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Admin Settings</div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Settings</div>
         {!isAdmin ? (
           <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Only this Markee's admin wallet can change these.</p>
         ) : isLegacyFixed ? (
           <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Admin settings aren't available for legacy boards from this dashboard.</p>
         ) : isStreaming ? (
           <div>
-            <AdminSettingRow label="Minimum Monthly Rate (wei/sec)" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
             <AdminSettingRow
-              label="Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
+              label="Transfer Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
+              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
             />
           </div>
         ) : (
-          // Only setBeneficiaryAddress and setAdmin are confirmed present, onlyAdmin-gated, and
-          // creator-controllable across every fixed-board contract version still in use (v1.1-v1.3).
-          // The RevNet routing settings (terminal/projectId/percentToBeneficiary/enabled/
-          // platformFeeReceiver/percentToPlatformFeeReceiver) were pulled: v1.3 -- what every "For
-          // Sale" board created today actually runs -- doesn't even have those setters anymore
-          // (contracts/v1.3/Leaderboard.sol has no such functions at all; they're fixed at deploy
-          // time by the Cooperative's factory config), and where they do exist on older v1.1/v1.2
-          // boards, showing them here as if any board's creator could tune RevNet routing was
-          // misleading regardless of technical onlyAdmin gating.
           <div>
-            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="minimumPrice" setterName="setMinimumPrice" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
+            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
             <AdminSettingRow
-              label="Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
+              label="Transfer Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdminAddress" inputType="address"
+              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
             />
           </div>
         )}
