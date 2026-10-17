@@ -361,9 +361,9 @@ function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void;
   const [menuOpen, setMenuOpen] = useState(false)
   const items: { key: TabId; label: string; n: number; amber?: boolean; muted?: boolean }[] = [
     ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Pending Setup', n: counts.pending, amber: true }] : []),
+    ...(counts.moderation !== null ? [{ key: 'moderation' as const, label: 'Moderation Queue', n: counts.moderation, amber: counts.moderation > 0 }] : []),
     { key: 'live',  label: 'My Live Markees',        n: counts.live },
     { key: 'bought', label: "Messages I've Bought",  n: counts.bought },
-    ...(counts.moderation !== null ? [{ key: 'moderation' as const, label: 'Moderation', n: counts.moderation, amber: counts.moderation > 0 }] : []),
     ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive, muted: true }] : []),
   ]
 

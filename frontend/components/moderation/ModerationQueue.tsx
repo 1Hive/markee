@@ -287,10 +287,10 @@ export function ModerationQueue() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {actionError && <p style={{ margin: 0, color: RED, fontSize: 13 }}>{actionError}</p>}
       {groups.length === 0 ? (
-        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '28px 24px', textAlign: 'center' }}>
-          <ShieldCheck size={28} color={GREEN} style={{ marginBottom: 10 }} />
-          <p style={{ margin: 0, color: TEXT, fontWeight: 700, fontSize: 15 }}>All caught up</p>
-          <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13 }}>
+        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '72px 24px', textAlign: 'center' }}>
+          <ShieldCheck size={48} color={GREEN} style={{ marginBottom: 16 }} />
+          <p style={{ margin: 0, color: TEXT, fontWeight: 700, fontSize: 20 }}>All caught up</p>
+          <p style={{ margin: '8px 0 0', color: MUTED, fontSize: 14 }}>
             {boards.length === 0 ? 'You do not moderate any boards yet.' : `Nothing waiting on ${boards.length === 1 ? 'your board' : `your ${boards.length} boards`}.`}
           </p>
         </div>
