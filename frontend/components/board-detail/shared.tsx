@@ -1324,26 +1324,62 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
   return (
     <div style={{ borderTop: `1px solid ${BORDER}`, background: BG, padding: '12px 16px 14px', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent' }}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Left: current bids */}
+        {/* Left: funded-by (fixed) or current bids (streaming) */}
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bids</p>
-          {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
-              <Loader2 size={14} className="animate-spin" /> Loading bids...
-            </div>
-          ) : bidders.length > 0 ? (
-            <div className="space-y-2">
-              {bidders.map(b => (
-                <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
-                  <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
-                    {fmtAddr(b.address)} <ExternalLink size={10} />
-                  </a>
-                  <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatRate(BigInt(b.flowRateRaw))}</span>
+          {strategy === 'fixed' ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Funded By</p>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+                  <Loader2 size={14} className="animate-spin" /> Loading contributors...
                 </div>
-              ))}
-            </div>
+              ) : (() => {
+                const totals = new Map<string, bigint>()
+                for (const e of history) {
+                  if (e.kind === 'funds') {
+                    totals.set(e.actor, (totals.get(e.actor) ?? 0n) + e.amount)
+                  }
+                }
+                const contributors = [...totals.entries()]
+                  .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
+                return contributors.length > 0 ? (
+                  <div className="space-y-2">
+                    {contributors.map(([addr, total]) => (
+                      <div key={addr} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                        <a href={getAddressUrl(CANONICAL_CHAIN_ID, addr)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
+                          {fmtAddr(addr)} <ExternalLink size={10} />
+                        </a>
+                        <span className="text-sm font-semibold text-[#7C9CFF] font-mono">{Number(formatEther(total)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ETH</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#8A8FBF] py-3">No contributions found.</p>
+                )
+              })()}
+            </>
           ) : (
-            <p className="text-sm text-[#8A8FBF] py-3">No active bids on this message yet.</p>
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bids</p>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+                  <Loader2 size={14} className="animate-spin" /> Loading bids...
+                </div>
+              ) : bidders.length > 0 ? (
+                <div className="space-y-2">
+                  {bidders.map(b => (
+                    <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                      <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
+                        {fmtAddr(b.address)} <ExternalLink size={10} />
+                      </a>
+                      <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatRate(BigInt(b.flowRateRaw))}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#8A8FBF] py-3">No active bids on this message yet.</p>
+              )}
+            </>
           )}
         </div>
 
