@@ -13,10 +13,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAccount, useSignMessage } from 'wagmi'
 import { isAddress } from 'viem'
-import { Check, Mail, Plus, X } from 'lucide-react'
+import { Check, Plus, X } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { EMAIL_FREQUENCIES, MAX_BOARD_MODERATORS, emailFreqMessage, moderatorsMessage, normalizeModerators, notifyEmailMessage, type EmailFrequency } from '@/lib/moderation/queue'
+import { EMAIL_FREQUENCIES, MAX_BOARD_MODERATORS, emailFreqMessage, moderatorsMessage, normalizeModerators, type EmailFrequency } from '@/lib/moderation/queue'
 import { moderationQueueKey } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG } from '@/lib/design-tokens'
 
@@ -91,12 +91,6 @@ export function BoardModerators({ board }: { board: string }) {
   const [savingFreq, setSavingFreq] = useState(false)
   const [freqError, setFreqError] = useState<string | null>(null)
 
-  // Personal notification email
-  const [notifyEmail, setNotifyEmail] = useState<string | null | undefined>(undefined) // undefined = loading
-  const [notifyInput, setNotifyInput] = useState('')
-  const [editingNotify, setEditingNotify] = useState(false)
-  const [savingNotify, setSavingNotify] = useState(false)
-  const [notifyError, setNotifyError] = useState<string | null>(null)
 
   useEffect(() => { if (data && draft === null) setDraft(data.moderators) }, [data, draft])
   useEffect(() => {
@@ -104,13 +98,7 @@ export function BoardModerators({ board }: { board: string }) {
     const t = setTimeout(() => setJustSaved(false), 3000)
     return () => clearTimeout(t)
   }, [justSaved])
-  useEffect(() => {
-    if (!me) { setNotifyEmail(null); return }
-    fetch(`/api/moderation/notify?wallet=${me}`)
-      .then(r => r.json())
-      .then(d => setNotifyEmail(d.email ?? null))
-      .catch(() => setNotifyEmail(null))
-  }, [me])
+
 
   const owners = data?.owners ?? []
   const isOwner = !!me && owners.includes(me)
@@ -182,55 +170,6 @@ export function BoardModerators({ board }: { board: string }) {
       if (!/reject|denied/i.test(message)) setFreqError(message || 'Could not save. Try again.')
     } finally {
       setSavingFreq(false)
-    }
-  }
-
-  const saveNotifyEmail = async () => {
-    if (!me) return
-    const email = notifyInput.trim().toLowerCase()
-    setSavingNotify(true)
-    setNotifyError(null)
-    try {
-      const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, me, email, timestamp) })
-      const res = await fetch('/api/moderation/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: me, email, signature, timestamp }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      setNotifyEmail(body.email)
-      setEditingNotify(false)
-      setNotifyInput('')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : ''
-      if (!/reject|denied/i.test(message)) setNotifyError(message || 'Could not save. Try again.')
-    } finally {
-      setSavingNotify(false)
-    }
-  }
-
-  const removeNotifyEmail = async () => {
-    if (!me) return
-    setSavingNotify(true)
-    setNotifyError(null)
-    try {
-      const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, me, '', timestamp) })
-      const res = await fetch('/api/moderation/notify', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: me, signature, timestamp }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      setNotifyEmail(null)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : ''
-      if (!/reject|denied/i.test(message)) setNotifyError(message || 'Could not remove. Try again.')
-    } finally {
-      setSavingNotify(false)
     }
   }
 
@@ -329,77 +268,6 @@ export function BoardModerators({ board }: { board: string }) {
           ) : (
             <p style={{ margin: '10px 0 0', color: MUTED, fontSize: 12.5 }}>Only this board's owner can change its moderators.</p>
           )}
-        </div>
-      )}
-
-      {/* Personal notification email */}
-      {!isLoading && !error && me && (
-        <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${BORDER}`, maxWidth: 520 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-            <Mail size={13} color={MUTED} />
-            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Your notification email</span>
-          </div>
-          {notifyEmail === undefined ? (
-            <div style={{ height: 32, background: 'rgba(138,143,191,0.08)', borderRadius: 6, width: 260 }} />
-          ) : !editingNotify ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              {notifyEmail ? (
-                <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT }}>{notifyEmail}</span>
-              ) : (
-                <span style={{ fontSize: 12.5, color: MUTED }}>Not set — you won't receive email notifications.</span>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <button
-                  onClick={() => { setNotifyInput(notifyEmail ?? ''); setEditingNotify(true); setNotifyError(null) }}
-                  style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '5px 12px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                >
-                  {notifyEmail ? 'Change' : 'Add email'}
-                </button>
-                {notifyEmail && (
-                  <button
-                    onClick={removeNotifyEmail}
-                    disabled={savingNotify}
-                    style={{ display: 'flex', background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', padding: 2 }}
-                    title="Remove notification email"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <form onSubmit={e => { e.preventDefault(); saveNotifyEmail() }} style={{ display: 'flex', gap: 8 }}>
-                <input
-                  type="email"
-                  value={notifyInput}
-                  onChange={e => { setNotifyInput(e.target.value); setNotifyError(null) }}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${notifyError ? '#FF6B6B' : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 12.5, outline: 'none' }}
-                />
-              </form>
-              {notifyError && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{notifyError}</p>}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => { setEditingNotify(false); setNotifyInput(''); setNotifyError(null) }}
-                  disabled={savingNotify}
-                  style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 12.5, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveNotifyEmail}
-                  disabled={savingNotify || !notifyInput.trim() || notifyInput.trim().toLowerCase() === notifyEmail}
-                  style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: savingNotify ? 'wait' : 'pointer', opacity: (savingNotify || !notifyInput.trim() || notifyInput.trim().toLowerCase() === notifyEmail) ? 0.5 : 1 }}
-                >
-                  {savingNotify ? 'Confirm in wallet…' : 'Save'}
-                </button>
-              </div>
-              <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>Saving asks for a free signature, not a transaction.</p>
-            </div>
-          )}
-          {notifyError && !editingNotify && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#FF6B6B' }}>{notifyError}</p>}
         </div>
       )}
 

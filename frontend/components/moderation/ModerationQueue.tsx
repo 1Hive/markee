@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
-import { ChevronDown, ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { ChevronDown, Mail, ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { useAccount, useSignMessage } from 'wagmi'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
-import { MAX_REVIEW_BATCH, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { MAX_REVIEW_BATCH, notifyEmailMessage, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
 
 const SANS  = 'Manrope, system-ui, sans-serif'
 const AMBER = '#FFB020'
@@ -123,6 +125,129 @@ function groupByBoard(items: ModerationItem[], boards: QueueBoard[]) {
   return boards.filter(b => byBoard.has(b.address)).map(b => ({ board: b, items: byBoard.get(b.address)! }))
 }
 
+function NotificationEmailRow() {
+  const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
+  const me = address?.toLowerCase()
+
+  const [email, setEmail] = useState<string | null | undefined>(undefined)
+  const [input, setInput] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!me) { setEmail(null); return }
+    fetch(`/api/moderation/notify?wallet=${me}`)
+      .then(r => r.json())
+      .then(d => setEmail(d.email ?? null))
+      .catch(() => setEmail(null))
+  }, [me])
+
+  const save = async () => {
+    if (!me) return
+    const val = input.trim().toLowerCase()
+    setSaving(true); setErr(null)
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, me, val, timestamp) })
+      const res = await fetch('/api/moderation/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: me, email: val, signature: sig, timestamp }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      setEmail(body.email); setEditing(false); setInput('')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (!/reject|denied/i.test(msg)) setErr(msg || 'Could not save. Try again.')
+    } finally { setSaving(false) }
+  }
+
+  const remove = async () => {
+    if (!me) return
+    setSaving(true); setErr(null)
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, me, '', timestamp) })
+      const res = await fetch('/api/moderation/notify', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: me, signature: sig, timestamp }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setEmail(null)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (!/reject|denied/i.test(msg)) setErr(msg || 'Could not remove. Try again.')
+    } finally { setSaving(false) }
+  }
+
+  if (!me) return null
+
+  return (
+    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <Mail size={13} color={MUTED} />
+        <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Notification email</span>
+      </div>
+      {email === undefined ? (
+        <div style={{ height: 20, background: 'rgba(138,143,191,0.08)', borderRadius: 5, width: 220 }} />
+      ) : !editing ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          {email ? (
+            <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT }}>{email}</span>
+          ) : (
+            <span style={{ fontSize: 13, color: MUTED }}>No email set — you won't receive notifications.</span>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => { setInput(email ?? ''); setEditing(true); setErr(null) }}
+              style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '5px 12px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            >
+              {email ? 'Change' : 'Add email'}
+            </button>
+            {email && (
+              <button onClick={remove} disabled={saving} title="Remove email" style={{ display: 'flex', background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', padding: 2 }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <form onSubmit={e => { e.preventDefault(); save() }} style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="email"
+              value={input}
+              onChange={e => { setInput(e.target.value); setErr(null) }}
+              placeholder="you@example.com"
+              autoComplete="email"
+              style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${err ? '#FF6B6B' : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none' }}
+            />
+          </form>
+          {err && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+            <span style={{ color: MUTED, fontSize: 12, marginRight: 4 }}>Free signature, not a transaction.</span>
+            <button onClick={() => { setEditing(false); setInput(''); setErr(null) }} disabled={saving} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving || !input.trim() || input.trim().toLowerCase() === email}
+              style={{ background: PINK, color: '#060A2A', border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: saving ? 'wait' : 'pointer', opacity: (saving || !input.trim() || input.trim().toLowerCase() === email) ? 0.5 : 1 }}
+            >
+              {saving ? 'Confirm in wallet…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+      {err && !editing && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
+    </div>
+  )
+}
+
 export function ModerationQueue() {
   const { review, items, flagged, boards, isLoading, error } = useModerationQueue()
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
@@ -189,6 +314,8 @@ export function ModerationQueue() {
           ))}
         </div>
       )}
+
+      <NotificationEmailRow />
     </div>
   )
 }
