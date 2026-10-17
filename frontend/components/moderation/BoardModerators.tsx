@@ -322,7 +322,7 @@ export function BoardModerators({ board }: { board: string }) {
                 </button>
                 <button
                   onClick={saveFrequency}
-                  disabled={savingFreq || !freqDraft}
+                  disabled={savingFreq || !freqDraft || freqDraft === data?.emailFrequency}
                   style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: savingFreq ? 'wait' : 'pointer', opacity: savingFreq ? 0.6 : 1 }}
                 >
                   {savingFreq ? 'Confirm in wallet…' : 'Save'}

@@ -155,12 +155,19 @@ export async function PATCH(req: NextRequest) {
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
 
-    const [[owners]] = await Promise.all([readBoardOwners([board])])
+    const [owners] = await readBoardOwners([board])
     if (!owners.includes(owner)) {
       return NextResponse.json({ error: "Only this board's owner can change email settings" }, { status: 403 })
     }
+    const stored = await kv.get<{ timestamp: number }>(emailFreqKey(board) + ':meta').catch(() => null)
+    if (stored && timestamp <= stored.timestamp) {
+      return NextResponse.json({ error: 'A newer frequency was already saved. Reload and try again.' }, { status: 409 })
+    }
 
-    await kv.set(emailFreqKey(board), frequency)
+    await Promise.all([
+      kv.set(emailFreqKey(board), frequency),
+      kv.set(emailFreqKey(board) + ':meta', { timestamp }),
+    ])
     return NextResponse.json(await boardState(board))
   } catch (error) {
     console.error('[moderation/moderators] PATCH error:', error)

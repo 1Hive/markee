@@ -1075,12 +1075,9 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
           </div>
         ) : (
           <div>
-            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="minimumPrice" setterName="setMinimumPrice" inputType="uint256" onSuccess={onSuccess} />
             <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
             <AdminSettingRow
-              label="Transfer Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdminAddress" inputType="address"
+              label="Transfer Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
               dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
             />
           </div>
