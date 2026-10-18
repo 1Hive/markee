@@ -4,7 +4,7 @@ import { createPublicClient, getAddress, http } from 'viem'
 import { base } from 'viem/chains'
 import { ADMIN_ADDRESSES } from '@/lib/moderation/config'
 import { internalHeaders, internalOrigin } from '@/lib/internal-origin'
-import { normalizeItem, type ModerationItem, type ModerationScope } from '@/lib/moderation/queue'
+import { normalizeItem, type EmailFrequency, type ModerationItem, type ModerationScope, type ModeratorEntry } from '@/lib/moderation/queue'
 
 export const BASELINE_KEY = 'moderation:baseline'
 export const SCAN_LOCK_KEY = 'moderation:scan:lock'
@@ -21,17 +21,37 @@ const READ_CHUNK = 500
 
 export const itemKey = (markee: string) => `moderation:item:${base.id}:${markee.toLowerCase()}`
 export const moderatorsKey = (board: string) => `moderation:moderators:${board.toLowerCase()}`
-export const emailFreqKey = (board: string) => `moderation:email-freq:${board.toLowerCase()}`
-export const notifyKey = (wallet: string) => `moderation:notify:email:${wallet.toLowerCase()}`
+// Per-moderator notification state (email set by board admin, frequency set by the moderator).
+export const notifyStateKey = (wallet: string) => `moderation:notify:${wallet.toLowerCase()}`
+// One-time verification tokens sent to moderator emails.
+export const verifyTokenKey = (token: string) => `moderation:verify:${token}`
 
-export interface NotifySubscription { email: string; subscribedAt: number }
+export interface ModeratorNotifyState {
+  email: string
+  verified: boolean
+  verifiedAt?: number
+  // Default 'every' for moderators added with an email; they can change it from /account.
+  frequency: EmailFrequency
+  setAt: number
+}
 
-export async function readNotifyEmails(wallets: string[]): Promise<{ wallet: string; email: string }[]> {
+export interface VerifyToken {
+  wallet: string
+  email: string
+  board: string
+  boardName: string
+  expiresAt: number
+}
+
+export async function readModeratorNotifyStates(
+  wallets: string[],
+): Promise<Array<{ wallet: string; email: string; verified: boolean; frequency: EmailFrequency }>> {
   if (wallets.length === 0) return []
-  const rows = await kv.mget<(NotifySubscription | null)[]>(...wallets.map(notifyKey))
+  const rows = await kv.mget<(ModeratorNotifyState | null)[]>(...wallets.map(notifyStateKey))
   return wallets.flatMap((wallet, i) => {
-    const email = rows[i]?.email
-    return email ? [{ wallet, email }] : []
+    const state = rows[i]
+    if (!state?.email) return []
+    return [{ wallet, email: state.email, verified: state.verified, frequency: state.frequency }]
   })
 }
 // Board reviews are indexed per board, site reviews in one index across every board.
@@ -50,9 +70,19 @@ const ADMIN_ABI = [
 ] as const
 
 export interface BoardModerators {
-  moderators: string[]
+  // Stored as ModeratorEntry[] in new writes; old writes used string[]. normalizeBoardModerators handles both.
+  moderators: ModeratorEntry[]
   updatedAt: number
   updatedBy: string
+}
+
+function normalizeBoardModerators(raw: BoardModerators): BoardModerators {
+  return {
+    ...raw,
+    moderators: (raw.moderators ?? []).map(m =>
+      typeof m === 'string' ? { wallet: m as string } : m,
+    ),
+  }
 }
 
 export function getModerationClient() {
@@ -100,7 +130,7 @@ export async function readAllFlagged(): Promise<Record<ModerationScope, string[]
 export async function readBoardModerators(boards: string[]): Promise<BoardModerators[]> {
   if (boards.length === 0) return []
   const rows = await kv.mget<(BoardModerators | null)[]>(...boards.map(moderatorsKey))
-  return rows.map(r => r ?? { moderators: [], updatedAt: 0, updatedBy: '' })
+  return rows.map(r => r ? normalizeBoardModerators(r) : { moderators: [], updatedAt: 0, updatedBy: '' })
 }
 
 // A board's owners are its on-chain admin() and its KV-cached creator. They always moderate the
@@ -135,7 +165,7 @@ export async function authorizedScopes(moderator: string, markeeIds: string[]): 
 
   const boards = [...new Set(boardOf.filter((b): b is string => !!b))]
   const [owners, added] = await Promise.all([readBoardOwners(boards), readBoardModerators(boards)])
-  const moderatedBoards = new Set(boards.filter((_, i) => owners[i].includes(mod) || added[i].moderators.includes(mod)))
+  const moderatedBoards = new Set(boards.filter((_, i) => owners[i].includes(mod) || added[i].moderators.some(m => m.wallet === mod)))
   const global = isGlobalAdmin(mod)
 
   const scopes = new Map<string, ModerationScope[]>()
@@ -176,7 +206,7 @@ export async function listModeratedBoards(): Promise<ModeratedBoard[]> {
   // readBoardOwners reads creator:* KV keys for all platforms directly, covering Superfluid boards
   // where lb.creator is null until the creator visits /account (lb.admin is the beneficiary there).
   const [added, owners] = await Promise.all([readBoardModerators(addresses), readBoardOwners(addresses)])
-  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...owners[i], ...b.moderators, ...added[i].moderators])] }))
+  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...owners[i], ...b.moderators, ...added[i].moderators.map(m => m.wallet)])] }))
   await kv.set(BOARDS_CACHE_KEY, boards, { ex: BOARDS_CACHE_TTL }).catch(() => {})
   return boards
 }

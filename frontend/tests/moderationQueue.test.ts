@@ -127,7 +127,7 @@ test('a single-id review message matches the original flag format', () => {
 
 test('the moderator list is signed in a canonical order', () => {
   const list = normalizeModerators([' 0xBB ', '0xaa', '0xbb'])
-  assert.deepEqual(list, ['0xaa', '0xbb'])
+  assert.deepEqual(list, [{ wallet: '0xaa' }, { wallet: '0xbb' }])
   assert.equal(moderatorsMessage(8453, '0xBoard', list, 7), 'markee-moderation:moderators:8453:0xboard:0xaa,0xbb:7')
 })
 

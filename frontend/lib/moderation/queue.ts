@@ -63,28 +63,54 @@ export interface QueueResponse {
 export const MAX_REVIEW_BATCH = 100
 export const MAX_BOARD_MODERATORS = 25
 
+// Each entry in a board's moderator list. The admin optionally supplies an email address when
+// adding a moderator; a verification email is sent to confirm it before notifications are sent.
+export interface ModeratorEntry {
+  wallet: string
+  email?: string
+}
+
 export function reviewMessage(action: ModerationAction, chainId: number | string, markeeIds: string[], timestamp: number): string {
   return `markee-moderation:${action}:${chainId}:${markeeIds.join(',')}:${timestamp}`
 }
 
-export function moderatorsMessage(chainId: number | string, board: string, moderators: string[], timestamp: number): string {
-  return `markee-moderation:moderators:${chainId}:${board.toLowerCase()}:${moderators.join(',')}:${timestamp}`
+// Each entry serializes as "wallet" or "wallet|email". The list must be normalized before signing.
+export function moderatorsMessage(chainId: number | string, board: string, moderators: ModeratorEntry[], timestamp: number): string {
+  const serialized = moderators.map(m => m.email ? `${m.wallet}|${m.email}` : m.wallet).join(',')
+  return `markee-moderation:moderators:${chainId}:${board.toLowerCase()}:${serialized}:${timestamp}`
 }
 
 export type EmailFrequency = 'every' | 'daily' | 'off'
 export const EMAIL_FREQUENCIES: EmailFrequency[] = ['every', 'daily', 'off']
 
-export function emailFreqMessage(chainId: number | string, board: string, frequency: EmailFrequency, timestamp: number): string {
-  return `markee-moderation:email-freq:${chainId}:${board.toLowerCase()}:${frequency}:${timestamp}`
+// Signed by the moderator themselves to update their own notification frequency preference.
+export function notifyFreqMessage(chainId: number | string, wallet: string, frequency: EmailFrequency, timestamp: number): string {
+  return `markee-moderation:notify-freq:${chainId}:${wallet.toLowerCase()}:${frequency}:${timestamp}`
 }
 
+// Signed by the moderator to unsubscribe (remove their notify state entirely).
 export function notifyEmailMessage(chainId: number | string, wallet: string, email: string, timestamp: number): string {
   return `markee-moderation:notify-email:${chainId}:${wallet.toLowerCase()}:${email.toLowerCase()}:${timestamp}`
 }
 
-// Lowercased, deduped and sorted, so the client and the server sign over the same list.
-export function normalizeModerators(addresses: string[]): string[] {
-  return [...new Set(addresses.map(a => a.trim().toLowerCase()))].sort()
+// Lowercased, deduped and sorted by wallet, so the client and the server sign over the same list.
+// Accepts raw strings (wallet-only, legacy) or {wallet, email?} objects.
+export function normalizeModerators(raw: unknown[]): ModeratorEntry[] {
+  const seen = new Map<string, string | undefined>()
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const w = item.trim().toLowerCase()
+      if (w && !seen.has(w)) seen.set(w, undefined)
+    } else if (item && typeof item === 'object') {
+      const obj = item as { wallet?: unknown; email?: unknown }
+      const w = typeof obj.wallet === 'string' ? obj.wallet.trim().toLowerCase() : ''
+      const e = typeof obj.email === 'string' ? obj.email.trim().toLowerCase() || undefined : undefined
+      if (w && !seen.has(w)) seen.set(w, e)
+    }
+  }
+  return [...seen.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([wallet, email]) => (email ? { wallet, email } : { wallet }))
 }
 
 export const isPendingIn = (item: ModerationItem, scopes: readonly ModerationScope[]) =>

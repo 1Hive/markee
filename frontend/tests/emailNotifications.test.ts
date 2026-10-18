@@ -1,51 +1,52 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  emailFreqMessage,
   notifyEmailMessage,
+  notifyFreqMessage,
   moderatorsMessage,
   normalizeModerators,
   EMAIL_FREQUENCIES,
   type EmailFrequency,
+  type ModeratorEntry,
 } from '../lib/moderation/queue'
 
 // Pure key-derivation helpers (mirrors lib/moderation/server.ts -- kept here to avoid server-only)
-const emailFreqKey = (board: string) => `moderation:email-freq:${board.toLowerCase()}`
-const notifyKey    = (wallet: string) => `moderation:notify:email:${wallet.toLowerCase()}`
+const notifyStateKey = (wallet: string) => `moderation:notify:${wallet.toLowerCase()}`
+const verifyTokenKey = (token: string) => `moderation:verify:${token}`
 
 const CHAIN = 8453
 const BOARD = '0xBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBb'
 const WALLET = '0xCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCc'
 
-// ── emailFreqMessage ──────────────────────────────────────────────────────────
+// ── notifyFreqMessage ─────────────────────────────────────────────────────────
 
-test('emailFreqMessage produces a stable string for every valid frequency', () => {
+test('notifyFreqMessage produces a stable string for every valid frequency', () => {
   const ts = 1000000
   for (const freq of EMAIL_FREQUENCIES) {
-    const msg = emailFreqMessage(CHAIN, BOARD, freq, ts)
+    const msg = notifyFreqMessage(CHAIN, WALLET, freq, ts)
     assert.equal(typeof msg, 'string')
     assert.ok(msg.includes(freq), `message should include frequency "${freq}"`)
-    assert.ok(msg.includes(BOARD.toLowerCase()), 'message should include lowercased board address')
+    assert.ok(msg.includes(WALLET.toLowerCase()), 'message should include lowercased wallet address')
     assert.ok(msg.includes(String(ts)), 'message should include timestamp')
   }
 })
 
-test('emailFreqMessage lowercases the board address', () => {
-  const upper = emailFreqMessage(CHAIN, BOARD.toUpperCase(), 'every', 1)
-  const lower = emailFreqMessage(CHAIN, BOARD.toLowerCase(), 'every', 1)
+test('notifyFreqMessage lowercases the wallet address', () => {
+  const upper = notifyFreqMessage(CHAIN, WALLET.toUpperCase(), 'every', 1)
+  const lower = notifyFreqMessage(CHAIN, WALLET.toLowerCase(), 'every', 1)
   assert.equal(upper, lower)
 })
 
-test('emailFreqMessage includes chain ID', () => {
-  const msg8453  = emailFreqMessage(8453, BOARD, 'daily', 1)
-  const msg1     = emailFreqMessage(1,    BOARD, 'daily', 1)
+test('notifyFreqMessage includes chain ID', () => {
+  const msg8453 = notifyFreqMessage(8453, WALLET, 'daily', 1)
+  const msg1    = notifyFreqMessage(1,    WALLET, 'daily', 1)
   assert.notEqual(msg8453, msg1)
   assert.ok(msg8453.includes('8453'))
 })
 
-test('different timestamps produce different emailFreqMessages', () => {
-  const a = emailFreqMessage(CHAIN, BOARD, 'off', 100)
-  const b = emailFreqMessage(CHAIN, BOARD, 'off', 200)
+test('different timestamps produce different notifyFreqMessages', () => {
+  const a = notifyFreqMessage(CHAIN, WALLET, 'off', 100)
+  const b = notifyFreqMessage(CHAIN, WALLET, 'off', 200)
   assert.notEqual(a, b)
 })
 
@@ -79,6 +80,13 @@ test('moderatorsMessage is order-independent (caller must normalize first)', () 
   assert.equal(msg1, msg2)
 })
 
+test('moderatorsMessage includes email when present', () => {
+  const with_email = moderatorsMessage(CHAIN, BOARD, [{ wallet: '0xaaaa', email: 'foo@bar.com' }], 1)
+  const no_email   = moderatorsMessage(CHAIN, BOARD, [{ wallet: '0xaaaa' }], 1)
+  assert.notEqual(with_email, no_email)
+  assert.ok(with_email.includes('foo@bar.com'))
+})
+
 test('empty moderators list produces valid message', () => {
   const msg = moderatorsMessage(CHAIN, BOARD, [], 1)
   assert.equal(typeof msg, 'string')
@@ -87,43 +95,58 @@ test('empty moderators list produces valid message', () => {
 
 // ── normalizeModerators ───────────────────────────────────────────────────────
 
-test('normalizeModerators deduplicates case-insensitively', () => {
-  const result = normalizeModerators(['0xAaAa', '0xaaaa', '0xAAAA'])
-  assert.equal(result.length, 1)
-  assert.equal(result[0], '0xaaaa')
+test('normalizeModerators returns ModeratorEntry array', () => {
+  const result = normalizeModerators(['0xaaaa'])
+  assert.ok(Array.isArray(result))
+  assert.ok(typeof result[0] === 'object' && 'wallet' in result[0])
 })
 
-test('normalizeModerators sorts deterministically', () => {
+test('normalizeModerators deduplicates case-insensitively by wallet', () => {
+  const result = normalizeModerators(['0xAaAa', '0xaaaa', '0xAAAA'])
+  assert.equal(result.length, 1)
+  assert.equal(result[0].wallet, '0xaaaa')
+})
+
+test('normalizeModerators sorts deterministically by wallet', () => {
   const a = normalizeModerators(['0xcccc', '0xaaaa', '0xbbbb'])
   const b = normalizeModerators(['0xbbbb', '0xcccc', '0xaaaa'])
   assert.deepEqual(a, b)
 })
 
-test('normalizeModerators trims whitespace', () => {
+test('normalizeModerators trims whitespace from wallet', () => {
   const result = normalizeModerators(['  0xaaaa  '])
-  assert.equal(result[0], '0xaaaa')
+  assert.equal(result[0].wallet, '0xaaaa')
 })
 
-// ── emailFreqKey / notifyKey ─────────────────────────────────────────────────
+test('normalizeModerators accepts object entries with email', () => {
+  const entry: ModeratorEntry = { wallet: '0xaaaa', email: 'Test@Example.COM' }
+  const result = normalizeModerators([entry])
+  assert.equal(result[0].wallet, '0xaaaa')
+  assert.equal(result[0].email, 'test@example.com')
+})
 
-test('emailFreqKey lowercases board', () => {
-  const upper = emailFreqKey(BOARD.toUpperCase())
-  const lower = emailFreqKey(BOARD.toLowerCase())
+test('normalizeModerators accepts mixed strings and objects', () => {
+  const result = normalizeModerators(['0xaaaa', { wallet: '0xbbbb', email: 'b@b.com' }])
+  assert.equal(result.length, 2)
+  assert.equal(result[0].wallet, '0xaaaa')
+  assert.equal(result[0].email, undefined)
+  assert.equal(result[1].wallet, '0xbbbb')
+  assert.equal(result[1].email, 'b@b.com')
+})
+
+// ── notifyStateKey / verifyTokenKey ──────────────────────────────────────────
+
+test('notifyStateKey lowercases wallet', () => {
+  const upper = notifyStateKey(WALLET.toUpperCase())
+  const lower = notifyStateKey(WALLET.toLowerCase())
   assert.equal(upper, lower)
-  assert.ok(upper.startsWith('moderation:email-freq:'))
+  assert.ok(upper.startsWith('moderation:notify:'))
 })
 
-test('notifyKey lowercases wallet', () => {
-  const upper = notifyKey(WALLET.toUpperCase())
-  const lower = notifyKey(WALLET.toLowerCase())
-  assert.equal(upper, lower)
-  assert.ok(upper.startsWith('moderation:notify:email:'))
-})
-
-test('emailFreqKey and notifyKey produce distinct key prefixes', () => {
-  const freq   = emailFreqKey(BOARD)
-  const notify = notifyKey(WALLET)
-  assert.notEqual(freq.split(':')[1], notify.split(':')[1])
+test('verifyTokenKey produces a distinct prefix from notifyStateKey', () => {
+  const notify = notifyStateKey(WALLET)
+  const verify = verifyTokenKey('abc123')
+  assert.notEqual(notify.split(':')[1], verify.split(':')[1])
 })
 
 // ── EMAIL_FREQUENCIES completeness ───────────────────────────────────────────

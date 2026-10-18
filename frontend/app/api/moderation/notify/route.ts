@@ -1,26 +1,32 @@
 // GET  /api/moderation/notify?wallet=0x...
-//   Returns { email: string | null } — the registered email, masked as u***@example.com so wallet
-//   owners can confirm their subscription without exposing the full address to unauthenticated callers.
+//   Returns { email: string | null, verified: boolean, frequency: EmailFrequency } for the wallet.
+//   The email is masked (u***@example.com) so wallet owners can confirm their subscription without
+//   exposing the full address to unauthenticated callers.
 //
-// POST /api/moderation/notify
-//   { wallet, email, signature, timestamp }
-//   Registers an email address for moderation notifications. The signature covers
-//   notifyEmailMessage(8453, wallet, email, timestamp).
+// PATCH /api/moderation/notify
+//   { wallet, frequency, signature, timestamp }
+//   Moderator updates their own notification frequency preference (every / daily / off).
+//   Signature covers notifyFreqMessage(8453, wallet, frequency, timestamp).
 //
 // DELETE /api/moderation/notify
 //   { wallet, signature, timestamp }
-//   Removes the notification email. Signature covers notifyEmailMessage(8453, wallet, '', timestamp).
+//   Removes the moderator's notification state (unsubscribes from all emails).
+//   Signature covers notifyEmailMessage(8453, wallet, '', timestamp).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
-import { ADDRESS_PATTERN, notifyEmailMessage } from '@/lib/moderation/queue'
-import { notifyKey, type NotifySubscription } from '@/lib/moderation/server'
+import {
+  ADDRESS_PATTERN,
+  EMAIL_FREQUENCIES,
+  notifyEmailMessage,
+  notifyFreqMessage,
+  type EmailFrequency,
+} from '@/lib/moderation/queue'
+import { notifyStateKey, type ModeratorNotifyState } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -35,22 +41,28 @@ export async function GET(req: NextRequest) {
   if (!wallet || !ADDRESS_PATTERN.test(wallet)) {
     return NextResponse.json({ error: 'Missing or invalid wallet address' }, { status: 400 })
   }
-  const sub = await kv.get<NotifySubscription>(notifyKey(wallet)).catch(() => null)
-  return NextResponse.json({ email: sub?.email ? maskEmail(sub.email) : null })
+  const state = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
+  return NextResponse.json({
+    email: state?.email ? maskEmail(state.email) : null,
+    verified: state?.verified ?? false,
+    frequency: state?.frequency ?? 'every',
+  })
 }
 
-export async function POST(req: NextRequest) {
+export async function PATCH(req: NextRequest) {
   try {
-    const { wallet: rawWallet, email: rawEmail, signature, timestamp } = await req.json() as {
-      wallet?: string; email?: string; signature?: `0x${string}`; timestamp?: number
+    const { wallet: rawWallet, frequency, signature, timestamp } = await req.json() as {
+      wallet?: string
+      frequency?: string
+      signature?: `0x${string}`
+      timestamp?: number
     }
     const wallet = rawWallet?.toLowerCase()
-    const email = rawEmail?.toLowerCase().trim()
     if (!wallet || !ADDRESS_PATTERN.test(wallet)) {
       return NextResponse.json({ error: 'Missing or invalid wallet address' }, { status: 400 })
     }
-    if (!email || !EMAIL_RE.test(email)) {
-      return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 })
+    if (!frequency || !EMAIL_FREQUENCIES.includes(frequency as EmailFrequency)) {
+      return NextResponse.json({ error: `frequency must be one of: ${EMAIL_FREQUENCIES.join(', ')}` }, { status: 400 })
     }
     if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
       return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
@@ -61,16 +73,24 @@ export async function POST(req: NextRequest) {
     }
     const valid = await verifyMessage({
       address: wallet as `0x${string}`,
-      message: notifyEmailMessage(base.id, wallet, email, timestamp),
+      message: notifyFreqMessage(base.id, wallet, frequency as EmailFrequency, timestamp),
       signature,
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
 
-    const sub: NotifySubscription = { email, subscribedAt: now }
-    await kv.set(notifyKey(wallet), sub)
-    return NextResponse.json({ email: maskEmail(email) })
+    const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
+    if (!existing) {
+      return NextResponse.json({ error: 'No notification subscription found for this wallet' }, { status: 404 })
+    }
+    const updated: ModeratorNotifyState = { ...existing, frequency: frequency as EmailFrequency, setAt: now }
+    await kv.set(notifyStateKey(wallet), updated)
+    return NextResponse.json({
+      email: maskEmail(existing.email),
+      verified: existing.verified,
+      frequency: frequency as EmailFrequency,
+    })
   } catch (e) {
-    console.error('[moderation/notify] POST error:', e)
+    console.error('[moderation/notify] PATCH error:', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -78,7 +98,9 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const { wallet: rawWallet, signature, timestamp } = await req.json() as {
-      wallet?: string; signature?: `0x${string}`; timestamp?: number
+      wallet?: string
+      signature?: `0x${string}`
+      timestamp?: number
     }
     const wallet = rawWallet?.toLowerCase()
     if (!wallet || !ADDRESS_PATTERN.test(wallet)) {
@@ -98,8 +120,8 @@ export async function DELETE(req: NextRequest) {
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
 
-    await kv.del(notifyKey(wallet))
-    return NextResponse.json({ email: null })
+    await kv.del(notifyStateKey(wallet))
+    return NextResponse.json({ email: null, verified: false, frequency: 'every' })
   } catch (e) {
     console.error('[moderation/notify] DELETE error:', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

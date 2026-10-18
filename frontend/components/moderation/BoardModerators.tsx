@@ -16,7 +16,7 @@ import { isAddress } from 'viem'
 import { Check, Plus, X } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { EMAIL_FREQUENCIES, MAX_BOARD_MODERATORS, emailFreqMessage, moderatorsMessage, normalizeModerators, type EmailFrequency } from '@/lib/moderation/queue'
+import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
 import { moderationQueueKey } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG } from '@/lib/design-tokens'
 
@@ -26,9 +26,8 @@ const RED = '#FF6B6B'
 interface ModeratorsState {
   board: string
   owners: string[]
-  moderators: string[]
+  moderators: Array<{ wallet: string; emailMasked: string | null; verified: boolean; frequency: string }>
   updatedAt: number | null
-  emailFrequency: EmailFrequency
 }
 
 function fmtAddr(a: string) {
@@ -77,7 +76,7 @@ export function BoardModerators({ board }: { board: string }) {
     },
   })
 
-  // The staged list; null until the saved one loads.
+  // The staged list of wallet addresses; null until the saved one loads.
   const [draft, setDraft] = useState<string[] | null>(null)
   const [input, setInput] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
@@ -85,14 +84,7 @@ export function BoardModerators({ board }: { board: string }) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
 
-  // Email frequency
-  const [editingFreq, setEditingFreq] = useState(false)
-  const [freqDraft, setFreqDraft] = useState<EmailFrequency | null>(null)
-  const [savingFreq, setSavingFreq] = useState(false)
-  const [freqError, setFreqError] = useState<string | null>(null)
-
-
-  useEffect(() => { if (data && draft === null) setDraft(data.moderators) }, [data, draft])
+  useEffect(() => { if (data && draft === null) setDraft(data.moderators.map(m => m.wallet)) }, [data, draft])
   useEffect(() => {
     if (!justSaved) return
     const t = setTimeout(() => setJustSaved(false), 3000)
@@ -102,10 +94,11 @@ export function BoardModerators({ board }: { board: string }) {
 
   const owners = data?.owners ?? []
   const isOwner = !!me && owners.includes(me)
-  const list = draft ?? data?.moderators ?? []
+  const savedWallets = data?.moderators.map(m => m.wallet) ?? []
+  const list = draft ?? savedWallets
   const dirty = useMemo(
-    () => !!data && normalizeModerators(list).join() !== normalizeModerators(data.moderators).join(),
-    [data, list],
+    () => !!data && normalizeModerators(list).map(m => m.wallet).join() !== normalizeModerators(savedWallets).map(m => m.wallet).join(),
+    [data, list, savedWallets],
   )
 
   const add = () => {
@@ -136,7 +129,7 @@ export function BoardModerators({ board }: { board: string }) {
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       queryClient.setQueryData(queryKey, body)
-      setDraft(body.moderators)
+      setDraft((body.moderators ?? []).map((m: { wallet: string }) => m.wallet))
       setJustSaved(true)
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(me) })
     } catch (err) {
@@ -146,37 +139,6 @@ export function BoardModerators({ board }: { board: string }) {
     } finally {
       setSaving(false)
     }
-  }
-
-  const saveFrequency = async () => {
-    if (!me || !freqDraft) return
-    setSavingFreq(true)
-    setFreqError(null)
-    try {
-      const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: emailFreqMessage(CANONICAL_CHAIN_ID, board, freqDraft, timestamp) })
-      const res = await fetch(`${MODERATION_API}/moderators`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ board, frequency: freqDraft, owner: me, signature, timestamp }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      queryClient.setQueryData(queryKey, body)
-      setEditingFreq(false)
-      setFreqDraft(null)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : ''
-      if (!/reject|denied/i.test(message)) setFreqError(message || 'Could not save. Try again.')
-    } finally {
-      setSavingFreq(false)
-    }
-  }
-
-  const EMAIL_FREQ_LABELS: Record<EmailFrequency, string> = {
-    every: 'Every new message',
-    daily: 'Daily round-up',
-    off: 'Off',
   }
 
   return (
@@ -199,7 +161,7 @@ export function BoardModerators({ board }: { board: string }) {
           ))}
           {list.map(m => (
             <Row key={m} address={m} you={m === me}>
-              {data && !data.moderators.includes(m) && <Chip color={GREEN}>Unsaved</Chip>}
+              {data && !savedWallets.includes(m) && <Chip color={GREEN}>Unsaved</Chip>}
               {isOwner && (
                 <button
                   onClick={() => setDraft(list.filter(x => x !== m))}
@@ -249,7 +211,7 @@ export function BoardModerators({ board }: { board: string }) {
                         {saving ? 'Confirm in wallet…' : 'Save moderators'}
                       </button>
                       <button
-                        onClick={() => { setDraft(data?.moderators ?? []); setSaveError(null) }}
+                        onClick={() => { setDraft(savedWallets); setSaveError(null) }}
                         disabled={saving}
                         style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 12.5, fontFamily: SANS, cursor: 'pointer' }}
                       >
@@ -271,69 +233,6 @@ export function BoardModerators({ board }: { board: string }) {
         </div>
       )}
 
-      {/* Email frequency */}
-      {!isLoading && !error && (
-        <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${BORDER}`, maxWidth: 520 }}>
-          {!editingFreq ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ color: TEXT2, fontSize: 12.5 }}>How often should moderators get emails?</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT, fontWeight: 600 }}>
-                  {EMAIL_FREQ_LABELS[data?.emailFrequency ?? 'off']}
-                </span>
-                {isOwner && (
-                  <button
-                    onClick={() => { setFreqDraft(data?.emailFrequency ?? 'off'); setEditingFreq(true); setFreqError(null) }}
-                    style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '5px 12px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <span style={{ color: TEXT2, fontSize: 12.5 }}>How often should moderators get emails?</span>
-              <div style={{ display: 'inline-flex', borderRadius: 8, border: `1px solid ${BORDER}`, overflow: 'hidden', alignSelf: 'flex-end' }}>
-                {EMAIL_FREQUENCIES.map(freq => (
-                  <button
-                    key={freq}
-                    onClick={() => setFreqDraft(freq)}
-                    style={{
-                      padding: '8px 16px', border: 'none', fontFamily: MONO, fontSize: 12.5, fontWeight: freqDraft === freq ? 700 : 500, cursor: 'pointer',
-                      background: freqDraft === freq ? PINK : 'transparent',
-                      color: freqDraft === freq ? BG : TEXT2,
-                      transition: 'background 120ms, color 120ms',
-                    }}
-                  >
-                    {EMAIL_FREQ_LABELS[freq]}
-                  </button>
-                ))}
-              </div>
-              {freqDraft === 'daily' && (
-                <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>Sent only on days with at least 1 new message.</p>
-              )}
-              {freqError && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{freqError}</p>}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => { setEditingFreq(false); setFreqDraft(null); setFreqError(null) }}
-                  disabled={savingFreq}
-                  style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 12.5, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveFrequency}
-                  disabled={savingFreq || !freqDraft || freqDraft === data?.emailFrequency}
-                  style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: savingFreq ? 'wait' : 'pointer', opacity: savingFreq ? 0.6 : 1 }}
-                >
-                  {savingFreq ? 'Confirm in wallet…' : 'Save'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
