@@ -308,45 +308,53 @@ function InfoTip({ text }: { text: string }) {
   )
 }
 
-function OverviewStatCard({ n, label, color, tip, loaded }: { n: string; label: string; color: string; tip: string; loaded: boolean }) {
+function OverviewStatCard({ n, label, color, loaded }: { n: string; label: string; color: string; loaded: boolean }) {
   if (!loaded) return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '16px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
-        <div style={{ width: 80, height: 22, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+        <div style={{ width: 80, height: 20, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
       </div>
-      <div style={{ width: 100, height: 13, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+      <div style={{ width: 90, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
     </div>
   )
   return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <GlowDot size={8} color={color} />
-          <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{n}</span>
-        </div>
-        <InfoTip text={tip} />
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <GlowDot size={8} color={color} />
+        <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{n}</span>
       </div>
-      <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{label}</div>
+      <div style={{ color: TEXT2, fontSize: 12, fontWeight: 600 }}>{label}</div>
     </div>
   )
 }
 
-function Overview({ raised, active, bought, contributed, loaded }: { raised: bigint; active: number; bought: number; contributed: bigint; loaded: boolean }) {
+function Overview({ raised, active, bought, contributed, ethPrice, creatorCpm, buyerCpm, loaded }: {
+  raised: bigint; active: number; bought: number; contributed: bigint
+  ethPrice: number | null; creatorCpm: number | null; buyerCpm: number | null; loaded: boolean
+}) {
+  const raisedUsd = ethPrice ? Number(raised) / 1e18 * ethPrice : null
+  const contribUsd = ethPrice ? Number(contributed) / 1e18 * ethPrice : null
+  const fmtCpm = (v: number | null) => v != null ? formatUsd(v) : '—'
+  const sectionLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }
+  const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
       <div>
-        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>As a Creator</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-          <OverviewStatCard n={fmtEth(raised)} label="total raised" color={PINK} tip="Funds raised by Markees you created. This is not ETH you spent buying messages." loaded={loaded} />
-          <OverviewStatCard n={String(active)} label="active signs" color={GREEN} tip="Your live Markees with funded messages. Website Markees also need a verified integration to count here." loaded={loaded} />
+        <div style={sectionLabel}>As a Creator</div>
+        <div style={grid3}>
+          <OverviewStatCard n={raisedUsd != null ? formatUsd(raisedUsd) : fmtEth(raised)} label="total raised" color={PINK} loaded={loaded} />
+          <OverviewStatCard n={String(active)} label="active signs" color={GREEN} loaded={loaded} />
+          <OverviewStatCard n={fmtCpm(creatorCpm)} label="CPM earned" color={TEXT2} loaded={loaded} />
         </div>
       </div>
       <div>
-        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>As a Buyer</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-          <OverviewStatCard n={String(bought)} label="messages bought" color={TEXT} tip="Paid messages you own. Zero-fund placeholder Markees are not counted." loaded={loaded} />
-          <OverviewStatCard n={fmtEth(contributed)} label="contributed" color={BLUE} tip="Total ETH you put into messages, including messages you bought and messages you funded." loaded={loaded} />
+        <div style={sectionLabel}>As a Buyer</div>
+        <div style={grid3}>
+          <OverviewStatCard n={String(bought)} label="messages bought" color={TEXT} loaded={loaded} />
+          <OverviewStatCard n={contribUsd != null ? formatUsd(contribUsd) : fmtEth(contributed)} label="contributed" color={BLUE} loaded={loaded} />
+          <OverviewStatCard n={fmtCpm(buyerCpm)} label="CPM paid" color={TEXT2} loaded={loaded} />
         </div>
       </div>
     </div>
@@ -1485,6 +1493,7 @@ export default function AccountPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [fundedMessages, setFundedMessages]     = useState<FundedMessage[]>([])
   const [isLoadingFunded, setIsLoadingFunded]   = useState(false)
+  const [boardViews, setBoardViews]             = useState<Record<string, number>>({})
 
   // UI state
   // Optimistically default to Pending Setup -- the eviction effect below redirects to My Live
@@ -1763,7 +1772,7 @@ export default function AccountPage() {
     [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
 
   // Boards the wallet created, plus any it was added to as a moderator (the queue lists those).
-  const isModerator = isGlobalModerator || allBoards.length > 0 || moderationQueue.boards.length > 0
+  const isModerator = isGlobalModerator || moderationQueue.boards.length > 0
 
   // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
   // or off the default Pending Setup landing tab once loading confirms there was never anything
@@ -1786,6 +1795,37 @@ export default function AccountPage() {
     const funded = fundedMessages.reduce((s, m) => s + BigInt(m.totalContributed), 0n)
     return bought + funded
   }, [myMessages, fundedMessages])
+
+  // Fetch markee.xyz view counts for CPM calculations
+  useEffect(() => {
+    const addrs = allBoards.map(b => b.address.toLowerCase()).slice(0, 100)
+    if (addrs.length === 0) return
+    fetch(`/api/views?addresses=${addrs.join(',')}`)
+      .then(r => r.json())
+      .then((data: Record<string, { totalViews: number }>) => {
+        setBoardViews(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.totalViews ?? 0])))
+      })
+      .catch(() => {})
+  }, [allBoards])
+
+  const creatorCpm = useMemo(() => {
+    if (!ethPrice) return null
+    const raisedUsd = Number(totalRaisedWei) / 1e18 * ethPrice
+    if (!raisedUsd) return null
+    const totalViews = activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0)
+    if (!totalViews) return null
+    return (raisedUsd / totalViews) * 1000
+  }, [ethPrice, totalRaisedWei, activeBoards, boardViews])
+
+  const buyerCpm = useMemo(() => {
+    if (!ethPrice) return null
+    const contribUsd = Number(totalContribWei) / 1e18 * ethPrice
+    if (!contribUsd) return null
+    const buyerBoardAddrs = new Set(myMessages.map(m => m.strategyId.toLowerCase()))
+    const totalViews = [...buyerBoardAddrs].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0)
+    if (!totalViews) return null
+    return (contribUsd / totalViews) * 1000
+  }, [ethPrice, totalContribWei, myMessages, boardViews])
 
   const handleOpenAddToSite = useCallback((lb: AnyLeaderboard) => {
     setEmbedTarget(lb)
@@ -1831,24 +1871,38 @@ export default function AccountPage() {
               <div style={{ marginLeft: 'auto' }}><ConnectButton /></div>
             )}
             {mounted && hasWallet && (
-              <button
-                onClick={() => setDepositManagerOpen(true)}
-                style={{
-                  marginLeft: 'auto', flexShrink: 0,
-                  background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10,
-                  padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                  transition: 'border-color 120ms, color 120ms',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-              >
-                Deposit Manager
-              </button>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <button
+                  onClick={() => setDepositManagerOpen(true)}
+                  style={{
+                    background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10,
+                    padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                    transition: 'border-color 120ms, color 120ms',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
+                >
+                  Deposit Manager
+                </button>
+                <a
+                  href="/"
+                  style={{
+                    background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 10,
+                    padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                    textDecoration: 'none', display: 'inline-block',
+                    transition: 'background 120ms',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${PINK}18` }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  Create New Markee
+                </a>
+              </div>
             )}
           </div>
 
           {mounted && hasWallet && (
-            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} loaded={!isLoading} />
+            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} ethPrice={ethPrice} creatorCpm={creatorCpm} buyerCpm={buyerCpm} loaded={!isLoading} />
           )}
         </div>
       </section>

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const sub: NotifySubscription = { email, subscribedAt: now }
     await kv.set(notifyKey(wallet), sub)
-    return NextResponse.json({ email })
+    return NextResponse.json({ email: maskEmail(email) })
   } catch (e) {
     console.error('[moderation/notify] POST error:', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

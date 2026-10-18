@@ -217,7 +217,7 @@ function NotificationEmailRow() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <form onSubmit={e => { e.preventDefault(); save() }} style={{ display: 'flex', gap: 8 }}>
+          <form onSubmit={e => { e.preventDefault(); save() }} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
               type="email"
               value={input}
@@ -226,21 +226,21 @@ function NotificationEmailRow() {
               autoComplete="email"
               style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${err ? '#FF6B6B' : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none' }}
             />
+            {err && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+              <span style={{ color: MUTED, fontSize: 12, marginRight: 4 }}>Free signature, not a transaction.</span>
+              <button type="button" onClick={() => { setEditing(false); setInput(''); setErr(null) }} disabled={saving} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving || !input.trim() || input.trim().toLowerCase() === email}
+                style={{ background: PINK, color: '#060A2A', border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: saving ? 'wait' : 'pointer', opacity: (saving || !input.trim() || input.trim().toLowerCase() === email) ? 0.5 : 1 }}
+              >
+                {saving ? 'Confirm in wallet…' : 'Save'}
+              </button>
+            </div>
           </form>
-          {err && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-            <span style={{ color: MUTED, fontSize: 12, marginRight: 4 }}>Free signature, not a transaction.</span>
-            <button onClick={() => { setEditing(false); setInput(''); setErr(null) }} disabled={saving} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}>
-              Cancel
-            </button>
-            <button
-              onClick={save}
-              disabled={saving || !input.trim() || input.trim().toLowerCase() === email}
-              style={{ background: PINK, color: '#060A2A', border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: saving ? 'wait' : 'pointer', opacity: (saving || !input.trim() || input.trim().toLowerCase() === email) ? 0.5 : 1 }}
-            >
-              {saving ? 'Confirm in wallet…' : 'Save'}
-            </button>
-          </div>
         </div>
       )}
       {err && !editing && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
