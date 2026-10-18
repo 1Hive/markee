@@ -1777,6 +1777,9 @@ export default function AccountPage() {
     if (tab === 'moderation' && !isModerator) setTab('live')
   }, [tab, isLoading, draftBoards.length, archivedBoards.length, isModerator])
 
+  const showingNow = useMemo(() => myMessages.filter(m => m.isTop), [myMessages])
+  const outbid = useMemo(() => myMessages.filter(m => !m.isTop), [myMessages])
+
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
     const bought = myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n)
@@ -1959,9 +1962,9 @@ export default function AccountPage() {
                   {/* Summary line */}
                   {!isLoadingMessages && myMessages.length > 0 && (
                     <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
-                      <span style={{ color: GREEN, fontWeight: 600 }}>{myMessages.filter(m => m.isTop).length} showing now</span>
+                      <span style={{ color: GREEN, fontWeight: 600 }}>{showingNow.length} showing now</span>
                       {' · '}
-                      <span>{myMessages.filter(m => !m.isTop).length} outbid</span>
+                      <span>{outbid.length} outbid</span>
                     </div>
                   )}
 
@@ -1978,24 +1981,24 @@ export default function AccountPage() {
                   ) : (
                     <>
                       {/* Showing now */}
-                      {myMessages.filter(m => m.isTop).length > 0 && (
+                      {showingNow.length > 0 && (
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Showing now</h2>
-                            <CountBadge n={myMessages.filter(m => m.isTop).length} />
+                            <CountBadge n={showingNow.length} />
                           </div>
-                          <BoughtTable items={myMessages.filter(m => m.isTop)} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
+                          <BoughtTable items={showingNow} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
                         </div>
                       )}
 
                       {/* Outbid */}
-                      {myMessages.filter(m => !m.isTop).length > 0 && (
+                      {outbid.length > 0 && (
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT2 }}>Outbid</h2>
-                            <CountBadge n={myMessages.filter(m => !m.isTop).length} />
+                            <CountBadge n={outbid.length} />
                           </div>
-                          <BoughtTable items={myMessages.filter(m => !m.isTop)} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
+                          <BoughtTable items={outbid} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
                         </div>
                       )}
                     </>

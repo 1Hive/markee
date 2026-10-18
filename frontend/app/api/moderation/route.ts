@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
-import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, SCOPES, reviewItem, reviewMessage, type ModerationAction, type ModerationItem } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, SCOPES, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
 import {
   FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
 } from '@/lib/moderation/server'
@@ -27,7 +27,7 @@ const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
@@ -110,7 +110,8 @@ export async function POST(req: NextRequest) {
       if (!item && action === 'flag') {
         const board = boardMap.get(id.toLowerCase())
         if (board) {
-          const review = () => ({ status: 'flagged' as const, reviewedBy: adminAddress, reviewedAt })
+          const pending = (): ScopeReview => ({ status: 'pending', reviewedBy: null, reviewedAt: null })
+          const flagged = (): ScopeReview => ({ status: 'flagged', reviewedBy: adminAddress, reviewedAt })
           item = {
             markee: id.toLowerCase(),
             board,
@@ -121,7 +122,10 @@ export async function POST(req: NextRequest) {
             previousMessage: null,
             blockNumber: '0',
             at: reviewedAt,
-            reviews: { board: review(), site: review() },
+            reviews: {
+              board: held.includes('board') ? flagged() : pending(),
+              site: held.includes('site') ? flagged() : pending(),
+            },
           } satisfies ModerationItem
         }
       }

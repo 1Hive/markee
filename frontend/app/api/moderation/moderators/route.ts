@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS, PATCH',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PATCH',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 

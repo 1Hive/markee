@@ -1,5 +1,6 @@
 // GET  /api/moderation/notify?wallet=0x...
-//   Returns { email: string | null } — the email registered for this wallet.
+//   Returns { email: string | null } — the registered email, masked as u***@example.com so wallet
+//   owners can confirm their subscription without exposing the full address to unauthenticated callers.
 //
 // POST /api/moderation/notify
 //   { wallet, email, signature, timestamp }
@@ -21,13 +22,21 @@ export const dynamic = 'force-dynamic'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function maskEmail(email: string): string {
+  const at = email.indexOf('@')
+  if (at < 0) return '***'
+  const local = email.slice(0, at)
+  const domain = email.slice(at)
+  return local.slice(0, 1) + '***' + (local.length > 1 ? local.slice(-1) : '') + domain
+}
+
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get('wallet')?.toLowerCase()
   if (!wallet || !ADDRESS_PATTERN.test(wallet)) {
     return NextResponse.json({ error: 'Missing or invalid wallet address' }, { status: 400 })
   }
   const sub = await kv.get<NotifySubscription>(notifyKey(wallet)).catch(() => null)
-  return NextResponse.json({ email: sub?.email ?? null })
+  return NextResponse.json({ email: sub?.email ? maskEmail(sub.email) : null })
 }
 
 export async function POST(req: NextRequest) {

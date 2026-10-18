@@ -54,10 +54,16 @@ jobs:
       - name: Email notification message format
         run: npm run test:email-notifications
 
+      - name: Check e2e target
+        id: e2e
+        run: echo "url=${{ secrets.STAGING_URL }}" >> "$GITHUB_OUTPUT"
+
       - name: Install Playwright browsers
+        if: steps.e2e.outputs.url != ''
         run: npx playwright install chromium --with-deps
 
       - name: E2E tests
+        if: steps.e2e.outputs.url != ''
         run: npm run test:e2e
         env:
-          BASE_URL: http://localhost:3000
+          BASE_URL: ${{ secrets.STAGING_URL }}
