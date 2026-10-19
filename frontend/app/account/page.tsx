@@ -310,7 +310,7 @@ function InfoTip({ text }: { text: string }) {
 
 function OverviewStatCard({ n, label, color, loaded }: { n: string; label: string; color: string; loaded: boolean }) {
   if (!loaded) return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '16px 18px' }}>
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '14px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
         <div style={{ width: 80, height: 20, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
@@ -319,12 +319,12 @@ function OverviewStatCard({ n, label, color, loaded }: { n: string; label: strin
     </div>
   )
   return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '16px 18px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <GlowDot size={8} color={color} />
-        <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{n}</span>
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <GlowDot size={6} color={color} />
+        <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n}</span>
       </div>
-      <div style={{ color: TEXT2, fontSize: 12, fontWeight: 600 }}>{label}</div>
+      <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600, marginTop: 4 }}>{label}</div>
     </div>
   )
 }
@@ -335,20 +335,27 @@ function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
 }) {
   const raisedUsd = ethPrice ? Number(raised) / 1e18 * ethPrice : null
   const fmtViews  = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
-  const sectionLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }
-  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }
+  const groupLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: PANEL_LABEL, marginBottom: 10, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 7 }
+  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }
+  const group = (tint: string, extra?: React.CSSProperties): React.CSSProperties => ({ background: `rgba(${tint},0.02)`, border: `1px solid rgba(${tint},0.08)`, borderRadius: 16, padding: 12, ...extra })
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-      <div>
-        <div style={sectionLabel}>Creator</div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 20 }}>
+      <div style={group('248,151,254', { background: 'radial-gradient(120% 140% at 0% 0%, rgba(248,151,254,0.07), rgba(248,151,254,0.01) 60%)' })}>
+        <div style={groupLabel}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 16v5M8 21h8" /></svg>
+          Creator
+        </div>
         <div style={grid2}>
           <OverviewStatCard n={String(active)} label="Active Signs" color={GREEN} loaded={loaded} />
           <OverviewStatCard n={raisedUsd != null ? formatUsd(raisedUsd) : fmtEth(raised)} label="Total Raised" color={PINK} loaded={loaded} />
         </div>
       </div>
-      <div>
-        <div style={sectionLabel}>Buyer</div>
+      <div style={group('124,156,255')}>
+        <div style={groupLabel}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+          Buyer
+        </div>
         <div style={grid2}>
           <OverviewStatCard n={fmtViews(buyerViews)} label="Total Views" color={BLUE} loaded={loaded} />
           <OverviewStatCard n={buyerCpm != null ? formatUsd(buyerCpm) : '—'} label="Cost per 1k Views" color={TEXT2} loaded={loaded} />
@@ -361,10 +368,10 @@ function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
 // ── Section navigation ────────────────────────────────────────────────────────
 type SectionId = 'feed' | 'creator' | 'buyer' | 'settings'
 
-function SidebarNav({ section, setSection, moderationCount }: { section: SectionId; setSection: (s: SectionId) => void; moderationCount: number }) {
+function SidebarNav({ section, setSection, attentionCount }: { section: SectionId; setSection: (s: SectionId) => void; attentionCount: number }) {
   const items: { key: SectionId; label: string; icon: React.ReactNode; badge?: number }[] = [
     {
-      key: 'feed', label: 'Activity Feed', badge: moderationCount > 0 ? moderationCount : undefined,
+      key: 'feed', label: 'Activity Feed', badge: attentionCount > 0 ? attentionCount : undefined,
       icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
     },
     {
@@ -386,8 +393,8 @@ function SidebarNav({ section, setSection, moderationCount }: { section: Section
         onClick={() => setSection(key)}
         style={{
           display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-          padding: '10px 14px', borderRadius: 8, marginBottom: 2,
-          border: 'none', borderLeft: `3px solid ${on ? PINK : 'transparent'}`,
+          padding: '10px 12px', borderRadius: 8, marginBottom: 2,
+          border: 'none', boxShadow: on ? `inset 2px 0 0 ${PINK}` : 'none',
           background: on ? 'rgba(248,151,254,0.08)' : 'transparent',
           color: on ? TEXT : TEXT2,
           fontFamily: SANS, fontSize: 14, fontWeight: on ? 700 : 500,
@@ -397,7 +404,7 @@ function SidebarNav({ section, setSection, moderationCount }: { section: Section
         <span style={{ color: on ? PINK : MUTED, flexShrink: 0 }}>{icon}</span>
         <span style={{ flex: 1 }}>{label}</span>
         {badge !== undefined && badge > 0 && (
-          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: AMBER, background: `${AMBER}1E`, borderRadius: 99, padding: '1px 7px', flexShrink: 0 }}>{badge}</span>
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px', flexShrink: 0 }}>{badge}</span>
         )}
       </button>
     )
@@ -406,7 +413,7 @@ function SidebarNav({ section, setSection, moderationCount }: { section: Section
   return (
     <nav style={{ width: 220, flexShrink: 0, paddingTop: 4 }}>
       {items.map(it => btn(it.key, it.label, it.icon, it.badge))}
-      <hr style={{ border: 'none', borderTop: `1px solid ${BORDER}`, margin: '8px 4px 8px' }} />
+      <div role="separator" style={{ height: 1, background: BORDER, margin: '10px 12px' }} />
       {btn('settings', 'Settings', settingsIcon)}
     </nav>
   )
@@ -2354,7 +2361,7 @@ export default function AccountPage() {
             <SidebarNav
               section={section}
               setSection={setSection}
-              moderationCount={isModerator ? moderationQueue.items.length : 0}
+              attentionCount={(isModerator ? moderationQueue.items.length : 0) + draftBoards.length}
             />
 
             <main style={{ flex: 1, minWidth: 0 }}>
