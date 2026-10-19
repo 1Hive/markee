@@ -160,7 +160,7 @@ export function BoardModerators({ board }: { board: string }) {
         <div>
           {owners.map(o => (
             <Row key={o} address={o} you={o === me}>
-              <Chip>Owner</Chip>
+              <span title="Owners (the admin and creator) can add or remove moderators."><Chip>Owner</Chip></span>
             </Row>
           ))}
           {list.map(m => (
@@ -244,7 +244,7 @@ export function BoardModerators({ board }: { board: string }) {
               )}
 
               <p style={{ margin: '14px 0 0', color: MUTED, fontSize: 12.5, lineHeight: 1.5 }}>
-                Moderators can set up email alerts in their Account Settings.
+                Moderators can set up email alerts in their Settings.
               </p>
             </>
           ) : (

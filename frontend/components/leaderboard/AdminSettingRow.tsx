@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
-import { formatEther, parseEther, type Abi } from 'viem'
+import { formatEther, isAddress, parseEther, type Abi } from 'viem'
 import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
@@ -26,9 +26,15 @@ export interface AdminSettingRowProps {
   /** uint256 wei values shown and entered in ETH ('ethPerMonth' adds a /mo suffix). */
   unit?: 'eth' | 'ethPerMonth'
   ethPrice?: number | null
-  /** 'confirm' (setAdmin-grade, irreversible) requires retyping the value; 'warn' just shows a caption. */
+  /** 'confirm' (setAdmin-grade, irreversible) requires ticking an acknowledgement; 'warn' just shows a caption. */
   dangerous?: 'confirm' | 'warn'
   warning?: string
+  /** Returns an error for the typed value, or null when it can be saved. */
+  validate?: (value: string) => string | null
+  /** Amber note under the current value, e.g. a price far above what bidders pay. */
+  warnIf?: (current: bigint) => string | null
+  /** Label of the acknowledgement checkbox for dangerous="confirm". */
+  acknowledge?: string
   onSuccess?: () => void
 }
 
@@ -55,7 +61,7 @@ function CopyAddr({ addr }: { addr: string }) {
   )
 }
 
-export function AdminSettingRow({ label, contractAddress, abi, getterName, setterName, inputType, unit, ethPrice, dangerous, warning, onSuccess }: AdminSettingRowProps) {
+export function AdminSettingRow({ label, contractAddress, abi, getterName, setterName, inputType, unit, ethPrice, dangerous, warning, validate, warnIf, acknowledge, onSuccess }: AdminSettingRowProps) {
   const { chain } = useAccount()
   const { switchChain, isPending: switching } = useSwitchChain()
   const { data: current, refetch } = useReadContract({
@@ -64,7 +70,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
 
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
-  const [confirmValue, setConfirmValue] = useState('')
+  const [acknowledged, setAcknowledged] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const { writeContractAsync, data: hash, isPending, reset } = useWriteContract()
@@ -75,13 +81,17 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
     refetch()
     setEditing(false)
     setValue('')
-    setConfirmValue('')
+    setAcknowledged(false)
     reset()
     onSuccess?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 
   const isWrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
+  const typed = value.trim()
+  const inputError = !typed ? null
+    : inputType === 'address' && !isAddress(typed) ? 'Enter a full wallet address (0x + 40 characters).'
+    : validate?.(typed) ?? null
   const busy = isPending || isConfirming
   const suffix = unit === 'ethPerMonth' ? 'ETH / mo' : unit === 'eth' ? 'ETH' : inputType === 'uint256' ? 'chars' : null
 
@@ -93,17 +103,15 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
         : unit && typeof current === 'bigint' ? trimEth(current)
         : String(current),
     )
-    setConfirmValue('')
+    setAcknowledged(false)
     setEditing(true)
   }
 
   async function handleSave() {
     setLocalError(null)
     if (isWrongChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
-    if (dangerous === 'confirm' && confirmValue.trim().toLowerCase() !== value.trim().toLowerCase()) {
-      setLocalError('Retyped value does not match -- confirm you have the right address before submitting.')
-      return
-    }
+    const invalid = inputError
+    if (invalid) { setLocalError(invalid); return }
     let arg: unknown = value.trim()
     try {
       if (inputType === 'uint256') arg = unit ? parseEther(value.trim()) : BigInt(value.trim())
@@ -136,7 +144,8 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
     </span>
   )
 
-  let view: React.ReactNode = <span style={{ color: MUTED }}>—</span>
+  const viewWarning = warnIf && typeof current === 'bigint' ? warnIf(current) : null
+  let view: React.ReactNode = <span style={{ color: MUTED }}>-</span>
   if (current !== undefined && current !== null) {
     if (inputType === 'address') view = <CopyAddr addr={String(current)} />
     else if (inputType === 'bool') view = <b style={{ color: TEXT }}>{current ? 'Enabled' : 'Disabled'}</b>
@@ -144,7 +153,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
       const eth = Number(current) / 1e18
       view = (
         <span>
-          <b style={{ color: TEXT }}>{trimEth(current)} ETH{unit === 'ethPerMonth' ? '/mo' : ''}</b>
+          <b style={{ color: viewWarning ? AMBER : TEXT }}>{trimEth(current)} ETH{unit === 'ethPerMonth' ? '/mo' : ''}</b>
           {ethPrice ? <span style={{ color: MUTED }}> · ≈ ${(eth * ethPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> : null}
         </span>
       )
@@ -159,14 +168,17 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
         </div>
       )
     }
-    const ready = !!value.trim() && !!confirmValue.trim()
+    const ready = !!typed && !inputError && acknowledged
     return (
       <div>
         <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: DANGER }}>{label}</div>
         {warning && <p style={{ margin: '8px 0 12px', fontSize: 13, color: TEXT2, lineHeight: 1.55, maxWidth: '52ch' }}>{warning}</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input value={value} onChange={e => setValue(e.target.value)} placeholder="New admin wallet (0x…)" disabled={busy} style={inputStyle} />
-          <input value={confirmValue} onChange={e => setConfirmValue(e.target.value)} placeholder="Retype to confirm" disabled={busy} style={inputStyle} />
+          <input value={value} onChange={e => setValue(e.target.value)} placeholder="New admin wallet (0x…)" disabled={busy} style={{ ...inputStyle, borderColor: inputError ? 'rgba(255,138,155,0.5)' : BORDER }} />
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 4, fontSize: 13, color: TEXT2, cursor: 'pointer', lineHeight: 1.45, fontFamily: SANS }}>
+            <input type="checkbox" checked={acknowledged} onChange={e => setAcknowledged(e.target.checked)} disabled={busy} style={{ marginTop: 2, accentColor: DANGER }} />
+            {acknowledge ?? 'I understand this cannot be undone from here'}
+          </label>
         </div>
         {localError && <p style={{ margin: '8px 0 0', fontSize: 12, color: DANGER }}>{localError}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 14 }}>
@@ -204,7 +216,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
               autoFocus
               value={value}
               onChange={e => setValue(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && value.trim()) handleSave(); if (e.key === 'Escape') setEditing(false) }}
+              onKeyDown={e => { if (e.key === 'Enter' && typed && !inputError) handleSave(); if (e.key === 'Escape') setEditing(false) }}
               placeholder={inputType === 'address' ? '0x…' : undefined}
               disabled={busy}
               style={{ ...inputStyle, paddingRight: suffix ? 70 : 10 }}
@@ -220,8 +232,8 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
               <button onClick={() => { setEditing(false); setLocalError(null) }} style={{ ...ghostBtn, border: 'none', padding: '5px 6px' }}>Cancel</button>
               <button
                 onClick={handleSave}
-                disabled={!value.trim() || switching}
-                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, opacity: value.trim() ? 1 : 0.4 }}
+                disabled={!typed || !!inputError || switching}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: typed && !inputError ? 'pointer' : 'not-allowed', fontFamily: SANS, opacity: typed && !inputError ? 1 : 0.4 }}
               >
                 {isWrongChain ? 'Switch to Base' : 'Save'}
               </button>
@@ -230,6 +242,8 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
         </span>
       </div>
       {editing && warning && dangerous === 'warn' && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{warning}</div>}
+      {editing && inputError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{inputError}</div>}
+      {!editing && viewWarning && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{viewWarning}</div>}
       {localError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{localError}</div>}
     </div>
   )
