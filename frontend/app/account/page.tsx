@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, Pencil, ChevronDown, Info } from 'lucide-react'
+import { Globe2, Github, Zap, Pencil, ChevronDown, Info, Archive, Eye, ArrowUpRight } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
@@ -23,12 +23,11 @@ import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
-import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
+import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
-import { formatEther } from 'viem'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, BoardModerators, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
@@ -41,7 +40,7 @@ const PURP   = '#7B6AF4'
 const GOLD   = '#FFD45E'
 const SILVER = '#C7CCD6'
 const BRONZE = '#CD7F32'
-const AMBER  = '#FFB020'
+const AMBER  = '#FFB547'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BaseLeaderboard {
@@ -760,20 +759,6 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
-// ── Markee name cell (placard icon + the markee's own name) ──────────────────
-function MarkeeNameCell({ lb }: { lb: AnyLeaderboard }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-      <span style={{ width: 32, height: 32, borderRadius: 8, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15, lineHeight: 1 }}>
-        🪧
-      </span>
-      <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {lb.name}
-      </span>
-    </span>
-  )
-}
-
 // ── Section header count pill ─────────────────────────────────────────────────
 function CountBadge({ n }: { n: number }) {
   return (
@@ -856,137 +841,202 @@ function compareBySpentOrRank<T extends { isTop: boolean; rank?: number | null }
   return as > bs ? 1 : as < bs ? -1 : 0
 }
 
-// ── Not Yet Activated card list ───────────────────────────────────────────────
-function ActivationTable({ markees, onActivate, onArchive }: {
-  markees: AnyLeaderboard[]
-  onActivate: (lb: AnyLeaderboard) => void
-  onArchive: (address: string) => void
-}) {
-  const fmtBeneficiary = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
+// ── Your Markees panel ────────────────────────────────────────────────────────
+const MK_COLS = 'minmax(0,1fr) 104px 84px 196px'
+const PANEL_LABEL = '#B4ACF7'
+const SECONDS_PER_MONTH = 60n * 60n * 24n * 30n
+
+function fmtWeiUsd(wei: bigint, ethPrice: number | null): string {
+  const eth = Number(wei) / 1e18
+  return ethPrice ? formatUsd(eth * ethPrice) : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
+}
+
+function PanelHead({ label, n, children }: { label: string; n?: number; children?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {markees.map(lb => (
-        <div
-          key={lb.address}
-          style={{
-            background: BG2,
-            border: `1px solid ${BORDER}`,
-            borderLeft: `4px solid ${AMBER}`,
-            borderRadius: 10,
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-          }}
-        >
-          <span style={{ fontSize: 18, flexShrink: 0 }}>🚩</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 700, color: TEXT, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name}</span>
-              <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-            </div>
-            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>
-              pays out to {fmtBeneficiary(lb.admin)}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <button
-              onClick={() => onArchive(lb.address)}
-              style={{ background: 'transparent', color: MUTED, border: 'none', fontSize: 13, cursor: 'pointer', fontFamily: SANS, padding: '4px 8px' }}
-            >
-              Archive
-            </button>
-            <button
-              onClick={() => onActivate(lb)}
-              style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(248,151,254,0.28)' }}
-            >
-              Activate
-            </button>
-          </div>
-        </div>
-      ))}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '15px 18px', minHeight: 56, boxSizing: 'border-box', borderBottom: '1px solid rgba(138,143,191,0.18)', background: 'rgba(138,143,191,0.05)' }}>
+      <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: PANEL_LABEL }}>{label}</span>
+      {n != null && <span style={{ fontFamily: MONO, fontSize: 11, color: PANEL_LABEL, background: 'rgba(180,172,247,0.12)', borderRadius: 99, padding: '1px 8px' }}>{n}</span>}
+      {children && <span style={{ flex: 1 }} />}
+      {children}
     </div>
   )
 }
 
-// ── Ready to Embed table (website boards with active message but no verified URL) ──
-const EMBED_COLS = '180px 1fr 90px 130px 160px 150px'
-const EMBED_HEADERS_LEFT = ['Board Name', 'Current Message', 'Strategy'] as const
-
-function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
-  const isStreaming = lb.strategy === 'streaming'
-  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
-  const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
-  const hasActiveStream = ratePerSec > 0n
+function SegToggle<K extends string>({ options, value, onChange, label }: {
+  options: { k: K; l: string; n?: number }[]
+  value: K
+  onChange: (k: K) => void
+  label: string
+}) {
   return (
-    <div
-      onClick={() => window.location.href = `/markee/${lb.address}`}
-      style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    <div role="radiogroup" aria-label={label} style={{ display: 'inline-flex', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 3, gap: 2 }}>
+      {options.map(o => {
+        const on = value === o.k
+        return (
+          <button
+            key={o.k} role="radio" aria-checked={on} onClick={() => onChange(o.k)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: on ? 'rgba(248,151,254,0.14)' : 'transparent', color: on ? PINK : TEXT2, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            {o.l}{o.n != null && <span style={{ fontFamily: MONO, fontSize: 11, color: on ? PINK : PANEL_LABEL }}>{o.n}</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ArchiveButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onClick() }}
+      aria-label={label}
+      style={{ height: 32, boxSizing: 'border-box', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, cursor: 'pointer', padding: '0 10px', color: TEXT2, fontSize: 12.5, fontWeight: 600, fontFamily: SANS }}
     >
-      <MarkeeNameCell lb={lb} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
-          <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
-            {lb.topMessage || 'No message yet'}
-          </span>
-        </ModeratedContent>
-        {lb.topMarkeeAddress && (
-          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
+      <Archive size={13} style={{ color: MUTED }} />
+      Archive
+    </button>
+  )
+}
+
+function AttnGroup<T>({ title, sub, items, render }: { title: string; sub: string; items: T[]; render: (item: T) => React.ReactNode }) {
+  const [all, setAll] = useState(false)
+  const hidden = items.length - 3
+  return (
+    <section>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14.5, fontWeight: 700, color: AMBER }}>{title}</span>
+        <span style={{ fontFamily: MONO, fontSize: 11.5, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>
+        <span style={{ fontSize: 12.5, color: MUTED }}>{sub}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(all ? items : items.slice(0, 3)).map(render)}
+        {hidden > 0 && (
+          <button
+            onClick={() => setAll(v => !v)}
+            aria-expanded={all}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', height: 38, boxSizing: 'border-box', background: 'transparent', border: `1px dashed ${BORDER}`, borderRadius: 14, color: TEXT2, fontSize: 13, fontWeight: 600, fontFamily: SANS, cursor: 'pointer' }}
+          >
+            {all ? 'Show fewer' : `Show ${hidden} more ${hidden === 1 ? 'Markee' : 'Markees'}`}
+            <ChevronDown size={12} style={{ transform: all ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
+          </button>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
-      </div>
-      <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <div style={{ textAlign: 'right' }}>
-          {hasActiveStream
-            ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
-            : <SpentCell wei={BigInt(lb.totalFundsRaw)} ethPrice={ethPrice} />
-          }
-        </div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={e => { e.stopPropagation(); onEmbed(lb) }}
-          style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-        >
-          Add to Your Site
-        </button>
-      </div>
+    </section>
+  )
+}
+
+function AttnMarkeeItem({ lb, meta, cta, onCta, onArchive }: { lb: AnyLeaderboard; meta: string; cta: string; onCta: () => void; onArchive: () => void }) {
+  return (
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name || fmtAddr(lb.address)}</span>
+      <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+      <span style={{ fontSize: 12, color: MUTED }}>{meta}</span>
+      <span style={{ flex: 1 }} />
+      <ArchiveButton onClick={onArchive} label={`Archive ${lb.name || 'Markee'}`} />
+      <button
+        onClick={onCta}
+        style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
+      >
+        {cta}
+      </button>
     </div>
   )
 }
 
-function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderboard[]; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
+function MarkeeTableHead() {
+  const th = (label: string, right?: boolean) => (
+    <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED, textAlign: right ? 'right' : 'left' }}>{label}</span>
+  )
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '11px 18px' }}>
+      {th('Shown on')}{th('Winning bid', true)}{th('Raised', true)}<span />
+    </div>
+  )
+}
+
+function MarkeeRow({ lb, archived, views, ethPrice, activeAddress, onAddToSite, onRestore, onSuccess }: {
+  lb: AnyLeaderboard
+  archived?: boolean
+  views: number
+  ethPrice: number | null
+  activeAddress: string | undefined
+  onAddToSite: () => void
+  onRestore: () => void
+  onSuccess: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const isStreaming = lb.strategy === 'streaming'
+  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
+  const raised = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
+  const topBid = BigInt(lb.topFundsAddedRaw ?? '0')
+  const amount = (color: string = TEXT): React.CSSProperties => ({ textAlign: 'right', fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' })
+  const dash = <span style={{ textAlign: 'right', color: MUTED, fontSize: 12.5 }}>–</span>
+  const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
 
   return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 760, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {EMBED_HEADERS_LEFT.map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
-          <span />
-        </div>
-        {sorted.map(lb => (
-          <ReadyToEmbedRow key={lb.address} lb={lb} onEmbed={onEmbed} ethPrice={ethPrice} />
-        ))}
+    <div>
+      <div
+        onClick={archived ? undefined : () => setExpanded(v => !v)}
+        onMouseEnter={e => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
+        onMouseLeave={e => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        style={{
+          display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '12px 18px', alignItems: 'center',
+          borderTop: `1px solid ${BORDER}`, cursor: archived ? 'default' : 'pointer', opacity: archived ? 0.7 : 1,
+          background: expanded ? 'rgba(248,151,254,0.06)' : 'transparent', boxShadow: expanded ? `inset 2px 0 0 ${PINK}` : 'none',
+          transition: 'background 120ms',
+        }}
+      >
+        <span style={{ minWidth: 0 }}>
+          {archived
+            ? <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name || fmtAddr(lb.address)}</span>
+            : <span style={{ display: 'flex', minWidth: 0 }}><ServedOnCell lb={lb} onAddToSite={onAddToSite} /></span>}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
+            <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+            {archived
+              ? <span>Archived</span>
+              : <span title="Views" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <Eye size={12} style={{ color: MUTED }} />
+                  <span style={{ fontFamily: MONO, fontSize: 11.5, color: views ? TEXT2 : MUTED }}>{views.toLocaleString()}</span>
+                </span>}
+          </span>
+        </span>
+
+        {topBid === 0n ? dash
+          : isStreaming ? (ratePerSec > 0n
+            ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                <GlowDot size={7} color={GREEN} />
+                <span style={amount(GREEN)}>{fmtWeiUsd(ratePerSec * SECONDS_PER_MONTH, ethPrice)}<span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}>/mo</span></span>
+              </span>
+            : <span style={{ textAlign: 'right', fontSize: 12, color: MUTED }}>No active bids</span>)
+          : <span style={amount()}>{fmtWeiUsd(topBid, ethPrice)}</span>}
+
+        {topBid === 0n ? dash : <span style={amount()}>{fmtWeiUsd(raised, ethPrice)}</span>}
+
+        <span style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
+          {archived ? (
+            <button onClick={e => { e.stopPropagation(); onRestore() }} style={ghostBtn}>Restore</button>
+          ) : (
+            <>
+              <a href={`/markee/${lb.address}`} onClick={e => e.stopPropagation()} style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                View Markee <ArrowUpRight size={11} />
+              </a>
+              <button
+                onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
+                aria-expanded={expanded}
+                style={{ ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700, background: expanded ? `${PINK}14` : 'transparent' }}
+              >
+                Manage
+              </button>
+            </>
+          )}
+        </span>
       </div>
+      {expanded && <LiveMarkeeAdminPanel lb={lb} activeAddress={activeAddress} onSuccess={onSuccess} />}
     </div>
   )
 }
 
 // ── Active Markees table ──────────────────────────────────────────────────────
-const ACT_COLS = '200px 110px 1fr 116px'
-
 function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: () => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -1151,113 +1201,6 @@ function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: (
 }
 
 const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
-const ACTIVE_HEADERS_LEFT = ['Served on', 'Current Message'] as const
-
-// Same formulas the marketplace's price-to-change button uses (priceToOvertake/monthlyRateLabel),
-// applied here to My Live Markees rows so the owner sees the identical price a visitor would.
-function priceToOvertakeLive(lb: AnyLeaderboard): bigint {
-  return BigInt(lb.topFundsAddedRaw || '0') + 1_000_000_000_000_000n
-}
-function priceButtonLabel(lb: AnyLeaderboard, ethPrice: number | null): string {
-  if (lb.strategy === 'streaming') {
-    const monthlyEth = parseFloat(formatEther(BigInt(lb.topRateRaw || '0') * 60n * 60n * 24n * 30n))
-    return ethPrice ? `${formatUsd(monthlyEth * ethPrice)}/mo` : `${monthlyEth.toFixed(4)} ETH/mo`
-  }
-  const priceEth = parseFloat(formatEther(priceToOvertakeLive(lb)))
-  return ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
-}
-
-function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
-  const eth = Number(balance) / 1e18
-  const usd = ethPrice ? eth * ethPrice : null
-  if (isLive) {
-    return (
-      <div style={{ textAlign: 'right' as const }}>
-        <div style={{ fontFamily: MONO, fontSize: 11.5, color: BLUE, fontWeight: 600, letterSpacing: 0.3 }}>
-          {formatLiveEth(balance, 10)} ETH
-        </div>
-        {usd !== null
-          ? <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>
-          : <div style={{ fontFamily: MONO, fontSize: 10, color: GREEN, marginTop: 1 }}>▲ live</div>
-        }
-      </div>
-    )
-  }
-  const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
-  return (
-    <div style={{ textAlign: 'right' as const }}>
-      <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
-      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>}
-    </div>
-  )
-}
-
-function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, ethPrice }: {
-  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; ethPrice: number | null
-}) {
-  const isStreaming = lb.strategy === 'streaming'
-  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
-  const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
-  const hasActiveStream = ratePerSec > 0n
-  return (
-    <div
-      onClick={() => window.location.href = `/markee/${lb.address}`}
-      style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '13px 16px', borderBottom: expanded ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-    >
-      <ServedOnCell lb={lb} onAddToSite={onAddToSite} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
-          <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
-            {lb.topMessage || 'No message yet'}
-          </span>
-        </ModeratedContent>
-        {lb.topMarkeeAddress && (
-          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
-        )}
-      </div>
-      <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ textAlign: 'right' as const }}>
-        {hasActiveStream
-          ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
-          : <span style={{ fontFamily: MONO, fontSize: 12.5, color: TEXT2 }}>{priceButtonLabel(lb, ethPrice)}</span>
-        }
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-        <button
-          onClick={onToggleExpand}
-          aria-expanded={expanded}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, background: expanded ? `${PINK}14` : 'transparent', color: expanded ? PINK : TEXT2, border: `1px solid ${expanded ? 'rgba(248,151,254,0.35)' : BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms, background 120ms' }}
-        >
-          Manage →
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// Wraps ActiveTableRow with the click-to-expand admin panel -- replaces the old bare "Manage" button
-// (View leaderboard / Edit website info / Embed) entirely; the previously unexposed admin-only
-// contract settings now live in the panel below, gated to the connected admin.
-function LiveMarkeeAdminRow({ lb, onAddToSite, ethPrice, activeAddress, onSuccess }: {
-  lb: AnyLeaderboard
-  onAddToSite: () => void
-  ethPrice: number | null
-  activeAddress: string | undefined
-  onSuccess: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <div>
-      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} ethPrice={ethPrice} />
-      {expanded && (
-        <LiveMarkeeAdminPanel lb={lb} activeAddress={activeAddress} onSuccess={onSuccess} />
-      )}
-    </div>
-  )
-}
 
 function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
   lb: AnyLeaderboard
@@ -1273,7 +1216,7 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
   const contractAddress = lb.address as `0x${string}`
 
   return (
-    <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div onClick={e => e.stopPropagation()} style={{ borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div>
         <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Settings</div>
         {!isAdmin ? (
@@ -1317,87 +1260,6 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
           lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
           boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
       {!isLegacyFixed && <BoardModerators board={lb.address} />}
-    </div>
-  )
-}
-
-function ActiveTable({ markees, onAddToSite, ethPrice, activeAddress, onSuccess }: {
-  markees: AnyLeaderboard[]
-  onAddToSite: (lb: AnyLeaderboard) => void
-  ethPrice: number | null
-  activeAddress: string | undefined
-  onSuccess: () => void
-}) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
-
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 700, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {ACTIVE_HEADERS_LEFT.map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Winning Bid</span>
-          <span />
-        </div>
-        {sorted.map(lb => (
-          <LiveMarkeeAdminRow
-            key={lb.address}
-            lb={lb}
-            onAddToSite={() => onAddToSite(lb)}
-            ethPrice={ethPrice}
-            activeAddress={activeAddress}
-            onSuccess={onSuccess}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Archived Markees table ────────────────────────────────────────────────────
-// Most archived boards were never activated, so "Served on"/"Current message"/"Total raised" are
-// almost always empty here -- Markee Name + Beneficiary (the same fmtAddr(lb.admin) pattern
-// ActivationTable already uses; admin() is the beneficiary here, not the creator) is the info that's
-// actually meaningful for a board someone set aside before it ever went live.
-const ARCHIVED_COLS = '1fr 220px 116px'
-
-function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
-  const fmtAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 500, background: BG2, opacity: 0.8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Markee Name', 'Beneficiary Address', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-        </div>
-        {markees.map(lb => (
-          <div
-            key={lb.address}
-            onClick={() => window.location.href = `/markee/${lb.address}`}
-            style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <MarkeeNameCell lb={lb} />
-            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtAddr(lb.admin)}</span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={e => { e.stopPropagation(); onUnarchive(lb.address) }}
-                style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${MUTED}66`; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = MUTED }}
-              >
-                Unarchive
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
@@ -1875,6 +1737,7 @@ export default function AccountPage() {
   // UI state
   const [section, setSection]                 = useState<SectionId>('creator')
   const [archived, setArchived]               = useState<string[]>([])
+  const [markeeView, setMarkeeView]           = useState<'active' | 'archived'>('active')
   // "Archive" is purely a local dashboard preference -- there's no on-chain or backend concept of
   // it -- so without persisting it, every reload silently un-archives everything. Keyed per wallet
   // in localStorage; the ref tracks which wallet's list is currently loaded so the save effect below
@@ -2138,12 +2001,18 @@ export default function AccountPage() {
   const archivedBoards = useMemo(() =>
     allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
 
+  const awaitingSiteBoards = useMemo(() =>
+    awaitingVerification.filter(lb => !archived.includes(lb.address)), [awaitingVerification, archived])
+
+  const sortedActiveBoards = useMemo(() =>
+    [...activeBoards].sort((a, b) => compareByRaised('raised', b, a)), [activeBoards])
+
   // draftBoards is exactly the "Pending Setup" tab's contents (awaitingVerification + inactive,
   // both already archived-filtered) -- used here only as its count/visibility source; the tab body
   // itself still renders the two underlying memos directly (see the JSX below) so nothing about
   // their own filtering changes.
   const draftBoards = useMemo(() =>
-    [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
+    [...awaitingSiteBoards, ...inactiveBoards], [awaitingSiteBoards, inactiveBoards])
 
   // Boards the wallet created, plus any it was added to as a moderator (the queue lists those).
   const isModerator = isGlobalModerator || moderationQueue.boards.length > 0
@@ -2350,90 +2219,92 @@ export default function AccountPage() {
                       { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '—', delta: 7.2 },
                     ]}
                   />
-                  {/* Setup / pending */}
-                  {!isLoading && draftBoards.length > 0 && (
-                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-                      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: AMBER }}>Needs Setup</span>
-                        <span style={{ fontFamily: MONO, fontSize: 12, color: AMBER, background: `${AMBER}1E`, borderRadius: 99, padding: '1px 8px' }}>{draftBoards.length}</span>
-                      </div>
-                      <div style={{ padding: '20px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-                          {inactiveBoards.length > 0 && (
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: AMBER }}>Not Yet Activated</h2>
-                                <CountBadge n={inactiveBoards.length} />
-                              </div>
-                              <ActivationTable
-                                markees={inactiveBoards}
-                                onActivate={lb => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
-                                onArchive={addr => setArchived(prev => [...prev, addr])}
-                              />
-                            </div>
-                          )}
-                          {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: PINK }}>Ready to Add to Your Site</h2>
-                                <CountBadge n={awaitingVerification.filter(lb => !archived.includes(lb.address)).length} />
-                              </div>
-                              <ReadyToEmbedTable
-                                markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
-                                onEmbed={lb => { setEmbedTarget(lb); setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website') }}
-                                ethPrice={ethPrice}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Active markees */}
                   <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-                    <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Your Markees</span>
-                      <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '1px 8px' }}>{activeBoards.length}</span>
-                    </div>
-                    {isLoading ? (
-                      <div style={{ overflow: 'auto' }}>
-                        <div style={{ minWidth: 640, background: BG2 }}>
-                          {[1, 2, 3].map(i => (
-                            <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                    <PanelHead label="Your Markees" n={draftBoards.length + activeBoards.length}>
+                      <SegToggle
+                        label="Show"
+                        value={markeeView}
+                        onChange={setMarkeeView}
+                        options={[
+                          { k: 'active', l: 'Active', n: draftBoards.length + activeBoards.length },
+                          { k: 'archived', l: 'Archived', n: archivedBoards.length },
+                        ]}
+                      />
+                      <Link href="/raise-funding" style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                        Create New Markee
+                      </Link>
+                    </PanelHead>
+
+                    {!isLoading && markeeView === 'active' && draftBoards.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '18px 18px 20px', borderBottom: `1px solid ${BORDER}` }}>
+                        {inactiveBoards.length > 0 && (
+                          <AttnGroup
+                            title="Not Yet Activated"
+                            sub="Activate to set the first message."
+                            items={inactiveBoards}
+                            render={lb => (
+                              <AttnMarkeeItem
+                                key={lb.address}
+                                lb={lb}
+                                meta={`Pays out to ${fmtAddr(lb.admin)}`}
+                                cta="Activate"
+                                onCta={() => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
+                                onArchive={() => setArchived(prev => [...prev, lb.address])}
+                              />
+                            )}
+                          />
+                        )}
+                        {awaitingSiteBoards.length > 0 && (
+                          <AttnGroup
+                            title="Not on a Site Yet"
+                            sub="Add the embed to your site to go live."
+                            items={awaitingSiteBoards}
+                            render={lb => (
+                              <AttnMarkeeItem
+                                key={lb.address}
+                                lb={lb}
+                                meta={`${fmtWeiUsd(BigInt(lb.totalFundsRaw), ethPrice)} raised`}
+                                cta="Add to Your Site"
+                                onCta={() => handleOpenAddToSite(lb)}
+                                onArchive={() => setArchived(prev => [...prev, lb.address])}
+                              />
+                            )}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ overflowX: 'auto' }}>
+                      <div style={{ minWidth: 620 }}>
+                        <MarkeeTableHead />
+                        {isLoading ? (
+                          [1, 2, 3].map(i => (
+                            <div key={i} style={{ display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '16px 18px', borderTop: `1px solid ${BORDER}` }}>
                               {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
                             </div>
-                          ))}
-                        </div>
+                          ))
+                        ) : (markeeView === 'active' ? sortedActiveBoards : archivedBoards).length === 0 ? (
+                          <div style={{ padding: '22px 18px', borderTop: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>
+                            {markeeView === 'active' ? 'No live Markees yet.' : 'No archived Markees.'}
+                          </div>
+                        ) : (
+                          (markeeView === 'active' ? sortedActiveBoards : archivedBoards).map(lb => (
+                            <MarkeeRow
+                              key={lb.address}
+                              lb={lb}
+                              archived={markeeView === 'archived'}
+                              views={boardViews[lb.address.toLowerCase()] ?? 0}
+                              ethPrice={ethPrice}
+                              activeAddress={activeAddress}
+                              onAddToSite={() => handleOpenAddToSite(lb)}
+                              onRestore={() => setArchived(prev => prev.filter(a => a !== lb.address))}
+                              onSuccess={() => activeAddress && fetchAll(activeAddress)}
+                            />
+                          ))
+                        )}
                       </div>
-                    ) : activeBoards.length === 0 ? (
-                      <div style={{ padding: '40px 24px' }}>
-                        <Empty icon="🪧" title="No live Markees yet" body="Once a Markee is funded and integrated, it shows up here fully live." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
-                      </div>
-                    ) : (
-                      <ActiveTable
-                        markees={activeBoards}
-                        onAddToSite={handleOpenAddToSite}
-                        ethPrice={ethPrice}
-                        activeAddress={activeAddress}
-                        onSuccess={() => activeAddress && fetchAll(activeAddress)}
-                      />
-                    )}
-                  </div>
-
-                  {/* Archived markees */}
-                  {!isLoading && archivedBoards.length > 0 && (
-                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-                      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Archived</span>
-                        <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '1px 8px' }}>{archivedBoards.length}</span>
-                      </div>
-                      <ArchivedTable
-                        markees={archivedBoards}
-                        onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
-                      />
                     </div>
-                  )}
+                  </div>
 
                   {/* Moderation */}
                   {isModerator && (
