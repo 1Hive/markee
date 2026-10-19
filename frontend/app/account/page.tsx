@@ -6,8 +6,9 @@ import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, ChevronDown, Info, Archive, Eye, ArrowUpRight, ExternalLink, Link2 } from 'lucide-react'
-import { useSignMessage } from 'wagmi'
+import { useAccount, useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
+import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
@@ -1157,6 +1158,8 @@ function IntegrationRow({ board, it, featured, views, canRemove, onRemoved }: { 
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { signMessageAsync } = useSignMessage()
+  const { address } = useAccount()
   const lockedFile = !!it.file?.verified
 
   const remove = async () => {
@@ -1165,11 +1168,20 @@ function IntegrationRow({ board, it, featured, views, canRemove, onRemoved }: { 
     try {
       const res = it.file
         ? await fetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: it.file.repoFullName, file: it.file.filePath })}`, { method: 'DELETE' })
-        : await fetch('/api/openinternet/meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url }) })
+        : await (async () => {
+            const timestamp = Math.floor(Date.now() / 1000)
+            const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, board, { removeVerifiedUrl: it.url }, timestamp) })
+            return fetch('/api/openinternet/meta', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url, owner: address, signature, timestamp }),
+            })
+          })()
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
       onRemoved()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not remove this integration.')
+      const message = e instanceof Error ? e.message : ''
+      if (!/reject|denied/i.test(message)) setError(message || 'Could not remove this integration.')
       setBusy(false)
       setConfirming(false)
     }
