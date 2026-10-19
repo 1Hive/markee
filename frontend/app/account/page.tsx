@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, Pencil, ChevronDown, Info, Archive, Eye, ArrowUpRight } from 'lucide-react'
+import { Globe2, Github, Zap, ChevronDown, Info, Archive, Eye, ArrowUpRight } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
@@ -21,11 +21,11 @@ import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
-import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
+import { DepositManagerModal, type DepositManagerStream } from '@/components/modals/DepositManagerModal'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
+import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway } from '@/lib/superfluid/streaming'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -37,9 +37,6 @@ import type { Abi } from 'viem'
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const SANS   = 'Manrope, system-ui, sans-serif'
 const PURP   = '#7B6AF4'
-const GOLD   = '#FFD45E'
-const SILVER = '#C7CCD6'
-const BRONZE = '#CD7F32'
 const AMBER  = '#FFB547'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -759,86 +756,10 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
-// ── Section header count pill ─────────────────────────────────────────────────
-function CountBadge({ n }: { n: number }) {
-  return (
-    <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: TEXT2, background: 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '2px 10px' }}>{n}</span>
-  )
-}
-
-// ── Sortable column header ────────────────────────────────────────────────────
-function SortHead({ label, col, sortKey, sortDir, onSort, align = 'right' }: { label: string; col: string; sortKey: string; sortDir: string; onSort: (col: string) => void; align?: 'left' | 'right' }) {
-  const active = sortKey === col
-  return (
-    <button
-      onClick={() => onSort(col)}
-      style={{
-        background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
-        display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' as const,
-        justifySelf: align === 'right' ? 'end' : 'start',
-        fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const,
-        color: active ? PINK : MUTED, transition: 'color 120ms',
-      }}
-    >
-      <span>{label}</span>
-      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1 }}>
-        {active ? (sortDir === 'asc' ? '▲' : '▼') : '▾'}
-      </span>
-    </button>
-  )
-}
-
-// ── Shared table-sort state machine ───────────────────────────────────────────
-// Every table below (Active/Archived/ReadyToEmbed/Bought/Funded) had its own copy of this exact
-// sortKey/sortDir/onSort/sorted state -- pulled out once so the five don't drift independently.
-// compareAscending should return the same sign convention as Array.sort's comparator when sorting
-// ascending; direction (and the desc-vs-asc default when a column is first clicked) is applied here.
-function useSortableTable<T>(
-  items: T[],
-  initialKey: string,
-  compareAscending: (key: string, a: T, b: T) => number,
-  opts: { initialDir?: 'asc' | 'desc'; ascByDefault?: (key: string) => boolean } = {},
-) {
-  const { initialDir = 'desc', ascByDefault } = opts
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: initialKey, dir: initialDir })
-
-  const onSort = useCallback((col: string) => {
-    setSort(prev => ({
-      key: col,
-      dir: prev.key === col ? (prev.dir === 'asc' ? 'desc' : 'asc') : (ascByDefault?.(col) ? 'asc' : 'desc'),
-    }))
-  }, [ascByDefault])
-
-  const sorted = useMemo(() => {
-    const dir = sort.dir === 'asc' ? 1 : -1
-    return [...items].sort((a, b) => compareAscending(sort.key, a, b) * dir)
-  // compareAscending intentionally omitted: callers pass an inline function (a fresh reference every
-  // render), and it only ever closes over field-accessor logic, never over changing outer state --
-  // including it would re-sort on every render instead of only when the data or sort actually change.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, sort])
-
-  return { sortKey: sort.key, sortDir: sort.dir, onSort, sorted }
-}
-
 function compareByRaised<T extends { totalFundsRaw: string }>(_key: string, a: T, b: T): number {
   const at = BigInt(a.totalFundsRaw || '0')
   const bt = BigInt(b.totalFundsRaw || '0')
   return at > bt ? 1 : at < bt ? -1 : 0
-}
-
-const ascByDefaultRank = (col: string) => col === 'rank'
-
-function compareBySpentOrRank<T extends { isTop: boolean; rank?: number | null }>(
-  key: string, a: T, b: T, spent: (x: T) => bigint,
-): number {
-  if (key === 'rank') {
-    const ar = (a.isTop ? 1 : a.rank) ?? Infinity
-    const br = (b.isTop ? 1 : b.rank) ?? Infinity
-    return ar - br
-  }
-  const as = spent(a), bs = spent(b)
-  return as > bs ? 1 : as < bs ? -1 : 0
 }
 
 // ── Your Markees panel ────────────────────────────────────────────────────────
@@ -851,11 +772,12 @@ function fmtWeiUsd(wei: bigint, ethPrice: number | null): string {
   return ethPrice ? formatUsd(eth * ethPrice) : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
 }
 
-function PanelHead({ label, n, children }: { label: string; n?: number; children?: React.ReactNode }) {
+function PanelHead({ label, n, sub, children }: { label: string; n?: number; sub?: string; children?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '15px 18px', minHeight: 56, boxSizing: 'border-box', borderBottom: '1px solid rgba(138,143,191,0.18)', background: 'rgba(138,143,191,0.05)' }}>
       <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: PANEL_LABEL }}>{label}</span>
       {n != null && <span style={{ fontFamily: MONO, fontSize: 11, color: PANEL_LABEL, background: 'rgba(180,172,247,0.12)', borderRadius: 99, padding: '1px 8px' }}>{n}</span>}
+      {sub && <span style={{ fontSize: 12.5, color: MUTED }}>{sub}</span>}
       {children && <span style={{ flex: 1 }} />}
       {children}
     </div>
@@ -1264,82 +1186,6 @@ function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
   )
 }
 
-// Stream status type/icon now live in board-detail/shared.tsx (also used by StreamSignModal's
-// "Manage Your Stream" view) -- imported at the top of this file.
-
-// ── Flow rate cell (wei/sec → ETH/mo blue top, $USD/mo grey bottom) ──────────
-function FlowRateCell({ weiPerSec, ethPrice, streamStatus }: {
-  weiPerSec: string | undefined
-  ethPrice: number | null
-  streamStatus?: StreamStatus
-}) {
-  const rate = BigInt(weiPerSec ?? '0')
-  if (rate === 0n) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        {streamStatus && <StreamStatusIcon status={streamStatus} />}
-        <span style={{ color: MUTED }}>—</span>
-      </div>
-    )
-  }
-  const ethPerMonth = Number(rate) / 1e18 * 60 * 60 * 24 * 30
-  const ethStr = ethPerMonth < 0.001 ? '< 0.001 ETH/mo' : `${ethPerMonth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
-  const usd = ethPrice ? ethPerMonth * ethPrice : null
-  return (
-    <div style={{ textAlign: 'right' as const }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        {streamStatus && <StreamStatusIcon status={streamStatus} />}
-        <span style={{ fontFamily: MONO, fontSize: 12, color: BLUE, fontWeight: 600 }}>{ethStr}</span>
-      </div>
-      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 2 }}>${usd.toFixed(2)}/mo</div>}
-    </div>
-  )
-}
-
-// ── ETH + USD stacked cell ────────────────────────────────────────────────────
-function SpentCell({ wei, ethPrice }: { wei: bigint; ethPrice: number | null }) {
-  const eth = Number(wei) / 1e18
-  const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH`
-  const usd = ethPrice ? eth * ethPrice : null
-  return (
-    <div style={{ textAlign: 'right' as const }}>
-      <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
-      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>}
-    </div>
-  )
-}
-
-// ── Ranking cell ──────────────────────────────────────────────────────────────
-function rankTierColor(r: number): string {
-  if (r === 1) return GOLD
-  if (r === 2) return SILVER
-  if (r === 3) return BRONZE
-  return MUTED
-}
-
-function RankingCell({ isTop, rank }: {
-  isTop: boolean; rank: number | null | undefined
-}) {
-  const effectiveRank = isTop ? 1 : (rank ?? null)
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-      {effectiveRank != null
-        ? <span style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-            border: `1.5px solid ${rankTierColor(effectiveRank)}`,
-            color: rankTierColor(effectiveRank),
-            fontFamily: MONO, fontSize: 12, fontWeight: 800,
-          }}>{effectiveRank}</span>
-        : <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>—</span>
-      }
-    </div>
-  )
-}
-
-// ── Messages I've Bought table ────────────────────────────────────────────────
-const MSG_COLS = '190px 1fr 90px 120px 170px 100px'
-
 // Bought/Funded rows are messages on OTHER people's leaderboards -- "Markee Name" (the creator's own
 // label for their board) isn't meaningful to a buyer the way it is on the creator's own dashboard
 // tabs. What matters here is where the board is actually served, same as every other table on this
@@ -1377,133 +1223,268 @@ function ServedOnOrAddToSite({ m, onAddToSite }: { m: MyMessage | FundedMessage;
   return <ServedOnCell lb={lb} />
 }
 
-function BoughtTable({ items, ethPrice, onEdit, onAddFunds, onAddToSite }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void; onAddToSite: (m: MyMessage) => void }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(
-    items, 'spent',
-    (key, a, b) => compareBySpentOrRank(key, a, b, x => x.totalFundsAdded),
-    { ascByDefault: ascByDefaultRank },
+// ── Stream Balance card ───────────────────────────────────────────────────────
+function StreamBalanceCard({ activeAddress, ethPrice, refreshKey, onDeposit, onWithdraw }: {
+  activeAddress: string
+  ethPrice: number | null
+  refreshKey: number
+  onDeposit: () => void
+  onWithdraw: () => void
+}) {
+  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[] } | null>(null)
+  const [snapshotAt, setSnapshotAt] = useState(() => Date.now())
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/streaming/deposit-manager?wallet=${activeAddress}${refreshKey ? '&bust=1' : ''}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !cancelled) { setData(d); setSnapshotAt(Date.now()) } })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [activeAddress, refreshKey])
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const streams = data?.streams ?? []
+  const winning = streams.filter(s => s.isTop)
+  const liveRate = winning.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+  const totalRate = streams.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+  const balanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
+  const drained = liveRate * BigInt(Math.max(0, Math.floor((now - snapshotAt) / 1000)))
+  const balance = balanceRaw > drained ? balanceRaw - drained : 0n
+  const runway = runwaySeconds(balance, liveRate)
+  const tier = runwayTier(runway)
+  const label: React.CSSProperties = { fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }
+  const perMo = (rate: bigint, color: string) => (
+    <span style={{ fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' }}>
+      {fmtWeiUsd(rate * SECONDS_PER_MONTH, ethPrice)}<span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}>/mo</span>
+    </span>
   )
 
   return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 800, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Served On', 'Your Message', 'Strategy'] as const).map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+      <PanelHead label="Stream Balance" sub="Pays for your Rent bids while they're winning." />
+      <div style={{ padding: '16px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 160px' }}>
+            <div style={label}>Balance</div>
+            <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: TEXT, marginTop: 4 }}>
+              {data ? (Number(balance) / 1e18).toFixed(6) : '—'} <span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}>ETHx</span>
+            </div>
           </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          <div style={{ flex: '1 1 160px' }}>
+            <div style={label}>Runs Out In</div>
+            <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: liveRate > 0n && tier !== 'normal' ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+              {!data ? '—' : liveRate > 0n ? formatRunway(runway) : 'Not streaming'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onDeposit} style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>Deposit</button>
+            <button onClick={onWithdraw} style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>Withdraw</button>
           </div>
         </div>
-        {sorted.map(m => {
-          const strategy = m.strategy ?? 'fixed'
-          const isStreaming = strategy === 'streaming'
-          const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
-          return (
-            <div
-              key={m.address}
-              onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-              style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            >
-              <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', minWidth: 0 }}>
-                <button
-                  onClick={e => { e.stopPropagation(); onEdit(m) }}
-                  title="Edit message"
-                  style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 6px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = PINK; el.style.borderColor = `${PINK}66` }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
-                >
-                  <Pencil size={11} />
-                </button>
-                <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
-                  <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic', display: 'block' }}>{m.message || 'No message'}</span>
-                </ModeratedContent>
-                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
-              <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                <div style={{ textAlign: 'right' }}>
-                  {isStreaming
-                    ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                    : <span style={{ color: MUTED }}>—</span>
-                  }
-                </div>
-              </div>
-              <RankingCell isTop={m.isTop} rank={m.rank} />
-            </div>
-          )
-        })}
+        <div style={{ height: 6, borderRadius: 99, background: 'rgba(138,143,191,0.15)', marginTop: 14, overflow: 'hidden' }}>
+          <div style={{ width: `${liveRate > 0n ? runwayProgressPct(runway) : 0}%`, height: '100%', borderRadius: 99, background: tier === 'normal' ? `linear-gradient(90deg, ${PINK}, ${PURP})` : AMBER, transition: 'width 400ms ease' }} />
+        </div>
       </div>
+      {streams.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', borderTop: `1px solid ${BORDER}` }}>
+          {[
+            { l: 'Streaming Now', v: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{liveRate > 0n && <GlowDot size={7} color={GREEN} />}{perMo(liveRate, liveRate > 0n ? GREEN : TEXT2)}</span> },
+            { l: 'Winning', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{winning.length}</span> },
+            { l: 'Monthly Bid Total', v: perMo(totalRate, TEXT) },
+            { l: 'Rent Bids', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{streams.length}</span> },
+          ].map((c, i) => (
+            <div key={c.l} style={{ padding: '12px 18px', borderLeft: i ? `1px solid ${BORDER}` : 'none' }}>
+              <div style={label}>{c.l}</div>
+              <div style={{ marginTop: 6, display: 'flex' }}>{c.v}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Messages I've Funded table ────────────────────────────────────────────────
-const FUNDED_COLS = '190px 1fr 90px 120px 170px 100px'
+// ── Your Messages panel ───────────────────────────────────────────────────────
+const MSG_COLS = 'minmax(0,1fr) 64px 96px 64px 104px'
+type MsgSortKey = 'views' | 'bid' | 'cpm'
 
-function FundedTable({ items, ethPrice, onAddFunds, onAddToSite }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void; onAddToSite: (m: FundedMessage) => void }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(
-    items, 'spent',
-    (key, a, b) => compareBySpentOrRank(key, a, b, x => BigInt(x.totalContributed)),
-    { ascByDefault: ascByDefaultRank },
+interface MsgRow {
+  m: MyMessage | FundedMessage
+  own: boolean
+  bid: bigint
+  spent: bigint
+  top: bigint
+  rate: bigint
+  views: number
+}
+
+function SortTh({ k, label, sort, onSort }: { k: MsgSortKey; label: string; sort: { k: MsgSortKey | null; dir: 'asc' | 'desc' }; onSort: (k: MsgSortKey) => void }) {
+  const on = sort.k === k
+  return (
+    <button
+      onClick={() => onSort(k)}
+      aria-sort={on ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none'}
+      style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: on ? TEXT : MUTED, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, width: '100%' }}
+    >
+      {label}
+      <ChevronDown size={10} style={{ opacity: on ? 1 : 0.35, transform: on && sort.dir === 'asc' ? 'rotate(180deg)' : 'none' }} />
+    </button>
   )
+}
+
+function YourMessages({ bought, funded, boardViews, ethPrice, onEdit, onAddFunds, onChangeBid, onAddToSite }: {
+  bought: MyMessage[]
+  funded: FundedMessage[]
+  boardViews: Record<string, number>
+  ethPrice: number | null
+  onEdit: (m: MyMessage) => void
+  onAddFunds: (m: MyMessage | FundedMessage, own: boolean) => void
+  onChangeBid: (m: MyMessage) => void
+  onAddToSite: (m: MyMessage | FundedMessage) => void
+}) {
+  const [filter, setFilter] = useState<'all' | 'winning' | 'outbid'>('all')
+  const [sort, setSort] = useState<{ k: MsgSortKey | null; dir: 'asc' | 'desc' }>({ k: null, dir: 'desc' })
+
+  const rows = useMemo<MsgRow[]>(() => {
+    const own = new Set(bought.map(m => m.address.toLowerCase()))
+    const views = (m: MyMessage | FundedMessage) => boardViews[m.strategyId.toLowerCase()] ?? 0
+    return [
+      ...bought.map(m => ({ m, own: true, bid: m.totalFundsAdded, spent: m.totalFundsAdded, top: m.topFunds, rate: BigInt(m.flowRateRaw ?? '0'), views: views(m) })),
+      ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalFundsAdded), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m) })),
+    ]
+  }, [bought, funded, boardViews])
+
+  const cpmOf = (r: MsgRow) => ethPrice && r.views && r.spent > 0n ? (Number(r.spent) / 1e18 * ethPrice) / r.views * 1000 : null
+  const bidWei = (r: MsgRow) => r.m.strategy === 'streaming' ? r.rate * SECONDS_PER_MONTH : r.bid
+  const winningN = rows.filter(r => r.m.isTop).length
+
+  const list = useMemo(() => {
+    const filtered = rows.filter(r => filter === 'all' || (filter === 'winning') === r.m.isTop)
+    if (!sort.k) return [...filtered].sort((a, b) => Number(b.m.isTop) - Number(a.m.isTop))
+    const val = (r: MsgRow) => sort.k === 'views' ? r.views : sort.k === 'bid' ? Number(bidWei(r)) : (cpmOf(r) ?? Infinity)
+    const dir = sort.dir === 'desc' ? -1 : 1
+    return [...filtered].sort((a, b) => (val(a) - val(b)) * dir)
+  // cpmOf/bidWei only read ethPrice and row fields
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, filter, sort, ethPrice])
+
+  const onSort = (k: MsgSortKey) => setSort(prev => ({ k, dir: prev.k === k && prev.dir === 'desc' ? 'asc' : 'desc' }))
+  const th = (label: string) => <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }}>{label}</span>
+  const priceBtn: React.CSSProperties = { width: 104, height: 32, padding: '0 8px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', borderRadius: 8, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
+  const ghostAction: React.CSSProperties = { ...priceBtn, background: 'transparent', color: TEXT, border: '1px solid rgba(237,238,255,0.45)' }
+  const pinkAction: React.CSSProperties = { ...priceBtn, background: PINK, color: BG, border: `1px solid ${PINK}`, fontFamily: MONO, fontWeight: 800, letterSpacing: -0.2 }
 
   return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 800, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Served On', 'Current Message', 'Strategy'] as const).map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+      <PanelHead label="Your Messages" n={rows.length}>
+        <SegToggle
+          label="Filter messages"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { k: 'all', l: 'All', n: rows.length },
+            { k: 'winning', l: 'Winning', n: winningN },
+            { k: 'outbid', l: 'Outbid', n: rows.length - winningN },
+          ]}
+        />
+      </PanelHead>
+      <div style={{ overflowX: 'auto' }}>
+        <div style={{ minWidth: 620 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '11px 18px', alignItems: 'center' }}>
+            {th('Message')}
+            <SortTh k="views" label="Views" sort={sort} onSort={onSort} />
+            <SortTh k="bid" label="Your bid" sort={sort} onSort={onSort} />
+            <SortTh k="cpm" label="CPM" sort={sort} onSort={onSort} />
+            <span />
           </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-        </div>
-        {sorted.map(m => {
-          const strategy = m.strategy ?? 'fixed'
-          const isStreaming = strategy === 'streaming'
-          const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
-          return (
-            <div
-              key={m.address}
-              onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-              style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            >
-              <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
-                  <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic', display: 'block' }}>{m.message || 'No message yet'}</span>
-                </ModeratedContent>
-                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
-              <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                <div style={{ textAlign: 'right' }}>
-                  {isStreaming
-                    ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                    : <span style={{ color: MUTED }}>—</span>
-                  }
-                </div>
-              </div>
-              <RankingCell isTop={m.isTop} rank={m.rank} />
+          {list.length === 0 && (
+            <div style={{ padding: '22px 18px', borderTop: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>
+              {filter === 'winning' ? 'None of your messages are winning right now.' : 'No outbid messages.'}
             </div>
-          )
-        })}
+          )}
+          {list.map(r => {
+            const { m } = r
+            const rent = m.strategy === 'streaming'
+            const cpm = cpmOf(r)
+            const toTop = r.top > r.bid ? r.top - r.bid + 1_000_000_000_000_000n : 0n
+            return (
+              <div
+                key={m.address}
+                onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '12px 18px', alignItems: 'center', borderTop: `1px solid ${BORDER}`, cursor: 'pointer', transition: 'background 120ms' }}
+              >
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
+                      <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 14, fontWeight: 600, color: !m.message ? MUTED : m.isTop ? TEXT : TEXT2, fontStyle: m.message ? 'normal' : 'italic', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                        {m.message || 'No message'}
+                      </span>
+                    </ModeratedContent>
+                    {r.own ? (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEdit(m as MyMessage) }}
+                        style={{ flexShrink: 0, background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '3px 9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS }}
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
+                    )}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 12, color: MUTED, minWidth: 0 }}>
+                    <span style={{ display: 'flex', minWidth: 0 }}><ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} /></span>
+                    <StrategyBadge strategy={m.strategy ?? 'fixed'} size="xs" />
+                    {!r.own && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: MUTED, border: '1px solid rgba(138,143,191,0.35)', borderRadius: 99, padding: '1px 7px' }}>Funded</span>}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, fontSize: 12 }}>
+                    {m.isTop ? (
+                      <><GlowDot size={7} color={GREEN} /><span style={{ color: GREEN, fontWeight: 600 }}>Winning</span></>
+                    ) : (
+                      <>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, border: `1.5px solid ${MUTED}`, boxSizing: 'border-box', flexShrink: 0 }} />
+                        <span style={{ color: MUTED }}>{m.rank ? `Outbid · #${m.rank}` : 'Outbid'}</span>
+                      </>
+                    )}
+                  </span>
+                </span>
+
+                <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: 12.5, color: r.views ? TEXT2 : MUTED }}>{r.views ? r.views.toLocaleString() : '–'}</span>
+
+                {rent ? (r.rate === 0n
+                  ? <span style={{ textAlign: 'right', fontSize: 12, color: MUTED }}>Stream ended</span>
+                  : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                      {m.isTop && <GlowDot size={7} color={GREEN} />}
+                      <span style={{ fontSize: 14, fontWeight: 700, color: m.isTop ? GREEN : TEXT2, whiteSpace: 'nowrap' }}>
+                        {fmtWeiUsd(r.rate * SECONDS_PER_MONTH, ethPrice)}<span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}>/mo</span>
+                      </span>
+                    </span>)
+                  : <span style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: m.isTop ? TEXT : TEXT2, whiteSpace: 'nowrap' }}>{fmtWeiUsd(r.bid, ethPrice)}</span>}
+
+                <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: 12.5, color: cpm != null ? TEXT2 : MUTED }}>{cpm != null ? `$${cpm.toFixed(2)}` : '–'}</span>
+
+                <span style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                  {rent && r.own ? (
+                    <button onClick={() => onChangeBid(m as MyMessage)} style={m.isTop ? ghostAction : { ...pinkAction, fontFamily: SANS, fontWeight: 700 }}>Change Bid</button>
+                  ) : m.isTop || rent || toTop === 0n ? (
+                    <button onClick={() => onAddFunds(m, r.own)} style={ghostAction}>Add Funds</button>
+                  ) : (
+                    <button onClick={() => onAddFunds(m, r.own)} aria-label={`Add ${fmtWeiUsd(toTop, ethPrice)} to win`} title="Add funds to retake the top spot" style={pinkAction}>
+                      +{fmtWeiUsd(toTop, ethPrice)}
+                    </button>
+                  )}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -1708,6 +1689,8 @@ export default function AccountPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   const [depositManagerOpen, setDepositManagerOpen] = useState(false)
+  const [depositManagerAction, setDepositManagerAction] = useState<'deposit' | 'withdraw' | null>(null)
+  const [streamBalanceKey, setStreamBalanceKey] = useState(0)
   const [addrCopied, setAddrCopied] = useState(false)
 
   // Platform leaderboards
@@ -2039,9 +2022,6 @@ export default function AccountPage() {
     window.history.replaceState(null, '', clean.toString())
   }, [])
 
-  const showingNow = useMemo(() => myMessages.filter(m => m.isTop), [myMessages])
-  const outbid = useMemo(() => myMessages.filter(m => !m.isTop), [myMessages])
-
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
     const bought = myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n)
@@ -2050,16 +2030,21 @@ export default function AccountPage() {
   }, [myMessages, fundedMessages])
 
   // Fetch markee.xyz view counts for CPM calculations
+  // Includes the boards the wallet's messages sit on, not just its own -- buyer views/CPM read from here too.
+  const viewAddrs = useMemo(() => [...new Set([
+    ...allBoards.map(b => b.address.toLowerCase()),
+    ...myMessages.map(m => m.strategyId.toLowerCase()),
+    ...fundedMessages.map(m => m.strategyId.toLowerCase()),
+  ])].filter(Boolean).slice(0, 100).join(','), [allBoards, myMessages, fundedMessages])
   useEffect(() => {
-    const addrs = allBoards.map(b => b.address.toLowerCase()).slice(0, 100)
-    if (addrs.length === 0) return
-    fetch(`/api/views?addresses=${addrs.join(',')}`)
+    if (!viewAddrs) return
+    fetch(`/api/views?addresses=${viewAddrs}`)
       .then(r => r.json())
       .then((data: Record<string, { totalViews: number }>) => {
         setBoardViews(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.totalViews ?? 0])))
       })
       .catch(() => {})
-  }, [allBoards])
+  }, [viewAddrs])
 
   const creatorCpm = useMemo(() => {
     if (!ethPrice) return null
@@ -2330,68 +2315,39 @@ export default function AccountPage() {
                       { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '—', delta: -1.8 },
                     ]}
                   />
-                  {!isLoadingMessages && myMessages.length > 0 && (
-                    <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
-                      <span style={{ color: GREEN, fontWeight: 600 }}>{showingNow.length} showing now</span>
-                      {' · '}
-                      <span>{outbid.length} outbid</span>
-                    </div>
+                  {activeAddress && (
+                    <StreamBalanceCard
+                      activeAddress={activeAddress}
+                      ethPrice={ethPrice}
+                      refreshKey={streamBalanceKey}
+                      onDeposit={() => setDepositManagerAction('deposit')}
+                      onWithdraw={() => setDepositManagerAction('withdraw')}
+                    />
                   )}
 
-                  {isLoadingMessages ? (
-                    <div style={{ overflow: 'auto' }}>
-                      <div style={{ minWidth: 640, background: BG2 }}>
-                        {[1, 2, 3, 4, 5].map(i => (
-                          <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                            {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                          </div>
-                        ))}
-                      </div>
+                  {isLoadingMessages || isLoadingFunded ? (
+                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+                      <PanelHead label="Your Messages" />
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '16px 18px', borderTop: i > 1 ? `1px solid ${BORDER}` : 'none' }}>
+                          {[1, 2, 3, 4, 5].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                        </div>
+                      ))}
                     </div>
+                  ) : myMessages.length > 0 || fundedMessages.length > 0 ? (
+                    <YourMessages
+                      bought={myMessages}
+                      funded={fundedMessages}
+                      boardViews={boardViews}
+                      ethPrice={ethPrice}
+                      onEdit={handleEditMessage}
+                      onChangeBid={m => setStreamEditTarget(m)}
+                      onAddFunds={(m, own) => setAddFundsTarget(own
+                        ? { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: (m as MyMessage).totalFundsAdded, topFunds: (m as MyMessage).topFunds, name: m.name, isLegacy: (m as MyMessage).isLegacy }
+                        : { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt((m as FundedMessage).totalContributed), topFunds: BigInt((m as FundedMessage).topFundsRaw), name: m.name })}
+                      onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }}
+                    />
                   ) : (
-                    <>
-                      {showingNow.length > 0 && (
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Showing now</h2>
-                            <CountBadge n={showingNow.length} />
-                          </div>
-                          <BoughtTable items={showingNow} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
-                        </div>
-                      )}
-                      {outbid.length > 0 && (
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT2 }}>Outbid</h2>
-                            <CountBadge n={outbid.length} />
-                          </div>
-                          <BoughtTable items={outbid} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {isLoadingFunded ? (
-                    <div style={{ overflow: 'auto' }}>
-                      <div style={{ minWidth: 640, background: BG2 }}>
-                        {[1, 2, 3, 4, 5].map(i => (
-                          <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                            {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : fundedMessages.length > 0 ? (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Funded by me</h2>
-                        <CountBadge n={fundedMessages.length} />
-                      </div>
-                      <FundedTable items={fundedMessages} ethPrice={ethPrice} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt(m.totalContributed), topFunds: BigInt(m.topFundsRaw), name: m.name })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
-                    </div>
-                  ) : null}
-
-                  {!isLoadingMessages && !isLoadingFunded && myMessages.length === 0 && fundedMessages.length === 0 && (
                     <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                   )}
                 </div>
@@ -2556,7 +2512,11 @@ export default function AccountPage() {
         />
       )}
 
-      <DepositManagerModal isOpen={depositManagerOpen} onClose={() => setDepositManagerOpen(false)} />
+      <DepositManagerModal
+        isOpen={depositManagerOpen || !!depositManagerAction}
+        initialAction={depositManagerAction ?? undefined}
+        onClose={() => { setDepositManagerOpen(false); setDepositManagerAction(null); setStreamBalanceKey(k => k + 1) }}
+      />
     </div>
   )
 }
