@@ -78,6 +78,8 @@ export interface MyMessage {
   strategy?: 'fixed' | 'streaming'
   rank?: number | null
   flowRateRaw?: string
+  // Streaming boards only: the current #1's rate in wei/sec.
+  topRateRaw?: string
   // Legacy TopDawg (subgraph-sourced) vs v1.x LeaderboardFactory (RPC-sourced) — determines
   // whether MarkeeSignModal's RPC-only useLeaderboardDetail can safely target this markee's board.
   isLegacy: boolean

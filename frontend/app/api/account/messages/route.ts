@@ -69,6 +69,7 @@ async function fetchStreamingOwned(
     name: string
     topMarkeeAddress: string | null
     topFundsAddedRaw: string
+    topRateRaw?: string
     platform?: string
     admin?: string
     verifiedUrls?: string[]
@@ -132,6 +133,7 @@ async function fetchStreamingOwned(
         strategyName: b.lb.name ?? 'Unknown Leaderboard',
         isTop,
         topFundsRaw: b.lb.topFundsAddedRaw ?? '0',
+        topRateRaw: b.lb.topRateRaw ?? '0',
         strategy: 'streaming' as const,
         rank: isTop ? 1 : null,
         flowRateRaw: (pos?.rate ?? 0n).toString(),

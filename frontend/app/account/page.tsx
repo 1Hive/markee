@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, ChevronDown, Info, ShieldCheck } from 'lucide-react'
+import { Globe2, Github, Zap, Info, ShieldCheck } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency, type ModerationItem, type QueueAction, type QueueBoard } from '@/lib/moderation/queue'
@@ -22,18 +22,17 @@ import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
-import { DepositManagerModal, type DepositManagerStream } from '@/components/modals/DepositManagerModal'
-import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway, formatRunwayShort } from '@/lib/superfluid/streaming'
+import { runwaySeconds, runwayTier, formatRunwayShort } from '@/lib/superfluid/streaming'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, PURPLE, HERO_BG } from '@/lib/design-tokens'
 import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { YourMarkees, MarkeeAttnGroups, compareByRaised } from '@/components/account/CreatorHub'
 import { ManageDrawer } from '@/components/account/ManageDrawer'
+import { StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate } from '@/components/account/BuyerHub'
 import { SECONDS_PER_MONTH, fmtAddr, GlowDot, fmtWeiUsd, PanelHead, SegToggle, AttnGroup } from '@/components/account/primitives'
-import { logoDevUrl, formatUsd } from '@/lib/utils'
-import { ModeratedContent, FlagButton, ModerationQueue, ModerationItemRow, ModerationToast, useModeration } from '@/components/moderation'
+import { formatUsd } from '@/lib/utils'
+import { ModeratedContent, ModerationQueue, ModerationItemRow, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
@@ -112,27 +111,7 @@ function detailUrl(lb: AnyLeaderboard) {
 }
 
 // Extract hostname from a URL for use with logo.dev. Returns null if unparseable.
-function getLogoDomain(url: string | null): string | null {
-  if (!url) return null
-  try { return new URL(url).hostname } catch { return null }
-}
-
 // Company logo via logo.dev CDN. Falls back to 🪧 if the image fails to load.
-function LogoIcon({ domain, size = 14 }: { domain: string; size?: number }) {
-  const [failed, setFailed] = useState(false)
-  if (failed) return <span style={{ fontSize: size, lineHeight: 1 }}>🪧</span>
-  return (
-    <Image
-      src={logoDevUrl(domain)}
-      alt={`${domain} logo`}
-      width={size}
-      height={size}
-      style={{ objectFit: 'contain', borderRadius: 2 }}
-      onError={() => setFailed(true)}
-    />
-  )
-}
-
 // ── Platform icon ─────────────────────────────────────────────────────────────
 function PlatIcon({ lb, size = 20 }: { lb: AnyLeaderboard; size?: number }) {
   if (lb.platform === 'github')     return <Github size={size} style={{ color: TEXT2 }} />
@@ -830,488 +809,7 @@ function LatestActivity({ events, loaded, boardName, ethPrice, reclaimLabel, onR
   )
 }
 
-// ── Active Markees table ──────────────────────────────────────────────────────
-function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: () => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  const iconBox = (child: React.ReactNode) => (
-    <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
-      {child}
-    </span>
-  )
-
-  const pill = (n: number) => (
-    <button
-      onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
-      style={{ background: `${MUTED}20`, border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 99, padding: '1px 6px', fontFamily: MONO, fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' as const }}
-    >
-      +{n}
-    </button>
-  )
-
-  // Only when onAddToSite is passed (My Live Markees) is the dropdown reachable with zero or one
-  // integration -- other callers keep the original behavior of only offering a dropdown once there's
-  // more than one to actually pick between.
-  const chevron = onAddToSite && (
-    <button
-      onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
-      aria-label={open ? 'Hide integrations' : 'Show all integrations'}
-      style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer' }}
-    >
-      <ChevronDown size={12} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
-    </button>
-  )
-
-  const dropdown = (items: Array<{ href: string; label: string }>) => open && (
-    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 6, minWidth: 220, zIndex: 50, boxShadow: '0 16px 44px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {onAddToSite && (
-        <button
-          onClick={e => { e.stopPropagation(); setOpen(false); onAddToSite() }}
-          style={{ color: PINK, background: `${PINK}14`, border: `1px solid rgba(248,151,254,0.3)`, fontSize: 12, fontWeight: 700, fontFamily: MONO, padding: '8px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: items.length > 0 ? 4 : 0 }}
-        >
-          + Add to Another Site
-        </button>
-      )}
-      {items.map(({ href, label }) => (
-        <a
-          key={href}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, fontFamily: MONO, padding: '7px 10px', borderRadius: 6, display: 'block', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-        >
-          {label}
-        </a>
-      ))}
-    </div>
-  )
-
-  // GitHub-platform boards always render this way; other-platform boards (e.g. a "For Sale" factory
-  // board, which carries no inherent platform tag) render it too once they have a verified linked
-  // file -- Served On is derived from actual verification, not a rigid creation-time tag.
-  const hasVerifiedGithubFile = (lb.linkedFiles ?? []).some(f => f.verified)
-  if (lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile)) {
-    const gh = lb as GithubLeaderboard
-    const files = gh.linkedFiles ?? []
-    const first = files[0] ?? null
-    const extras = files.length - 1
-    const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
-    return (
-      <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-        {iconBox(<Github size={13} style={{ color: TEXT2 }} />)}
-        {first ? (
-          <a
-            href={fileUrl(first)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            title={first.filePath}
-            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
-          >
-            {first.repoFullName}
-          </a>
-        ) : (
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: MUTED }}>
-            {gh.repoFullName || 'GitHub'}
-          </span>
-        )}
-        {onAddToSite ? chevron : extras > 0 && pill(extras)}
-        {dropdown(files.map(f => ({ href: fileUrl(f), label: f.filePath })))}
-      </span>
-    )
-  }
-
-  if (lb.platform === 'superfluid') {
-    // Verification is address-based, independent of platform tag (see the comment above) -- a
-    // Superfluid-platform board can still have a verified website/GitHub integration attached, so
-    // this branch gets the same add/view dropdown as the others rather than a dead-end label.
-    const sfFiles = (lb.linkedFiles ?? []).filter(f => f.verified)
-    const sfUrls = lb.verifiedUrls ?? []
-    const sfFileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
-    return (
-      <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-        {iconBox(
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src="/partners/superfluid.png" alt="" width={16} height={16} style={{ objectFit: 'contain' }} />
-        )}
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
-          {lb.name || 'Superfluid'}
-        </span>
-        {onAddToSite && chevron}
-        {dropdown([
-          ...sfFiles.map(f => ({ href: sfFileUrl(f), label: f.filePath })),
-          ...sfUrls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })),
-        ])}
-      </span>
-    )
-  }
-
-  // Website
-  const w = lb as WebsiteLeaderboard
-  const urls = w.verifiedUrls?.length ? w.verifiedUrls : w.verifiedUrl ? [w.verifiedUrl] : []
-  const primaryUrl = urls[0] || w.siteUrl || null
-  const primaryLabel = primaryUrl ? primaryUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (lb.name || fmtAddr(lb.address))
-  const extras = Math.max(0, urls.length - 1)
-  const logoDomain = getLogoDomain(primaryUrl)
-  return (
-    <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-      {iconBox(
-        logoDomain
-          ? <LogoIcon domain={logoDomain} size={14} />
-          : <Globe2 size={13} style={{ color: PINK }} />
-      )}
-      {primaryUrl ? (
-        <a
-          href={primaryUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
-        >
-          {primaryLabel}
-        </a>
-      ) : (
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: MUTED }}>
-          {lb.name || fmtAddr(lb.address)}
-        </span>
-      )}
-      {onAddToSite ? chevron : extras > 0 && pill(extras)}
-      {dropdown(urls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })))}
-    </span>
-  )
-}
-
 const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
-
-// Bought/Funded rows are messages on OTHER people's leaderboards -- "Markee Name" (the creator's own
-// label for their board) isn't meaningful to a buyer the way it is on the creator's own dashboard
-// tabs. What matters here is where the board is actually served, same as every other table on this
-// page, or -- if it isn't served anywhere verified yet -- a way to fix that from here rather than
-// only from the board's own creator's account.
-function toServedOnLb(m: MyMessage | FundedMessage): AnyLeaderboard {
-  const base = {
-    address: m.strategyId, name: m.strategyName, totalFunds: '', totalFundsRaw: '0',
-    markeeCount: 0, admin: m.admin ?? '', topMessage: null, topFundsAddedRaw: '0',
-    strategy: m.strategy, verifiedUrls: m.verifiedUrls ?? [], linkedFiles: m.linkedFiles ?? [],
-  }
-  if (m.platform === 'github') {
-    return { ...base, platform: 'github', repoFullName: m.repoFullName ?? null, repoAvatarUrl: null, repoHtmlUrl: m.repoHtmlUrl ?? null, filePath: null, linkedFiles: m.linkedFiles ?? [] }
-  }
-  if (m.platform === 'superfluid') return { ...base, platform: 'superfluid' }
-  return {
-    ...base, platform: 'website', creator: null, logoUrl: null, siteUrl: m.siteUrl ?? null,
-    verifiedUrl: (m.verifiedUrls ?? [])[0] ?? null, verifiedUrls: m.verifiedUrls ?? [], status: 'pending', isLegacy: false,
-  }
-}
-
-function ServedOnOrAddToSite({ m, onAddToSite }: { m: MyMessage | FundedMessage; onAddToSite: (m: any) => void }) {
-  const lb = toServedOnLb(m)
-  const verified = isVerifiedLeaderboard(lb, { verifiedUrls: m.verifiedUrls, linkedFiles: m.linkedFiles })
-  if (needsVerificationGate(lb) && !verified) {
-    return (
-      <button
-        onClick={e => { e.stopPropagation(); onAddToSite(m) }}
-        style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-      >
-        Add to Your Site
-      </button>
-    )
-  }
-  return <ServedOnCell lb={lb} />
-}
-
-// ── Stream Balance card ───────────────────────────────────────────────────────
-interface StreamSnapshot {
-  ethxBalanceRaw: string
-  streams: DepositManagerStream[]
-  at: number
-}
-
-function useStreamSnapshot(activeAddress: string | undefined, refreshKey: number): StreamSnapshot | null {
-  const [snapshot, setSnapshot] = useState<StreamSnapshot | null>(null)
-  useEffect(() => {
-    if (!activeAddress) return
-    let cancelled = false
-    fetch(`/api/streaming/deposit-manager?wallet=${activeAddress}${refreshKey ? '&bust=1' : ''}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d && !cancelled) setSnapshot({ ...d, at: Date.now() }) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [activeAddress, refreshKey])
-  return snapshot
-}
-
-function winningRate(snapshot: StreamSnapshot | null): bigint {
-  return (snapshot?.streams ?? []).filter(s => s.isTop).reduce((s, x) => s + BigInt(x.rateRaw), 0n)
-}
-
-function StreamBalanceCard({ snapshot: data, ethPrice, onDeposit, onWithdraw }: {
-  snapshot: StreamSnapshot | null
-  ethPrice: number | null
-  onDeposit: () => void
-  onWithdraw: () => void
-}) {
-  const [now, setNow] = useState(() => Date.now())
-  const snapshotAt = data?.at ?? now
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  const streams = data?.streams ?? []
-  const winning = streams.filter(s => s.isTop)
-  const liveRate = winningRate(data)
-  const totalRate = streams.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
-  const balanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
-  const drained = liveRate * BigInt(Math.max(0, Math.floor((now - snapshotAt) / 1000)))
-  const balance = balanceRaw > drained ? balanceRaw - drained : 0n
-  const runway = runwaySeconds(balance, liveRate)
-  const tier = runwayTier(runway)
-  const label: React.CSSProperties = { fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }
-  const perMo = (rate: bigint, color: string) => (
-    <span style={{ fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' }}>
-      {fmtWeiUsd(rate * SECONDS_PER_MONTH, ethPrice)}<span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}>/mo</span>
-    </span>
-  )
-
-  return (
-    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-      <PanelHead label="Stream Balance" sub="Pays for your Rent bids while they're winning." />
-      <div style={{ padding: '16px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 160px' }}>
-            <div style={label}>Balance</div>
-            <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: TEXT, marginTop: 4 }}>
-              {data ? (Number(balance) / 1e18).toFixed(6) : '—'} <span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}>ETHx</span>
-            </div>
-          </div>
-          <div style={{ flex: '1 1 160px' }}>
-            <div style={label}>Runs Out In</div>
-            <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: liveRate > 0n && tier !== 'normal' ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-              {!data ? '—' : liveRate > 0n ? formatRunway(runway) : 'Not streaming'}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onDeposit} style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>Deposit</button>
-            <button onClick={onWithdraw} style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>Withdraw</button>
-          </div>
-        </div>
-        <div style={{ height: 6, borderRadius: 99, background: 'rgba(138,143,191,0.15)', marginTop: 14, overflow: 'hidden' }}>
-          <div style={{ width: `${liveRate > 0n ? runwayProgressPct(runway) : 0}%`, height: '100%', borderRadius: 99, background: tier === 'normal' ? `linear-gradient(90deg, ${PINK}, ${PURPLE})` : AMBER, transition: 'width 400ms ease' }} />
-        </div>
-      </div>
-      {streams.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', borderTop: `1px solid ${BORDER}` }}>
-          {[
-            { l: 'Streaming Now', v: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{liveRate > 0n && <GlowDot size={7} color={GREEN} />}{perMo(liveRate, liveRate > 0n ? GREEN : TEXT2)}</span> },
-            { l: 'Winning', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{winning.length}</span> },
-            { l: 'Monthly Bid Total', v: perMo(totalRate, TEXT) },
-            { l: 'Rent Bids', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{streams.length}</span> },
-          ].map((c, i) => (
-            <div key={c.l} style={{ padding: '12px 18px', borderLeft: i ? `1px solid ${BORDER}` : 'none' }}>
-              <div style={label}>{c.l}</div>
-              <div style={{ marginTop: 6, display: 'flex' }}>{c.v}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Your Messages panel ───────────────────────────────────────────────────────
-const MSG_COLS = 'minmax(0,1fr) 64px 96px 64px 104px'
-type MsgSortKey = 'views' | 'bid' | 'cpm'
-
-interface MsgRow {
-  m: MyMessage | FundedMessage
-  own: boolean
-  bid: bigint
-  spent: bigint
-  top: bigint
-  rate: bigint
-  views: number
-}
-
-function SortTh({ k, label, sort, onSort }: { k: MsgSortKey; label: string; sort: { k: MsgSortKey | null; dir: 'asc' | 'desc' }; onSort: (k: MsgSortKey) => void }) {
-  const on = sort.k === k
-  return (
-    <button
-      onClick={() => onSort(k)}
-      aria-sort={on ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none'}
-      style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: on ? TEXT : MUTED, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, width: '100%' }}
-    >
-      {label}
-      <ChevronDown size={10} style={{ opacity: on ? 1 : 0.35, transform: on && sort.dir === 'asc' ? 'rotate(180deg)' : 'none' }} />
-    </button>
-  )
-}
-
-function YourMessages({ bought, funded, boardViews, ethPrice, onEdit, onAddFunds, onChangeBid, onAddToSite }: {
-  bought: MyMessage[]
-  funded: FundedMessage[]
-  boardViews: Record<string, number>
-  ethPrice: number | null
-  onEdit: (m: MyMessage) => void
-  onAddFunds: (m: MyMessage | FundedMessage, own: boolean) => void
-  onChangeBid: (m: MyMessage) => void
-  onAddToSite: (m: MyMessage | FundedMessage) => void
-}) {
-  const [filter, setFilter] = useState<'all' | 'winning' | 'outbid'>('all')
-  const [sort, setSort] = useState<{ k: MsgSortKey | null; dir: 'asc' | 'desc' }>({ k: null, dir: 'desc' })
-
-  const rows = useMemo<MsgRow[]>(() => {
-    const own = new Set(bought.map(m => m.address.toLowerCase()))
-    const views = (m: MyMessage | FundedMessage) => boardViews[m.strategyId.toLowerCase()] ?? 0
-    return [
-      ...bought.map(m => ({ m, own: true, bid: m.totalFundsAdded, spent: m.totalFundsAdded, top: m.topFunds, rate: BigInt(m.flowRateRaw ?? '0'), views: views(m) })),
-      ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalFundsAdded), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m) })),
-    ]
-  }, [bought, funded, boardViews])
-
-  const cpmOf = (r: MsgRow) => ethPrice && r.views && r.spent > 0n ? (Number(r.spent) / 1e18 * ethPrice) / r.views * 1000 : null
-  const bidWei = (r: MsgRow) => r.m.strategy === 'streaming' ? r.rate * SECONDS_PER_MONTH : r.bid
-  const winningN = rows.filter(r => r.m.isTop).length
-
-  const list = useMemo(() => {
-    const filtered = rows.filter(r => filter === 'all' || (filter === 'winning') === r.m.isTop)
-    if (!sort.k) return [...filtered].sort((a, b) => Number(b.m.isTop) - Number(a.m.isTop))
-    const val = (r: MsgRow) => sort.k === 'views' ? r.views : sort.k === 'bid' ? Number(bidWei(r)) : (cpmOf(r) ?? Infinity)
-    const dir = sort.dir === 'desc' ? -1 : 1
-    return [...filtered].sort((a, b) => (val(a) - val(b)) * dir)
-  // cpmOf/bidWei only read ethPrice and row fields
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filter, sort, ethPrice])
-
-  const onSort = (k: MsgSortKey) => setSort(prev => ({ k, dir: prev.k === k && prev.dir === 'desc' ? 'asc' : 'desc' }))
-  const th = (label: string) => <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }}>{label}</span>
-  const priceBtn: React.CSSProperties = { width: 104, height: 32, padding: '0 8px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', borderRadius: 8, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
-  const ghostAction: React.CSSProperties = { ...priceBtn, background: 'transparent', color: TEXT, border: '1px solid rgba(237,238,255,0.45)' }
-  const pinkAction: React.CSSProperties = { ...priceBtn, background: PINK, color: BG, border: `1px solid ${PINK}`, fontFamily: MONO, fontWeight: 800, letterSpacing: -0.2 }
-
-  return (
-    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-      <PanelHead label="Your Messages" n={rows.length}>
-        <SegToggle
-          label="Filter messages"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { k: 'all', l: 'All', n: rows.length },
-            { k: 'winning', l: 'Winning', n: winningN },
-            { k: 'outbid', l: 'Outbid', n: rows.length - winningN },
-          ]}
-        />
-      </PanelHead>
-      <div style={{ overflowX: 'auto' }}>
-        <div style={{ minWidth: 620 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '11px 18px', alignItems: 'center' }}>
-            {th('Message')}
-            <SortTh k="views" label="Views" sort={sort} onSort={onSort} />
-            <SortTh k="bid" label="Your bid" sort={sort} onSort={onSort} />
-            <SortTh k="cpm" label="CPM" sort={sort} onSort={onSort} />
-            <span />
-          </div>
-          {list.length === 0 && (
-            <div style={{ padding: '22px 18px', borderTop: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>
-              {filter === 'winning' ? 'None of your messages are winning right now.' : 'No outbid messages.'}
-            </div>
-          )}
-          {list.map(r => {
-            const { m } = r
-            const rent = m.strategy === 'streaming'
-            const cpm = cpmOf(r)
-            const toTop = r.top > r.bid ? r.top - r.bid + 1_000_000_000_000_000n : 0n
-            return (
-              <div
-                key={m.address}
-                onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '12px 18px', alignItems: 'center', borderTop: `1px solid ${BORDER}`, cursor: 'pointer', transition: 'background 120ms' }}
-              >
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
-                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
-                      <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 14, fontWeight: 600, color: !m.message ? MUTED : m.isTop ? TEXT : TEXT2, fontStyle: m.message ? 'normal' : 'italic', lineHeight: 1.4, wordBreak: 'break-word' }}>
-                        {m.message || 'No message'}
-                      </span>
-                    </ModeratedContent>
-                    {r.own ? (
-                      <button
-                        onClick={e => { e.stopPropagation(); onEdit(m as MyMessage) }}
-                        style={{ flexShrink: 0, background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '3px 9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS }}
-                      >
-                        Edit
-                      </button>
-                    ) : (
-                      <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
-                    )}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 12, color: MUTED, minWidth: 0 }}>
-                    <span style={{ display: 'flex', minWidth: 0 }}><ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} /></span>
-                    <StrategyBadge strategy={m.strategy ?? 'fixed'} size="xs" />
-                    {!r.own && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: MUTED, border: '1px solid rgba(138,143,191,0.35)', borderRadius: 99, padding: '1px 7px' }}>Funded</span>}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, fontSize: 12 }}>
-                    {m.isTop ? (
-                      <><GlowDot size={7} color={GREEN} /><span style={{ color: GREEN, fontWeight: 600 }}>Winning</span></>
-                    ) : (
-                      <>
-                        <span style={{ width: 7, height: 7, borderRadius: 99, border: `1.5px solid ${MUTED}`, boxSizing: 'border-box', flexShrink: 0 }} />
-                        <span style={{ color: MUTED }}>{m.rank ? `Outbid · #${m.rank}` : 'Outbid'}</span>
-                      </>
-                    )}
-                  </span>
-                </span>
-
-                <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: 12.5, color: r.views ? TEXT2 : MUTED }}>{r.views ? r.views.toLocaleString() : '–'}</span>
-
-                {rent ? (r.rate === 0n
-                  ? <span style={{ textAlign: 'right', fontSize: 12, color: MUTED }}>Stream ended</span>
-                  : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                      {m.isTop && <GlowDot size={7} color={GREEN} />}
-                      <span style={{ fontSize: 14, fontWeight: 700, color: m.isTop ? GREEN : TEXT2, whiteSpace: 'nowrap' }}>
-                        {fmtWeiUsd(r.rate * SECONDS_PER_MONTH, ethPrice)}<span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}>/mo</span>
-                      </span>
-                    </span>)
-                  : <span style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: m.isTop ? TEXT : TEXT2, whiteSpace: 'nowrap' }}>{fmtWeiUsd(r.bid, ethPrice)}</span>}
-
-                <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: 12.5, color: cpm != null ? TEXT2 : MUTED }}>{cpm != null ? `$${cpm.toFixed(2)}` : '–'}</span>
-
-                <span style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                  {rent && r.own ? (
-                    <button onClick={() => onChangeBid(m as MyMessage)} style={m.isTop ? ghostAction : { ...pinkAction, fontFamily: SANS, fontWeight: 700 }}>Change Bid</button>
-                  ) : m.isTop || rent || toTop === 0n ? (
-                    <button onClick={() => onAddFunds(m, r.own)} style={ghostAction}>Add Funds</button>
-                  ) : (
-                    <button onClick={() => onAddFunds(m, r.own)} aria-label={`Add ${fmtWeiUsd(toTop, ethPrice)} to win`} title="Add funds to retake the top spot" style={pinkAction}>
-                      +{fmtWeiUsd(toTop, ethPrice)}
-                    </button>
-                  )}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── Manage integrations modal ─────────────────────────────────────────────────
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -1518,9 +1016,8 @@ function AccountDashboard() {
   const ethPrice = useEthPrice()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  const [depositManagerAction, setDepositManagerAction] = useState<'deposit' | 'withdraw' | null>(null)
   const [streamBalanceKey, setStreamBalanceKey] = useState(0)
-  const streamSnapshot = useStreamSnapshot(activeAddress, streamBalanceKey)
+  const { snapshot: streamSnapshot, failed: streamFailed } = useStreamSnapshot(activeAddress, streamBalanceKey)
   const [activity, setActivity] = useState<{ wallet: string; events: ActivityEvent[] } | null>(null)
   const lowRunway = useMemo(() => {
     const rate = winningRate(streamSnapshot)
@@ -1690,6 +1187,7 @@ function AccountDashboard() {
           strategy: m.strategy ?? 'fixed',
           rank: m.rank ?? null,
           flowRateRaw: m.flowRateRaw ?? '0',
+          topRateRaw: m.topRateRaw ?? '0',
           isLegacy: false,
           platform: m.platform ?? null,
           admin: m.admin ?? null,
@@ -2052,7 +1550,7 @@ function AccountDashboard() {
                       onArchive={lb => setArchived(prev => [...prev, lb.address])}
                       onAddToSite={handleOpenAddToSite}
                       lowRunway={lowRunway}
-                      onDeposit={() => setDepositManagerAction('deposit')}
+                      onDeposit={() => setSection('buyer')}
                     />
                   )}
                   <LatestActivity
@@ -2127,32 +1625,31 @@ function AccountDashboard() {
                   />
                   <StreamBalanceCard
                     snapshot={streamSnapshot}
+                    failed={streamFailed}
                     ethPrice={ethPrice}
-                    onDeposit={() => setDepositManagerAction('deposit')}
-                    onWithdraw={() => setDepositManagerAction('withdraw')}
+                    onRetry={() => setStreamBalanceKey(k => k + 1)}
+                    onChanged={() => setStreamBalanceKey(k => k + 1)}
                   />
 
-                  {isLoadingMessages || isLoadingFunded ? (
-                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-                      <PanelHead label="Your Messages" />
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '16px 18px', borderTop: i > 1 ? `1px solid ${BORDER}` : 'none' }}>
-                          {[1, 2, 3, 4, 5].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
-                    </div>
-                  ) : myMessages.length > 0 || fundedMessages.length > 0 ? (
+                  {isLoadingMessages || isLoadingFunded || myMessages.length > 0 || fundedMessages.length > 0 ? (
                     <YourMessages
+                      owner={activeAddress}
                       bought={myMessages}
                       funded={fundedMessages}
+                      loading={isLoadingMessages || isLoadingFunded}
                       boardViews={boardViews}
                       ethPrice={ethPrice}
-                      onEdit={handleEditMessage}
+                      onEditStreaming={handleEditMessage}
                       onChangeBid={m => setStreamEditTarget(m)}
+                      onEdited={() => activeAddress && fetchMyMessages(activeAddress)}
+                      onPriceButton={m => setPriceButtonTarget({
+                        address: m.strategyId, name: m.strategyName, strategy: m.strategy ?? 'fixed',
+                        platform: (m as MyMessage).isLegacy ? 'website' : (m.platform ?? 'website'),
+                        isLegacy: !!(m as MyMessage).isLegacy,
+                      } as AnyLeaderboard)}
                       onAddFunds={(m, own) => setAddFundsTarget(own
                         ? { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: (m as MyMessage).totalFundsAdded, topFunds: (m as MyMessage).topFunds, name: m.name, isLegacy: (m as MyMessage).isLegacy }
                         : { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt((m as FundedMessage).totalContributed), topFunds: BigInt((m as FundedMessage).topFundsRaw), name: m.name })}
-                      onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }}
                     />
                   ) : (
                     <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
@@ -2199,7 +1696,7 @@ function AccountDashboard() {
           isOpen
           board={priceButtonTarget.address}
           onClose={() => setPriceButtonTarget(null)}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+          onSuccess={() => { if (activeAddress) { fetchAll(activeAddress); fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy && (
@@ -2331,11 +1828,6 @@ function AccountDashboard() {
         />
       )}
 
-      <DepositManagerModal
-        isOpen={!!depositManagerAction}
-        initialAction={depositManagerAction ?? undefined}
-        onClose={() => { setDepositManagerAction(null); setStreamBalanceKey(k => k + 1) }}
-      />
     </div>
   )
 }

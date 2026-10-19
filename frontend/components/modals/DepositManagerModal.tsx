@@ -41,7 +41,7 @@ export interface DepositManagerStream {
 
 const labelStyle: React.CSSProperties = { fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center' }
 
-export function DepositManagerModal({ isOpen, onClose, initialAction }: { isOpen: boolean; onClose: () => void; initialAction?: 'deposit' | 'withdraw' }) {
+export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { activeAddress, hasWallet, hasActiveWalletConnection, isWalletConnectionPending } = useActiveWallet()
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -74,8 +74,7 @@ export function DepositManagerModal({ isOpen, onClose, initialAction }: { isOpen
 
   useEffect(() => {
     if (!isOpen) { setAction(null); setAmount(''); setActionError(null); setLastTx(null) }
-    else if (initialAction) setAction(initialAction)
-  }, [isOpen, initialAction])
+  }, [isOpen])
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
 
