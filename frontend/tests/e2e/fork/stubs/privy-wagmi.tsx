@@ -23,10 +23,12 @@ export function createConfig(params: CreateConfigParameters) {
   } as CreateConfigParameters)
 }
 
+// The `e2e-wallet=off` cookie keeps the wallet disconnected, for tests of the signed-out pages.
 function AutoConnect() {
   const { isConnected } = useAccount()
   const { connect, connectors } = useConnect()
   useEffect(() => {
+    if (document.cookie.split('; ').includes('e2e-wallet=off')) return
     if (!isConnected && connectors[0]) connect({ connector: connectors[0] })
   }, [isConnected, connect, connectors])
   return null

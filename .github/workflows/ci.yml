@@ -67,3 +67,75 @@ jobs:
         run: npm run test:e2e
         env:
           BASE_URL: ${{ secrets.STAGING_URL }}
+
+  # Real transactions through the app's own modals against a local Anvil fork of Base, with a mock
+  # wallet and local Redis in place of Vercel KV (see frontend/tests/e2e/fork/README.md). Also runs
+  # the read-only account.spec.ts checks against the same local server.
+  fork-e2e:
+    name: Fork E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_FORK_RPC_URL: ${{ secrets.E2E_FORK_RPC_URL }}
+      E2E_FORK_BLOCK: '52820000'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Secrets aren't passed to pull requests from forks; skip rather than fail there.
+      - name: Check fork RPC
+        id: rpc
+        run: |
+          if [ -n "$E2E_FORK_RPC_URL" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::E2E_FORK_RPC_URL is not available to this run; skipping fork E2E."
+          fi
+
+      - name: Setup Node.js
+        if: steps.rpc.outputs.available == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.rpc.outputs.available == 'true'
+        run: npm ci
+
+      - name: Install Foundry
+        if: steps.rpc.outputs.available == 'true'
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.1.0
+
+      # Anvil's per-block fork cache: without it every run re-fetches all touched state from the RPC.
+      - name: Cache Anvil fork state
+        if: steps.rpc.outputs.available == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.foundry/cache/rpc
+          key: anvil-fork-base-${{ env.E2E_FORK_BLOCK }}
+
+      - name: Install Playwright browsers
+        if: steps.rpc.outputs.available == 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Fork E2E tests
+        if: steps.rpc.outputs.available == 'true'
+        run: npm run test:e2e:fork
+
+      - name: Upload Playwright report
+        if: failure() && steps.rpc.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-e2e-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7

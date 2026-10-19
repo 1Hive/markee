@@ -8,7 +8,7 @@ test.describe('/account — no wallet', () => {
   })
 
   test('shows connect-wallet CTA when no wallet is connected', async ({ page }) => {
-    await expect(page.getByText('Connect your wallet')).toBeVisible()
+    await expect(page.getByText('Connect your wallet', { exact: true })).toBeVisible()
   })
 
   test('page title is present', async ({ page }) => {
