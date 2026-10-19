@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const path = require('path')
 
 // Allow the RPC endpoint the app is actually configured to use, so reconfiguring
 // NEXT_PUBLIC_BASE_RPC_URL is not silently blocked by connect-src.
@@ -111,7 +112,18 @@ const nextConfig = {
     ]
   },
 
+  // Lets an E2E dev server run beside a normal one without sharing (and clobbering) .next.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   webpack: (config) => {
+    // E2E builds swap Privy for a mock wagmi wallet on a local fork (tests/e2e/fork/stubs).
+    if (process.env.NEXT_PUBLIC_E2E === '1') {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@privy-io/react-auth$': path.resolve(__dirname, 'tests/e2e/fork/stubs/privy-react-auth.tsx'),
+        '@privy-io/wagmi$': path.resolve(__dirname, 'tests/e2e/fork/stubs/privy-wagmi.tsx'),
+      }
+    }
     config.resolve.fallback = {
       fs: false,
       net: false,

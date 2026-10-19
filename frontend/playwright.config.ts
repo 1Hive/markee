@@ -7,6 +7,8 @@ const baseURL = process.env.BASE_URL ?? 'http://localhost:3000'
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Fork tests need Anvil + local KV; they run via playwright.fork.config.ts.
+  testIgnore: '**/fork/**',
   timeout: 30_000,
   fullyParallel: true,
   forbidOnly: isCI,

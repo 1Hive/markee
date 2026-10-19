@@ -13,7 +13,8 @@
     "test:email-notifications": "tsx --test tests/emailNotifications.test.ts",
     "test:e2e": "playwright test",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:e2e:fork": "playwright test -c playwright.fork.config.ts"
   },
   "dependencies": {
     "@apollo/client": "^3.8.5",
