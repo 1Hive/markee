@@ -17,7 +17,6 @@ import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
@@ -29,7 +28,7 @@ import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway, formatRunwayShort } from '@/lib/superfluid/streaming'
-import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, PURPLE } from '@/lib/design-tokens'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, PURPLE, HERO_BG } from '@/lib/design-tokens'
 import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { SECONDS_PER_MONTH, fmtAddr, GlowDot, fmtWeiUsd, PanelHead, SegToggle, ArchiveButton, AttnGroup } from '@/components/account/primitives'
@@ -215,11 +214,11 @@ function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
   const fmtViews  = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
   const groupLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: LAVENDER, marginBottom: 10, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 7 }
   const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }
-  const group = (tint: string, extra?: React.CSSProperties): React.CSSProperties => ({ background: `rgba(${tint},0.02)`, border: `1px solid rgba(${tint},0.08)`, borderRadius: 16, padding: 12, ...extra })
+  const group = (tint: string): React.CSSProperties => ({ background: `rgba(${tint},0.02)`, border: `1px solid rgba(${tint},0.08)`, borderRadius: 16, padding: 12 })
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 20 }}>
-      <div style={group('248,151,254', { background: 'radial-gradient(120% 140% at 0% 0%, rgba(248,151,254,0.07), rgba(248,151,254,0.01) 60%)' })}>
+      <div style={group('248,151,254')}>
         <div style={groupLabel}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 16v5M8 21h8" /></svg>
           Creator
@@ -269,9 +268,11 @@ function SidebarNav({ section, setSection, attentionCount }: { section: SectionI
       <button
         key={key}
         onClick={() => setSection(key)}
+        aria-current={on ? 'page' : undefined}
+        className="acct-side-item"
         style={{
-          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-          padding: '10px 12px', borderRadius: 8, marginBottom: 2,
+          display: 'flex', alignItems: 'center', gap: 11, width: '100%',
+          padding: '10px 12px', borderRadius: 8, whiteSpace: 'nowrap',
           border: 'none', boxShadow: on ? `inset 2px 0 0 ${PINK}` : 'none',
           background: on ? 'rgba(248,151,254,0.08)' : 'transparent',
           color: on ? TEXT : TEXT2,
@@ -289,9 +290,9 @@ function SidebarNav({ section, setSection, attentionCount }: { section: SectionI
   }
 
   return (
-    <nav style={{ width: 220, flexShrink: 0, paddingTop: 4 }}>
+    <nav className="acct-side" aria-label="Dashboard">
       {items.map(it => btn(it.key, it.label, it.icon, it.badge))}
-      <div role="separator" style={{ height: 1, background: BORDER, margin: '10px 12px' }} />
+      <div role="separator" className="acct-side-sep" style={{ height: 1, background: BORDER, margin: '10px 12px' }} />
       {btn('settings', 'Settings', settingsIcon)}
     </nav>
   )
@@ -1946,7 +1947,6 @@ function AccountDashboard() {
   const ethPrice = useEthPrice()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  const [depositManagerOpen, setDepositManagerOpen] = useState(false)
   const [depositManagerAction, setDepositManagerAction] = useState<'deposit' | 'withdraw' | null>(null)
   const [streamBalanceKey, setStreamBalanceKey] = useState(0)
   const streamSnapshot = useStreamSnapshot(activeAddress, streamBalanceKey)
@@ -1984,7 +1984,14 @@ function AccountDashboard() {
   const [boardViews, setBoardViews]             = useState<Record<string, number>>({})
 
   // UI state
-  const [section, setSection]                 = useState<SectionId>('creator')
+  const [section, setSectionState]            = useState<SectionId>('feed')
+  // The section lives in ?section= so a reload or shared link opens the same one.
+  const setSection = useCallback((next: SectionId) => {
+    setSectionState(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set('section', next)
+    window.history.replaceState(null, '', url.toString())
+  }, [])
   const [archived, setArchived]               = useState<string[]>([])
   const [markeeView, setMarkeeView]           = useState<'active' | 'archived'>('active')
   const [manageTarget, setManageTarget]       = useState<string | null>(null)
@@ -2281,10 +2288,11 @@ function AccountDashboard() {
       settings: 'settings', feed: 'feed', creator: 'creator', buyer: 'buyer',
       moderation: 'feed', live: 'creator', pending: 'creator', archive: 'creator', bought: 'buyer',
     }
-    if (raw && map[raw]) setSection(map[raw])
+    if (raw && map[raw]) setSectionState(map[raw])
     if (params.get('verifyOk') === '1') setVerifyOk(true)
     const clean = new URL(window.location.href)
-    clean.searchParams.delete('section')
+    if (raw && map[raw]) clean.searchParams.set('section', map[raw])
+    else clean.searchParams.delete('section')
     clean.searchParams.delete('tab')
     clean.searchParams.delete('verifyOk')
     clean.searchParams.delete('verifyError')
@@ -2381,26 +2389,21 @@ function AccountDashboard() {
         className="relative overflow-hidden"
         style={{
           borderBottom: `1px solid ${BORDER}`,
-          background: [
-            'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
-            'radial-gradient(ellipse at 80% 80%, rgba(124,156,255,0.2), transparent 55%)',
-            'linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)',
-          ].join(', '),
+          background: `radial-gradient(ellipse 55% 100% at 18% 0%, rgba(123,106,244,0.12), transparent 65%), ${HERO_BG}`,
         }}
       >
-        <HeroBackground />
-        <div className="relative z-10" style={{ maxWidth: 1240, margin: '0 auto', padding: '40px 40px 32px' }}>
+        <div className="relative z-10" style={{ maxWidth: 1240, margin: '0 auto', padding: '36px 32px 30px' }}>
           {/* wallet header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 14, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 13, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My Dashboard</h1>
               {mounted && (activeAddress
                 ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 0' }}>
-                    <span style={{ color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(activeAddress)}</span>
+                    <span style={{ color: TEXT2, fontSize: 13, fontFamily: MONO }}>{fmtAddr(activeAddress)}</span>
                     <button
                       onClick={() => navigator.clipboard.writeText(activeAddress).then(() => { setAddrCopied(true); setTimeout(() => setAddrCopied(false), 2000) }).catch(() => {})}
                       title="Copy address"
@@ -2421,31 +2424,15 @@ function AccountDashboard() {
             )}
             {mounted && hasWallet && (
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                <button
-                  onClick={() => setDepositManagerOpen(true)}
-                  style={{
-                    background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10,
-                    padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                    transition: 'border-color 120ms, color 120ms',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                >
-                  Deposit Manager
-                </button>
-                <a
-                  href="/"
-                  style={{
-                    background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 10,
-                    padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                    textDecoration: 'none', display: 'inline-block',
-                    transition: 'background 120ms',
-                  }}
+                <Link
+                  href="/raise-funding"
+                  className="acct-btn-lg"
+                  style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '0 16px', height: 38, display: 'inline-flex', alignItems: 'center', fontFamily: MONO, fontWeight: 700, fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap', transition: 'background 120ms' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${PINK}18` }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
                   Create New Markee
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -2464,9 +2451,9 @@ function AccountDashboard() {
       </section>
 
       {/* Sidebar + content */}
-      <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '0 40px 80px' }}>
+      <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '28px 32px 80px', boxSizing: 'border-box' }}>
         {mounted && hasWallet ? (
-          <div style={{ display: 'flex', gap: 32, paddingTop: 28, alignItems: 'flex-start' }}>
+          <div className="acct-layout">
             <SidebarNav
               section={section}
               setSection={setSection}
@@ -2476,7 +2463,7 @@ function AccountDashboard() {
             <main style={{ flex: 1, minWidth: 0 }}>
               {/* ── Activity Feed ── */}
               {section === 'feed' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
                   {isLoading || moderationQueue.isLoading ? (
                     <div style={{ height: 120, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14 }} />
                   ) : (
@@ -2524,7 +2511,7 @@ function AccountDashboard() {
 
               {/* ── Creator Hub ── */}
               {section === 'creator' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
                   <StatsChart
                     seed={1}
                     metrics={[
@@ -2609,7 +2596,7 @@ function AccountDashboard() {
 
               {/* ── Buyer Hub ── */}
               {section === 'buyer' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
                   <StatsChart
                     seed={2}
                     metrics={[
@@ -2825,9 +2812,9 @@ function AccountDashboard() {
       )}
 
       <DepositManagerModal
-        isOpen={depositManagerOpen || !!depositManagerAction}
+        isOpen={!!depositManagerAction}
         initialAction={depositManagerAction ?? undefined}
-        onClose={() => { setDepositManagerOpen(false); setDepositManagerAction(null); setStreamBalanceKey(k => k + 1) }}
+        onClose={() => { setDepositManagerAction(null); setStreamBalanceKey(k => k + 1) }}
       />
     </div>
   )
