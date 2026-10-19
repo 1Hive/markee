@@ -124,8 +124,19 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result, { headers: corsHeaders(origin) })
 }
 
+// Hostnames that are always trusted as view sources regardless of a board's verifiedUrls.
+// Includes our own domains, Vercel preview URLs, and localhost for dev.
+const OWNED_HOSTS = new Set(['markee.xyz', 'www.markee.xyz'])
+function isTrustedHost(h: string | null): boolean {
+  if (!h) return true // no referer → allow (privacy browsers, curl, server-side)
+  if (OWNED_HOSTS.has(h)) return true
+  if (h === 'localhost' || h.startsWith('127.') || h.startsWith('[::1]')) return true
+  if (h.endsWith('.markee.xyz') || h.endsWith('.vercel.app')) return true
+  return false
+}
+
 // POST /api/views
-// Body: { address: string, message: string }
+// Body: { address: string, message: string, url?: string }
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
   const body = await req.json().catch(() => null)
@@ -139,14 +150,42 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
-  // Optional: which verified site the view came from, reported by that site's own view-tracking
-  // proxy (see lib/embedPrompt/fragments.ts). Same trust model as the rest of this endpoint --
-  // unauthenticated, self-reported -- so this is a "which of your own sites gets traffic" signal
-  // for the board owner, not a hardened analytics source.
+  // Optional: which verified site the view came from (used for per-URL counter below).
   const host = typeof body.url === 'string' ? normalizeHost(body.url) : null
 
-  // Deliberately unguarded by environment: previews and local dev increment the same shared
-  // counters as production, trading a little noise in the totals for staging that behaves real.
+  // ── Referer / origin guard ──────────────────────────────────────────────────
+  // Prefer the browser-set `Origin` header (cross-origin requests always send it and it
+  // can't be overridden by fetch() options); fall back to `Referer` for same-origin or
+  // server-sent requests. If the inferred host isn't one of our own domains, check it
+  // against the board's registered verifiedUrls. A board with NO verified integrations
+  // allows all origins (backward-compat; those boards only appear on markee.xyz anyway).
+  // A board that HAS verified integrations rejects views from unregistered domains — a
+  // site owner can't manufacture traffic by calling the API directly from their server.
+  const rawReferer = req.headers.get('origin') ?? req.headers.get('referer')
+  const refHost    = rawReferer ? normalizeHost(rawReferer) : null
+
+  if (!isTrustedHost(refHost)) {
+    const meta = await kv.get<{ verifiedUrls?: string[]; verifiedUrl?: string }>(`oi:meta:${address}`).catch(() => null)
+    const verifiedHosts = new Set(
+      (Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls
+        : meta?.verifiedUrl ? [meta.verifiedUrl] : [])
+        .map(u => normalizeHost(u))
+        .filter((h): h is string => h !== null),
+    )
+
+    if (verifiedHosts.size > 0 && !verifiedHosts.has(refHost!)) {
+      // Known board, unknown origin — return current counts but don't increment.
+      const [totalViews, messageViews] = await kv.mget<number[]>(
+        `views:total:${address}`,
+        `views:msg:${address}:${msgHash}`,
+      )
+      return NextResponse.json(
+        { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
+        { headers: corsHeaders(origin) },
+      )
+    }
+  }
+  // ───────────────────────────────────────────────────────────────────────────
 
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
