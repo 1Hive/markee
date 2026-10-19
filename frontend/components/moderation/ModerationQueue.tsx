@@ -6,13 +6,10 @@ import { formatDistanceToNow } from 'date-fns'
 import { ChevronDown, Mail, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useAccount, useSignMessage } from 'wagmi'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
-import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER as RED } from '@/lib/design-tokens'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MAX_REVIEW_BATCH, notifyEmailMessage, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
 
-const SANS  = 'Manrope, system-ui, sans-serif'
-const AMBER = '#FFB020'
-const RED   = '#FF6B6B'
 
 const itemId = (it: ModerationItem) => `${it.markee}:${it.blockNumber}`
 
@@ -224,9 +221,9 @@ function NotificationEmailRow() {
               onChange={e => { setInput(e.target.value); setErr(null) }}
               placeholder="you@example.com"
               autoComplete="email"
-              style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${err ? '#FF6B6B' : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none' }}
+              style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${err ? RED : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none' }}
             />
-            {err && <p style={{ margin: 0, fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
+            {err && <p style={{ margin: 0, fontSize: 12, color: RED }}>{err}</p>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
               <span style={{ color: MUTED, fontSize: 12, marginRight: 4 }}>Free signature, not a transaction.</span>
               <button type="button" onClick={() => { setEditing(false); setInput(''); setErr(null) }} disabled={saving} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}>
@@ -243,7 +240,7 @@ function NotificationEmailRow() {
           </form>
         </div>
       )}
-      {err && !editing && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#FF6B6B' }}>{err}</p>}
+      {err && !editing && <p style={{ margin: '6px 0 0', fontSize: 12, color: RED }}>{err}</p>}
     </div>
   )
 }

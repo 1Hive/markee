@@ -14,11 +14,7 @@ import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionRecei
 import { formatEther, parseEther, type Abi } from 'viem'
 import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
-import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
-
-const SANS = 'Manrope, system-ui, sans-serif'
-const DANGER = '#FF8A9B'
-const AMBER = '#FFB547'
+import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 
 export interface AdminSettingRowProps {
   label: string

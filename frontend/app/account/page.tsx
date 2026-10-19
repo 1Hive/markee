@@ -29,7 +29,10 @@ import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway, formatRunwayShort } from '@/lib/superfluid/streaming'
-import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, PURPLE } from '@/lib/design-tokens'
+import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
+import { ToastProvider, useToast } from '@/components/account/Toast'
+import { SECONDS_PER_MONTH, fmtAddr, GlowDot, fmtWeiUsd, PanelHead, SegToggle, ArchiveButton, AttnGroup } from '@/components/account/primitives'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, BoardModerators, useModeration } from '@/components/moderation'
@@ -37,126 +40,6 @@ import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Abi } from 'viem'
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const SANS   = 'Manrope, system-ui, sans-serif'
-const PURP   = '#7B6AF4'
-const AMBER  = '#FFB547'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface BaseLeaderboard {
-  address: string
-  name: string
-  totalFunds: string
-  totalFundsRaw: string
-  markeeCount: number
-  admin: string
-  // Address-resolved creator (lib/leaderboards/resolveCreators.ts) -- distinct from admin, which for
-  // some platforms (Superfluid) is the beneficiary, and for migrated boards is the Cooperative
-  // multisig, not whoever actually created the board. Populated for superfluid/github/openinternet/
-  // forsale; streaming boards have no separate creator resolution, so callers fall back to admin
-  // (matches the existing lb.creator ?? lb.admin convention already used elsewhere on this page).
-  creator?: string | null
-  topMessage: string | null
-  topMessageOwner?: string | null
-  // Address of the top markee slot itself (distinct from `address`, the leaderboard/board contract) --
-  // already returned by every platform's leaderboards API, just not previously typed here. Needed as
-  // the markeeId for moderation (ModeratedContent/FlagButton key flagged state per-markee, not per-board).
-  topMarkeeAddress?: string | null
-  topFundsAddedRaw: string
-  topRateRaw?: string
-  minimumPriceRaw?: string
-  strategy?: 'fixed' | 'streaming'
-  // Verification is address-based, not platform-based -- a streaming board can be integrated on a
-  // website, GitHub, both, or neither, independent of its on-chain platform tag. Populated for every
-  // board (any platform) from /api/account/verification-status, not just website/github-tagged ones.
-  verifiedUrls?: string[]
-  linkedFiles?: LinkedFile[]
-  // Set on boards from the shared "For Sale" factory (see /api/forsale/leaderboards) -- unlike the
-  // three legacy per-vertical factories, there's no migration history to exempt these from needing a
-  // verified integration to reach "Active Markees".
-  verificationGated?: boolean
-}
-interface SuperfluidLeaderboard extends BaseLeaderboard { platform: 'superfluid' }
-interface LinkedFile {
-  repoFullName: string
-  repoOwner: string
-  repoName: string
-  repoAvatarUrl: string
-  repoHtmlUrl: string
-  filePath: string
-  verified: boolean
-}
-
-interface GithubLeaderboard extends BaseLeaderboard {
-  platform: 'github'
-  repoFullName: string | null
-  repoAvatarUrl: string | null
-  repoHtmlUrl: string | null
-  filePath: string | null
-  linkedFiles: LinkedFile[]
-}
-interface WebsiteLeaderboard extends BaseLeaderboard {
-  platform: 'website'
-  creator: string | null
-  logoUrl: string | null
-  siteUrl: string | null
-  verifiedUrl: string | null
-  verifiedUrls: string[]
-  status: 'pending' | 'verified'
-  isLegacy: boolean
-  slug?: string
-}
-type AnyLeaderboard = SuperfluidLeaderboard | GithubLeaderboard | WebsiteLeaderboard
-
-interface MyMessage {
-  address: string
-  message: string
-  name: string
-  totalFundsAdded: bigint
-  createdAt: number
-  strategyId: string
-  strategyName: string
-  isTop: boolean
-  topFunds: bigint
-  strategy?: 'fixed' | 'streaming'
-  rank?: number | null
-  flowRateRaw?: string
-  // Legacy TopDawg (subgraph-sourced) vs v1.x LeaderboardFactory (RPC-sourced) — determines
-  // whether MarkeeSignModal's RPC-only useLeaderboardDetail can safely target this markee's board.
-  isLegacy: boolean
-  // Verification data for the leaderboard this message lives on -- absent for legacy
-  // subgraph-sourced rows (the subgraph query doesn't carry it), which just fall back to the
-  // "Add to Your Site" / blank state like any other missing-data default in this file.
-  platform?: string | null
-  admin?: string | null
-  verifiedUrls?: string[]
-  linkedFiles?: LinkedFile[]
-  siteUrl?: string | null
-  repoFullName?: string | null
-  repoHtmlUrl?: string | null
-}
-
-interface FundedMessage {
-  address: string
-  message: string
-  name: string
-  totalFundsAdded: string
-  totalContributed: string
-  strategyId: string
-  strategyName: string
-  isTop: boolean
-  topFundsRaw: string
-  strategy?: 'fixed' | 'streaming'
-  rank?: number | null
-  flowRateRaw?: string
-  platform?: string | null
-  admin?: string | null
-  verifiedUrls?: string[]
-  linkedFiles?: LinkedFile[]
-  siteUrl?: string | null
-  repoFullName?: string | null
-  repoHtmlUrl?: string | null
-}
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 const MY_MESSAGES_QUERY = `
@@ -201,10 +84,6 @@ function fmtEth(wei: bigint) {
   return `${n.toFixed(3)} ETH`
 }
 
-function fmtAddr(a: string) {
-  if (!a || a.length < 10) return a
-  return `${a.slice(0, 6)}…${a.slice(-4)}`
-}
 
 function platformColor(lb: AnyLeaderboard) {
   if (lb.platform === 'github')     return TEXT2
@@ -265,9 +144,6 @@ function PlatIcon({ lb, size = 20 }: { lb: AnyLeaderboard; size?: number }) {
 }
 
 // ── Overview stats ────────────────────────────────────────────────────────────
-function GlowDot({ size = 8, color }: { size?: number; color: string }) {
-  return <span style={{ width: size, height: size, borderRadius: 99, background: color, boxShadow: `0 0 ${size * 1.5}px ${color}`, flexShrink: 0, display: 'inline-block' }} />
-}
 
 function InfoTip({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
@@ -337,7 +213,7 @@ function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
 }) {
   const raisedUsd = ethPrice ? Number(raised) / 1e18 * ethPrice : null
   const fmtViews  = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
-  const groupLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: PANEL_LABEL, marginBottom: 10, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 7 }
+  const groupLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: LAVENDER, marginBottom: 10, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 7 }
   const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }
   const group = (tint: string, extra?: React.CSSProperties): React.CSSProperties => ({ background: `rgba(${tint},0.02)`, border: `1px solid rgba(${tint},0.08)`, borderRadius: 16, padding: 12, ...extra })
 
@@ -645,7 +521,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, padding: '12px 18px' }}>
           {badEmail && <span style={{ fontSize: 12.5, color: '#FF8A9B', marginRight: 'auto' }}>Enter a valid email</span>}
-          {saveError && !badEmail && <span style={{ color: '#FF6B6B', fontSize: 12.5, marginRight: 'auto' }}>{saveError}</span>}
+          {saveError && !badEmail && <span style={{ color: DANGER, fontSize: 12.5, marginRight: 'auto' }}>{saveError}</span>}
           {justSaved && !saveError && <span style={{ color: GREEN, fontSize: 12.5, marginRight: 'auto' }}>Saved!</span>}
           {saving ? (
             <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>Confirm in wallet…</span>
@@ -774,96 +650,6 @@ function compareByRaised<T extends { totalFundsRaw: string }>(_key: string, a: T
 
 // ── Your Markees panel ────────────────────────────────────────────────────────
 const MK_COLS = 'minmax(0,1fr) 104px 84px 196px'
-const PANEL_LABEL = '#B4ACF7'
-const SECONDS_PER_MONTH = 60n * 60n * 24n * 30n
-
-function fmtWeiUsd(wei: bigint, ethPrice: number | null): string {
-  const eth = Number(wei) / 1e18
-  return ethPrice ? formatUsd(eth * ethPrice) : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
-}
-
-function PanelHead({ label, n, sub, children }: { label: string; n?: number; sub?: string; children?: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '15px 18px', minHeight: 56, boxSizing: 'border-box', borderBottom: '1px solid rgba(138,143,191,0.18)', background: 'rgba(138,143,191,0.05)' }}>
-      <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: PANEL_LABEL }}>{label}</span>
-      {n != null && <span style={{ fontFamily: MONO, fontSize: 11, color: PANEL_LABEL, background: 'rgba(180,172,247,0.12)', borderRadius: 99, padding: '1px 8px' }}>{n}</span>}
-      {sub && <span style={{ fontSize: 12.5, color: MUTED }}>{sub}</span>}
-      {children && <span style={{ flex: 1 }} />}
-      {children}
-    </div>
-  )
-}
-
-function SegToggle<K extends string>({ options, value, onChange, label }: {
-  options: { k: K; l: string; n?: number }[]
-  value: K
-  onChange: (k: K) => void
-  label: string
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} style={{ display: 'inline-flex', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 3, gap: 2 }}>
-      {options.map(o => {
-        const on = value === o.k
-        return (
-          <button
-            key={o.k} role="radio" aria-checked={on} onClick={() => onChange(o.k)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: on ? 'rgba(248,151,254,0.14)' : 'transparent', color: on ? PINK : TEXT2, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            {o.l}{o.n != null && <span style={{ fontFamily: MONO, fontSize: 11, color: on ? PINK : PANEL_LABEL }}>{o.n}</span>}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-function ArchiveButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={e => { e.stopPropagation(); onClick() }}
-      aria-label={label}
-      style={{ height: 32, boxSizing: 'border-box', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, cursor: 'pointer', padding: '0 10px', color: TEXT2, fontSize: 12.5, fontWeight: 600, fontFamily: SANS }}
-    >
-      <Archive size={13} style={{ color: MUTED }} />
-      Archive
-    </button>
-  )
-}
-
-function AttnGroup<T>({ title, sub, items, render, noun = ['Markee', 'Markees'], right }: {
-  title: string
-  sub: string
-  items: T[]
-  render: (item: T) => React.ReactNode
-  noun?: [string, string]
-  right?: React.ReactNode
-}) {
-  const [all, setAll] = useState(false)
-  const hidden = items.length - 3
-  return (
-    <section>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 14.5, fontWeight: 700, color: AMBER }}>{title}</span>
-        <span style={{ fontFamily: MONO, fontSize: 11.5, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>
-        <span style={{ fontSize: 12.5, color: MUTED }}>{sub}</span>
-        {right && <><span style={{ flex: 1 }} />{right}</>}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {(all ? items : items.slice(0, 3)).map(render)}
-        {hidden > 0 && (
-          <button
-            onClick={() => setAll(v => !v)}
-            aria-expanded={all}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', height: 38, boxSizing: 'border-box', background: 'transparent', border: `1px dashed ${BORDER}`, borderRadius: 14, color: TEXT2, fontSize: 13, fontWeight: 600, fontFamily: SANS, cursor: 'pointer' }}
-          >
-            {all ? 'Show fewer' : `Show ${hidden} more ${hidden === 1 ? noun[0] : noun[1]}`}
-            <ChevronDown size={12} style={{ transform: all ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-          </button>
-        )}
-      </div>
-    </section>
-  )
-}
 
 function AttnMarkeeItem({ lb, meta, cta, onCta, onArchive }: { lb: AnyLeaderboard; meta: string; cta: string; onCta: () => void; onArchive: () => void }) {
   return (
@@ -934,7 +720,7 @@ function ModAttnItem({ item, boardName, onReview }: { item: ModerationItem; boar
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
           {item.at > 0 && <span>{formatDistanceToNow(item.at * 1000, { addSuffix: true })}</span>}
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: item.kind === 'edited' ? AMBER : PANEL_LABEL, border: `1px solid ${item.kind === 'edited' ? `${AMBER}66` : 'rgba(180,172,247,0.45)'}`, borderRadius: 99, padding: '1px 7px' }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: item.kind === 'edited' ? AMBER : LAVENDER, border: `1px solid ${item.kind === 'edited' ? `${AMBER}66` : 'rgba(180,172,247,0.45)'}`, borderRadius: 99, padding: '1px 7px' }}>
             {item.kind === 'edited' ? 'Edited' : 'New'}
           </span>
           <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{boardName}</span>
@@ -1401,7 +1187,6 @@ function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: (
 const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
 
 // ── Manage drawer ─────────────────────────────────────────────────────────────
-const DANGER = '#FF8A9B'
 
 interface Integration {
   key: string
@@ -1754,7 +1539,7 @@ function StreamBalanceCard({ snapshot: data, ethPrice, onDeposit, onWithdraw }: 
           </div>
         </div>
         <div style={{ height: 6, borderRadius: 99, background: 'rgba(138,143,191,0.15)', marginTop: 14, overflow: 'hidden' }}>
-          <div style={{ width: `${liveRate > 0n ? runwayProgressPct(runway) : 0}%`, height: '100%', borderRadius: 99, background: tier === 'normal' ? `linear-gradient(90deg, ${PINK}, ${PURP})` : AMBER, transition: 'width 400ms ease' }} />
+          <div style={{ width: `${liveRate > 0n ? runwayProgressPct(runway) : 0}%`, height: '100%', borderRadius: 99, background: tier === 'normal' ? `linear-gradient(90deg, ${PINK}, ${PURPLE})` : AMBER, transition: 'width 400ms ease' }} />
         </div>
       </div>
       {streams.length > 0 && (
@@ -1986,7 +1771,6 @@ function fingerprintAddresses(addrs: string[]): string {
 // ── StatsChart ────────────────────────────────────────────────────────────────
 type ChartType  = 'bar' | 'line'
 type ChartRange = '7d' | '30d' | '90d'
-const LAVENDER = '#A898F5'
 
 interface ChartMetric { label: string; value: string; delta?: number }
 
@@ -2059,7 +1843,7 @@ function StatsChart({ metrics, seed = 1 }: { metrics: ChartMetric[]; seed?: numb
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
                 <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: on ? PINK : TEXT }}>{m.value}</span>
                 {m.delta !== undefined && (
-                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: m.delta >= 0 ? GREEN : '#FF6B6B' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: m.delta >= 0 ? GREEN : DANGER }}>
                     {m.delta >= 0 ? '▲' : '▼'} {Math.abs(m.delta).toFixed(1)}%
                   </span>
                 )}
@@ -2150,6 +1934,14 @@ function StatsChart({ metrics, seed = 1 }: { metrics: ChartMetric[]; seed?: numb
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
+  return (
+    <ToastProvider>
+      <AccountDashboard />
+    </ToastProvider>
+  )
+}
+
+function AccountDashboard() {
   const { activeAddress, hasWallet } = useActiveWallet()
   const ethPrice = useEthPrice()
   const [mounted, setMounted] = useState(false)

@@ -18,10 +18,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
 import { moderationQueueKey } from '@/hooks/useModerationQueue'
-import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG } from '@/lib/design-tokens'
-
-const SANS = 'Manrope, system-ui, sans-serif'
-const RED = '#FF8A9B'
+import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG, SANS, DANGER as RED } from '@/lib/design-tokens'
 
 interface ModeratorsState {
   board: string
