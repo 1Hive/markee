@@ -1601,6 +1601,171 @@ function fingerprintAddresses(addrs: string[]): string {
   return `${addrs.length}:${(hash >>> 0).toString(36)}`
 }
 
+// ── StatsChart ────────────────────────────────────────────────────────────────
+type ChartType  = 'bar' | 'line'
+type ChartRange = '7d' | '30d' | '90d'
+const LAVENDER = '#A898F5'
+
+interface ChartMetric { label: string; value: string; delta?: number }
+
+function StatsChart({ metrics, seed = 1 }: { metrics: ChartMetric[]; seed?: number }) {
+  const [chartType, setChartType] = useState<ChartType>('bar')
+  const [range, setRange]         = useState<ChartRange>('30d')
+  const [activeIdx, setActiveIdx] = useState(0)
+
+  const W = 560, H = 160
+  const PAD = { t: 10, b: 28, l: 44, r: 12 }
+  const innerW = W - PAD.l - PAD.r
+  const innerH = H - PAD.t - PAD.b
+
+  const nPoints = range === '7d' ? 7 : range === '30d' ? 30 : 90
+  const barW    = Math.max(2, (innerW / nPoints) * 0.65)
+
+  const data = useMemo(() => {
+    const pts: number[] = []
+    for (let i = 0; i < nPoints; i++) {
+      pts.push(Math.abs(Math.sin(seed * 3.14 + i * 2.71 + i * i * 0.01)) * 0.8 + 0.15)
+    }
+    return pts
+  }, [seed, nPoints])
+
+  const cumData = useMemo(() =>
+    data.reduce((acc, v) => { acc.push((acc[acc.length - 1] ?? 0) + v); return acc }, [] as number[]),
+    [data]
+  )
+
+  const displayData = chartType === 'line' ? cumData : data
+  const dMax = Math.max(...displayData) || 1
+
+  const xLine = (i: number) => PAD.l + (nPoints > 1 ? (i / (nPoints - 1)) * innerW : innerW / 2)
+  const yOf   = (v: number) => PAD.t + innerH - (v / dMax) * innerH
+
+  const linePath = useMemo(() => {
+    const pts = displayData.map((v, i) => [xLine(i), yOf(v)] as [number, number])
+    if (pts.length < 2) return ''
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`
+    for (let i = 1; i < pts.length; i++) {
+      const cpx = ((pts[i - 1][0] + pts[i][0]) / 2).toFixed(1)
+      d += ` C ${cpx} ${pts[i - 1][1].toFixed(1)}, ${cpx} ${pts[i][1].toFixed(1)}, ${pts[i][0].toFixed(1)} ${pts[i][1].toFixed(1)}`
+    }
+    return d
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayData, nPoints])
+
+  const areaPath  = `${linePath} L ${xLine(nPoints - 1).toFixed(1)} ${(PAD.t + innerH).toFixed(1)} L ${PAD.l} ${(PAD.t + innerH).toFixed(1)} Z`
+  const gradId    = `areaGrad-${seed}`
+  const yTick1    = PAD.t + innerH * 0.33
+  const yTick2    = PAD.t + innerH * 0.67
+
+  return (
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 24px 16px', marginBottom: 24 }}>
+      {/* Stat header row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const }}>
+        {metrics.map((m, i) => {
+          const on = i === activeIdx
+          return (
+            <button
+              key={m.label}
+              onClick={() => setActiveIdx(i)}
+              style={{
+                background: on ? `${LAVENDER}1A` : 'transparent',
+                border: `1px solid ${on ? LAVENDER + '44' : 'transparent'}`,
+                borderRadius: 9, padding: '8px 12px', cursor: 'pointer', textAlign: 'left' as const,
+              }}
+            >
+              <div style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase' as const, color: on ? LAVENDER : MUTED, marginBottom: 3 }}>{m.label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: on ? PINK : TEXT }}>{m.value}</span>
+                {m.delta !== undefined && (
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: m.delta >= 0 ? GREEN : '#FF6B6B' }}>
+                    {m.delta >= 0 ? '▲' : '▼'} {Math.abs(m.delta).toFixed(1)}%
+                  </span>
+                )}
+              </div>
+            </button>
+          )
+        })}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
+          {/* bar / line toggle */}
+          <div style={{ display: 'flex', background: BG, border: `1px solid ${BORDER}`, borderRadius: 7, overflow: 'hidden' }}>
+            {(['bar', 'line'] as ChartType[]).map(t => (
+              <button
+                key={t}
+                onClick={() => setChartType(t)}
+                title={t === 'bar' ? 'Bar chart' : 'Line chart'}
+                style={{ padding: '5px 9px', background: chartType === t ? `${LAVENDER}28` : 'transparent', border: 'none', cursor: 'pointer', color: chartType === t ? LAVENDER : MUTED, display: 'flex', alignItems: 'center' }}
+              >
+                {t === 'bar'
+                  ? <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor"><rect x="0" y="6" width="3" height="7" rx="1"/><rect x="5" y="3" width="3" height="10" rx="1"/><rect x="10" y="0" width="3" height="13" rx="1"/></svg>
+                  : <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="0,10 3,6 6.5,8 10,3 13,1"/></svg>
+                }
+              </button>
+            ))}
+          </div>
+          {/* range buttons */}
+          <div style={{ display: 'flex', background: BG, border: `1px solid ${BORDER}`, borderRadius: 7, overflow: 'hidden' }}>
+            {(['7d', '30d', '90d'] as ChartRange[]).map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                style={{ padding: '4px 10px', background: range === r ? LAVENDER : 'transparent', border: 'none', cursor: 'pointer', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, color: range === r ? BG : MUTED }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* SVG chart */}
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={PINK} stopOpacity="0.3"/>
+            <stop offset="100%" stopColor={PINK} stopOpacity="0.02"/>
+          </linearGradient>
+        </defs>
+
+        {/* Gridlines */}
+        <line x1={PAD.l} y1={yTick1} x2={PAD.l + innerW} y2={yTick1} stroke={BORDER} strokeWidth="1"/>
+        <line x1={PAD.l} y1={yTick2} x2={PAD.l + innerW} y2={yTick2} stroke={BORDER} strokeWidth="1"/>
+        <line x1={PAD.l} y1={PAD.t + innerH} x2={PAD.l + innerW} y2={PAD.t + innerH} stroke={BORDER} strokeWidth="1"/>
+
+        {/* Y-axis labels (proportional to dMax — placeholder scale) */}
+        <text x={PAD.l - 5} y={yTick1} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">
+          {(dMax * 0.67).toFixed(1)}
+        </text>
+        <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">
+          {(dMax * 0.33).toFixed(1)}
+        </text>
+
+        {/* Chart body */}
+        {chartType === 'bar'
+          ? data.map((v, i) => {
+              const x = PAD.l + (i / nPoints) * innerW + (innerW / nPoints - barW) / 2
+              const y = yOf(v)
+              return <rect key={i} x={x.toFixed(1)} y={y.toFixed(1)} width={barW} height={(PAD.t + innerH - y).toFixed(1)} rx="2" fill={LAVENDER} opacity="0.72"/>
+            })
+          : <>
+              <path d={areaPath} fill={`url(#${gradId})`}/>
+              <path d={linePath} fill="none" stroke={PINK} strokeWidth="1.8" strokeLinejoin="round"/>
+            </>
+        }
+
+        {/* Centre label */}
+        <text x={W / 2} y={PAD.t + innerH / 2 + 4} textAnchor="middle" fill={`${MUTED}50`} fontSize="10" fontFamily="JetBrains Mono,monospace">
+          {chartType === 'bar' ? 'Daily totals' : 'Cumulative total'}
+        </text>
+
+        {/* X-axis labels */}
+        <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">{nPoints} days ago</text>
+        <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">Today</text>
+      </svg>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
   const { activeAddress, hasWallet } = useActiveWallet()
@@ -2080,6 +2245,14 @@ export default function AccountPage() {
               {/* ── Creator Hub ── */}
               {section === 'creator' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  <StatsChart
+                    seed={1}
+                    metrics={[
+                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '—', delta: 12.4 },
+                      { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '—', delta: 5.1 },
+                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '—', delta: 7.2 },
+                    ]}
+                  />
                   {/* Setup / pending */}
                   {!isLoading && draftBoards.length > 0 && (
                     <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
@@ -2181,6 +2354,14 @@ export default function AccountPage() {
               {/* ── Buyer Hub ── */}
               {section === 'buyer' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                  <StatsChart
+                    seed={2}
+                    metrics={[
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '—', delta: -3.2 },
+                      { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '—', delta: 8.5 },
+                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '—', delta: -1.8 },
+                    ]}
+                  />
                   {!isLoadingMessages && myMessages.length > 0 && (
                     <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
                       <span style={{ color: GREEN, fontWeight: 600 }}>{showingNow.length} showing now</span>
