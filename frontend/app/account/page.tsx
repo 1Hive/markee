@@ -31,6 +31,7 @@ import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway, formatRunwa
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, PURPLE, HERO_BG } from '@/lib/design-tokens'
 import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
 import { ToastProvider, useToast } from '@/components/account/Toast'
+import { YourMarkees, MarkeeAttnGroups, PulseDot, compareByRaised } from '@/components/account/CreatorHub'
 import { SECONDS_PER_MONTH, fmtAddr, GlowDot, fmtWeiUsd, PanelHead, SegToggle, ArchiveButton, AttnGroup } from '@/components/account/primitives'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -643,67 +644,6 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
-function compareByRaised<T extends { totalFundsRaw: string }>(_key: string, a: T, b: T): number {
-  const at = BigInt(a.totalFundsRaw || '0')
-  const bt = BigInt(b.totalFundsRaw || '0')
-  return at > bt ? 1 : at < bt ? -1 : 0
-}
-
-// ── Your Markees panel ────────────────────────────────────────────────────────
-const MK_COLS = 'minmax(0,1fr) 104px 84px 196px'
-
-function AttnMarkeeItem({ lb, meta, cta, onCta, onArchive }: { lb: AnyLeaderboard; meta: string; cta: string; onCta: () => void; onArchive: () => void }) {
-  return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name || fmtAddr(lb.address)}</span>
-      <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-      <span style={{ fontSize: 12, color: MUTED }}>{meta}</span>
-      <span style={{ flex: 1 }} />
-      <ArchiveButton onClick={onArchive} label={`Archive ${lb.name || 'Markee'}`} />
-      <button
-        onClick={onCta}
-        style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-      >
-        {cta}
-      </button>
-    </div>
-  )
-}
-
-function MarkeeAttnGroups({ inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite }: {
-  inactive: AnyLeaderboard[]
-  awaiting: AnyLeaderboard[]
-  ethPrice: number | null
-  onActivate: (lb: AnyLeaderboard) => void
-  onArchive: (lb: AnyLeaderboard) => void
-  onAddToSite: (lb: AnyLeaderboard) => void
-}) {
-  return (
-    <>
-      {inactive.length > 0 && (
-        <AttnGroup
-          title="Not Yet Activated"
-          sub="Activate to set the first message."
-          items={inactive}
-          render={lb => (
-            <AttnMarkeeItem key={lb.address} lb={lb} meta={`Pays out to ${fmtAddr(lb.admin)}`} cta="Activate" onCta={() => onActivate(lb)} onArchive={() => onArchive(lb)} />
-          )}
-        />
-      )}
-      {awaiting.length > 0 && (
-        <AttnGroup
-          title="Not on a Site Yet"
-          sub="Add the embed to your site to go live."
-          items={awaiting}
-          render={lb => (
-            <AttnMarkeeItem key={lb.address} lb={lb} meta={`${fmtWeiUsd(BigInt(lb.totalFundsRaw), ethPrice)} raised`} cta="Add to Your Site" onCta={() => onAddToSite(lb)} onArchive={() => onArchive(lb)} />
-          )}
-        />
-      )}
-    </>
-  )
-}
-
 // ── Activity Feed: Needs Attention ────────────────────────────────────────────
 function ModAttnItem({ item, boardName, onReview }: { item: ModerationItem; boardName: string; onReview: (action: QueueAction, ids: string[]) => Promise<void> }) {
   const [busy, setBusy] = useState<QueueAction | null>(null)
@@ -926,97 +866,6 @@ function LatestActivity({ events, loaded, boardName, ethPrice, reclaimLabel, onR
           </div>
         )
       })}
-    </div>
-  )
-}
-
-function MarkeeTableHead() {
-  const th = (label: string, right?: boolean) => (
-    <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED, textAlign: right ? 'right' : 'left' }}>{label}</span>
-  )
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '11px 18px' }}>
-      {th('Shown on')}{th('Winning bid', true)}{th('Raised', true)}<span />
-    </div>
-  )
-}
-
-function MarkeeRow({ lb, archived, selected, views, ethPrice, onAddToSite, onRestore, onManage }: {
-  lb: AnyLeaderboard
-  archived?: boolean
-  selected: boolean
-  views: number
-  ethPrice: number | null
-  onAddToSite: () => void
-  onRestore: () => void
-  onManage: () => void
-}) {
-  const isStreaming = lb.strategy === 'streaming'
-  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
-  const raised = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
-  const topBid = BigInt(lb.topFundsAddedRaw ?? '0')
-  const amount = (color: string = TEXT): React.CSSProperties => ({ textAlign: 'right', fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' })
-  const dash = <span style={{ textAlign: 'right', color: MUTED, fontSize: 12.5 }}>–</span>
-  const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
-
-  return (
-    <div>
-      <div
-        onClick={archived ? undefined : onManage}
-        onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
-        onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        style={{
-          display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '12px 18px', alignItems: 'center',
-          borderTop: `1px solid ${BORDER}`, cursor: archived ? 'default' : 'pointer', opacity: archived ? 0.7 : 1,
-          background: selected ? 'rgba(248,151,254,0.06)' : 'transparent', boxShadow: selected ? `inset 2px 0 0 ${PINK}` : 'none',
-          transition: 'background 120ms',
-        }}
-      >
-        <span style={{ minWidth: 0 }}>
-          {archived
-            ? <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lb.name || fmtAddr(lb.address)}</span>
-            : <span style={{ display: 'flex', minWidth: 0 }}><ServedOnCell lb={lb} onAddToSite={onAddToSite} /></span>}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
-            <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-            {archived
-              ? <span>Archived</span>
-              : <span title="Views" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <Eye size={12} style={{ color: MUTED }} />
-                  <span style={{ fontFamily: MONO, fontSize: 11.5, color: views ? TEXT2 : MUTED }}>{views.toLocaleString()}</span>
-                </span>}
-          </span>
-        </span>
-
-        {topBid === 0n ? dash
-          : isStreaming ? (ratePerSec > 0n
-            ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                <GlowDot size={7} color={GREEN} />
-                <span style={amount(GREEN)}>{fmtWeiUsd(ratePerSec * SECONDS_PER_MONTH, ethPrice)}<span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}>/mo</span></span>
-              </span>
-            : <span style={{ textAlign: 'right', fontSize: 12, color: MUTED }}>No active bids</span>)
-          : <span style={amount()}>{fmtWeiUsd(topBid, ethPrice)}</span>}
-
-        {topBid === 0n ? dash : <span style={amount()}>{fmtWeiUsd(raised, ethPrice)}</span>}
-
-        <span style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
-          {archived ? (
-            <button onClick={e => { e.stopPropagation(); onRestore() }} style={ghostBtn}>Restore</button>
-          ) : (
-            <>
-              <a href={`/markee/${lb.address}`} onClick={e => e.stopPropagation()} style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                View Markee <ArrowUpRight size={11} />
-              </a>
-              <button
-                onClick={e => { e.stopPropagation(); onManage() }}
-                aria-haspopup="dialog"
-                style={{ ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700, background: selected ? `${PINK}14` : 'transparent' }}
-              >
-                Manage
-              </button>
-            </>
-          )}
-        </span>
-      </div>
     </div>
   )
 }
@@ -1993,7 +1842,6 @@ function AccountDashboard() {
     window.history.replaceState(null, '', url.toString())
   }, [])
   const [archived, setArchived]               = useState<string[]>([])
-  const [markeeView, setMarkeeView]           = useState<'active' | 'archived'>('active')
   const [manageTarget, setManageTarget]       = useState<string | null>(null)
   // "Archive" is purely a local dashboard preference -- there's no on-chain or backend concept of
   // it -- so without persisting it, every reload silently un-archives everything. Keyed per wallet
@@ -2264,7 +2112,7 @@ function AccountDashboard() {
     awaitingVerification.filter(lb => !archived.includes(lb.address)), [awaitingVerification, archived])
 
   const sortedActiveBoards = useMemo(() =>
-    [...activeBoards].sort((a, b) => compareByRaised('raised', b, a)), [activeBoards])
+    [...activeBoards].sort((a, b) => compareByRaised(b, a)), [activeBoards])
 
   // draftBoards is exactly the "Pending Setup" tab's contents (awaitingVerification + inactive,
   // both already archived-filtered) -- used here only as its count/visibility source; the tab body
@@ -2520,66 +2368,21 @@ function AccountDashboard() {
                       { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '—', delta: 7.2 },
                     ]}
                   />
-                  <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-                    <PanelHead label="Your Markees" n={draftBoards.length + activeBoards.length}>
-                      <SegToggle
-                        label="Show"
-                        value={markeeView}
-                        onChange={setMarkeeView}
-                        options={[
-                          { k: 'active', l: 'Active', n: draftBoards.length + activeBoards.length },
-                          { k: 'archived', l: 'Archived', n: archivedBoards.length },
-                        ]}
-                      />
-                      <Link href="/raise-funding" style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-                        Create New Markee
-                      </Link>
-                    </PanelHead>
-
-                    {!isLoading && markeeView === 'active' && draftBoards.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '18px 18px 20px', borderBottom: `1px solid ${BORDER}` }}>
-                        <MarkeeAttnGroups
-                          inactive={inactiveBoards}
-                          awaiting={awaitingSiteBoards}
-                          ethPrice={ethPrice}
-                          onActivate={handleActivate}
-                          onArchive={lb => setArchived(prev => [...prev, lb.address])}
-                          onAddToSite={handleOpenAddToSite}
-                        />
-                      </div>
-                    )}
-
-                    <div style={{ overflowX: 'auto' }}>
-                      <div style={{ minWidth: 620 }}>
-                        <MarkeeTableHead />
-                        {isLoading ? (
-                          [1, 2, 3].map(i => (
-                            <div key={i} style={{ display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '16px 18px', borderTop: `1px solid ${BORDER}` }}>
-                              {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                            </div>
-                          ))
-                        ) : (markeeView === 'active' ? sortedActiveBoards : archivedBoards).length === 0 ? (
-                          <div style={{ padding: '22px 18px', borderTop: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>
-                            {markeeView === 'active' ? 'No live Markees yet.' : 'No archived Markees.'}
-                          </div>
-                        ) : (
-                          (markeeView === 'active' ? sortedActiveBoards : archivedBoards).map(lb => (
-                            <MarkeeRow
-                              key={lb.address}
-                              lb={lb}
-                              archived={markeeView === 'archived'}
-                              selected={manageTarget === lb.address}
-                              views={boardViews[lb.address.toLowerCase()] ?? 0}
-                              ethPrice={ethPrice}
-                              onAddToSite={() => handleOpenAddToSite(lb)}
-                              onRestore={() => setArchived(prev => prev.filter(a => a !== lb.address))}
-                              onManage={() => setManageTarget(lb.address)}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <YourMarkees
+                    active={sortedActiveBoards}
+                    archived={archivedBoards}
+                    inactive={inactiveBoards}
+                    awaiting={awaitingSiteBoards}
+                    loading={isLoading}
+                    boardViews={boardViews}
+                    ethPrice={ethPrice}
+                    selected={manageTarget}
+                    onManage={lb => setManageTarget(lb.address)}
+                    onActivate={handleActivate}
+                    onArchive={lb => setArchived(prev => [...prev, lb.address])}
+                    onRestore={lb => setArchived(prev => prev.filter(a => a !== lb.address))}
+                    onAddToSite={handleOpenAddToSite}
+                  />
 
                   {/* Moderation */}
                   {isModerator && (

@@ -10,6 +10,11 @@ import { MONO, PINK, BG, BORDER, TEXT2, MUTED, SANS, AMBER, LAVENDER } from '@/l
 
 export const SECONDS_PER_MONTH = 60n * 60n * 24n * 30n
 
+// 860 · 1,310 · 12.4K
+export function fmtCount(n: number): string {
+  return n >= 10_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K` : n.toLocaleString('en-US')
+}
+
 export function fmtAddr(a: string) {
   if (!a || a.length < 10) return a
   return `${a.slice(0, 6)}…${a.slice(-4)}`
