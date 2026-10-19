@@ -9,7 +9,10 @@ anything:
   `@privy-io/wagmi` for the stubs in `stubs/`: plain wagmi with a `mock` connector for Anvil's first
   default account, auto-connected. Anvil signs its transactions and messages.
 - **KV:** Redis behind `serverless-redis-http` (Upstash REST protocol) via `docker-compose.yml`.
-- Every run resets Anvil to the pinned block and flushes KV (`global-setup.ts`).
+- Every run starts from the same chain state and an empty KV (`global-setup.ts`): it reverts Anvil to
+  a snapshot of the pinned block (keeping the state Anvil has already fetched warm) and flushes KV.
+  On a fresh Anvil it resets to the pinned block, simulates a purchase once to warm the cache, and
+  takes that snapshot.
 
 ## Running
 
@@ -27,9 +30,10 @@ beside your normal `npm run dev`.
 
 ## Things to know
 
-- **The first transaction after a fresh fork is slow** (tens of seconds): Anvil fetches every storage
-  slot it touches from the upstream RPC. Anvil caches fork state per block in `~/.foundry/cache`, so
-  later runs at the same block take about 2s per transaction. Tests allow 150s per transaction.
+- **A fresh fork is slow** (tens of seconds to minutes for the first purchase): Anvil fetches every
+  storage slot it touches from the upstream RPC, at whatever speed that RPC allows. The global setup
+  absorbs this once; keeping Anvil running between runs (the default outside CI) keeps it warm.
+  Tests allow 150s per transaction and per first Buyer Hub load.
 - **Anvil's default account exists on Base too**, so on the fork it carries whatever mainnet state it
   had at the pinned block (e.g. a MARKEE balance). Assertions only look for what the tests create.
 - **Indexers don't see fork transactions.** The Superfluid streaming subgraph and The Graph index real

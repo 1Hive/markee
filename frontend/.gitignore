@@ -37,3 +37,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env
+
+# fork E2E: snapshot id of the reused Anvil
+/tests/e2e/fork/.anvil-snapshot

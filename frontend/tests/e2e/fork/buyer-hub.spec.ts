@@ -56,6 +56,9 @@ test.describe('bids show up in the Buyer Hub', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/account?section=buyer')
       await expect(page.getByText('Your Messages', { exact: false }).first()).toBeVisible()
+      // The first load after the bids hits cold listing routes on the fork (RPC log scans, KV
+      // cache misses), which can take longer than a normal assertion timeout.
+      await expect(page.locator('.acct-row').first()).toBeVisible({ timeout: TX_TIMEOUT })
     })
 
     test('lists the For Sale purchase', async ({ page }) => {
