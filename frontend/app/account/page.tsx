@@ -23,15 +23,15 @@ import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { runwaySeconds, runwayTier } from '@/lib/superfluid/streaming'
-import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, HERO_BG } from '@/lib/design-tokens'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, HERO_BG, CARD_BG } from '@/lib/design-tokens'
 import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
-import { ToastProvider } from '@/components/account/Toast'
+import { ToastProvider, useToast } from '@/components/account/Toast'
 import { YourMarkees, compareByRaised } from '@/components/account/CreatorHub'
 import { ManageDrawer } from '@/components/account/ManageDrawer'
 import { StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate, winPrice } from '@/components/account/BuyerHub'
 import { NeedsAttention } from '@/components/account/NeedsAttention'
 import { LatestActivity } from '@/components/account/ActivityFeed'
-import { fmtAddr, GlowDot } from '@/components/account/primitives'
+import { fmtAddr, GlowDot, PanelHead, WalletPending } from '@/components/account/primitives'
 import { formatUsd } from '@/lib/utils'
 import { ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
@@ -294,6 +294,7 @@ function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: bo
 }
 
 function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
+  const toast = useToast()
   const { signMessageAsync } = useSignMessage()
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
   const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
@@ -304,7 +305,6 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const [emailInput, setEmailInput]   = useState('')
   const [saving, setSaving]           = useState(false)
   const [saveError, setSaveError]     = useState<string | null>(null)
-  const [justSaved, setJustSaved]     = useState(false)
   const [showVerifyBanner, setShowVerifyBanner] = useState(!!verifyOk)
 
   useEffect(() => {
@@ -369,8 +369,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
         setNotifyState(prev => prev ? { ...prev, frequency: freqDraft } : prev)
       }
-      setJustSaved(true)
-      setTimeout(() => setJustSaved(false), 3000)
+      toast(emailChanged ? 'Saved · verification email sent' : 'Notification settings saved')
     } catch (err) {
       const msg = err instanceof Error ? err.message : ''
       if (!/reject|denied/i.test(msg)) setSaveError(msg || 'Could not save. Try again.')
@@ -390,13 +389,14 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet: address, email: savedEmail, signature: sig, timestamp }),
       })
+      toast('Verification email re-sent')
     } catch {
-      // silent — best effort
+      // best effort: a rejected or failed resend leaves the Resend link to try again
     }
   }
 
   const ghostBtn: React.CSSProperties = { background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontFamily: SANS, color: TEXT2, cursor: 'pointer' }
-  const off = freqDraft === 'off'
+  const off = freqDraft === 'off' || (!savedEmail && !editEmail)
 
   return (
     <div style={{ maxWidth: 760 }}>
@@ -407,11 +407,8 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         </div>
       )}
 
-      <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${BORDER}` }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: MUTED }}>Email Notifications</span>
-        </div>
+      <div style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+        <PanelHead label="Email Notifications" />
 
         {/* Your Email row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' as const }}>
@@ -499,11 +496,10 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
 
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, padding: '12px 18px' }}>
-          {badEmail && <span style={{ fontSize: 12.5, color: '#FF8A9B', marginRight: 'auto' }}>Enter a valid email</span>}
+          {badEmail && <span style={{ fontSize: 12.5, color: DANGER, marginRight: 'auto' }}>Enter a valid email</span>}
           {saveError && !badEmail && <span style={{ color: DANGER, fontSize: 12.5, marginRight: 'auto' }}>{saveError}</span>}
-          {justSaved && !saveError && <span style={{ color: GREEN, fontSize: 12.5, marginRight: 'auto' }}>Saved!</span>}
           {saving ? (
-            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>Confirm in wallet…</span>
+            <WalletPending label="Saving…" />
           ) : (
             <>
               {isDirty && (
@@ -512,7 +508,8 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
               <button
                 disabled={!isDirty || !!badEmail}
                 onClick={save}
-                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 18px', fontFamily: SANS, fontWeight: 700, fontSize: 13.5, cursor: isDirty && !badEmail ? 'pointer' : 'not-allowed', opacity: isDirty && !badEmail ? 1 : 0.4, transition: 'opacity 150ms' }}
+                className="acct-btn-lg"
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '0 18px', height: 38, fontFamily: SANS, fontWeight: 700, fontSize: 13.5, cursor: isDirty && !badEmail ? 'pointer' : 'not-allowed', opacity: isDirty && !badEmail ? 1 : 0.4, transition: 'opacity 150ms' }}
               >
                 Save changes
               </button>
