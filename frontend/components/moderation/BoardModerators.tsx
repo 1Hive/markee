@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAccount, useSignMessage } from 'wagmi'
 import { isAddress } from 'viem'
-import { Check, Plus, X } from 'lucide-react'
+import { Check, Copy, Plus } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
@@ -43,6 +43,13 @@ function Chip({ children, color = MUTED }: { children: React.ReactNode; color?: 
 }
 
 function Row({ address, you, children }: { address: string; you: boolean; children?: React.ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(address).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${BORDER}`, minWidth: 0 }}>
       <a
@@ -54,6 +61,9 @@ function Row({ address, you, children }: { address: string; you: boolean; childr
       >
         {fmtAddr(address)}
       </a>
+      <button onClick={copy} title="Copy address" style={{ display: 'flex', background: 'transparent', border: 'none', color: copied ? GREEN : MUTED, cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
       {you && <Chip color={PINK}>You</Chip>}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</div>
     </div>
@@ -166,10 +176,9 @@ export function BoardModerators({ board }: { board: string }) {
                 <button
                   onClick={() => setDraft(list.filter(x => x !== m))}
                   aria-label={`Remove ${m}`}
-                  title="Remove moderator"
-                  style={{ display: 'flex', background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', padding: 2 }}
+                  style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', padding: '2px 4px', fontSize: 12, fontFamily: SANS, textDecoration: 'underline' }}
                 >
-                  <X size={14} />
+                  Remove
                 </button>
               )}
             </Row>
@@ -184,7 +193,7 @@ export function BoardModerators({ board }: { board: string }) {
                 <input
                   value={input}
                   onChange={e => { setInput(e.target.value); setInputError(null) }}
-                  placeholder="Add a moderator's wallet address (0x…)"
+                  placeholder="Wallet address (0x…)"
                   spellCheck={false}
                   autoComplete="off"
                   style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${inputError ? RED : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 12.5, outline: 'none' }}
@@ -194,7 +203,7 @@ export function BoardModerators({ board }: { board: string }) {
                   disabled={!input.trim()}
                   style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', color: input.trim() ? TEXT : MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: input.trim() ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
                 >
-                  <Plus size={13} /> Add
+                  <Plus size={13} /> Add Moderator
                 </button>
               </form>
               {inputError && <p style={{ margin: '6px 0 0', color: RED, fontSize: 12 }}>{inputError}</p>}
@@ -226,6 +235,10 @@ export function BoardModerators({ board }: { board: string }) {
                   {saveError && <span style={{ color: RED, fontSize: 12.5 }}>{saveError}</span>}
                 </div>
               )}
+
+              <p style={{ margin: '14px 0 0', color: MUTED, fontSize: 12, fontStyle: 'italic' }}>
+                Moderators can set up email alerts in their Account Settings.
+              </p>
             </>
           ) : (
             <p style={{ margin: '10px 0 0', color: MUTED, fontSize: 12.5 }}>Only this board's owner can change its moderators.</p>

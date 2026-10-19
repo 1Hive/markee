@@ -5,7 +5,10 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, Pencil, ChevronDown, Info, Menu } from 'lucide-react'
+import { Globe2, Github, Zap, Pencil, ChevronDown, Info } from 'lucide-react'
+import { useSignMessage } from 'wagmi'
+import { MODERATION_API } from '@/lib/moderation/config'
+import { notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
@@ -361,93 +364,228 @@ function Overview({ raised, active, bought, contributed, ethPrice, creatorCpm, b
   )
 }
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-type TabId = 'pending' | 'live' | 'archive' | 'bought' | 'moderation'
+// ── Section navigation ────────────────────────────────────────────────────────
+type SectionId = 'feed' | 'creator' | 'buyer' | 'settings'
 
-function useNarrow() {
-  const [narrow, setNarrow] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)')
-    setNarrow(mq.matches)
-    const on = () => setNarrow(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
-  return narrow
-}
-
-function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number; moderation: number | null } }) {
-  const narrow = useNarrow()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const items: { key: TabId; label: string; n: number; amber?: boolean; muted?: boolean }[] = [
-    ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Not Yet Activated', n: counts.pending, amber: true }] : []),
-    ...(counts.moderation !== null ? [{ key: 'moderation' as const, label: 'Moderation Queue', n: counts.moderation, amber: counts.moderation > 0 }] : []),
-    { key: 'live',  label: 'My Markees',              n: counts.live },
-    { key: 'bought', label: 'Messages Bought',        n: counts.bought },
-    ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive, muted: true }] : []),
+function SidebarNav({ section, setSection, moderationCount }: { section: SectionId; setSection: (s: SectionId) => void; moderationCount: number }) {
+  const items: { key: SectionId; label: string; icon: React.ReactNode; badge?: number }[] = [
+    {
+      key: 'feed', label: 'Activity Feed', badge: moderationCount > 0 ? moderationCount : undefined,
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+    },
+    {
+      key: 'creator', label: 'Creator Hub',
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>,
+    },
+    {
+      key: 'buyer', label: 'Buyer Hub',
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+    },
   ]
+  const settingsIcon = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 
-  if (narrow) {
-    const active = items.find(it => it.key === tab) ?? items[0]
+  const btn = (key: SectionId, label: string, icon: React.ReactNode, badge?: number) => {
+    const on = section === key
     return (
-      <div style={{ position: 'relative', borderBottom: `1px solid ${BORDER}` }}>
-        <button
-          onClick={() => setMenuOpen(v => !v)}
-          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 4px', color: TEXT, fontFamily: SANS }}
-        >
-          <Menu size={18} color={MUTED} style={{ flexShrink: 0 }} />
-          <span style={{ fontWeight: 700, fontSize: 15, flex: 1, textAlign: 'left' }}>{active.label}</span>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: active.amber ? AMBER : PINK, background: `${active.amber ? AMBER : PINK}1E`, borderRadius: 99, padding: '1px 8px', flexShrink: 0 }}>{active.n}</span>
-          <ChevronDown size={16} color={MUTED} style={{ flexShrink: 0, transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 140ms' }} />
-        </button>
-        {menuOpen && (
-          <>
-            <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,0.5)', zIndex: 20, overflow: 'hidden' }}>
-              {items.map(it => {
-                const on = tab === it.key
-                const accent = it.amber ? AMBER : it.muted ? MUTED : PINK
-                return (
-                  <button
-                    key={it.key}
-                    onClick={() => { setTab(it.key); setMenuOpen(false) }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: on ? `${accent}0F` : 'transparent', border: 'none', cursor: 'pointer', padding: '12px 16px', color: on ? TEXT : TEXT2, fontWeight: on ? 700 : 500, fontSize: 14, fontFamily: SANS, textAlign: 'left' }}
-                  >
-                    <span style={{ flex: 1 }}>{it.label}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: on ? accent : MUTED, background: on ? `${accent}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
-                  </button>
-                )
-              })}
-              <Link
-                href="/create-a-markee"
-                style={{ display: 'block', padding: '12px 16px', borderTop: `1px solid ${BORDER}`, color: PINK, fontWeight: 700, fontSize: 14, fontFamily: SANS, textDecoration: 'none' }}
-              >
-                + Create a New Markee
-              </Link>
-            </div>
-          </>
+      <button
+        key={key}
+        onClick={() => setSection(key)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+          padding: '10px 14px', borderRadius: 8, marginBottom: 2,
+          border: 'none', borderLeft: `3px solid ${on ? PINK : 'transparent'}`,
+          background: on ? 'rgba(248,151,254,0.08)' : 'transparent',
+          color: on ? TEXT : TEXT2,
+          fontFamily: SANS, fontSize: 14, fontWeight: on ? 700 : 500,
+          cursor: 'pointer', textAlign: 'left' as const,
+        }}
+      >
+        <span style={{ color: on ? PINK : MUTED, flexShrink: 0 }}>{icon}</span>
+        <span style={{ flex: 1 }}>{label}</span>
+        {badge !== undefined && badge > 0 && (
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: AMBER, background: `${AMBER}1E`, borderRadius: 99, padding: '1px 7px', flexShrink: 0 }}>{badge}</span>
         )}
-      </div>
+      </button>
     )
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}`, overflowX: 'auto', overflowY: 'hidden' }}>
-      <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-        {items.map(it => {
-          const on = tab === it.key
-          const accent = it.amber ? AMBER : it.muted ? MUTED : PINK
-          return (
-            <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : (it.amber ? AMBER : MUTED), fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? accent : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {it.label}
-              <span style={{ fontFamily: MONO, fontSize: 12, color: on ? accent : (it.amber ? AMBER : MUTED), background: on ? `${accent}1E` : `${it.amber ? AMBER : MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
-            </button>
-          )
-        })}
+    <nav style={{ width: 220, flexShrink: 0, paddingTop: 4 }}>
+      {items.map(it => btn(it.key, it.label, it.icon, it.badge))}
+      <hr style={{ border: 'none', borderTop: `1px solid ${BORDER}`, margin: '8px 4px 8px' }} />
+      {btn('settings', 'Settings', settingsIcon)}
+    </nav>
+  )
+}
+
+// ── Settings section ──────────────────────────────────────────────────────────
+interface NotifyState { email: string | null; verified: boolean; frequency: string }
+
+function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
+  const { signMessageAsync } = useSignMessage()
+  const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
+  const [freqDraft, setFreqDraft] = useState<EmailFrequency>('every')
+  const [modActive, setModActive] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [justSaved, setJustSaved] = useState(false)
+
+  useEffect(() => {
+    if (!address) return
+    fetch(`${MODERATION_API}/notify?wallet=${address}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: NotifyState | null) => {
+        if (!data) return
+        setNotifyState(data)
+        const freq = (data.frequency ?? 'every') as EmailFrequency
+        setFreqDraft(freq)
+        setModActive(freq !== 'off')
+      })
+      .catch(() => {})
+  }, [address])
+
+  const isDirty = notifyState !== null && (
+    (modActive ? freqDraft : 'off') !== notifyState.frequency
+  )
+
+  const save = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const freq: EmailFrequency = modActive ? freqDraft : 'off'
+      const timestamp = Math.floor(Date.now() / 1000)
+      const signature = await signMessageAsync({ message: notifyFreqMessage(CANONICAL_CHAIN_ID, address, freq, timestamp) })
+      const res = await fetch(`${MODERATION_API}/notify`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, frequency: freq, signature, timestamp }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      setNotifyState(prev => prev ? { ...prev, frequency: freq } : prev)
+      setJustSaved(true)
+      setTimeout(() => setJustSaved(false), 3000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (!/reject|denied/i.test(msg)) setSaveError(msg || 'Could not save. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${BORDER}` }
+  const sectionLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED }
+
+  const toggle = (active: boolean, setActive: (v: boolean) => void, disabled?: boolean) => (
+    <button
+      role="switch"
+      aria-checked={active}
+      onClick={() => !disabled && setActive(!active)}
+      style={{ width: 44, height: 24, borderRadius: 99, border: 'none', cursor: disabled ? 'default' : 'pointer', background: active ? PINK : 'rgba(138,143,191,0.3)', position: 'relative' as const, flexShrink: 0, transition: 'background 200ms' }}
+    >
+      <span style={{ position: 'absolute' as const, top: 3, left: active ? 23 : 3, width: 18, height: 18, borderRadius: 99, background: '#fff', transition: 'left 200ms' }} />
+    </button>
+  )
+
+  return (
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+      {verifyOk && (
+        <div style={{ padding: '12px 20px', background: `${GREEN}12`, borderBottom: `1px solid ${GREEN}33`, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span style={{ color: GREEN, fontSize: 13, fontWeight: 600 }}>Email verified! You'll now receive moderation alerts.</span>
+        </div>
+      )}
+
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
+        <span style={sectionLabel}>Email Notifications</span>
       </div>
-      <Link href="/create-a-markee" style={{ flexShrink: 0, marginLeft: 16, marginRight: 4, padding: '8px 16px', background: PINK, color: BG, borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-        + Create a New Markee
-      </Link>
+
+      <div style={row}>
+        <span style={{ fontWeight: 600, color: TEXT, fontSize: 15, flex: 1 }}>Your Email</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {notifyState?.email ? (
+            <>
+              {notifyState.verified && (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              )}
+              <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>{notifyState.email}</span>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, background: 'rgba(138,143,191,0.1)', border: `1px solid ${BORDER}`, borderRadius: 4, padding: '2px 6px' }}>Set by admin</span>
+            </>
+          ) : (
+            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>No email set — ask your board admin</span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 14 }}>When You Get Notified</div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: TEXT, fontSize: 14, marginBottom: 2 }}>Moderation Activity</div>
+            <div style={{ color: MUTED, fontSize: 12.5 }}>A new message is posted for you to moderate.</div>
+          </div>
+          {toggle(modActive, setModActive)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, opacity: 0.45 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: TEXT, fontSize: 14, marginBottom: 2 }}>Message Status Change <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '1px 5px', marginLeft: 6 }}>coming soon</span></div>
+            <div style={{ color: MUTED, fontSize: 12.5 }}>Your message starts or stops winning.</div>
+          </div>
+          {toggle(false, () => {}, true)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, opacity: 0.45 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: TEXT, fontSize: 14, marginBottom: 2 }}>Low Budget <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '1px 5px', marginLeft: 6 }}>coming soon</span></div>
+            <div style={{ color: MUTED, fontSize: 12.5 }}>Your streaming budget falls below 1 day.</div>
+          </div>
+          {toggle(false, () => {}, true)}
+        </div>
+      </div>
+
+      <div style={row}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 600, color: TEXT, fontSize: 15, marginBottom: 2 }}>Frequency</div>
+          <div style={{ color: MUTED, fontSize: 12.5 }}>
+            {freqDraft === 'every' ? 'One email per update.' : freqDraft === 'daily' ? 'One digest per day.' : 'No emails.'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 3, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 3 }}>
+          {(['every', 'daily', 'off'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => { setFreqDraft(f); if (f !== 'off' && !modActive) setModActive(true) }}
+              style={{ background: freqDraft === f ? PINK : 'transparent', color: freqDraft === f ? BG : MUTED, border: 'none', borderRadius: 6, padding: '6px 12px', fontFamily: SANS, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 150ms, color 150ms', whiteSpace: 'nowrap' as const }}
+            >
+              {f === 'every' ? 'Every Time' : f === 'daily' ? 'Daily Round-up' : 'Off'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '16px 20px' }}>
+        {saveError && <span style={{ color: '#FF6B6B', fontSize: 13 }}>{saveError}</span>}
+        {justSaved && !saveError && <span style={{ color: GREEN, fontSize: 13 }}>Saved!</span>}
+        <button
+          onClick={() => {
+            if (notifyState) {
+              const freq = (notifyState.frequency ?? 'every') as EmailFrequency
+              setFreqDraft(freq)
+              setModActive(freq !== 'off')
+            }
+          }}
+          disabled={saving || !isDirty}
+          style={{ background: 'transparent', border: 'none', color: isDirty ? TEXT2 : MUTED, fontSize: 14, cursor: isDirty ? 'pointer' : 'default', fontFamily: SANS }}
+        >
+          Discard
+        </button>
+        <button
+          onClick={save}
+          disabled={saving || !isDirty}
+          style={{ background: isDirty ? PINK : `${PINK}44`, color: BG, border: 'none', borderRadius: 10, padding: '10px 20px', fontFamily: SANS, fontWeight: 700, fontSize: 14, cursor: isDirty ? 'pointer' : 'default', opacity: saving ? 0.7 : 1, transition: 'background 150ms, opacity 150ms' }}
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -1496,10 +1634,7 @@ export default function AccountPage() {
   const [boardViews, setBoardViews]             = useState<Record<string, number>>({})
 
   // UI state
-  // Optimistically default to Pending Setup -- the eviction effect below redirects to My Live
-  // Markees once loading actually finishes and confirms there's genuinely nothing pending, so a
-  // returning user with everything already live doesn't get stuck staring at an empty tab.
-  const [tab, setTab]                         = useState<TabId>('pending')
+  const [section, setSection]                 = useState<SectionId>('creator')
   const [archived, setArchived]               = useState<string[]>([])
   // "Archive" is purely a local dashboard preference -- there's no on-chain or backend concept of
   // it -- so without persisting it, every reload silently un-archives everything. Keyed per wallet
@@ -1774,17 +1909,27 @@ export default function AccountPage() {
   // Boards the wallet created, plus any it was added to as a moderator (the queue lists those).
   const isModerator = isGlobalModerator || moderationQueue.boards.length > 0
 
-  // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
-  // or off the default Pending Setup landing tab once loading confirms there was never anything
-  // pending to begin with. Gated on !isLoading -- draftBoards/archivedBoards both start at length 0
-  // before allBoards has loaded, so without this guard a user who does have pending boards gets
-  // bounced to My Live Markees before the data even arrives, and never bounced back.
+  // Read initial section and verifyOk from URL params (e.g. after email verification redirect).
+  const [verifyOk, setVerifyOk] = useState(false)
+  const sectionAppliedRef = useRef(false)
   useEffect(() => {
-    if (isLoading) return
-    if (tab === 'pending' && draftBoards.length === 0) setTab('live')
-    if (tab === 'archive' && archivedBoards.length === 0) setTab('live')
-    if (tab === 'moderation' && !isModerator) setTab('live')
-  }, [tab, isLoading, draftBoards.length, archivedBoards.length, isModerator])
+    if (sectionAppliedRef.current || typeof window === 'undefined') return
+    sectionAppliedRef.current = true
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('section') ?? params.get('tab')
+    const map: Record<string, SectionId> = {
+      settings: 'settings', feed: 'feed', creator: 'creator', buyer: 'buyer',
+      moderation: 'feed', live: 'creator', pending: 'creator', archive: 'creator', bought: 'buyer',
+    }
+    if (raw && map[raw]) setSection(map[raw])
+    if (params.get('verifyOk') === '1') setVerifyOk(true)
+    const clean = new URL(window.location.href)
+    clean.searchParams.delete('section')
+    clean.searchParams.delete('tab')
+    clean.searchParams.delete('verifyOk')
+    clean.searchParams.delete('verifyError')
+    window.history.replaceState(null, '', clean.toString())
+  }, [])
 
   const showingNow = useMemo(() => myMessages.filter(m => m.isTop), [myMessages])
   const outbid = useMemo(() => myMessages.filter(m => !m.isTop), [myMessages])
@@ -1907,113 +2052,135 @@ export default function AccountPage() {
         </div>
       </section>
 
-      {/* Tabs + content */}
+      {/* Sidebar + content */}
       <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '0 40px 80px' }}>
         {mounted && hasWallet ? (
-          <>
-            <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
-              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length, moderation: isModerator ? moderationQueue.items.length : null }} />
-            </div>
+          <div style={{ display: 'flex', gap: 32, paddingTop: 28, alignItems: 'flex-start' }}>
+            <SidebarNav
+              section={section}
+              setSection={setSection}
+              moderationCount={isModerator ? moderationQueue.items.length : 0}
+            />
 
-            <div style={{ paddingTop: 28 }}>
-              {/* ── Pending Setup ── */}
-              {tab === 'pending' && (
-                isLoading ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 640, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
+            <main style={{ flex: 1, minWidth: 0 }}>
+              {/* ── Activity Feed ── */}
+              {section === 'feed' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {isModerator ? (
+                    <ModerationQueue />
+                  ) : (
+                    <div style={{ background: BG2, border: `1px dashed ${BORDER}`, borderRadius: 14, padding: '48px 24px', textAlign: 'center' }}>
+                      <p style={{ margin: '0 0 6px', color: TEXT, fontWeight: 700, fontSize: 16 }}>No activity yet</p>
+                      <p style={{ margin: 0, color: MUTED, fontSize: 14 }}>Create or moderate a Markee to see activity here.</p>
                     </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-                    {/* Ready to Activate — boards with no messages yet (shown first, it's step 1) */}
-                    {inactiveBoards.length > 0 && (
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: AMBER }}>Not Yet Activated</h2>
-                          <CountBadge n={inactiveBoards.length} />
-                        </div>
-                        <ActivationTable
-                          markees={inactiveBoards}
-                          onActivate={lb => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
-                          onArchive={addr => setArchived(prev => [...prev, addr])}
-                        />
+                  )}
+                </div>
+              )}
+
+              {/* ── Creator Hub ── */}
+              {section === 'creator' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  {/* Setup / pending */}
+                  {!isLoading && draftBoards.length > 0 && (
+                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: AMBER }}>Needs Setup</span>
+                        <span style={{ fontFamily: MONO, fontSize: 12, color: AMBER, background: `${AMBER}1E`, borderRadius: 99, padding: '1px 8px' }}>{draftBoards.length}</span>
                       </div>
-                    )}
-
-                    {/* Ready to Add to Your Site — any funded board (any platform/strategy) without a verified website or GitHub integration yet */}
-                    {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: PINK }}>Ready to Add to Your Site</h2>
-                          <CountBadge n={awaitingVerification.filter(lb => !archived.includes(lb.address)).length} />
+                      <div style={{ padding: '20px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                          {inactiveBoards.length > 0 && (
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: AMBER }}>Not Yet Activated</h2>
+                                <CountBadge n={inactiveBoards.length} />
+                              </div>
+                              <ActivationTable
+                                markees={inactiveBoards}
+                                onActivate={lb => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
+                                onArchive={addr => setArchived(prev => [...prev, addr])}
+                              />
+                            </div>
+                          )}
+                          {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: PINK }}>Ready to Add to Your Site</h2>
+                                <CountBadge n={awaitingVerification.filter(lb => !archived.includes(lb.address)).length} />
+                              </div>
+                              <ReadyToEmbedTable
+                                markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
+                                onEmbed={lb => { setEmbedTarget(lb); setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website') }}
+                                ethPrice={ethPrice}
+                              />
+                            </div>
+                          )}
                         </div>
-                        <ReadyToEmbedTable
-                          markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
-                          onEmbed={lb => { setEmbedTarget(lb); setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website') }}
-                          ethPrice={ethPrice}
-                        />
                       </div>
+                    </div>
+                  )}
+
+                  {/* Active markees */}
+                  <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+                    <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Your Markees</span>
+                      <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '1px 8px' }}>{activeBoards.length}</span>
+                    </div>
+                    {isLoading ? (
+                      <div style={{ overflow: 'auto' }}>
+                        <div style={{ minWidth: 640, background: BG2 }}>
+                          {[1, 2, 3].map(i => (
+                            <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                              {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : activeBoards.length === 0 ? (
+                      <div style={{ padding: '40px 24px' }}>
+                        <Empty icon="🪧" title="No live Markees yet" body="Once a Markee is funded and integrated, it shows up here fully live." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
+                      </div>
+                    ) : (
+                      <ActiveTable
+                        markees={activeBoards}
+                        onAddToSite={handleOpenAddToSite}
+                        ethPrice={ethPrice}
+                        activeAddress={activeAddress}
+                        onSuccess={() => activeAddress && fetchAll(activeAddress)}
+                      />
                     )}
                   </div>
-                )
-              )}
 
-              {/* ── My Live Markees ── */}
-              {tab === 'live' && (
-                isLoading ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 640, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
+                  {/* Archived markees */}
+                  {!isLoading && archivedBoards.length > 0 && (
+                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Archived</span>
+                        <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, background: 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '1px 8px' }}>{archivedBoards.length}</span>
+                      </div>
+                      <ArchivedTable
+                        markees={archivedBoards}
+                        onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
+                      />
                     </div>
-                  </div>
-                ) : activeBoards.length === 0 ? (
-                  <Empty icon="🪧" title="No live Markees yet" body="Once a Markee is funded and integrated, it shows up here fully live." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
-                ) : (
-                  <ActiveTable
-                    markees={activeBoards}
-                    onAddToSite={handleOpenAddToSite}
-                    ethPrice={ethPrice}
-                    activeAddress={activeAddress}
-                    onSuccess={() => activeAddress && fetchAll(activeAddress)}
-                  />
-                )
-              )}
+                  )}
 
-              {tab === 'moderation' && <ModerationQueue />}
-
-              {/* ── Archive ── */}
-              {tab === 'archive' && (
-                isLoading ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 500, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
+                  {/* Moderation */}
+                  {isModerator && (
+                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Moderation</span>
+                        <span style={{ fontFamily: MONO, fontSize: 12, color: moderationQueue.items.length > 0 ? AMBER : MUTED, background: moderationQueue.items.length > 0 ? `${AMBER}1E` : 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '1px 8px' }}>{moderationQueue.items.length}</span>
+                      </div>
+                      <ModerationQueue />
                     </div>
-                  </div>
-                ) : (
-                  <ArchivedTable
-                    markees={archivedBoards}
-                    onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
-                  />
-                )
+                  )}
+                </div>
               )}
 
-              {/* ── Messages Bought (Showing Now + Outbid sections) ── */}
-              {tab === 'bought' && (
+              {/* ── Buyer Hub ── */}
+              {section === 'buyer' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-                  {/* Summary line */}
                   {!isLoadingMessages && myMessages.length > 0 && (
                     <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>
                       <span style={{ color: GREEN, fontWeight: 600 }}>{showingNow.length} showing now</span>
@@ -2024,7 +2191,7 @@ export default function AccountPage() {
 
                   {isLoadingMessages ? (
                     <div style={{ overflow: 'auto' }}>
-                      <div style={{ minWidth: 800, background: BG2 }}>
+                      <div style={{ minWidth: 640, background: BG2 }}>
                         {[1, 2, 3, 4, 5].map(i => (
                           <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
                             {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
@@ -2034,7 +2201,6 @@ export default function AccountPage() {
                     </div>
                   ) : (
                     <>
-                      {/* Showing now */}
                       {showingNow.length > 0 && (
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -2044,8 +2210,6 @@ export default function AccountPage() {
                           <BoughtTable items={showingNow} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
                         </div>
                       )}
-
-                      {/* Outbid */}
                       {outbid.length > 0 && (
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -2060,7 +2224,7 @@ export default function AccountPage() {
 
                   {isLoadingFunded ? (
                     <div style={{ overflow: 'auto' }}>
-                      <div style={{ minWidth: 800, background: BG2 }}>
+                      <div style={{ minWidth: 640, background: BG2 }}>
                         {[1, 2, 3, 4, 5].map(i => (
                           <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
                             {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
@@ -2083,8 +2247,13 @@ export default function AccountPage() {
                   )}
                 </div>
               )}
-            </div>
-          </>
+
+              {/* ── Settings ── */}
+              {section === 'settings' && activeAddress && (
+                <SettingsSection address={activeAddress} verifyOk={verifyOk} />
+              )}
+            </main>
+          </div>
         ) : mounted && !hasWallet ? (
           <div style={{ paddingTop: 80, textAlign: 'center' }}>
             <div style={{ background: BG2, borderRadius: 20, padding: '60px 24px', border: `1px solid ${BORDER}`, maxWidth: 440, margin: '0 auto' }}>
@@ -2095,7 +2264,6 @@ export default function AccountPage() {
             </div>
           </div>
         ) : (
-          // Loading skeleton before hydration
           <div style={{ paddingTop: 28, overflow: 'auto' }}>
             <div style={{ minWidth: 640, background: BG2 }}>
               {[1, 2, 3, 4, 5].map(i => (
@@ -2108,7 +2276,7 @@ export default function AccountPage() {
         )}
       </div>
 
-      {mounted && isModerator && <ModerationToast onReview={() => setTab('moderation')} />}
+      {mounted && isModerator && <ModerationToast onReview={() => setSection('feed')} />}
       <Footer />
 
       {/* My Live Markees' price-to-change button -- same modal any visitor would see for that

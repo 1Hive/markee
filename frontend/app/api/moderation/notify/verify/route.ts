@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   await kv.del(verifyTokenKey(token)).catch(() => {})
 
   const url = new URL('/account', req.nextUrl.origin)
-  url.searchParams.set('tab', 'moderation')
+  url.searchParams.set('section', 'settings')
   url.searchParams.set('verifyOk', '1')
   return NextResponse.redirect(url, 302)
 }
