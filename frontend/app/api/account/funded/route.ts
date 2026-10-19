@@ -101,10 +101,11 @@ async function fixedFunded(
   origin: string,
   headers: HeadersInit,
 ): Promise<FundedMessage[]> {
-  const [sfData, ghData, oiData] = await Promise.all([
+  const [sfData, ghData, oiData, fsData] = await Promise.all([
     fetch(`${origin}/api/superfluid/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
     fetch(`${origin}/api/github/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
     fetch(`${origin}/api/openinternet/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/forsale/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
   ])
 
   const leaderboards: Board[] = [
@@ -114,7 +115,9 @@ async function fixedFunded(
     ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
-  ].filter((lb: any) => lb.markeeCount > 0)
+    // For Sale factory boards come from their own listing route, not the openinternet one.
+    ...(fsData?.leaderboards ?? []),
+  ].filter((lb: any, i, all) => lb.markeeCount > 0 && all.findIndex((x: any) => x.address.toLowerCase() === lb.address.toLowerCase()) === i)
 
   if (leaderboards.length === 0) return []
 
