@@ -5,11 +5,12 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, ChevronDown, Info, Archive, Eye, ArrowUpRight, ExternalLink, Link2 } from 'lucide-react'
+import { Globe2, Github, Zap, ChevronDown, Info, Archive, Eye, ArrowUpRight, ExternalLink, Link2, ShieldCheck } from 'lucide-react'
 import { useAccount, useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
-import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
+import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency, type ModerationItem, type QueueAction, type QueueBoard } from '@/lib/moderation/queue'
+import { formatDistanceToNow } from 'date-fns'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
@@ -26,7 +27,7 @@ import { DepositManagerModal, type DepositManagerStream } from '@/components/mod
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway } from '@/lib/superfluid/streaming'
+import { runwaySeconds, runwayProgressPct, runwayTier, formatRunway, formatRunwayShort } from '@/lib/superfluid/streaming'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -828,7 +829,14 @@ function ArchiveButton({ onClick, label }: { onClick: () => void; label: string 
   )
 }
 
-function AttnGroup<T>({ title, sub, items, render }: { title: string; sub: string; items: T[]; render: (item: T) => React.ReactNode }) {
+function AttnGroup<T>({ title, sub, items, render, noun = ['Markee', 'Markees'], right }: {
+  title: string
+  sub: string
+  items: T[]
+  render: (item: T) => React.ReactNode
+  noun?: [string, string]
+  right?: React.ReactNode
+}) {
   const [all, setAll] = useState(false)
   const hidden = items.length - 3
   return (
@@ -837,6 +845,7 @@ function AttnGroup<T>({ title, sub, items, render }: { title: string; sub: strin
         <span style={{ fontSize: 14.5, fontWeight: 700, color: AMBER }}>{title}</span>
         <span style={{ fontFamily: MONO, fontSize: 11.5, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>
         <span style={{ fontSize: 12.5, color: MUTED }}>{sub}</span>
+        {right && <><span style={{ flex: 1 }} />{right}</>}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {(all ? items : items.slice(0, 3)).map(render)}
@@ -846,7 +855,7 @@ function AttnGroup<T>({ title, sub, items, render }: { title: string; sub: strin
             aria-expanded={all}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', height: 38, boxSizing: 'border-box', background: 'transparent', border: `1px dashed ${BORDER}`, borderRadius: 14, color: TEXT2, fontSize: 13, fontWeight: 600, fontFamily: SANS, cursor: 'pointer' }}
           >
-            {all ? 'Show fewer' : `Show ${hidden} more ${hidden === 1 ? 'Markee' : 'Markees'}`}
+            {all ? 'Show fewer' : `Show ${hidden} more ${hidden === 1 ? noun[0] : noun[1]}`}
             <ChevronDown size={12} style={{ transform: all ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
           </button>
         )}
@@ -870,6 +879,144 @@ function AttnMarkeeItem({ lb, meta, cta, onCta, onArchive }: { lb: AnyLeaderboar
         {cta}
       </button>
     </div>
+  )
+}
+
+function MarkeeAttnGroups({ inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite }: {
+  inactive: AnyLeaderboard[]
+  awaiting: AnyLeaderboard[]
+  ethPrice: number | null
+  onActivate: (lb: AnyLeaderboard) => void
+  onArchive: (lb: AnyLeaderboard) => void
+  onAddToSite: (lb: AnyLeaderboard) => void
+}) {
+  return (
+    <>
+      {inactive.length > 0 && (
+        <AttnGroup
+          title="Not Yet Activated"
+          sub="Activate to set the first message."
+          items={inactive}
+          render={lb => (
+            <AttnMarkeeItem key={lb.address} lb={lb} meta={`Pays out to ${fmtAddr(lb.admin)}`} cta="Activate" onCta={() => onActivate(lb)} onArchive={() => onArchive(lb)} />
+          )}
+        />
+      )}
+      {awaiting.length > 0 && (
+        <AttnGroup
+          title="Not on a Site Yet"
+          sub="Add the embed to your site to go live."
+          items={awaiting}
+          render={lb => (
+            <AttnMarkeeItem key={lb.address} lb={lb} meta={`${fmtWeiUsd(BigInt(lb.totalFundsRaw), ethPrice)} raised`} cta="Add to Your Site" onCta={() => onAddToSite(lb)} onArchive={() => onArchive(lb)} />
+          )}
+        />
+      )}
+    </>
+  )
+}
+
+// ── Activity Feed: Needs Attention ────────────────────────────────────────────
+function ModAttnItem({ item, boardName, onReview }: { item: ModerationItem; boardName: string; onReview: (action: QueueAction, ids: string[]) => Promise<void> }) {
+  const [busy, setBusy] = useState<QueueAction | null>(null)
+  const go = async (action: QueueAction) => {
+    setBusy(action)
+    try { await onReview(action, [item.markee]) } catch { /* the queue refetches; the item stays if it failed */ } finally { setBusy(null) }
+  }
+  const btn: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
+  return (
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {item.message || 'Empty message'}
+          {item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
+          {item.at > 0 && <span>{formatDistanceToNow(item.at * 1000, { addSuffix: true })}</span>}
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: item.kind === 'edited' ? AMBER : PANEL_LABEL, border: `1px solid ${item.kind === 'edited' ? `${AMBER}66` : 'rgba(180,172,247,0.45)'}`, borderRadius: 99, padding: '1px 7px' }}>
+            {item.kind === 'edited' ? 'Edited' : 'New'}
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{boardName}</span>
+          <span>by <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{fmtAddr(item.author)}</span></span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {busy ? (
+          <span style={{ fontSize: 12.5, color: TEXT2, whiteSpace: 'nowrap' }}>{busy === 'flag' ? 'Confirm in wallet…' : 'Approving…'}</span>
+        ) : (
+          <>
+            <button onClick={() => go('flag')} style={{ ...btn, color: DANGER, border: '1px solid rgba(255,138,155,0.45)' }}>Flag</button>
+            <button onClick={() => go('approve')} style={{ ...btn, color: TEXT, border: '1px solid rgba(237,238,255,0.55)' }}>Approve</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NeedsAttention({ modItems, modBoards, onReview, onOpenQueue, inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite, lowRunway, onDeposit }: {
+  modItems: ModerationItem[]
+  modBoards: QueueBoard[]
+  onReview: (action: QueueAction, ids: string[]) => Promise<void>
+  onOpenQueue: () => void
+  inactive: AnyLeaderboard[]
+  awaiting: AnyLeaderboard[]
+  ethPrice: number | null
+  onActivate: (lb: AnyLeaderboard) => void
+  onArchive: (lb: AnyLeaderboard) => void
+  onAddToSite: (lb: AnyLeaderboard) => void
+  lowRunway: bigint | null
+  onDeposit: () => void
+}) {
+  const total = modItems.length + inactive.length + awaiting.length + (lowRunway != null ? 1 : 0)
+  if (total === 0) {
+    return (
+      <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px' }}>
+        <ShieldCheck size={26} strokeWidth={1.8} style={{ color: GREEN, flexShrink: 0 }} />
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>All Caught Up</div>
+          <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>Nothing to moderate, activate or add to a site.</div>
+        </div>
+      </div>
+    )
+  }
+  const boardName = (addr: string) => modBoards.find(b => b.address === addr)?.name || fmtAddr(addr)
+  return (
+    <section style={{ background: 'rgba(255,181,71,0.05)', border: '1px solid rgba(255,181,71,0.28)', borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '15px 18px', minHeight: 56, boxSizing: 'border-box', borderBottom: '1px solid rgba(255,181,71,0.22)', background: 'rgba(255,181,71,0.08)' }}>
+        <span style={{ width: 7, height: 7, borderRadius: 99, background: AMBER, boxShadow: `0 0 10px ${AMBER}` }} />
+        <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: AMBER }}>Needs Attention</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px' }}>{total}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '18px 18px 20px' }}>
+        {modItems.length > 0 && (
+          <AttnGroup
+            title="Moderation Queue"
+            sub="Approve or flag new messages."
+            items={modItems}
+            noun={['message', 'messages']}
+            right={<button onClick={onOpenQueue} style={{ background: 'transparent', border: 'none', color: PINK, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', padding: 0 }}>Open full queue →</button>}
+            render={it => <ModAttnItem key={`${it.markee}:${it.blockNumber}`} item={it} boardName={boardName(it.board)} onReview={onReview} />}
+          />
+        )}
+        <MarkeeAttnGroups inactive={inactive} awaiting={awaiting} ethPrice={ethPrice} onActivate={onActivate} onArchive={onArchive} onAddToSite={onAddToSite} />
+        {lowRunway != null && (
+          <AttnGroup
+            title="Stream Balance"
+            sub="Your balance is running low."
+            items={[lowRunway]}
+            render={r => (
+              <div key="low" style={{ background: 'rgba(10,15,61,0.5)', border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ flex: 1, fontSize: 13, color: TEXT2 }}>
+                  Runs out in <b style={{ color: AMBER, fontFamily: MONO }}>{formatRunwayShort(r)}</b>. Your Rent bids stop streaming when it does.
+                </span>
+                <button onClick={onDeposit} style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>Deposit</button>
+              </div>
+            )}
+          />
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -1407,25 +1554,38 @@ function ServedOnOrAddToSite({ m, onAddToSite }: { m: MyMessage | FundedMessage;
 }
 
 // ── Stream Balance card ───────────────────────────────────────────────────────
-function StreamBalanceCard({ activeAddress, ethPrice, refreshKey, onDeposit, onWithdraw }: {
-  activeAddress: string
-  ethPrice: number | null
-  refreshKey: number
-  onDeposit: () => void
-  onWithdraw: () => void
-}) {
-  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[] } | null>(null)
-  const [snapshotAt, setSnapshotAt] = useState(() => Date.now())
-  const [now, setNow] = useState(() => Date.now())
+interface StreamSnapshot {
+  ethxBalanceRaw: string
+  streams: DepositManagerStream[]
+  at: number
+}
 
+function useStreamSnapshot(activeAddress: string | undefined, refreshKey: number): StreamSnapshot | null {
+  const [snapshot, setSnapshot] = useState<StreamSnapshot | null>(null)
   useEffect(() => {
+    if (!activeAddress) return
     let cancelled = false
     fetch(`/api/streaming/deposit-manager?wallet=${activeAddress}${refreshKey ? '&bust=1' : ''}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d && !cancelled) { setData(d); setSnapshotAt(Date.now()) } })
+      .then(d => { if (d && !cancelled) setSnapshot({ ...d, at: Date.now() }) })
       .catch(() => {})
     return () => { cancelled = true }
   }, [activeAddress, refreshKey])
+  return snapshot
+}
+
+function winningRate(snapshot: StreamSnapshot | null): bigint {
+  return (snapshot?.streams ?? []).filter(s => s.isTop).reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+}
+
+function StreamBalanceCard({ snapshot: data, ethPrice, onDeposit, onWithdraw }: {
+  snapshot: StreamSnapshot | null
+  ethPrice: number | null
+  onDeposit: () => void
+  onWithdraw: () => void
+}) {
+  const [now, setNow] = useState(() => Date.now())
+  const snapshotAt = data?.at ?? now
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -1434,7 +1594,7 @@ function StreamBalanceCard({ activeAddress, ethPrice, refreshKey, onDeposit, onW
 
   const streams = data?.streams ?? []
   const winning = streams.filter(s => s.isTop)
-  const liveRate = winning.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+  const liveRate = winningRate(data)
   const totalRate = streams.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
   const balanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
   const drained = liveRate * BigInt(Math.max(0, Math.floor((now - snapshotAt) / 1000)))
@@ -1874,6 +2034,13 @@ export default function AccountPage() {
   const [depositManagerOpen, setDepositManagerOpen] = useState(false)
   const [depositManagerAction, setDepositManagerAction] = useState<'deposit' | 'withdraw' | null>(null)
   const [streamBalanceKey, setStreamBalanceKey] = useState(0)
+  const streamSnapshot = useStreamSnapshot(activeAddress, streamBalanceKey)
+  const lowRunway = useMemo(() => {
+    const rate = winningRate(streamSnapshot)
+    if (!streamSnapshot || rate === 0n) return null
+    const runway = runwaySeconds(BigInt(streamSnapshot.ethxBalanceRaw), rate)
+    return runwayTier(runway) === 'normal' ? null : runway
+  }, [streamSnapshot])
   const [addrCopied, setAddrCopied] = useState(false)
 
   // Platform leaderboards
@@ -2253,6 +2420,11 @@ export default function AccountPage() {
     return (contribUsd / buyerViews) * 1000
   }, [ethPrice, totalContribWei, buyerViews])
 
+  const handleActivate = useCallback((lb: AnyLeaderboard) => {
+    if (lb.strategy === 'streaming') setActivateStreamBoard(lb)
+    else setActivateTarget(lb)
+  }, [])
+
   const handleOpenAddToSite = useCallback((lb: AnyLeaderboard) => {
     setEmbedTarget(lb)
     setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website')
@@ -2361,20 +2533,30 @@ export default function AccountPage() {
             <SidebarNav
               section={section}
               setSection={setSection}
-              attentionCount={(isModerator ? moderationQueue.items.length : 0) + draftBoards.length}
+              attentionCount={(isModerator ? moderationQueue.items.length : 0) + draftBoards.length + (lowRunway != null ? 1 : 0)}
             />
 
             <main style={{ flex: 1, minWidth: 0 }}>
               {/* ── Activity Feed ── */}
               {section === 'feed' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  {isModerator ? (
-                    <ModerationQueue />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  {isLoading || moderationQueue.isLoading ? (
+                    <div style={{ height: 120, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14 }} />
                   ) : (
-                    <div style={{ background: BG2, border: `1px dashed ${BORDER}`, borderRadius: 14, padding: '48px 24px', textAlign: 'center' }}>
-                      <p style={{ margin: '0 0 6px', color: TEXT, fontWeight: 700, fontSize: 16 }}>No activity yet</p>
-                      <p style={{ margin: 0, color: MUTED, fontSize: 14 }}>Create or moderate a Markee to see activity here.</p>
-                    </div>
+                    <NeedsAttention
+                      modItems={isModerator ? moderationQueue.items : []}
+                      modBoards={moderationQueue.boards}
+                      onReview={moderationQueue.review}
+                      onOpenQueue={() => setSection('creator')}
+                      inactive={inactiveBoards}
+                      awaiting={awaitingSiteBoards}
+                      ethPrice={ethPrice}
+                      onActivate={handleActivate}
+                      onArchive={lb => setArchived(prev => [...prev, lb.address])}
+                      onAddToSite={handleOpenAddToSite}
+                      lowRunway={lowRunway}
+                      onDeposit={() => setDepositManagerAction('deposit')}
+                    />
                   )}
                 </div>
               )}
@@ -2408,40 +2590,14 @@ export default function AccountPage() {
 
                     {!isLoading && markeeView === 'active' && draftBoards.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '18px 18px 20px', borderBottom: `1px solid ${BORDER}` }}>
-                        {inactiveBoards.length > 0 && (
-                          <AttnGroup
-                            title="Not Yet Activated"
-                            sub="Activate to set the first message."
-                            items={inactiveBoards}
-                            render={lb => (
-                              <AttnMarkeeItem
-                                key={lb.address}
-                                lb={lb}
-                                meta={`Pays out to ${fmtAddr(lb.admin)}`}
-                                cta="Activate"
-                                onCta={() => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
-                                onArchive={() => setArchived(prev => [...prev, lb.address])}
-                              />
-                            )}
-                          />
-                        )}
-                        {awaitingSiteBoards.length > 0 && (
-                          <AttnGroup
-                            title="Not on a Site Yet"
-                            sub="Add the embed to your site to go live."
-                            items={awaitingSiteBoards}
-                            render={lb => (
-                              <AttnMarkeeItem
-                                key={lb.address}
-                                lb={lb}
-                                meta={`${fmtWeiUsd(BigInt(lb.totalFundsRaw), ethPrice)} raised`}
-                                cta="Add to Your Site"
-                                onCta={() => handleOpenAddToSite(lb)}
-                                onArchive={() => setArchived(prev => [...prev, lb.address])}
-                              />
-                            )}
-                          />
-                        )}
+                        <MarkeeAttnGroups
+                          inactive={inactiveBoards}
+                          awaiting={awaitingSiteBoards}
+                          ethPrice={ethPrice}
+                          onActivate={handleActivate}
+                          onArchive={lb => setArchived(prev => [...prev, lb.address])}
+                          onAddToSite={handleOpenAddToSite}
+                        />
                       </div>
                     )}
 
@@ -2501,15 +2657,12 @@ export default function AccountPage() {
                       { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '—', delta: -1.8 },
                     ]}
                   />
-                  {activeAddress && (
-                    <StreamBalanceCard
-                      activeAddress={activeAddress}
-                      ethPrice={ethPrice}
-                      refreshKey={streamBalanceKey}
-                      onDeposit={() => setDepositManagerAction('deposit')}
-                      onWithdraw={() => setDepositManagerAction('withdraw')}
-                    />
-                  )}
+                  <StreamBalanceCard
+                    snapshot={streamSnapshot}
+                    ethPrice={ethPrice}
+                    onDeposit={() => setDepositManagerAction('deposit')}
+                    onWithdraw={() => setDepositManagerAction('withdraw')}
+                  />
 
                   {isLoadingMessages || isLoadingFunded ? (
                     <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
