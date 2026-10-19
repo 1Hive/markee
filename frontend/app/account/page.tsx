@@ -11,6 +11,7 @@ import { MODERATION_API } from '@/lib/moderation/config'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency, type ModerationItem, type QueueAction, type QueueBoard } from '@/lib/moderation/queue'
 import { formatDistanceToNow } from 'date-fns'
+import type { ActivityEvent, ActivityKind } from '@/lib/activity/events'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
@@ -1017,6 +1018,128 @@ function NeedsAttention({ modItems, modBoards, onReview, onOpenQueue, inactive, 
         )}
       </div>
     </section>
+  )
+}
+
+// ── Activity Feed: Latest Activity ────────────────────────────────────────────
+const ACTIVITY_KIND: Record<ActivityKind, { dot: string; hollow?: boolean; title: string }> = {
+  winning: { dot: PINK, title: 'Your message is now winning' },
+  outbid: { dot: MUTED, hollow: true, title: 'Your message was outbid' },
+  new_top: { dot: GREEN, title: 'New winning message' },
+  edited: { dot: BLUE, title: 'A message was edited' },
+}
+
+function shortAgo(at: number, now: number): string {
+  const s = Math.max(0, Math.floor(now / 1000) - at)
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
+function dayLabel(at: number, now: number): string {
+  const start = new Date(now); start.setHours(0, 0, 0, 0)
+  const t = at * 1000
+  if (t >= start.getTime()) return 'Today'
+  if (t >= start.getTime() - 86_400_000) return 'Yesterday'
+  return 'Earlier'
+}
+
+function LatestActivity({ events, loaded, boardName, ethPrice, reclaimLabel, onReclaim, onOpen }: {
+  events: ActivityEvent[]
+  loaded: boolean
+  boardName: (board: string) => string
+  ethPrice: number | null
+  reclaimLabel: (markee: string) => string | null
+  onReclaim: (markee: string) => void
+  onOpen: (event: ActivityEvent) => void
+}) {
+  const [filter, setFilter] = useState<'all' | 'own' | 'buy'>('all')
+  const now = Date.now()
+  const list = events.filter(e => filter === 'all' || e.side === filter)
+  const label: React.CSSProperties = { fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }
+  let lastDay: string | null = null
+
+  return (
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+      <PanelHead label="Latest Activity">
+        <SegToggle
+          label="Filter activity"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { k: 'all', l: 'All' },
+            { k: 'own', l: 'My Markees', n: events.filter(e => e.side === 'own').length },
+            { k: 'buy', l: 'My Messages', n: events.filter(e => e.side === 'buy').length },
+          ]}
+        />
+      </PanelHead>
+      {!loaded ? (
+        <div style={{ padding: '22px 20px', fontSize: 13, color: MUTED }}>Loading…</div>
+      ) : list.length === 0 ? (
+        <div style={{ padding: '22px 20px', fontSize: 13, color: MUTED, lineHeight: 1.5 }}>
+          No activity yet. New winners, outbids and edits on your Markees and messages show up here.
+        </div>
+      ) : list.map((e, i) => {
+        const day = dayLabel(e.at, now)
+        const head = day !== lastDay ? (lastDay = day) : null
+        const k = ACTIVITY_KIND[e.kind]
+        const own = e.side === 'own'
+        const retake = e.kind === 'outbid' ? reclaimLabel(e.markee) : null
+        const amount = e.kind === 'new_top' && e.amount && e.amount !== '0'
+          ? (e.streaming ? `+${fmtWeiUsd(BigInt(e.amount) * SECONDS_PER_MONTH, ethPrice)}` : `+${fmtWeiUsd(BigInt(e.amount), ethPrice)}`)
+          : null
+        return (
+          <div key={e.id}>
+            {head && <div style={{ ...label, padding: '12px 20px 6px', borderTop: i ? `1px solid ${BORDER}` : 'none' }}>{head}</div>}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpen(e)}
+              onKeyDown={ev => { if (ev.key === 'Enter') onOpen(e) }}
+              onMouseEnter={ev => { (ev.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
+              onMouseLeave={ev => { (ev.currentTarget as HTMLElement).style.background = 'transparent' }}
+              style={{ display: 'grid', gridTemplateColumns: '30px minmax(0,1fr) auto', gap: 14, alignItems: 'center', padding: '10px 20px', cursor: 'pointer', transition: 'background 120ms' }}
+            >
+              <span
+                title={own ? 'Your Markee' : 'Your message'}
+                style={{ width: 30, height: 30, borderRadius: own ? 8 : 99, display: 'flex', alignItems: 'center', justifyContent: 'center', background: own ? BG : 'rgba(248,151,254,0.1)', border: `1px solid ${own ? BORDER : 'rgba(248,151,254,0.4)'}` }}
+              >
+                {own
+                  ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 16v5M8 21h8" /></svg>
+                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, boxSizing: 'border-box', ...(k.hollow ? { border: `1.5px solid ${k.dot}` } : { background: k.dot }) }} />
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: e.kind === 'outbid' ? TEXT2 : TEXT, whiteSpace: 'nowrap' }}>{k.title}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>on {boardName(e.board)}</span>
+                </span>
+                {e.message && (
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={e.markee} className="min-w-0">
+                    <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 3, paddingLeft: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{e.message}"</span>
+                  </ModeratedContent>
+                )}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {retake ? (
+                  <button
+                    onClick={ev => { ev.stopPropagation(); onReclaim(e.markee) }}
+                    style={{ background: 'transparent', border: `1px solid ${PINK}`, color: PINK, borderRadius: 8, minWidth: 104, height: 32, padding: '0 10px', fontSize: 12, fontWeight: 800, fontFamily: MONO, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    {retake}
+                  </button>
+                ) : amount ? (
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: GREEN, whiteSpace: 'nowrap' }}>
+                    {amount}{e.streaming && <span style={{ fontWeight: 500, color: MUTED, fontSize: 11.5 }}>/mo</span>}
+                  </span>
+                ) : null}
+                <span style={{ fontSize: 12, color: MUTED, whiteSpace: 'nowrap', minWidth: 52, textAlign: 'right' }}>{shortAgo(e.at, now)}</span>
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -2035,6 +2158,7 @@ export default function AccountPage() {
   const [depositManagerAction, setDepositManagerAction] = useState<'deposit' | 'withdraw' | null>(null)
   const [streamBalanceKey, setStreamBalanceKey] = useState(0)
   const streamSnapshot = useStreamSnapshot(activeAddress, streamBalanceKey)
+  const [activity, setActivity] = useState<{ wallet: string; events: ActivityEvent[] } | null>(null)
   const lowRunway = useMemo(() => {
     const rate = winningRate(streamSnapshot)
     if (!streamSnapshot || rate === 0n) return null
@@ -2420,6 +2544,27 @@ export default function AccountPage() {
     return (contribUsd / buyerViews) * 1000
   }, [ethPrice, totalContribWei, buyerViews])
 
+  useEffect(() => {
+    if (!activeAddress || section !== 'feed') return
+    const wallet = activeAddress.toLowerCase()
+    let cancelled = false
+    fetch(`/api/account/activity?wallet=${wallet}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { events: [] })
+      .then(d => { if (!cancelled) setActivity({ wallet, events: d.events ?? [] }) })
+      .catch(() => { if (!cancelled) setActivity({ wallet, events: [] }) })
+    return () => { cancelled = true }
+  }, [activeAddress, section])
+
+  const boardNames = useMemo(() => {
+    const names = new Map<string, string>()
+    myMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
+    fundedMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
+    allBoards.forEach(lb => lb.name && names.set(lb.address.toLowerCase(), lb.name))
+    return names
+  }, [allBoards, myMessages, fundedMessages])
+
+  const ownMessage = useCallback((markee: string) => myMessages.find(m => m.address.toLowerCase() === markee), [myMessages])
+
   const handleActivate = useCallback((lb: AnyLeaderboard) => {
     if (lb.strategy === 'streaming') setActivateStreamBoard(lb)
     else setActivateTarget(lb)
@@ -2558,6 +2703,30 @@ export default function AccountPage() {
                       onDeposit={() => setDepositManagerAction('deposit')}
                     />
                   )}
+                  <LatestActivity
+                    events={activity?.wallet === activeAddress?.toLowerCase() ? activity!.events : []}
+                    loaded={activity?.wallet === activeAddress?.toLowerCase()}
+                    boardName={b => boardNames.get(b) ?? fmtAddr(b)}
+                    ethPrice={ethPrice}
+                    reclaimLabel={markee => {
+                      const m = ownMessage(markee)
+                      if (!m || m.isTop) return null
+                      if (m.strategy === 'streaming') return 'Change Bid'
+                      const toTop = m.topFunds > m.totalFundsAdded ? m.topFunds - m.totalFundsAdded + 1_000_000_000_000_000n : 0n
+                      return toTop > 0n ? `+${fmtWeiUsd(toTop, ethPrice)}` : 'Add Funds'
+                    }}
+                    onReclaim={markee => {
+                      const m = ownMessage(markee)
+                      if (!m) return
+                      if (m.strategy === 'streaming') setStreamEditTarget(m)
+                      else setAddFundsTarget({ strategy: 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })
+                    }}
+                    onOpen={e => {
+                      if (e.side === 'buy') setSection('buyer')
+                      else if (allBoards.some(lb => lb.address.toLowerCase() === e.board)) setManageTarget(allBoards.find(lb => lb.address.toLowerCase() === e.board)!.address)
+                      else window.location.href = `/markee/${e.board}`
+                    }}
+                  />
                 </div>
               )}
 

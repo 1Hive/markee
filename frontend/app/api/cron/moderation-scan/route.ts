@@ -5,7 +5,8 @@
  *   Authorization: Bearer <CRON_SECRET>
  *
  * Reads every fixed and streaming markee's current text and queues new messages and edits for
- * review (see lib/moderation/scan.ts).
+ * review (see lib/moderation/scan.ts), and records the /account Activity Feed events
+ * (see lib/activity/server.ts).
  */
 
 import { NextRequest, NextResponse } from 'next/server'

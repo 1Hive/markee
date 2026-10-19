@@ -1,8 +1,10 @@
 import 'server-only'
 import { kv } from '@vercel/kv'
+import { parseAbi } from 'viem'
 import { FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { SCOPES, isPendingIn, observeMessage, type MessageObservation } from '@/lib/moderation/queue'
 import { BASELINE_KEY, flagKey, getModerationClient, itemKey, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
+import { recordActivity, type BoardTop } from '@/lib/activity/server'
 
 const PAGE_ABI = [
   { inputs: [], name: 'leaderboardCount', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
@@ -20,6 +22,20 @@ const PAGE_ABI = [
     name: 'getTopMarkees', outputs: [{ type: 'address[]' }, { type: 'uint256[]' }], stateMutability: 'view', type: 'function',
   },
 ] as const
+
+const STRATEGY_ABI = [
+  { inputs: [], name: 'pricingStrategy', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
+] as const
+
+// Emitted by the markee contract itself on every v1.x fixed and streaming board.
+const EDIT_EVENTS = parseAbi([
+  'event MessageChanged(string newMessage, address indexed changedBy)',
+  'event NameChanged(string newName, address indexed changedBy)',
+])
+const LOG_CURSOR_KEY = 'moderation:scan:logBlock'
+const LOG_RANGE = 2_000n
+// About 11 hours of Base blocks. A longer outage only loses edits outside the recent/top window.
+const MAX_LOG_CATCHUP = 20_000n
 
 const MARKEE_ABI = [
   { inputs: [], name: 'message', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function' },
@@ -46,6 +62,9 @@ export interface ScanReport {
   markees: number
   queued: number
   baseline: boolean
+  // Markees outside the recent/top window read only because an edit event named them.
+  fromLogs: number
+  activity: number
   // Board address → count of newly queued pending items this run (empty when baseline or no new items).
   pendingByBoard: Record<string, number>
 }
@@ -80,23 +99,26 @@ const call = (address: string, functionName: (typeof PAGE_ABI)[number]['name'], 
 
 // The same boards the listing routes show: the v1.3 factories (earlier versions were migrated
 // into them), the migrated partner boards, and the streaming factory. Every page is read.
-async function listBoards(client: Client, blockNumber: bigint): Promise<string[]> {
+async function listBoards(client: Client, blockNumber: bigint): Promise<{ boards: string[]; streaming: Set<string> }> {
   const factories: string[] = [...Object.values(FACTORIES), ...(STREAMING_ENABLED ? [STREAMING_FACTORY] : [])]
   const counts = await multicallChunked(client, factories.map(f => call(f, 'leaderboardCount')), BOARD_CHUNK, blockNumber)
+  const pageOwners: string[] = []
   const pageCalls = factories.flatMap((f, i) => {
     const counted = count(counts[i])
     if (counted === null) console.warn(`[moderation/scan] leaderboardCount failed on ${f}, reading only its first page`)
     const total = counted ?? PAGE_SIZE
     const offsets: bigint[] = []
     for (let offset = 0n; offset < total; offset += PAGE_SIZE) offsets.push(offset)
+    offsets.forEach(() => pageOwners.push(f))
     return offsets.map(offset => call(f, 'getLeaderboards', [offset, PAGE_SIZE]))
   })
   const pages = await multicallChunked(client, pageCalls, BOARD_CHUNK, blockNumber)
   const boards = [...pages.flatMap(addresses), ...Object.values(V13_LEADERBOARDS).map(b => b.toLowerCase())]
-  return [...new Set(boards)]
+  const streaming = new Set(STREAMING_ENABLED ? pages.flatMap((p, i) => pageOwners[i] === STREAMING_FACTORY ? addresses(p) : []) : [])
+  return { boards: [...new Set(boards)], streaming }
 }
 
-async function listMarkees(client: Client, boards: string[], blockNumber: bigint): Promise<{ board: string; markee: string }[]> {
+async function listMarkees(client: Client, boards: string[], blockNumber: bigint): Promise<{ pairs: { board: string; markee: string }[]; tops: Map<string, BoardTop> }> {
   const [counts, tops] = await Promise.all([
     multicallChunked(client, boards.map(b => call(b, 'markeeCount')), BOARD_CHUNK, blockNumber),
     multicallChunked(client, boards.map(b => call(b, 'getTopMarkees', [TOP_MARKEES])), BOARD_CHUNK, blockNumber),
@@ -110,23 +132,70 @@ async function listMarkees(client: Client, boards: string[], blockNumber: bigint
     BOARD_CHUNK,
     blockNumber,
   )
-  return boards.flatMap((board, i) => {
+  const boardTops = new Map<string, BoardTop>()
+  const pairs = boards.flatMap((board, i) => {
     const top = tops[i]
-    const topAddresses = top?.status === 'success' ? addresses({ status: 'success', result: (top.result as unknown[])[0] }) : []
+    const [topList, values] = top?.status === 'success' ? (top.result as [string[], bigint[]]) : [[], []]
+    const topAddresses = addresses({ status: 'success', result: topList })
+    if (topList[0] && topList[0] !== ZERO_ADDRESS) boardTops.set(board, { markee: topList[0].toLowerCase(), value: values[0] ?? 0n })
     return [...new Set([...addresses(recent[i]), ...topAddresses])].map(markee => ({ board, markee }))
   })
+  return { pairs, tops: boardTops }
 }
 
-// Reads current markee text with batched eth_calls (no log scans) and diffs it against the stored
-// items. A markee seen for the first time is a new message, changed text is an edit. The first run
-// records the baseline, so everything already live then starts approved.
+// The recent/top window misses an older markee edited deep in a busy board; its edit event doesn't.
+// Scans every log since the last run by event signature alone (no address filter), so the caller
+// keeps only markees whose board is one it lists. Returns null when the logs couldn't be read, so
+// the cursor stays put and the next run retries the same range.
+async function editedMarkees(client: Client, toBlock: bigint): Promise<string[] | null> {
+  const cursor = await kv.get<string>(LOG_CURSOR_KEY)
+  if (!cursor) return []
+  let from = BigInt(cursor) + 1n
+  if (toBlock - from > MAX_LOG_CATCHUP) {
+    console.warn(`[moderation/scan] edit log scan is ${toBlock - from} blocks behind, scanning only the last ${MAX_LOG_CATCHUP}`)
+    from = toBlock - MAX_LOG_CATCHUP
+  }
+  const ranges: [bigint, bigint][] = []
+  for (let start = from; start <= toBlock; start += LOG_RANGE) {
+    ranges.push([start, start + LOG_RANGE - 1n < toBlock ? start + LOG_RANGE - 1n : toBlock])
+  }
+  try {
+    const logs = await Promise.all(ranges.map(([fromBlock, to]) => client.getLogs({ events: EDIT_EVENTS, fromBlock, toBlock: to })))
+    return [...new Set(logs.flat().map(l => l.address.toLowerCase()))]
+  } catch (e) {
+    console.warn('[moderation/scan] edit log scan failed, will retry next run', e)
+    return null
+  }
+}
+
+// Reads current markee text with batched eth_calls and diffs it against the stored items. Which
+// markees get read: each board's newest and top ones, plus any named by an edit event since the
+// last run (see editedMarkees). A markee seen for the first time is a new message, changed text
+// is an edit. The first run records the baseline, so everything already live then starts approved.
 export async function runModerationScan(): Promise<ScanReport> {
   const client = getModerationClient()
   const [block, baseline] = await Promise.all([client.getBlock({ blockTag: 'latest' }), kv.get(BASELINE_KEY)])
   const isBaseline = !baseline
 
-  const boards = await listBoards(client, block.number)
-  const pairs = await listMarkees(client, boards, block.number)
+  const { boards, streaming } = await listBoards(client, block.number)
+  const [{ pairs, tops }, logged] = await Promise.all([listMarkees(client, boards, block.number), editedMarkees(client, block.number)])
+
+  const known = new Set(pairs.map(p => p.markee))
+  const extra = (logged ?? []).filter(m => !known.has(m))
+  let fromLogs = 0
+  if (extra.length) {
+    const boardSet = new Set(boards)
+    const strategies = await multicallChunked(
+      client,
+      extra.map(m => ({ address: m as `0x${string}`, abi: STRATEGY_ABI, functionName: 'pricingStrategy' as const })),
+      MARKEE_CHUNK,
+      block.number,
+    )
+    extra.forEach((markee, i) => {
+      const board = strategies[i]?.status === 'success' ? String(strategies[i].result).toLowerCase() : null
+      if (board && boardSet.has(board)) { pairs.push({ board, markee }); fromLogs++ }
+    })
+  }
 
   const reads = await multicallChunked(
     client,
@@ -154,7 +223,7 @@ export async function runModerationScan(): Promise<ScanReport> {
   const unnamed = observations.filter(o => o.name === null).length
   if (unnamed > 0) console.warn(`[moderation/scan] name read failed for ${unnamed} markees, kept their stored names`)
 
-  const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline, pendingByBoard: {} }
+  const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline, pendingByBoard: {}, fromLogs, activity: 0 }
   if (observations.length === 0) return report
 
   const [prevs, flagged] = await Promise.all([readItems(observations.map(o => o.markee)), readAllFlagged()])
@@ -188,5 +257,16 @@ export async function runModerationScan(): Promise<ScanReport> {
     }
   }
   if (isBaseline) await kv.set(BASELINE_KEY, block.number.toString())
+  if (logged !== null) await kv.set(LOG_CURSOR_KEY, block.number.toString())
+
+  // The feed is secondary to the queue: a failure here never fails the scan.
+  try {
+    const seen = new Map(observations.map(o => [o.markee, { author: o.author, message: o.message, name: o.name ?? '' }]))
+    const edited = isBaseline ? [] : changed.filter(next => next.kind === 'edited')
+    const { events } = await recordActivity({ tops, streamingBoards: streaming, seen, edited, blockNumber: block.number, at: Number(block.timestamp) })
+    report.activity = events
+  } catch (e) {
+    console.warn('[moderation/scan] activity recording failed', e)
+  }
   return report
 }
