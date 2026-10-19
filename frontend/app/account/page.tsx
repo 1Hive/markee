@@ -8,7 +8,7 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, Pencil, ChevronDown, Info } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
+import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
@@ -418,14 +418,37 @@ function SidebarNav({ section, setSection, moderationCount }: { section: Section
 // ── Settings section ──────────────────────────────────────────────────────────
 interface NotifyState { email: string | null; verified: boolean; frequency: string }
 
+function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      style={{ width: 40, height: 23, borderRadius: 99, border: `1px solid ${on ? 'rgba(248,151,254,0.6)' : BORDER}`, background: on ? 'rgba(248,151,254,0.22)' : 'rgba(138,143,191,0.12)', position: 'relative', cursor: 'pointer', padding: 0, flexShrink: 0, transition: 'background 150ms, border-color 150ms' }}
+    >
+      <span style={{ position: 'absolute', top: 2, left: on ? 19 : 2, width: 17, height: 17, borderRadius: 99, background: on ? PINK : MUTED, transition: 'left 150ms' }} />
+    </button>
+  )
+}
+
 function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
   const { signMessageAsync } = useSignMessage()
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
-  const [freqDraft, setFreqDraft] = useState<EmailFrequency>('every')
-  const [modActive, setModActive] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [justSaved, setJustSaved] = useState(false)
+  const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
+  const [modOn, setModOn]             = useState(true)
+  const [statusOn, setStatusOn]       = useState(true)
+  const [budgetOn, setBudgetOn]       = useState(true)
+  const [editEmail, setEditEmail]     = useState(false)
+  const [emailInput, setEmailInput]   = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [saveError, setSaveError]     = useState<string | null>(null)
+  const [justSaved, setJustSaved]     = useState(false)
+  const [showVerifyBanner, setShowVerifyBanner] = useState(!!verifyOk)
+
+  useEffect(() => {
+    if (verifyOk) { setShowVerifyBanner(true); setTimeout(() => setShowVerifyBanner(false), 6000) }
+  }, [verifyOk])
 
   useEffect(() => {
     if (!address) return
@@ -434,32 +457,57 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
       .then((data: NotifyState | null) => {
         if (!data) return
         setNotifyState(data)
-        const freq = (data.frequency ?? 'every') as EmailFrequency
-        setFreqDraft(freq)
-        setModActive(freq !== 'off')
+        setFreqDraft((data.frequency ?? 'daily') as EmailFrequency)
+        setEditEmail(!data.email)
       })
       .catch(() => {})
   }, [address])
 
-  const isDirty = notifyState !== null && (
-    (modActive ? freqDraft : 'off') !== notifyState.frequency
-  )
+  const savedEmail   = notifyState?.email ?? null
+  const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
+  const emailChanged = editEmail && emailInput.trim().toLowerCase() !== (savedEmail ?? '')
+  const freqChanged  = freqDraft !== savedFreq
+  const isDirty      = emailChanged || freqChanged
+  const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())
+
+  const discard = () => {
+    setFreqDraft(savedFreq)
+    setEmailInput('')
+    setEditEmail(!savedEmail)
+    setSaveError(null)
+  }
 
   const save = async () => {
     setSaving(true)
     setSaveError(null)
     try {
-      const freq: EmailFrequency = modActive ? freqDraft : 'off'
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: notifyFreqMessage(CANONICAL_CHAIN_ID, address, freq, timestamp) })
-      const res = await fetch(`${MODERATION_API}/notify`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: address, frequency: freq, signature, timestamp }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      setNotifyState(prev => prev ? { ...prev, frequency: freq } : prev)
+      if (emailChanged) {
+        const newEmail = emailInput.trim().toLowerCase()
+        const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp) })
+        const res = await fetch(`${MODERATION_API}/notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: address, email: newEmail, signature: sig, timestamp }),
+        })
+        const body = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+        setNotifyState(prev => ({ ...prev ?? { frequency: freqDraft }, email: body.email, verified: false }))
+        setEmailInput('')
+        setEditEmail(false)
+      }
+      if (freqChanged) {
+        const ts2 = Math.floor(Date.now() / 1000)
+        const sig2 = await signMessageAsync({ message: notifyFreqMessage(CANONICAL_CHAIN_ID, address, freqDraft, ts2) })
+        const res2 = await fetch(`${MODERATION_API}/notify`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: address, frequency: freqDraft, signature: sig2, timestamp: ts2 }),
+        })
+        const body2 = await res2.json().catch(() => null)
+        if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
+        setNotifyState(prev => prev ? { ...prev, frequency: freqDraft } : prev)
+      }
       setJustSaved(true)
       setTimeout(() => setJustSaved(false), 3000)
     } catch (err) {
@@ -470,118 +518,146 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
     }
   }
 
-  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${BORDER}` }
-  const sectionLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED }
+  const resendVerification = async () => {
+    if (!savedEmail) return
+    // Re-POST with current email triggers a new verification email
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, savedEmail, timestamp) })
+      await fetch(`${MODERATION_API}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, email: savedEmail, signature: sig, timestamp }),
+      })
+    } catch {
+      // silent — best effort
+    }
+  }
 
-  const toggle = (active: boolean, setActive: (v: boolean) => void, disabled?: boolean) => (
-    <button
-      role="switch"
-      aria-checked={active}
-      onClick={() => !disabled && setActive(!active)}
-      style={{ width: 44, height: 24, borderRadius: 99, border: 'none', cursor: disabled ? 'default' : 'pointer', background: active ? PINK : 'rgba(138,143,191,0.3)', position: 'relative' as const, flexShrink: 0, transition: 'background 200ms' }}
-    >
-      <span style={{ position: 'absolute' as const, top: 3, left: active ? 23 : 3, width: 18, height: 18, borderRadius: 99, background: '#fff', transition: 'left 200ms' }} />
-    </button>
-  )
+  const ghostBtn: React.CSSProperties = { background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontFamily: SANS, color: TEXT2, cursor: 'pointer' }
+  const off = freqDraft === 'off'
 
   return (
-    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-      {verifyOk && (
-        <div style={{ padding: '12px 20px', background: `${GREEN}12`, borderBottom: `1px solid ${GREEN}33`, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ maxWidth: 760 }}>
+      {showVerifyBanner && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 10, marginBottom: 16 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span style={{ color: GREEN, fontSize: 13, fontWeight: 600 }}>Email verified! You'll now receive moderation alerts.</span>
+          <span style={{ color: GREEN, fontSize: 13, fontWeight: 600 }}>Email verified! You&apos;ll now receive moderation alerts.</span>
         </div>
       )}
 
-      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
-        <span style={sectionLabel}>Email Notifications</span>
-      </div>
+      <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${BORDER}` }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: MUTED }}>Email Notifications</span>
+        </div>
 
-      <div style={row}>
-        <span style={{ fontWeight: 600, color: TEXT, fontSize: 15, flex: 1 }}>Your Email</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {notifyState?.email ? (
-            <>
-              {notifyState.verified && (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              )}
-              <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT2 }}>{notifyState.email}</span>
-              <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, background: 'rgba(138,143,191,0.1)', border: `1px solid ${BORDER}`, borderRadius: 4, padding: '2px 6px' }}>Set by admin</span>
-            </>
+        {/* Your Email row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' as const }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Your Email</div>
+            {!editEmail && savedEmail && !notifyState?.verified && (
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>Awaiting verification. Check your inbox for the link.</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+            {editEmail ? (
+              <>
+                <input
+                  autoFocus
+                  type="email"
+                  value={emailInput}
+                  onChange={e => setEmailInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') { setEmailInput(''); setEditEmail(!savedEmail) } }}
+                  placeholder="name@example.com"
+                  style={{ background: 'rgba(6,10,42,0.6)', border: `1px solid ${badEmail ? '#FF8A9B' : BORDER}`, borderRadius: 7, padding: '7px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none', width: 220 }}
+                />
+                {savedEmail && (
+                  <button onClick={() => { setEmailInput(''); setEditEmail(false) }} style={{ ...ghostBtn, border: 'none' }}>Cancel</button>
+                )}
+              </>
+            ) : (
+              <>
+                {notifyState?.verified
+                  ? <span style={{ width: 8, height: 8, borderRadius: 99, background: GREEN, flexShrink: 0, display: 'inline-block', boxShadow: `0 0 8px ${GREEN}` }} />
+                  : savedEmail
+                    ? <span style={{ width: 8, height: 8, borderRadius: 99, background: '#FFB547', flexShrink: 0, display: 'inline-block' }} />
+                    : null}
+                <span style={{ fontFamily: MONO, fontSize: 13, color: savedEmail ? TEXT : MUTED }}>
+                  {savedEmail ?? 'No email set'}
+                </span>
+                {savedEmail && !notifyState?.verified && (
+                  <button onClick={resendVerification} style={{ ...ghostBtn, border: 'none', fontSize: 12 }}>Resend</button>
+                )}
+                <button onClick={() => { setEmailInput(savedEmail ?? ''); setEditEmail(true) }} style={ghostBtn}>Edit</button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Event toggles */}
+        <div style={{ opacity: off ? 0.45 : 1, pointerEvents: off ? 'none' : 'auto', borderBottom: `1px solid ${BORDER}`, padding: '14px 18px 6px' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 10 }}>Choose When You Get Notified</div>
+          <div style={{ borderLeft: `1px solid ${BORDER}`, marginLeft: 4, paddingLeft: 14 }}>
+            {([
+              { k: 'mod',    label: 'Moderation Activity',   sub: 'A new message is posted for you to moderate.', on: modOn,    set: setModOn },
+              { k: 'status', label: 'Message Status Change', sub: 'Your message starts or stops winning.',        on: statusOn, set: setStatusOn },
+              { k: 'budget', label: 'Low Budget',            sub: 'Your streaming budget falls below 1 day remaining.', on: budgetOn, set: setBudgetOn },
+            ] as const).map((ev, i) => (
+              <div key={ev.k} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 0', borderTop: i ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: TEXT2 }}>{ev.label}</div>
+                  <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{ev.sub}</div>
+                </div>
+                <SettingsSwitch on={ev.on} onChange={ev.set} label={ev.label} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Frequency */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' as const, opacity: !savedEmail && !editEmail ? 0.45 : 1, pointerEvents: !savedEmail && !editEmail ? 'none' : 'auto' }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Frequency</div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>
+              {freqDraft === 'daily' ? "One email a day, only when there's news." : freqDraft === 'every' ? 'An email for each update.' : null}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 3, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 3 }}>
+            {(['every', 'daily', 'off'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFreqDraft(f)}
+                style={{ background: freqDraft === f ? 'rgba(123,106,244,0.55)' : 'transparent', color: freqDraft === f ? TEXT : MUTED, border: freqDraft === f ? `1px solid rgba(123,106,244,0.5)` : '1px solid transparent', borderRadius: 6, padding: '6px 12px', fontFamily: SANS, fontSize: 13, fontWeight: freqDraft === f ? 700 : 500, cursor: 'pointer', transition: 'all 150ms', whiteSpace: 'nowrap' as const }}
+              >
+                {f === 'every' ? 'Every Time' : f === 'daily' ? 'Daily Round-up' : 'Off'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, padding: '12px 18px' }}>
+          {badEmail && <span style={{ fontSize: 12.5, color: '#FF8A9B', marginRight: 'auto' }}>Enter a valid email</span>}
+          {saveError && !badEmail && <span style={{ color: '#FF6B6B', fontSize: 12.5, marginRight: 'auto' }}>{saveError}</span>}
+          {justSaved && !saveError && <span style={{ color: GREEN, fontSize: 12.5, marginRight: 'auto' }}>Saved!</span>}
+          {saving ? (
+            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>Confirm in wallet…</span>
           ) : (
-            <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>No email set — ask your board admin</span>
+            <>
+              {isDirty && (
+                <button onClick={discard} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13.5, fontFamily: SANS, cursor: 'pointer' }}>Discard</button>
+              )}
+              <button
+                disabled={!isDirty || !!badEmail}
+                onClick={save}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '9px 18px', fontFamily: SANS, fontWeight: 700, fontSize: 13.5, cursor: isDirty && !badEmail ? 'pointer' : 'not-allowed', opacity: isDirty && !badEmail ? 1 : 0.4, transition: 'opacity 150ms' }}
+              >
+                Save changes
+              </button>
+            </>
           )}
         </div>
-      </div>
-
-      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}` }}>
-        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 14 }}>When You Get Notified</div>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, color: TEXT, fontSize: 14, marginBottom: 2 }}>Moderation Activity</div>
-            <div style={{ color: MUTED, fontSize: 12.5 }}>A new message is posted for you to moderate.</div>
-          </div>
-          {toggle(modActive, setModActive)}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, opacity: 0.45 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, color: TEXT, fontSize: 14, marginBottom: 2 }}>Message Status Change <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '1px 5px', marginLeft: 6 }}>coming soon</span></div>
-            <div style={{ color: MUTED, fontSize: 12.5 }}>Your message starts or stops winning.</div>
-          </div>
-          {toggle(false, () => {}, true)}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, opacity: 0.45 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, color: TEXT, fontSize: 14, marginBottom: 2 }}>Low Budget <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '1px 5px', marginLeft: 6 }}>coming soon</span></div>
-            <div style={{ color: MUTED, fontSize: 12.5 }}>Your streaming budget falls below 1 day.</div>
-          </div>
-          {toggle(false, () => {}, true)}
-        </div>
-      </div>
-
-      <div style={row}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, color: TEXT, fontSize: 15, marginBottom: 2 }}>Frequency</div>
-          <div style={{ color: MUTED, fontSize: 12.5 }}>
-            {freqDraft === 'every' ? 'One email per update.' : freqDraft === 'daily' ? 'One digest per day.' : 'No emails.'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 3, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 3 }}>
-          {(['every', 'daily', 'off'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => { setFreqDraft(f); if (f !== 'off' && !modActive) setModActive(true) }}
-              style={{ background: freqDraft === f ? PINK : 'transparent', color: freqDraft === f ? BG : MUTED, border: 'none', borderRadius: 6, padding: '6px 12px', fontFamily: SANS, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 150ms, color 150ms', whiteSpace: 'nowrap' as const }}
-            >
-              {f === 'every' ? 'Every Time' : f === 'daily' ? 'Daily Round-up' : 'Off'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '16px 20px' }}>
-        {saveError && <span style={{ color: '#FF6B6B', fontSize: 13 }}>{saveError}</span>}
-        {justSaved && !saveError && <span style={{ color: GREEN, fontSize: 13 }}>Saved!</span>}
-        <button
-          onClick={() => {
-            if (notifyState) {
-              const freq = (notifyState.frequency ?? 'every') as EmailFrequency
-              setFreqDraft(freq)
-              setModActive(freq !== 'off')
-            }
-          }}
-          disabled={saving || !isDirty}
-          style={{ background: 'transparent', border: 'none', color: isDirty ? TEXT2 : MUTED, fontSize: 14, cursor: isDirty ? 'pointer' : 'default', fontFamily: SANS }}
-        >
-          Discard
-        </button>
-        <button
-          onClick={save}
-          disabled={saving || !isDirty}
-          style={{ background: isDirty ? PINK : `${PINK}44`, color: BG, border: 'none', borderRadius: 10, padding: '10px 20px', fontFamily: SANS, fontWeight: 700, fontSize: 14, cursor: isDirty ? 'pointer' : 'default', opacity: saving ? 0.7 : 1, transition: 'background 150ms, opacity 150ms' }}
-        >
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
       </div>
     </div>
   )

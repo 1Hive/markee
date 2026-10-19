@@ -3,6 +3,11 @@
 //   The email is masked (u***@example.com) so wallet owners can confirm their subscription without
 //   exposing the full address to unauthenticated callers.
 //
+// POST /api/moderation/notify
+//   { wallet, email, signature, timestamp }
+//   Moderator sets or updates their notification email. Triggers a verification email.
+//   Signature covers notifyEmailMessage(8453, wallet, email, timestamp).
+//
 // PATCH /api/moderation/notify
 //   { wallet, frequency, signature, timestamp }
 //   Moderator updates their own notification frequency preference (every / daily / off).
@@ -13,6 +18,7 @@
 //   Removes the moderator's notification state (unsubscribes from all emails).
 //   Signature covers notifyEmailMessage(8453, wallet, '', timestamp).
 
+import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
@@ -24,7 +30,11 @@ import {
   notifyFreqMessage,
   type EmailFrequency,
 } from '@/lib/moderation/queue'
-import { notifyStateKey, type ModeratorNotifyState } from '@/lib/moderation/server'
+import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState } from '@/lib/moderation/server'
+import { sendVerificationEmail } from '@/lib/moderation/email'
+
+const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +57,64 @@ export async function GET(req: NextRequest) {
     verified: state?.verified ?? false,
     frequency: state?.frequency ?? 'every',
   })
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { wallet: rawWallet, email: rawEmail, signature, timestamp } = await req.json() as {
+      wallet?: string
+      email?: string
+      signature?: `0x${string}`
+      timestamp?: number
+    }
+    const wallet = rawWallet?.toLowerCase()
+    if (!wallet || !ADDRESS_PATTERN.test(wallet)) {
+      return NextResponse.json({ error: 'Missing or invalid wallet address' }, { status: 400 })
+    }
+    const email = rawEmail?.trim().toLowerCase()
+    if (!email || !EMAIL_RE.test(email)) {
+      return NextResponse.json({ error: 'Missing or invalid email address' }, { status: 400 })
+    }
+    if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+      return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
+    }
+    const now = Math.floor(Date.now() / 1000)
+    if (Math.abs(now - timestamp) > 300) {
+      return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
+    }
+    const valid = await verifyMessage({
+      address: wallet as `0x${string}`,
+      message: notifyEmailMessage(base.id, wallet, email, timestamp),
+      signature,
+    }).catch(() => false)
+    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+
+    const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
+    const notifyState: ModeratorNotifyState = {
+      email,
+      verified: false,
+      frequency: existing?.frequency ?? 'every',
+      setAt: now,
+    }
+    await kv.set(notifyStateKey(wallet), notifyState)
+
+    const token = randomBytes(32).toString('hex')
+    const origin = req.headers.get('origin') ?? req.headers.get('x-forwarded-host') ?? 'https://markee.xyz'
+    const verifyUrl = `${origin}/api/moderation/notify/verify?token=${token}`
+    await kv.set(verifyTokenKey(token), { wallet, email }, { ex: VERIFY_TOKEN_TTL })
+    await sendVerificationEmail(email, wallet, verifyUrl).catch(e => {
+      console.error('[moderation/notify] verification email failed to', email, e)
+    })
+
+    return NextResponse.json({
+      email: maskEmail(email),
+      verified: false,
+      frequency: notifyState.frequency,
+    })
+  } catch (e) {
+    console.error('[moderation/notify] POST error:', e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: NextRequest) {
