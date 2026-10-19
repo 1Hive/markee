@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { encodeFunctionData, parseAbi, parseEther } from 'viem'
-import { ANVIL, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './env'
+import { ANVIL, APP_PORT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './env'
 
 // Every run starts from the same chain state and an empty KV, even when Playwright reuses an Anvil
 // and Redis left running by an earlier run (reuseExistingServer outside CI).
@@ -39,4 +39,21 @@ export default async function globalSetup() {
 
   const res = await fetch(KV, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['FLUSHALL']) })
   if (!res.ok) throw new Error(`KV flush failed: HTTP ${res.status}`)
+
+  await warmUp()
+}
+
+// The first request to each route compiles it (next dev) and makes Anvil fetch the factories' log
+// history from the upstream RPC, which on a cold runner can take minutes. Do that here, outside any
+// test's timeout. Failures are ignored: a test that needs the route will report it properly.
+async function warmUp() {
+  const app = `http://localhost:${APP_PORT}`
+  const get = (path: string) => fetch(app + path, { signal: AbortSignal.timeout(300_000) }).catch(() => {})
+  await Promise.all(['superfluid', 'github', 'openinternet', 'streaming', 'forsale'].map(p => get(`/api/${p}/leaderboards`)))
+  await Promise.all([
+    get(`/api/account/messages?owner=${E2E_ACCOUNT}`),
+    get(`/api/account/funded?owner=${E2E_ACCOUNT}`),
+    get('/account'),
+    get(`/markee/${FOR_SALE_BOARD}`),
+  ])
 }
