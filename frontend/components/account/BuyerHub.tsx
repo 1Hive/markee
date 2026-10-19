@@ -213,6 +213,17 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
 }
 
 // ── Your Messages ─────────────────────────────────────────────────────────────
+// What it costs to take a board's top spot, as the marketplace's price button shows it: the top
+// bid + 0.001 ETH on Sale boards, the top rate per month on Rent boards (null when unknown).
+export function winPrice(m: MyMessage | FundedMessage, ethPrice: number | null): string | null {
+  if (m.strategy === 'streaming') {
+    const rate = BigInt((m as MyMessage).topRateRaw ?? '0')
+    return rate > 0n ? `${fmtWeiUsd(rate * SECONDS_PER_MONTH, ethPrice)}/mo` : null
+  }
+  const top = 'topFunds' in m ? m.topFunds : BigInt(m.topFundsRaw)
+  return fmtWeiUsd(top + OVERTAKE_INCREMENT, ethPrice)
+}
+
 export const MSG_COLS = 'minmax(0,1fr) 64px 96px 64px 104px'
 type MsgSortKey = 'views' | 'bid' | 'cpm'
 
@@ -403,9 +414,7 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
             const rent = m.strategy === 'streaming'
             const cpm = cpmOf(r)
             const on = messageShownOn(m)
-            const topRate = BigInt((m as MyMessage).topRateRaw ?? '0')
-            const price = rent ? topRate * SECONDS_PER_MONTH : r.top + OVERTAKE_INCREMENT
-            const priceText = `${fmtWeiUsd(price, ethPrice)}${rent ? '/mo' : ''}`
+            const priceText = winPrice(m, ethPrice)
             return (
               <div
                 key={m.address}
@@ -475,7 +484,7 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
                     rent && r.own
                       ? <button onClick={() => onChangeBid(m as MyMessage)} style={ghostAction}>Change Bid</button>
                       : <button onClick={() => onAddFunds(m, r.own)} style={ghostAction}>Add Funds</button>
-                  ) : (rent ? topRate > 0n : true) ? (
+                  ) : priceText ? (
                     <button onClick={() => onPriceButton(m)} aria-label={`Bid ${priceText} to win`} style={priceAction}>{priceText}</button>
                   ) : (
                     <button onClick={() => onPriceButton(m)} style={ghostAction}>Bid to Win</button>

@@ -5,12 +5,11 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, Info, ShieldCheck } from 'lucide-react'
+import { Globe2, Github, Zap, Info } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency, type ModerationItem, type QueueAction, type QueueBoard } from '@/lib/moderation/queue'
-import { formatDistanceToNow } from 'date-fns'
-import type { ActivityEvent, ActivityKind } from '@/lib/activity/events'
+import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
+import type { ActivityEvent } from '@/lib/activity/events'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
@@ -23,16 +22,18 @@ import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { runwaySeconds, runwayTier, formatRunwayShort } from '@/lib/superfluid/streaming'
-import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, PURPLE, HERO_BG } from '@/lib/design-tokens'
+import { runwaySeconds, runwayTier } from '@/lib/superfluid/streaming'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, HERO_BG } from '@/lib/design-tokens'
 import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
-import { ToastProvider, useToast } from '@/components/account/Toast'
-import { YourMarkees, MarkeeAttnGroups, compareByRaised } from '@/components/account/CreatorHub'
+import { ToastProvider } from '@/components/account/Toast'
+import { YourMarkees, compareByRaised } from '@/components/account/CreatorHub'
 import { ManageDrawer } from '@/components/account/ManageDrawer'
-import { StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate } from '@/components/account/BuyerHub'
-import { SECONDS_PER_MONTH, fmtAddr, GlowDot, fmtWeiUsd, PanelHead, SegToggle, AttnGroup } from '@/components/account/primitives'
+import { StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate, winPrice } from '@/components/account/BuyerHub'
+import { NeedsAttention } from '@/components/account/NeedsAttention'
+import { LatestActivity } from '@/components/account/ActivityFeed'
+import { fmtAddr, GlowDot } from '@/components/account/primitives'
 import { formatUsd } from '@/lib/utils'
-import { ModeratedContent, ModerationQueue, ModerationItemRow, ModerationToast, useModeration } from '@/components/moderation'
+import { ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
@@ -620,195 +621,6 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
-// ── Activity Feed: Needs Attention ────────────────────────────────────────────
-function NeedsAttention({ modItems, modBoards, liveMarkees, onReview, onOpenQueue, inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite, lowRunway, onDeposit }: {
-  modItems: ModerationItem[]
-  modBoards: QueueBoard[]
-  liveMarkees: Set<string>
-  onReview: (action: QueueAction, ids: string[]) => Promise<void>
-  onOpenQueue: () => void
-  inactive: AnyLeaderboard[]
-  awaiting: AnyLeaderboard[]
-  ethPrice: number | null
-  onActivate: (lb: AnyLeaderboard) => void
-  onArchive: (lb: AnyLeaderboard) => void
-  onAddToSite: (lb: AnyLeaderboard) => void
-  lowRunway: bigint | null
-  onDeposit: () => void
-}) {
-  const total = modItems.length + inactive.length + awaiting.length + (lowRunway != null ? 1 : 0)
-  if (total === 0) {
-    return (
-      <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px' }}>
-        <ShieldCheck size={26} strokeWidth={1.8} style={{ color: GREEN, flexShrink: 0 }} />
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>All Caught Up</div>
-          <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>Nothing to moderate, activate or add to a site.</div>
-        </div>
-      </div>
-    )
-  }
-  return (
-    <section style={{ background: 'rgba(255,181,71,0.05)', border: '1px solid rgba(255,181,71,0.28)', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '15px 18px', minHeight: 56, boxSizing: 'border-box', borderBottom: '1px solid rgba(255,181,71,0.22)', background: 'rgba(255,181,71,0.08)' }}>
-        <span style={{ width: 7, height: 7, borderRadius: 99, background: AMBER, boxShadow: `0 0 10px ${AMBER}` }} />
-        <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: AMBER }}>Needs Attention</span>
-        <span style={{ fontFamily: MONO, fontSize: 11, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px' }}>{total}</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '18px 18px 20px' }}>
-        {modItems.length > 0 && (
-          <AttnGroup
-            title="Moderation Queue"
-            sub="Approve or flag new messages."
-            items={modItems}
-            noun={['message', 'messages']}
-            right={<button onClick={onOpenQueue} style={{ background: 'transparent', border: 'none', color: PINK, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', padding: 0 }}>Open full queue →</button>}
-            render={it => <ModerationItemRow key={`${it.markee}:${it.blockNumber}`} item={it} board={modBoards.find(b => b.address === it.board)} live={liveMarkees.size ? liveMarkees.has(it.markee.toLowerCase()) : undefined} onReview={onReview} />}
-          />
-        )}
-        <MarkeeAttnGroups inactive={inactive} awaiting={awaiting} ethPrice={ethPrice} onActivate={onActivate} onArchive={onArchive} onAddToSite={onAddToSite} />
-        {lowRunway != null && (
-          <AttnGroup
-            title="Stream Balance"
-            sub="Your balance is running low."
-            items={[lowRunway]}
-            render={r => (
-              <div key="low" style={{ background: 'rgba(10,15,61,0.5)', border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span style={{ flex: 1, fontSize: 13, color: TEXT2 }}>
-                  Runs out in <b style={{ color: AMBER, fontFamily: MONO }}>{formatRunwayShort(r)}</b>. Your Rent bids stop streaming when it does.
-                </span>
-                <button onClick={onDeposit} style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}>Deposit</button>
-              </div>
-            )}
-          />
-        )}
-      </div>
-    </section>
-  )
-}
-
-// ── Activity Feed: Latest Activity ────────────────────────────────────────────
-const ACTIVITY_KIND: Record<ActivityKind, { dot: string; hollow?: boolean; title: string }> = {
-  winning: { dot: PINK, title: 'Your message is now winning' },
-  outbid: { dot: MUTED, hollow: true, title: 'Your message was outbid' },
-  new_top: { dot: GREEN, title: 'New winning message' },
-  edited: { dot: BLUE, title: 'A message was edited' },
-}
-
-function shortAgo(at: number, now: number): string {
-  const s = Math.max(0, Math.floor(now / 1000) - at)
-  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
-
-function dayLabel(at: number, now: number): string {
-  const start = new Date(now); start.setHours(0, 0, 0, 0)
-  const t = at * 1000
-  if (t >= start.getTime()) return 'Today'
-  if (t >= start.getTime() - 86_400_000) return 'Yesterday'
-  return 'Earlier'
-}
-
-function LatestActivity({ events, loaded, boardName, ethPrice, reclaimLabel, onReclaim, onOpen }: {
-  events: ActivityEvent[]
-  loaded: boolean
-  boardName: (board: string) => string
-  ethPrice: number | null
-  reclaimLabel: (markee: string) => string | null
-  onReclaim: (markee: string) => void
-  onOpen: (event: ActivityEvent) => void
-}) {
-  const [filter, setFilter] = useState<'all' | 'own' | 'buy'>('all')
-  const now = Date.now()
-  const list = events.filter(e => filter === 'all' || e.side === filter)
-  const label: React.CSSProperties = { fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }
-  let lastDay: string | null = null
-
-  return (
-    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-      <PanelHead label="Latest Activity">
-        <SegToggle
-          label="Filter activity"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { k: 'all', l: 'All' },
-            { k: 'own', l: 'My Markees', n: events.filter(e => e.side === 'own').length },
-            { k: 'buy', l: 'My Messages', n: events.filter(e => e.side === 'buy').length },
-          ]}
-        />
-      </PanelHead>
-      {!loaded ? (
-        <div style={{ padding: '22px 20px', fontSize: 13, color: MUTED }}>Loading…</div>
-      ) : list.length === 0 ? (
-        <div style={{ padding: '22px 20px', fontSize: 13, color: MUTED, lineHeight: 1.5 }}>
-          No activity yet. New winners, outbids and edits on your Markees and messages show up here.
-        </div>
-      ) : list.map((e, i) => {
-        const day = dayLabel(e.at, now)
-        const head = day !== lastDay ? (lastDay = day) : null
-        const k = ACTIVITY_KIND[e.kind]
-        const own = e.side === 'own'
-        const retake = e.kind === 'outbid' ? reclaimLabel(e.markee) : null
-        const amount = e.kind === 'new_top' && e.amount && e.amount !== '0'
-          ? (e.streaming ? `+${fmtWeiUsd(BigInt(e.amount) * SECONDS_PER_MONTH, ethPrice)}` : `+${fmtWeiUsd(BigInt(e.amount), ethPrice)}`)
-          : null
-        return (
-          <div key={e.id}>
-            {head && <div style={{ ...label, padding: '12px 20px 6px', borderTop: i ? `1px solid ${BORDER}` : 'none' }}>{head}</div>}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpen(e)}
-              onKeyDown={ev => { if (ev.key === 'Enter') onOpen(e) }}
-              onMouseEnter={ev => { (ev.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
-              onMouseLeave={ev => { (ev.currentTarget as HTMLElement).style.background = 'transparent' }}
-              style={{ display: 'grid', gridTemplateColumns: '30px minmax(0,1fr) auto', gap: 14, alignItems: 'center', padding: '10px 20px', cursor: 'pointer', transition: 'background 120ms' }}
-            >
-              <span
-                title={own ? 'Your Markee' : 'Your message'}
-                style={{ width: 30, height: 30, borderRadius: own ? 8 : 99, display: 'flex', alignItems: 'center', justifyContent: 'center', background: own ? BG : 'rgba(248,151,254,0.1)', border: `1px solid ${own ? BORDER : 'rgba(248,151,254,0.4)'}` }}
-              >
-                {own
-                  ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 16v5M8 21h8" /></svg>
-                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>}
-              </span>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, boxSizing: 'border-box', ...(k.hollow ? { border: `1.5px solid ${k.dot}` } : { background: k.dot }) }} />
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: e.kind === 'outbid' ? TEXT2 : TEXT, whiteSpace: 'nowrap' }}>{k.title}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>on {boardName(e.board)}</span>
-                </span>
-                {e.message && (
-                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={e.markee} className="min-w-0">
-                    <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 3, paddingLeft: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{e.message}"</span>
-                  </ModeratedContent>
-                )}
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {retake ? (
-                  <button
-                    onClick={ev => { ev.stopPropagation(); onReclaim(e.markee) }}
-                    style={{ background: 'transparent', border: `1px solid ${PINK}`, color: PINK, borderRadius: 8, minWidth: 104, height: 32, padding: '0 10px', fontSize: 12, fontWeight: 800, fontFamily: MONO, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    {retake}
-                  </button>
-                ) : amount ? (
-                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: GREEN, whiteSpace: 'nowrap' }}>
-                    {amount}{e.streaming && <span style={{ fontWeight: 500, color: MUTED, fontSize: 11.5 }}>/mo</span>}
-                  </span>
-                ) : null}
-                <span style={{ fontSize: 12, color: MUTED, whiteSpace: 'nowrap', minWidth: 52, textAlign: 'right' }}>{shortAgo(e.at, now)}</span>
-              </span>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
 
 // ── Manage integrations modal ─────────────────────────────────────────────────
@@ -1018,7 +830,8 @@ function AccountDashboard() {
   useEffect(() => { setMounted(true) }, [])
   const [streamBalanceKey, setStreamBalanceKey] = useState(0)
   const { snapshot: streamSnapshot, failed: streamFailed } = useStreamSnapshot(activeAddress, streamBalanceKey)
-  const [activity, setActivity] = useState<{ wallet: string; events: ActivityEvent[] } | null>(null)
+  const [activity, setActivity] = useState<{ wallet: string; events: ActivityEvent[]; failed: boolean } | null>(null)
+  const [activityKey, setActivityKey] = useState(0)
   const lowRunway = useMemo(() => {
     const rate = winningRate(streamSnapshot)
     if (!streamSnapshot || rate === 0n) return null
@@ -1419,11 +1232,11 @@ function AccountDashboard() {
     const wallet = activeAddress.toLowerCase()
     let cancelled = false
     fetch(`/api/account/activity?wallet=${wallet}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : { events: [] })
-      .then(d => { if (!cancelled) setActivity({ wallet, events: d.events ?? [] }) })
-      .catch(() => { if (!cancelled) setActivity({ wallet, events: [] }) })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { if (!cancelled) setActivity({ wallet, events: d.events ?? [], failed: false }) })
+      .catch(() => { if (!cancelled) setActivity({ wallet, events: [], failed: true }) })
     return () => { cancelled = true }
-  }, [activeAddress, section])
+  }, [activeAddress, section, activityKey])
 
   const boardNames = useMemo(() => {
     const names = new Map<string, string>()
@@ -1434,6 +1247,13 @@ function AccountDashboard() {
   }, [allBoards, myMessages, fundedMessages])
 
   const ownMessage = useCallback((markee: string) => myMessages.find(m => m.address.toLowerCase() === markee), [myMessages])
+
+  // The board's own buy modal, the same one its marketplace price button opens.
+  const openBoardBuy = useCallback((m: MyMessage | FundedMessage) => setPriceButtonTarget({
+    address: m.strategyId, name: m.strategyName, strategy: m.strategy ?? 'fixed',
+    platform: (m as MyMessage).isLegacy ? 'website' : (m.platform ?? 'website'),
+    isLegacy: !!(m as MyMessage).isLegacy,
+  } as AnyLeaderboard), [])
 
   const handleActivate = useCallback((lb: AnyLeaderboard) => {
     if (lb.strategy === 'streaming') setActivateStreamBoard(lb)
@@ -1534,46 +1354,38 @@ function AccountDashboard() {
               {/* ── Activity Feed ── */}
               {section === 'feed' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
-                  {isLoading || moderationQueue.isLoading ? (
-                    <div style={{ height: 120, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14 }} />
-                  ) : (
-                    <NeedsAttention
-                      modItems={isModerator ? moderationQueue.items : []}
-                      modBoards={moderationQueue.boards}
-                      liveMarkees={liveMarkees}
-                      onReview={moderationQueue.review}
-                      onOpenQueue={() => setSection('creator')}
-                      inactive={inactiveBoards}
-                      awaiting={awaitingSiteBoards}
-                      ethPrice={ethPrice}
-                      onActivate={handleActivate}
-                      onArchive={lb => setArchived(prev => [...prev, lb.address])}
-                      onAddToSite={handleOpenAddToSite}
-                      lowRunway={lowRunway}
-                      onDeposit={() => setSection('buyer')}
-                    />
-                  )}
+                  <NeedsAttention
+                    modLoading={moderationQueue.isLoading}
+                    modItems={isModerator ? moderationQueue.items : []}
+                    modBoards={moderationQueue.boards}
+                    liveMarkees={liveMarkees}
+                    onReview={moderationQueue.review}
+                    onOpenQueue={() => setSection('creator')}
+                    markeesLoading={isLoading}
+                    inactive={inactiveBoards}
+                    awaiting={awaitingSiteBoards}
+                    ethPrice={ethPrice}
+                    onActivate={handleActivate}
+                    onArchive={lb => setArchived(prev => [...prev, lb.address])}
+                    onAddToSite={handleOpenAddToSite}
+                    lowRunway={lowRunway}
+                    onDeposit={() => setSection('buyer')}
+                  />
                   <LatestActivity
                     events={activity?.wallet === activeAddress?.toLowerCase() ? activity!.events : []}
-                    loaded={activity?.wallet === activeAddress?.toLowerCase()}
+                    state={activity?.wallet !== activeAddress?.toLowerCase() ? 'loading' : activity!.failed ? 'failed' : 'ready'}
+                    onRetry={() => { setActivity(null); setActivityKey(k => k + 1) }}
                     boardName={b => boardNames.get(b) ?? fmtAddr(b)}
                     ethPrice={ethPrice}
-                    reclaimLabel={markee => {
+                    priceLabel={markee => {
                       const m = ownMessage(markee)
-                      if (!m || m.isTop) return null
-                      if (m.strategy === 'streaming') return 'Change Bid'
-                      const toTop = m.topFunds > m.totalFundsAdded ? m.topFunds - m.totalFundsAdded + 1_000_000_000_000_000n : 0n
-                      return toTop > 0n ? `+${fmtWeiUsd(toTop, ethPrice)}` : 'Add Funds'
+                      return m && !m.isTop ? winPrice(m, ethPrice) : null
                     }}
-                    onReclaim={markee => {
-                      const m = ownMessage(markee)
-                      if (!m) return
-                      if (m.strategy === 'streaming') setStreamEditTarget(m)
-                      else setAddFundsTarget({ strategy: 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })
-                    }}
+                    onPrice={markee => { const m = ownMessage(markee); if (m) openBoardBuy(m) }}
                     onOpen={e => {
-                      if (e.side === 'buy') setSection('buyer')
-                      else if (allBoards.some(lb => lb.address.toLowerCase() === e.board)) setManageTarget(allBoards.find(lb => lb.address.toLowerCase() === e.board)!.address)
+                      if (e.side === 'buy') { setSection('buyer'); return }
+                      const lb = allBoards.find(b => b.address.toLowerCase() === e.board)
+                      if (lb) { setSection('creator'); setManageTarget(lb.address) }
                       else window.location.href = `/markee/${e.board}`
                     }}
                   />
@@ -1642,11 +1454,7 @@ function AccountDashboard() {
                       onEditStreaming={handleEditMessage}
                       onChangeBid={m => setStreamEditTarget(m)}
                       onEdited={() => activeAddress && fetchMyMessages(activeAddress)}
-                      onPriceButton={m => setPriceButtonTarget({
-                        address: m.strategyId, name: m.strategyName, strategy: m.strategy ?? 'fixed',
-                        platform: (m as MyMessage).isLegacy ? 'website' : (m.platform ?? 'website'),
-                        isLegacy: !!(m as MyMessage).isLegacy,
-                      } as AnyLeaderboard)}
+                      onPriceButton={openBoardBuy}
                       onAddFunds={(m, own) => setAddFundsTarget(own
                         ? { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: (m as MyMessage).totalFundsAdded, topFunds: (m as MyMessage).topFunds, name: m.name, isLegacy: (m as MyMessage).isLegacy }
                         : { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt((m as FundedMessage).totalContributed), topFunds: BigInt((m as FundedMessage).topFundsRaw), name: m.name })}
