@@ -91,6 +91,13 @@ jobs:
         id: rpc
         run: |
           if [ -n "$E2E_FORK_RPC_URL" ]; then
+            chain=$(curl -s -X POST -H 'Content-Type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "$E2E_FORK_RPC_URL" \
+              | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
+            if [ "$chain" != "0x2105" ]; then
+              echo "::error::E2E_FORK_RPC_URL must be a Base Mainnet RPC (chain id 0x2105), got '${chain:-no response}'."
+              exit 1
+            fi
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::E2E_FORK_RPC_URL is not available to this run; skipping fork E2E."
