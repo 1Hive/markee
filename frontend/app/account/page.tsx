@@ -213,7 +213,7 @@ function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
         </div>
         <div style={grid2}>
           <OverviewStatCard n={fmtViews(buyerViews)} label="Total Views" color={BLUE} loaded={loaded} />
-          <OverviewStatCard n={buyerCpm != null ? formatUsd(buyerCpm) : '—'} label="Cost per 1k Views" color={TEXT2} loaded={loaded} />
+          <OverviewStatCard n={buyerCpm != null ? formatUsd(buyerCpm) : '-'} label="Cost per 1k Views" color={TEXT2} loaded={loaded} />
         </div>
       </div>
     </div>
@@ -798,12 +798,10 @@ function StatsChart({ metrics, seed = 1 }: { metrics: ChartMetric[]; seed?: numb
             </>
         }
 
-        {/* Centre label */}
-        <text x={W / 2} y={PAD.t + innerH / 2 + 4} textAnchor="middle" fill={`${MUTED}50`} fontSize="10" fontFamily="JetBrains Mono,monospace">
+        {/* X-axis labels */}
+        <text x={PAD.l + innerW / 2} y={H - 3} textAnchor="middle" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">
           {chartType === 'bar' ? 'Daily totals' : 'Cumulative total'}
         </text>
-
-        {/* X-axis labels */}
         <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">{nPoints} days ago</text>
         <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">Today</text>
       </svg>
@@ -1395,9 +1393,9 @@ function AccountDashboard() {
                   <StatsChart
                     seed={1}
                     metrics={[
-                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '—', delta: 12.4 },
-                      { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '—', delta: 5.1 },
-                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '—', delta: 7.2 },
+                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', delta: 12.4 },
+                      { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '-', delta: 5.1 },
+                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', delta: 7.2 },
                     ]}
                   />
                   <YourMarkees
@@ -1427,9 +1425,9 @@ function AccountDashboard() {
                   <StatsChart
                     seed={2}
                     metrics={[
-                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '—', delta: -3.2 },
-                      { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '—', delta: 8.5 },
-                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '—', delta: -1.8 },
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', delta: -3.2 },
+                      { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', delta: 8.5 },
+                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', delta: -1.8 },
                     ]}
                   />
                   <StreamBalanceCard
