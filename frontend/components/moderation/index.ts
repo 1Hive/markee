@@ -8,5 +8,5 @@
 export { ModerationProvider, useModeration } from './ModerationProvider'
 export { ModeratedContent, ModeratedAuthor } from './ModeratedContent'
 export { FlagButton } from './FlagButton'
-export { ModerationQueue, ModerationToast } from './ModerationQueue'
+export { ModerationQueue, ModerationItemRow, ModerationToast } from './ModerationQueue'
 export { BoardModerators } from './BoardModerators'

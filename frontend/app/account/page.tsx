@@ -33,7 +33,7 @@ import { YourMarkees, MarkeeAttnGroups, compareByRaised } from '@/components/acc
 import { ManageDrawer } from '@/components/account/ManageDrawer'
 import { SECONDS_PER_MONTH, fmtAddr, GlowDot, fmtWeiUsd, PanelHead, SegToggle, AttnGroup } from '@/components/account/primitives'
 import { logoDevUrl, formatUsd } from '@/lib/utils'
-import { ModeratedContent, FlagButton, ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModerationQueue, ModerationItemRow, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 
@@ -642,46 +642,10 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
 }
 
 // ── Activity Feed: Needs Attention ────────────────────────────────────────────
-function ModAttnItem({ item, boardName, onReview }: { item: ModerationItem; boardName: string; onReview: (action: QueueAction, ids: string[]) => Promise<void> }) {
-  const [busy, setBusy] = useState<QueueAction | null>(null)
-  const go = async (action: QueueAction) => {
-    setBusy(action)
-    try { await onReview(action, [item.markee]) } catch { /* the queue refetches; the item stays if it failed */ } finally { setBusy(null) }
-  }
-  const btn: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
-  return (
-    <div style={{ background: 'rgba(10,15,61,0.5)', border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {item.message || 'Empty message'}
-          {item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
-          {item.at > 0 && <span>{formatDistanceToNow(item.at * 1000, { addSuffix: true })}</span>}
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: item.kind === 'edited' ? AMBER : LAVENDER, border: `1px solid ${item.kind === 'edited' ? `${AMBER}66` : 'rgba(180,172,247,0.45)'}`, borderRadius: 99, padding: '1px 7px' }}>
-            {item.kind === 'edited' ? 'Edited' : 'New'}
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{boardName}</span>
-          <span>by <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{fmtAddr(item.author)}</span></span>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {busy ? (
-          <span style={{ fontSize: 12.5, color: TEXT2, whiteSpace: 'nowrap' }}>{busy === 'flag' ? 'Confirm in wallet…' : 'Approving…'}</span>
-        ) : (
-          <>
-            <button onClick={() => go('flag')} style={{ ...btn, color: DANGER, border: '1px solid rgba(255,138,155,0.45)' }}>Flag</button>
-            <button onClick={() => go('approve')} style={{ ...btn, color: TEXT, border: '1px solid rgba(237,238,255,0.55)' }}>Approve</button>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function NeedsAttention({ modItems, modBoards, onReview, onOpenQueue, inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite, lowRunway, onDeposit }: {
+function NeedsAttention({ modItems, modBoards, liveMarkees, onReview, onOpenQueue, inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite, lowRunway, onDeposit }: {
   modItems: ModerationItem[]
   modBoards: QueueBoard[]
+  liveMarkees: Set<string>
   onReview: (action: QueueAction, ids: string[]) => Promise<void>
   onOpenQueue: () => void
   inactive: AnyLeaderboard[]
@@ -705,7 +669,6 @@ function NeedsAttention({ modItems, modBoards, onReview, onOpenQueue, inactive, 
       </div>
     )
   }
-  const boardName = (addr: string) => modBoards.find(b => b.address === addr)?.name || fmtAddr(addr)
   return (
     <section style={{ background: 'rgba(255,181,71,0.05)', border: '1px solid rgba(255,181,71,0.28)', borderRadius: 14, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '15px 18px', minHeight: 56, boxSizing: 'border-box', borderBottom: '1px solid rgba(255,181,71,0.22)', background: 'rgba(255,181,71,0.08)' }}>
@@ -721,7 +684,7 @@ function NeedsAttention({ modItems, modBoards, onReview, onOpenQueue, inactive, 
             items={modItems}
             noun={['message', 'messages']}
             right={<button onClick={onOpenQueue} style={{ background: 'transparent', border: 'none', color: PINK, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', padding: 0 }}>Open full queue →</button>}
-            render={it => <ModAttnItem key={`${it.markee}:${it.blockNumber}`} item={it} boardName={boardName(it.board)} onReview={onReview} />}
+            render={it => <ModerationItemRow key={`${it.markee}:${it.blockNumber}`} item={it} board={modBoards.find(b => b.address === it.board)} live={liveMarkees.size ? liveMarkees.has(it.markee.toLowerCase()) : undefined} onReview={onReview} />}
           />
         )}
         <MarkeeAttnGroups inactive={inactive} awaiting={awaiting} ethPrice={ethPrice} onActivate={onActivate} onArchive={onArchive} onAddToSite={onAddToSite} />
@@ -1865,6 +1828,8 @@ function AccountDashboard() {
   const archivedBoards = useMemo(() =>
     allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
 
+  // Each owned board's current #1, so queue rows can say whether a message is live on the sign.
+  const liveMarkees = useMemo(() => new Set(allBoards.flatMap(lb => lb.topMarkeeAddress ? [lb.topMarkeeAddress.toLowerCase()] : [])), [allBoards])
   const manageBoard = useMemo(() => allBoards.find(lb => lb.address === manageTarget) ?? null, [allBoards, manageTarget])
 
   const awaitingSiteBoards = useMemo(() =>
@@ -2077,6 +2042,7 @@ function AccountDashboard() {
                     <NeedsAttention
                       modItems={isModerator ? moderationQueue.items : []}
                       modBoards={moderationQueue.boards}
+                      liveMarkees={liveMarkees}
                       onReview={moderationQueue.review}
                       onOpenQueue={() => setSection('creator')}
                       inactive={inactiveBoards}
@@ -2144,15 +2110,7 @@ function AccountDashboard() {
                   />
 
                   {/* Moderation */}
-                  {isModerator && (
-                    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-                      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Moderation</span>
-                        <span style={{ fontFamily: MONO, fontSize: 12, color: moderationQueue.items.length > 0 ? AMBER : MUTED, background: moderationQueue.items.length > 0 ? `${AMBER}1E` : 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '1px 8px' }}>{moderationQueue.items.length}</span>
-                      </div>
-                      <ModerationQueue />
-                    </div>
-                  )}
+                  {isModerator && <ModerationQueue liveMarkees={liveMarkees} />}
                 </div>
               )}
 

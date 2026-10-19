@@ -1,72 +1,92 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { ChevronDown, Mail, ShieldAlert, ShieldCheck, X } from 'lucide-react'
-import { useAccount, useSignMessage } from 'wagmi'
+import { Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
-import { MONO, PINK, GREEN, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER as RED } from '@/lib/design-tokens'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { MAX_REVIEW_BATCH, notifyEmailMessage, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
-
+import { MONO, PINK, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG, LAVENDER } from '@/lib/design-tokens'
+import { MAX_REVIEW_BATCH, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
+import { AttnGroup, PanelHead, WalletPending, fmtAddr, isUserRejection } from '@/components/account/primitives'
+import { useToast } from '@/components/account/Toast'
 
 const itemId = (it: ModerationItem) => `${it.markee}:${it.blockNumber}`
+const ago = (it: ModerationItem) => it.at > 0 ? formatDistanceToNow(it.at * 1000, { addSuffix: true }) : null
+const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '0 12px', height: 32, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7 }
 
-function fmtAddr(a: string) {
-  return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ''
+// Where this viewer's flags on a board take effect: a board moderator's hide the message on every
+// site showing the board, a global admin's only on markee.xyz.
+function scopeText(board: QueueBoard | undefined): { text: string; title: string } | null {
+  if (!board) return null
+  return board.scopes.includes('board')
+    ? { text: 'Flags hide everywhere', title: 'You moderate this board, so a flag hides the message on every site showing it.' }
+    : { text: 'Flags hide on markee.xyz only', title: 'You review this board as a markee.xyz admin, so a flag hides the message on markee.xyz only.' }
 }
 
-function ActionButton({ label, color, icon, busy, onClick }: { label: string; color: string; icon: React.ReactNode; busy: boolean; onClick: () => void }) {
+function LiveTag({ live }: { live: boolean }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={busy}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8,
-        background: `${color}1A`, border: `1px solid ${color}66`, color,
-        fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.5 : 1, whiteSpace: 'nowrap',
-      }}
-    >
-      {icon}{label}
-    </button>
+    <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: live ? LAVENDER : MUTED, border: `1px solid ${live ? 'rgba(180,172,247,0.45)' : 'rgba(138,143,191,0.35)'}`, borderRadius: 99, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+      {live ? 'Live on sign' : 'Not live'}
+    </span>
   )
 }
 
-function QueueRow({ item, busy, onReview, flaggedView = false }: { item: ModerationItem; busy: boolean; onReview: (action: QueueAction) => void; flaggedView?: boolean }) {
+// One message awaiting review, used by both the Activity Feed and the Creator Hub Moderation panel.
+// `live` is whether it's the board's current #1; undefined when the board's top isn't known here.
+export function ModerationItemRow({ item, board, live, onReview }: {
+  item: ModerationItem
+  board: QueueBoard | undefined
+  live?: boolean
+  onReview: (action: QueueAction, ids: string[]) => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
   const edited = item.kind === 'edited'
+  const scope = scopeText(board)
+
+  const go = async (action: QueueAction) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await onReview(action, [item.markee])
+      toast(action === 'flag' ? 'Message flagged' : 'Message approved')
+    } catch (e) {
+      if (!isUserRejection(e)) setError('That review did not go through. Try again.')
+      setBusy(false)
+    }
+  }
+
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', padding: '14px 16px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
-      <div style={{ flex: '1 1 320px', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.6, padding: '2px 8px', borderRadius: 99, color: edited ? AMBER : PINK, background: `${edited ? AMBER : PINK}1E` }}>
-            {edited ? 'EDIT' : 'NEW'}
-          </span>
-          <span style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{item.name || 'Anonymous'}</span>
-          <a href={`https://basescan.org/address/${item.author}`} target="_blank" rel="noreferrer" style={{ color: MUTED, fontFamily: MONO, fontSize: 12, textDecoration: 'none' }}>{fmtAddr(item.author)}</a>
-          {item.at > 0 && (
-            <span style={{ color: MUTED, fontSize: 12 }}>{formatDistanceToNow(item.at * 1000, { addSuffix: true })}</span>
-          )}
+    <div style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {item.message || 'Empty message'}
+          {item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
         </div>
-        <p style={{ margin: 0, color: TEXT, fontSize: 15, lineHeight: 1.45, wordBreak: 'break-word' }}>{item.message || <em style={{ color: MUTED }}>empty message</em>}</p>
-        {edited && item.previousName != null && item.previousName !== item.name && (
-          <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>
-            renamed from <span style={{ textDecoration: 'line-through' }}>{item.previousName || 'Anonymous'}</span>
-          </p>
-        )}
         {edited && item.previousMessage !== null && item.previousMessage !== item.message && (
-          <p style={{ margin: '6px 0 0', color: MUTED, fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>
+          <div style={{ marginTop: 3, color: MUTED, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             was <span style={{ textDecoration: 'line-through' }}>{item.previousMessage || 'empty'}</span>
-          </p>
+          </div>
         )}
+        {edited && item.previousName != null && item.previousName !== item.name && (
+          <div style={{ marginTop: 3, color: MUTED, fontSize: 12.5 }}>
+            renamed from <span style={{ textDecoration: 'line-through' }}>{item.previousName || 'Anonymous'}</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
+          {ago(item) && <span>{ago(item)}</span>}
+          {live !== undefined && <LiveTag live={live} />}
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{board?.name || fmtAddr(item.board)}</span>
+          <span>by <a href={`https://basescan.org/address/${item.author}`} target="_blank" rel="noreferrer" style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2, textDecoration: 'none' }}>{fmtAddr(item.author)}</a></span>
+          {scope && <span title={scope.title}>{scope.text}</span>}
+        </div>
+        {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        {flaggedView ? (
-          <ActionButton label="Unflag" color={GREEN} icon={<ShieldCheck size={14} />} busy={busy} onClick={() => onReview('approve')} />
-        ) : (
+      <div style={{ display: 'flex', gap: 6 }}>
+        {busy ? <WalletPending /> : (
           <>
-            <ActionButton label="Approve" color={GREEN} icon={<ShieldCheck size={14} />} busy={busy} onClick={() => onReview('approve')} />
-            <ActionButton label="Flag" color={RED} icon={<ShieldAlert size={14} />} busy={busy} onClick={() => onReview('flag')} />
+            <button onClick={() => go('flag')} style={{ ...ghost, color: DANGER, border: '1px solid rgba(255,138,155,0.45)' }}>Flag</button>
+            <button onClick={() => go('approve')} style={{ ...ghost, color: TEXT, border: '1px solid rgba(237,238,255,0.55)' }}>Approve</button>
           </>
         )}
       </div>
@@ -74,246 +94,111 @@ function QueueRow({ item, busy, onReview, flaggedView = false }: { item: Moderat
   )
 }
 
-// Where this viewer's flags on a board take effect: a board moderator's hide the message on every
-// site showing the board, a global admin's only on markee.xyz.
-function ScopeChip({ board }: { board: QueueBoard }) {
-  const everywhere = board.scopes.includes('board')
-  return (
-    <span
-      title={everywhere ? 'You moderate this board, so a flag hides the message on every site showing it.' : 'You review this board as a markee.xyz admin, so a flag hides the message on markee.xyz only.'}
-      style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}
-    >
-      {everywhere ? 'Flags hide everywhere' : 'Flags hide on markee.xyz only'}
-    </span>
-  )
-}
+function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: QueueBoard | undefined; onReview: (action: QueueAction, ids: string[]) => Promise<void> }) {
+  const [peek, setPeek] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
-function BoardGroup({ board, items, busyIds, onReview, flaggedView = false }: {
-  board: QueueBoard
-  items: ModerationItem[]
-  busyIds: Set<string>
-  onReview: (action: QueueAction, items: ModerationItem[]) => void
-  flaggedView?: boolean
-}) {
-  const allBusy = items.every(it => busyIds.has(it.markee))
-  const signatures = Math.ceil(items.length / MAX_REVIEW_BATCH)
-  return (
-    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden', background: BG2 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
-        <Link href={`/markee/${board.address}`} style={{ color: TEXT, fontWeight: 700, fontSize: 15, textDecoration: 'none' }}>{board.name}</Link>
-        <span style={{ fontFamily: MONO, fontSize: 12, color: flaggedView ? RED : AMBER, background: `${flaggedView ? RED : AMBER}1E`, borderRadius: 99, padding: '1px 8px' }}>{items.length}</span>
-        <ScopeChip board={board} />
-        {items.length > 1 && !flaggedView && (
-          <div style={{ marginLeft: 'auto' }}>
-            <ActionButton label={`Approve all ${items.length}${signatures > 1 ? ` (${signatures} signatures)` : ''}`} color={GREEN} icon={<ShieldCheck size={14} />} busy={allBusy} onClick={() => onReview('approve', items)} />
-          </div>
-        )}
-      </div>
-      {items.map(it => (
-        <QueueRow key={itemId(it)} item={it} busy={busyIds.has(it.markee)} onReview={action => onReview(action, [it])} flaggedView={flaggedView} />
-      ))}
-    </div>
-  )
-}
-
-function groupByBoard(items: ModerationItem[], boards: QueueBoard[]) {
-  const byBoard = new Map<string, ModerationItem[]>()
-  items.forEach(it => byBoard.set(it.board, [...(byBoard.get(it.board) ?? []), it]))
-  return boards.filter(b => byBoard.has(b.address)).map(b => ({ board: b, items: byBoard.get(b.address)! }))
-}
-
-function NotificationEmailRow() {
-  const { address } = useAccount()
-  const { signMessageAsync } = useSignMessage()
-  const me = address?.toLowerCase()
-
-  const [email, setEmail] = useState<string | null | undefined>(undefined)
-  const [input, setInput] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!me) { setEmail(null); return }
-    fetch(`/api/moderation/notify?wallet=${me}`)
-      .then(r => r.json())
-      .then(d => setEmail(d.email ?? null))
-      .catch(() => setEmail(null))
-  }, [me])
-
-  const save = async () => {
-    if (!me) return
-    const val = input.trim().toLowerCase()
-    setSaving(true); setErr(null)
+  const unflag = async () => {
+    setBusy(true)
+    setError(null)
     try {
-      const timestamp = Math.floor(Date.now() / 1000)
-      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, me, val, timestamp) })
-      const res = await fetch('/api/moderation/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: me, email: val, signature: sig, timestamp }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      setEmail(body.email); setEditing(false); setInput('')
+      await onReview('approve', [item.markee])
+      toast('Message unflagged')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : ''
-      if (!/reject|denied/i.test(msg)) setErr(msg || 'Could not save. Try again.')
-    } finally { setSaving(false) }
-  }
-
-  const remove = async () => {
-    if (!me) return
-    setSaving(true); setErr(null)
-    try {
-      const timestamp = Math.floor(Date.now() / 1000)
-      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, me, '', timestamp) })
-      const res = await fetch('/api/moderation/notify', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: me, signature: sig, timestamp }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setEmail(null)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : ''
-      if (!/reject|denied/i.test(msg)) setErr(msg || 'Could not remove. Try again.')
-    } finally { setSaving(false) }
-  }
-
-  if (!me) return null
-
-  return (
-    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '14px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
-        <Mail size={13} color={MUTED} />
-        <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Notification email</span>
-      </div>
-      {email === undefined ? (
-        <div style={{ height: 20, background: 'rgba(138,143,191,0.08)', borderRadius: 5, width: 220 }} />
-      ) : !editing ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          {email ? (
-            <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT }}>{email}</span>
-          ) : (
-            <span style={{ fontSize: 13, color: MUTED }}>No email set — you won't receive notifications.</span>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={() => { setInput(email ?? ''); setEditing(true); setErr(null) }}
-              style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '5px 12px', fontFamily: MONO, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-            >
-              {email ? 'Change' : 'Add email'}
-            </button>
-            {email && (
-              <button onClick={remove} disabled={saving} title="Remove email" style={{ display: 'flex', background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', padding: 2 }}>
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <form onSubmit={e => { e.preventDefault(); save() }} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <input
-              type="email"
-              value={input}
-              onChange={e => { setInput(e.target.value); setErr(null) }}
-              placeholder="you@example.com"
-              autoComplete="email"
-              style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${err ? RED : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none' }}
-            />
-            {err && <p style={{ margin: 0, fontSize: 12, color: RED }}>{err}</p>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-              <span style={{ color: MUTED, fontSize: 12, marginRight: 4 }}>Free signature, not a transaction.</span>
-              <button type="button" onClick={() => { setEditing(false); setInput(''); setErr(null) }} disabled={saving} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13, fontFamily: 'Manrope, system-ui, sans-serif', cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving || !input.trim() || input.trim().toLowerCase() === email}
-                style={{ background: PINK, color: '#060A2A', border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: saving ? 'wait' : 'pointer', opacity: (saving || !input.trim() || input.trim().toLowerCase() === email) ? 0.5 : 1 }}
-              >
-                {saving ? 'Confirm in wallet…' : 'Save'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-      {err && !editing && <p style={{ margin: '6px 0 0', fontSize: 12, color: RED }}>{err}</p>}
-    </div>
-  )
-}
-
-export function ModerationQueue() {
-  const { review, items, flagged, boards, isLoading, error } = useModerationQueue()
-  const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [showFlagged, setShowFlagged] = useState(false)
-
-  const groups = useMemo(() => groupByBoard(items, boards), [items, boards])
-  const flaggedGroups = useMemo(() => groupByBoard(flagged, boards), [flagged, boards])
-
-  const handleReview = async (action: QueueAction, targets: ModerationItem[]) => {
-    const ids = targets.map(t => t.markee)
-    setActionError(null)
-    setBusyIds(prev => new Set([...prev, ...ids]))
-    try {
-      await review(action, ids)
-    } catch (err) {
-      console.error('[moderation] review error:', err)
-      setActionError('That review did not go through. Try again.')
-    } finally {
-      setBusyIds(prev => { const next = new Set(prev); ids.forEach(id => next.delete(id)); return next })
+      if (!isUserRejection(e)) setError('That review did not go through. Try again.')
+      setBusy(false)
     }
   }
 
-  if (isLoading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {[1, 2, 3].map(i => <div key={i} style={{ height: 76, background: 'rgba(138,143,191,0.08)', borderRadius: 12 }} />)}
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
+          {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
+          {ago(item) && <span>{ago(item)}</span>}
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{board?.name || fmtAddr(item.board)}</span>
+          <span>by {fmtAddr(item.author)}</span>
+        </div>
+        {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
-    )
-  }
+      <div style={{ display: 'flex', gap: 6 }}>
+        {busy ? <WalletPending /> : (
+          <>
+            <button onClick={() => setPeek(p => !p)} aria-pressed={peek} style={{ ...ghost, color: TEXT2, border: `1px solid ${BORDER}` }}>
+              {peek ? <EyeOff size={14} /> : <Eye size={14} />}{peek ? 'Hide Message' : 'See Message'}
+            </button>
+            <button onClick={unflag} style={{ ...ghost, color: TEXT, border: '1px solid rgba(237,238,255,0.45)' }}>Unflag</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
-  if (error) {
-    return <p style={{ color: RED, fontSize: 14 }}>Could not load the moderation queue. It retries every minute.</p>
+// Creator Hub Moderation panel: the review queue (same rows as the Activity Feed) and the messages
+// this wallet's flags are hiding, which can be revealed and unflagged.
+export function ModerationQueue({ liveMarkees }: { liveMarkees?: Set<string> }) {
+  const { review, items, flagged, boards, isLoading, error } = useModerationQueue()
+  const [approvingAll, setApprovingAll] = useState(false)
+  const toast = useToast()
+  const boardOf = (it: ModerationItem) => boards.find(b => b.address === it.board)
+  const liveOf = (it: ModerationItem) => liveMarkees && liveMarkees.size ? liveMarkees.has(it.markee.toLowerCase()) : undefined
+  const signatures = Math.ceil(items.length / MAX_REVIEW_BATCH)
+
+  const approveAll = async () => {
+    setApprovingAll(true)
+    try {
+      await review('approve', items.map(i => i.markee))
+      toast(`Approved ${items.length} messages`)
+    } catch { /* the queue refetches and shows what landed */ } finally {
+      setApprovingAll(false)
+    }
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {actionError && <p style={{ margin: 0, color: RED, fontSize: 13 }}>{actionError}</p>}
-      {groups.length === 0 ? (
-        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: BG2, padding: '72px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-          <ShieldCheck size={48} color={GREEN} style={{ marginBottom: 16 }} />
-          <p style={{ margin: 0, color: TEXT, fontWeight: 700, fontSize: 20 }}>All caught up</p>
-          <p style={{ margin: '8px 0 0', color: MUTED, fontSize: 14 }}>
-            {boards.length === 0 ? 'You do not moderate any boards yet.' : `Nothing waiting on ${boards.length === 1 ? 'your board' : `your ${boards.length} boards`}.`}
-          </p>
+    <section style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+      <PanelHead label="Moderation" n={isLoading ? undefined : items.length + flagged.length} />
+      {isLoading ? (
+        <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[1, 2].map(i => <div key={i} style={{ height: 64, background: 'rgba(138,143,191,0.08)', borderRadius: 14 }} />)}
         </div>
-      ) : groups.map(g => (
-        <BoardGroup key={g.board.address} board={g.board} items={g.items} busyIds={busyIds} onReview={handleReview} />
-      ))}
-
-      {flaggedGroups.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <button
-            onClick={() => setShowFlagged(v => !v)}
-            aria-expanded={showFlagged}
-            style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', padding: 0, color: TEXT2, fontFamily: SANS, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-          >
-            <ShieldAlert size={15} color={RED} />
-            Flagged ({flagged.length})
-            <ChevronDown size={14} style={{ transform: showFlagged ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
-          </button>
-          {showFlagged && flaggedGroups.map(g => (
-            <BoardGroup key={g.board.address} board={g.board} items={g.items} busyIds={busyIds} onReview={handleReview} flaggedView />
-          ))}
-        </div>
+      ) : error ? (
+        <div style={{ padding: '18px', fontSize: 13, color: DANGER }}>Could not load the moderation queue. It retries every minute.</div>
+      ) : (
+        <>
+          <div style={{ padding: '18px 18px 20px', borderBottom: `1px solid ${BORDER}` }}>
+            {items.length > 0 ? (
+              <AttnGroup
+                title="Moderation Queue"
+                sub="Approve or flag new messages."
+                items={items}
+                noun={['message', 'messages']}
+                right={items.length > 1 && (approvingAll ? <WalletPending /> : (
+                  <button onClick={approveAll} style={{ ...ghost, color: TEXT2, border: `1px solid ${BORDER}` }}>
+                    Approve All{signatures > 1 ? ` (${signatures} signatures)` : ''}
+                  </button>
+                ))}
+                render={it => <ModerationItemRow key={itemId(it)} item={it} board={boardOf(it)} live={liveOf(it)} onReview={review} />}
+              />
+            ) : (
+              <div style={{ fontSize: 13, color: MUTED }}>
+                {boards.length === 0 ? 'You do not moderate any boards yet.' : 'Nothing waiting for review.'}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Flagged Messages</span>
+            <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, background: 'rgba(138,143,191,0.12)', borderRadius: 99, padding: '1px 8px' }}>{flagged.length}</span>
+            <span style={{ fontSize: 12.5, color: MUTED }}>Hidden on your sites until you unflag.</span>
+          </div>
+          {flagged.map(it => <FlaggedRow key={itemId(it)} item={it} board={boardOf(it)} onReview={review} />)}
+        </>
       )}
-
-      <NotificationEmailRow />
-    </div>
+    </section>
   )
 }
 
