@@ -332,32 +332,29 @@ function OverviewStatCard({ n, label, color, loaded }: { n: string; label: strin
   )
 }
 
-function Overview({ raised, active, bought, contributed, ethPrice, creatorCpm, buyerCpm, loaded }: {
-  raised: bigint; active: number; bought: number; contributed: bigint
-  ethPrice: number | null; creatorCpm: number | null; buyerCpm: number | null; loaded: boolean
+function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
+  raised: bigint; active: number; buyerViews: number
+  ethPrice: number | null; buyerCpm: number | null; loaded: boolean
 }) {
   const raisedUsd = ethPrice ? Number(raised) / 1e18 * ethPrice : null
-  const contribUsd = ethPrice ? Number(contributed) / 1e18 * ethPrice : null
-  const fmtCpm = (v: number | null) => v != null ? formatUsd(v) : '—'
+  const fmtViews  = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
   const sectionLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }
-  const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }
+  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
       <div>
-        <div style={sectionLabel}>As a Creator</div>
-        <div style={grid3}>
-          <OverviewStatCard n={raisedUsd != null ? formatUsd(raisedUsd) : fmtEth(raised)} label="total raised" color={PINK} loaded={loaded} />
-          <OverviewStatCard n={String(active)} label="active signs" color={GREEN} loaded={loaded} />
-          <OverviewStatCard n={fmtCpm(creatorCpm)} label="CPM earned" color={TEXT2} loaded={loaded} />
+        <div style={sectionLabel}>Creator</div>
+        <div style={grid2}>
+          <OverviewStatCard n={String(active)} label="Active Signs" color={GREEN} loaded={loaded} />
+          <OverviewStatCard n={raisedUsd != null ? formatUsd(raisedUsd) : fmtEth(raised)} label="Total Raised" color={PINK} loaded={loaded} />
         </div>
       </div>
       <div>
-        <div style={sectionLabel}>As a Buyer</div>
-        <div style={grid3}>
-          <OverviewStatCard n={String(bought)} label="messages bought" color={TEXT} loaded={loaded} />
-          <OverviewStatCard n={contribUsd != null ? formatUsd(contribUsd) : fmtEth(contributed)} label="contributed" color={BLUE} loaded={loaded} />
-          <OverviewStatCard n={fmtCpm(buyerCpm)} label="CPM paid" color={TEXT2} loaded={loaded} />
+        <div style={sectionLabel}>Buyer</div>
+        <div style={grid2}>
+          <OverviewStatCard n={fmtViews(buyerViews)} label="Total Views" color={BLUE} loaded={loaded} />
+          <OverviewStatCard n={buyerCpm != null ? formatUsd(buyerCpm) : '—'} label="Cost per 1k Views" color={TEXT2} loaded={loaded} />
         </div>
       </div>
     </div>
@@ -1773,6 +1770,7 @@ export default function AccountPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   const [depositManagerOpen, setDepositManagerOpen] = useState(false)
+  const [addrCopied, setAddrCopied] = useState(false)
 
   // Platform leaderboards
   const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
@@ -2127,15 +2125,17 @@ export default function AccountPage() {
     return (raisedUsd / totalViews) * 1000
   }, [ethPrice, totalRaisedWei, activeBoards, boardViews])
 
+  const buyerViews = useMemo(() => {
+    const addrs = new Set(myMessages.map(m => m.strategyId.toLowerCase()))
+    return [...addrs].reduce((s, a) => s + (boardViews[a] ?? 0), 0)
+  }, [myMessages, boardViews])
+
   const buyerCpm = useMemo(() => {
     if (!ethPrice) return null
     const contribUsd = Number(totalContribWei) / 1e18 * ethPrice
-    if (!contribUsd) return null
-    const buyerBoardAddrs = new Set(myMessages.map(m => m.strategyId.toLowerCase()))
-    const totalViews = [...buyerBoardAddrs].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0)
-    if (!totalViews) return null
-    return (contribUsd / totalViews) * 1000
-  }, [ethPrice, totalContribWei, myMessages, boardViews])
+    if (!contribUsd || !buyerViews) return null
+    return (contribUsd / buyerViews) * 1000
+  }, [ethPrice, totalContribWei, buyerViews])
 
   const handleOpenAddToSite = useCallback((lb: AnyLeaderboard) => {
     setEmbedTarget(lb)
@@ -2171,9 +2171,23 @@ export default function AccountPage() {
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My dashboard</h1>
+              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My Dashboard</h1>
               {mounted && (activeAddress
-                ? <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(activeAddress)}</p>
+                ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 0' }}>
+                    <span style={{ color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(activeAddress)}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(activeAddress).then(() => { setAddrCopied(true); setTimeout(() => setAddrCopied(false), 2000) }).catch(() => {})}
+                      title="Copy address"
+                      style={{ display: 'flex', background: 'transparent', border: 'none', color: addrCopied ? GREEN : MUTED, cursor: 'pointer', padding: 2, flexShrink: 0 }}
+                    >
+                      {addrCopied
+                        ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      }
+                    </button>
+                  </div>
+                )
                 : <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14 }}>Connect your wallet to continue</p>
               )}
             </div>
@@ -2212,7 +2226,14 @@ export default function AccountPage() {
           </div>
 
           {mounted && hasWallet && (
-            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} ethPrice={ethPrice} creatorCpm={creatorCpm} buyerCpm={buyerCpm} loaded={!isLoading} />
+            <Overview
+              raised={totalRaisedWei}
+              active={activeBoards.length}
+              buyerViews={buyerViews}
+              buyerCpm={buyerCpm}
+              ethPrice={ethPrice}
+              loaded={!isLoading && !isLoadingMessages}
+            />
           )}
         </div>
       </section>
