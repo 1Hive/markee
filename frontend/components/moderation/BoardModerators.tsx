@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAccount, useSignMessage } from 'wagmi'
 import { isAddress } from 'viem'
-import { Check, Copy, Plus } from 'lucide-react'
+import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
@@ -21,7 +21,7 @@ import { moderationQueueKey } from '@/hooks/useModerationQueue'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG } from '@/lib/design-tokens'
 
 const SANS = 'Manrope, system-ui, sans-serif'
-const RED = '#FF6B6B'
+const RED = '#FF8A9B'
 
 interface ModeratorsState {
   board: string
@@ -51,7 +51,7 @@ function Row({ address, you, children }: { address: string; you: boolean; childr
     }).catch(() => {})
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${BORDER}`, minWidth: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderTop: `1px solid ${BORDER}`, minWidth: 0 }}>
       <a
         href={`https://basescan.org/address/${address}`}
         target="_blank"
@@ -93,6 +93,7 @@ export function BoardModerators({ board }: { board: string }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => { if (data && draft === null) setDraft(data.moderators.map(m => m.wallet)) }, [data, draft])
   useEffect(() => {
@@ -121,6 +122,7 @@ export function BoardModerators({ board }: { board: string }) {
     setDraft([...list, value])
     setInput('')
     setInputError(null)
+    setAdding(false)
   }
 
   const save = async () => {
@@ -153,17 +155,12 @@ export function BoardModerators({ board }: { board: string }) {
 
   return (
     <div>
-      <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 6 }}>Moderators</div>
-      <p style={{ margin: '0 0 10px', color: TEXT2, fontSize: 12.5, lineHeight: 1.5, maxWidth: 620 }}>
-        Moderators review new messages and edits on this board in the Moderation tab. A flag hides the message and its author on markee.xyz and on every site showing this board.
-      </p>
-
       {isLoading ? (
-        <div style={{ height: 72, background: 'rgba(138,143,191,0.08)', borderRadius: 8, maxWidth: 520 }} />
+        <div style={{ height: 72, background: 'rgba(138,143,191,0.08)', borderRadius: 8 }} />
       ) : error ? (
         <p style={{ margin: 0, color: RED, fontSize: 12.5 }}>Could not load this board's moderators.</p>
       ) : (
-        <div style={{ maxWidth: 520 }}>
+        <div>
           {owners.map(o => (
             <Row key={o} address={o} you={o === me}>
               <Chip>Owner</Chip>
@@ -176,7 +173,7 @@ export function BoardModerators({ board }: { board: string }) {
                 <button
                   onClick={() => setDraft(list.filter(x => x !== m))}
                   aria-label={`Remove ${m}`}
-                  style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', padding: '2px 4px', fontSize: 12, fontFamily: SANS, textDecoration: 'underline' }}
+                  style={{ background: 'transparent', border: 'none', color: RED, cursor: 'pointer', padding: '5px 0', fontSize: 12.5, fontFamily: SANS }}
                 >
                   Remove
                 </button>
@@ -186,26 +183,39 @@ export function BoardModerators({ board }: { board: string }) {
 
           {isOwner ? (
             <>
-              <form
-                onSubmit={e => { e.preventDefault(); add() }}
-                style={{ display: 'flex', gap: 8, marginTop: 12 }}
-              >
-                <input
-                  value={input}
-                  onChange={e => { setInput(e.target.value); setInputError(null) }}
-                  placeholder="Wallet address (0x…)"
-                  spellCheck={false}
-                  autoComplete="off"
-                  style={{ flex: 1, minWidth: 0, background: 'rgba(6,10,42,0.6)', border: `1px solid ${inputError ? RED : BORDER}`, borderRadius: 7, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 12.5, outline: 'none' }}
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', color: input.trim() ? TEXT : MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: input.trim() ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
+              {adding ? (
+                <form
+                  onSubmit={e => { e.preventDefault(); add() }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 0', borderTop: `1px solid ${BORDER}` }}
                 >
-                  <Plus size={13} /> Add Moderator
-                </button>
-              </form>
+                  <input
+                    autoFocus
+                    value={input}
+                    onChange={e => { setInput(e.target.value); setInputError(null) }}
+                    onKeyDown={e => { if (e.key === 'Escape') { setAdding(false); setInput(''); setInputError(null) } }}
+                    placeholder="Wallet (0x…)"
+                    spellCheck={false}
+                    autoComplete="off"
+                    style={{ width: '100%', boxSizing: 'border-box', background: BG, border: `1px solid ${inputError ? RED : BORDER}`, borderRadius: 8, padding: '8px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+                    <button type="button" onClick={() => { setAdding(false); setInput(''); setInputError(null) }} style={{ background: 'transparent', border: 'none', color: TEXT2, fontSize: 13, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', padding: '7px 6px' }}>Cancel</button>
+                    <button
+                      type="submit"
+                      disabled={!input.trim()}
+                      style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, fontFamily: SANS, cursor: input.trim() ? 'pointer' : 'not-allowed', opacity: input.trim() ? 1 : 0.4 }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setAdding(true)} style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, fontFamily: SANS, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Add Moderator
+                  </button>
+                </div>
+              )}
               {inputError && <p style={{ margin: '6px 0 0', color: RED, fontSize: 12 }}>{inputError}</p>}
 
               {(dirty || justSaved || saveError) && (
@@ -236,7 +246,7 @@ export function BoardModerators({ board }: { board: string }) {
                 </div>
               )}
 
-              <p style={{ margin: '14px 0 0', color: MUTED, fontSize: 12, fontStyle: 'italic' }}>
+              <p style={{ margin: '14px 0 0', color: MUTED, fontSize: 12.5, lineHeight: 1.5 }}>
                 Moderators can set up email alerts in their Account Settings.
               </p>
             </>

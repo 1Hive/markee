@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, ChevronDown, Info, Archive, Eye, ArrowUpRight } from 'lucide-react'
+import { Globe2, Github, Zap, ChevronDown, Info, Archive, Eye, ArrowUpRight, ExternalLink, Link2 } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
@@ -876,17 +876,16 @@ function MarkeeTableHead() {
   )
 }
 
-function MarkeeRow({ lb, archived, views, ethPrice, activeAddress, onAddToSite, onRestore, onSuccess }: {
+function MarkeeRow({ lb, archived, selected, views, ethPrice, onAddToSite, onRestore, onManage }: {
   lb: AnyLeaderboard
   archived?: boolean
+  selected: boolean
   views: number
   ethPrice: number | null
-  activeAddress: string | undefined
   onAddToSite: () => void
   onRestore: () => void
-  onSuccess: () => void
+  onManage: () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
   const isStreaming = lb.strategy === 'streaming'
   const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
   const raised = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
@@ -898,13 +897,13 @@ function MarkeeRow({ lb, archived, views, ethPrice, activeAddress, onAddToSite, 
   return (
     <div>
       <div
-        onClick={archived ? undefined : () => setExpanded(v => !v)}
-        onMouseEnter={e => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
-        onMouseLeave={e => { if (!expanded) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        onClick={archived ? undefined : onManage}
+        onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'rgba(138,143,191,0.05)' }}
+        onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         style={{
           display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '12px 18px', alignItems: 'center',
           borderTop: `1px solid ${BORDER}`, cursor: archived ? 'default' : 'pointer', opacity: archived ? 0.7 : 1,
-          background: expanded ? 'rgba(248,151,254,0.06)' : 'transparent', boxShadow: expanded ? `inset 2px 0 0 ${PINK}` : 'none',
+          background: selected ? 'rgba(248,151,254,0.06)' : 'transparent', boxShadow: selected ? `inset 2px 0 0 ${PINK}` : 'none',
           transition: 'background 120ms',
         }}
       >
@@ -943,9 +942,9 @@ function MarkeeRow({ lb, archived, views, ethPrice, activeAddress, onAddToSite, 
                 View Markee <ArrowUpRight size={11} />
               </a>
               <button
-                onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
-                aria-expanded={expanded}
-                style={{ ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700, background: expanded ? `${PINK}14` : 'transparent' }}
+                onClick={e => { e.stopPropagation(); onManage() }}
+                aria-haspopup="dialog"
+                style={{ ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700, background: selected ? `${PINK}14` : 'transparent' }}
               >
                 Manage
               </button>
@@ -953,7 +952,6 @@ function MarkeeRow({ lb, archived, views, ethPrice, activeAddress, onAddToSite, 
           )}
         </span>
       </div>
-      {expanded && <LiveMarkeeAdminPanel lb={lb} activeAddress={activeAddress} onSuccess={onSuccess} />}
     </div>
   )
 }
@@ -1124,64 +1122,230 @@ function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: (
 
 const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
 
-function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
+// ── Manage drawer ─────────────────────────────────────────────────────────────
+const DANGER = '#FF8A9B'
+
+interface Integration {
+  key: string
+  label: string
+  href: string
+  url?: string
+  file?: LinkedFile
+}
+
+function integrationsOf(lb: AnyLeaderboard): Integration[] {
+  const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
+  const w = lb as WebsiteLeaderboard
+  const urls = lb.verifiedUrls?.length ? lb.verifiedUrls : w.verifiedUrl ? [w.verifiedUrl] : []
+  return [
+    ...(lb.linkedFiles ?? []).map(f => ({ key: `f:${f.repoFullName}/${f.filePath}`, label: `${f.repoFullName} · ${f.filePath}`, href: fileUrl(f), file: f })),
+    ...urls.map(u => ({ key: `u:${u}`, label: u.replace(/^https?:\/\//, '').replace(/\/$/, ''), href: u, url: u })),
+  ]
+}
+
+function DrawerSection({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+  return (
+    <section style={{ padding: '22px 28px 24px', borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{title}</div>
+      {sub && <p style={{ margin: '4px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.5, maxWidth: '52ch' }}>{sub}</p>}
+      <div style={{ marginTop: 12 }}>{children}</div>
+    </section>
+  )
+}
+
+function IntegrationRow({ board, it, featured, views, canRemove, onRemoved }: { board: string; it: Integration; featured: boolean; views: number | null; canRemove: boolean; onRemoved: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const lockedFile = !!it.file?.verified
+
+  const remove = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = it.file
+        ? await fetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: it.file.repoFullName, file: it.file.filePath })}`, { method: 'DELETE' })
+        : await fetch('/api/openinternet/meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url }) })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
+      onRemoved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove this integration.')
+      setBusy(false)
+      setConfirming(false)
+    }
+  }
+
+  return (
+    <div style={{ borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 10px', margin: '0 -10px', borderRadius: featured ? 8 : 0, background: featured ? 'rgba(248,151,254,0.06)' : 'transparent' }}>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span title={it.label} style={{ minWidth: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
+          <a href={it.href} target="_blank" rel="noopener noreferrer" aria-label={`Open ${it.label}`} title="Open embed location" style={{ flexShrink: 0, display: 'inline-flex', color: MUTED }}>
+            <Link2 size={13} />
+          </a>
+        </span>
+        {featured && (
+          <span title="This integration is displayed in the Marketplace and on the Markee's public page." style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 10, color: PINK, letterSpacing: 0.8, textTransform: 'uppercase', border: '1px solid rgba(248,151,254,0.45)', borderRadius: 99, padding: '2px 8px', cursor: 'default' }}>
+            Featured <Info size={10} />
+          </span>
+        )}
+        {views != null && (
+          <span title="Views" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 12, color: TEXT2, whiteSpace: 'nowrap' }}>
+            <Eye size={13} style={{ color: MUTED }} />{views.toLocaleString()}
+          </span>
+        )}
+        {canRemove && (busy ? (
+          <span style={{ fontSize: 12, color: TEXT2 }}>Removing…</span>
+        ) : confirming ? (
+          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => setConfirming(false)} style={{ background: 'transparent', border: 'none', color: TEXT2, cursor: 'pointer', fontSize: 12.5, fontFamily: SANS, padding: 0 }}>Cancel</button>
+            <button onClick={remove} style={{ background: 'transparent', border: `1px solid ${DANGER}`, borderRadius: 6, color: DANGER, cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: SANS, padding: '3px 8px' }}>Remove</button>
+          </span>
+        ) : (
+          <button
+            onClick={() => lockedFile ? setError('Remove the Markee delimiters from this file first, then it can be unlinked.') : setConfirming(true)}
+            style={{ background: 'transparent', border: 'none', color: lockedFile ? MUTED : DANGER, cursor: 'pointer', fontSize: 12.5, fontFamily: SANS, padding: '2px 0 2px 4px' }}
+          >
+            Remove
+          </button>
+        ))}
+      </div>
+      {error && <div style={{ fontSize: 12, color: lockedFile ? MUTED : DANGER, padding: '0 0 10px' }}>{error}</div>}
+    </div>
+  )
+}
+
+function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAddToSite, onSuccess }: {
   lb: AnyLeaderboard
+  views: number
+  ethPrice: number | null
   activeAddress: string | undefined
+  onClose: () => void
+  onAddToSite: () => void
   onSuccess: () => void
 }) {
-  const isAdmin = !!activeAddress && !!lb.admin && lb.admin.toLowerCase() === activeAddress.toLowerCase()
+  const me = activeAddress?.toLowerCase()
+  const isAdmin = !!me && !!lb.admin && lb.admin.toLowerCase() === me
+  const isOwner = isAdmin || (!!me && (lb.creator ?? '').toLowerCase() === me)
   const isStreaming = lb.strategy === 'streaming'
   // Legacy is a website-only historical concept (pre-migration TopDawg boards) -- github/superfluid/
   // streaming-platform listing routes never set it, so every board on those platforms already uses
   // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
   const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
   const contractAddress = lb.address as `0x${string}`
+  const integrations = integrationsOf(lb)
+  const urls = integrations.flatMap(i => i.url ? [i.url] : [])
+  const [urlViews, setUrlViews] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const urlsKey = urls.join('||')
+  useEffect(() => {
+    if (!urlsKey) return
+    fetch(`/api/views?address=${lb.address}&urls=${urlsKey.split('||').map(encodeURIComponent).join('||')}`)
+      .then(r => r.ok ? r.json() : {})
+      .then(setUrlViews)
+      .catch(() => {})
+  }, [lb.address, urlsKey])
+
+  const settings = isStreaming
+    ? { abi: StreamingLeaderboardABI, minPrice: 'minimumMonthlyRate', setMinPrice: 'setMinimumMonthlyRate', unit: 'ethPerMonth' as const, setAdmin: 'setAdmin', limits: true }
+    : (lb as BaseLeaderboard).verificationGated
+      ? { abi: TopDawgPartnerStrategyABI, minPrice: 'minimumPrice', setMinPrice: 'setMinimumPrice', unit: 'eth' as const, setAdmin: 'setAdminAddress', limits: true }
+      : { abi: LeaderboardV11ABI, minPrice: null, setMinPrice: null, unit: 'eth' as const, setAdmin: 'setAdmin', limits: false }
+  const abi = settings.abi as unknown as Abi
 
   return (
-    <div onClick={e => e.stopPropagation()} style={{ borderTop: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Settings</div>
-        {!isAdmin ? (
-          <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Only this Markee's admin wallet can change these.</p>
-        ) : isLegacyFixed ? (
-          <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Admin settings aren't available for legacy boards from this dashboard.</p>
-        ) : isStreaming ? (
-          <div>
-            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow
-              label="Transfer Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
-            />
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(6,10,42,0.6)', backdropFilter: 'blur(3px)', animation: 'fadeIn 160ms ease' }}>
+      <aside
+        role="dialog"
+        aria-label={`Manage ${lb.name || 'Markee'}`}
+        onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(580px, 100%)', background: BG2, borderLeft: `1px solid ${BORDER}`, boxShadow: '-24px 0 80px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', animation: 'drawerIn 220ms cubic-bezier(.2,.8,.2,1)', fontFamily: SANS }}
+      >
+        <div style={{ padding: '22px 28px 20px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontFamily: MONO, fontSize: 18, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap' }}>Markee {fmtAddr(lb.address)}</h2>
+              <a href={`https://basescan.org/address/${lb.address}`} target="_blank" rel="noopener noreferrer" aria-label="View contract on Basescan" title="View contract on Basescan" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 7, border: `1px solid ${BORDER}`, color: TEXT2 }}>
+                <ExternalLink size={13} />
+              </a>
+              <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+            </div>
+            {lb.name && <div style={{ fontSize: 13, color: MUTED, marginTop: 4 }}>{lb.name}</div>}
+            <a href={`/markee/${lb.address}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }}>
+              View Markee <ArrowUpRight size={11} />
+            </a>
           </div>
-        ) : (lb as BaseLeaderboard).verificationGated ? (
-          <div>
-            <AdminSettingRow label="Minimum price" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="minimumPrice" setterName="setMinimumPrice" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Max message characters" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Max author characters" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow
-              label="Transfer Admin" contractAddress={contractAddress} abi={TopDawgPartnerStrategyABI as unknown as Abi} getterName="admin" setterName="setAdminAddress" inputType="address"
-              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
-            />
-          </div>
-        ) : (
-          <div>
-            <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow
-              label="Transfer Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
-            />
-          </div>
-        )}
-      </div>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 8, width: 34, height: 34, color: TEXT2, fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
+        </div>
 
-      {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
-          lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
-          boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
-      {!isLegacyFixed && <BoardModerators board={lb.address} />}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <DrawerSection title="Integrated Sites">
+            {integrations.length === 0 && <div style={{ fontSize: 13, color: MUTED, padding: '12px 0', borderTop: `1px solid ${BORDER}` }}>Not on any site yet.</div>}
+            {integrations.map((it, i) => (
+              <IntegrationRow
+                key={it.key}
+                board={lb.address}
+                it={it}
+                featured={i === 0}
+                views={it.url ? (urlViews[it.url] ?? null) : integrations.length === 1 ? views : null}
+                canRemove={isOwner}
+                onRemoved={onSuccess}
+              />
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={onAddToSite} style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, fontFamily: SANS, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Add to Your Site
+              </button>
+            </div>
+          </DrawerSection>
+
+          {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
+              lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
+              boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
+          {!isLegacyFixed && (
+            <DrawerSection title="Moderators" sub="These addresses can hide messages on this Markee.">
+              <BoardModerators board={lb.address} />
+            </DrawerSection>
+          )}
+
+          <DrawerSection title="Markee Settings">
+            {!isAdmin ? (
+              <p style={{ margin: 0, color: MUTED, fontSize: 13 }}>Only this Markee's admin wallet can change these.</p>
+            ) : isLegacyFixed ? (
+              <p style={{ margin: 0, color: MUTED, fontSize: 13 }}>Admin settings aren't available for legacy boards from this dashboard.</p>
+            ) : (
+              <>
+                {settings.minPrice && settings.setMinPrice && (
+                  <AdminSettingRow label="Minimum Price" contractAddress={contractAddress} abi={abi} getterName={settings.minPrice} setterName={settings.setMinPrice} inputType="uint256" unit={settings.unit} ethPrice={ethPrice} onSuccess={onSuccess} />
+                )}
+                <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
+                {settings.limits && (
+                  <>
+                    <AdminSettingRow label="Max Message Characters" contractAddress={contractAddress} abi={abi} getterName="maxMessageLength" setterName="setMaxMessageLength" inputType="uint256" onSuccess={onSuccess} />
+                    <AdminSettingRow label="Max Author Characters" contractAddress={contractAddress} abi={abi} getterName="maxNameLength" setterName="setMaxNameLength" inputType="uint256" onSuccess={onSuccess} />
+                  </>
+                )}
+              </>
+            )}
+          </DrawerSection>
+
+          {isAdmin && !isLegacyFixed && (
+            <section style={{ padding: '18px 28px', borderTop: `1px solid ${BORDER}` }}>
+              <AdminSettingRow
+                label="Transfer Admin" contractAddress={contractAddress} abi={abi} getterName="admin" setterName={settings.setAdmin} inputType="address"
+                dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it." onSuccess={onSuccess}
+              />
+            </section>
+          )}
+          <div style={{ height: 24 }} />
+        </div>
+      </aside>
     </div>
   )
 }
@@ -1721,6 +1885,7 @@ export default function AccountPage() {
   const [section, setSection]                 = useState<SectionId>('creator')
   const [archived, setArchived]               = useState<string[]>([])
   const [markeeView, setMarkeeView]           = useState<'active' | 'archived'>('active')
+  const [manageTarget, setManageTarget]       = useState<string | null>(null)
   // "Archive" is purely a local dashboard preference -- there's no on-chain or backend concept of
   // it -- so without persisting it, every reload silently un-archives everything. Keyed per wallet
   // in localStorage; the ref tracks which wallet's list is currently loaded so the save effect below
@@ -1983,6 +2148,8 @@ export default function AccountPage() {
 
   const archivedBoards = useMemo(() =>
     allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
+
+  const manageBoard = useMemo(() => allBoards.find(lb => lb.address === manageTarget) ?? null, [allBoards, manageTarget])
 
   const awaitingSiteBoards = useMemo(() =>
     awaitingVerification.filter(lb => !archived.includes(lb.address)), [awaitingVerification, archived])
@@ -2278,12 +2445,12 @@ export default function AccountPage() {
                               key={lb.address}
                               lb={lb}
                               archived={markeeView === 'archived'}
+                              selected={manageTarget === lb.address}
                               views={boardViews[lb.address.toLowerCase()] ?? 0}
                               ethPrice={ethPrice}
-                              activeAddress={activeAddress}
                               onAddToSite={() => handleOpenAddToSite(lb)}
                               onRestore={() => setArchived(prev => prev.filter(a => a !== lb.address))}
-                              onSuccess={() => activeAddress && fetchAll(activeAddress)}
+                              onManage={() => setManageTarget(lb.address)}
                             />
                           ))
                         )}
@@ -2409,6 +2576,18 @@ export default function AccountPage() {
           onClose={() => setPriceButtonTarget(null)}
           leaderboardAddress={priceButtonTarget.address}
           onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+        />
+      )}
+
+      {manageBoard && (
+        <ManageDrawer
+          lb={manageBoard}
+          views={boardViews[manageBoard.address.toLowerCase()] ?? 0}
+          ethPrice={ethPrice}
+          activeAddress={activeAddress}
+          onClose={() => setManageTarget(null)}
+          onAddToSite={() => handleOpenAddToSite(manageBoard)}
+          onSuccess={() => activeAddress && fetchAll(activeAddress)}
         />
       )}
 

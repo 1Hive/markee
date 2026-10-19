@@ -11,12 +11,14 @@
 
 import { useEffect, useState } from 'react'
 import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
-import type { Abi } from 'viem'
+import { formatEther, parseEther, type Abi } from 'viem'
+import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
-import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
+import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 
-const RED = '#FF8E8E'
-const AMBER = '#FFB020'
+const SANS = 'Manrope, system-ui, sans-serif'
+const DANGER = '#FF8A9B'
+const AMBER = '#FFB547'
 
 export interface AdminSettingRowProps {
   label: string
@@ -25,19 +27,39 @@ export interface AdminSettingRowProps {
   getterName: string
   setterName: string
   inputType: 'address' | 'uint256' | 'bool'
+  /** uint256 wei values shown and entered in ETH ('ethPerMonth' adds a /mo suffix). */
+  unit?: 'eth' | 'ethPerMonth'
+  ethPrice?: number | null
   /** 'confirm' (setAdmin-grade, irreversible) requires retyping the value; 'warn' just shows a caption. */
   dangerous?: 'confirm' | 'warn'
   warning?: string
   onSuccess?: () => void
 }
 
-function formatCurrent(inputType: AdminSettingRowProps['inputType'], value: unknown): string {
-  if (value === undefined || value === null) return '—'
-  if (inputType === 'bool') return value ? 'Enabled' : 'Disabled'
-  return String(value)
+function fmtAddr(a: string) {
+  return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
-export function AdminSettingRow({ label, contractAddress, abi, getterName, setterName, inputType, dangerous, warning, onSuccess }: AdminSettingRowProps) {
+function trimEth(wei: bigint): string {
+  return formatEther(wei).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
+}
+
+function CopyAddr({ addr }: { addr: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(addr).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }).catch(() => {})
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span title={addr} style={{ fontFamily: MONO, fontSize: 13, color: TEXT }}>{fmtAddr(addr)}</span>
+      <button onClick={copy} title="Copy address" style={{ display: 'flex', background: 'transparent', border: 'none', color: copied ? GREEN : MUTED, cursor: 'pointer', padding: 2 }}>
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+      </button>
+    </span>
+  )
+}
+
+export function AdminSettingRow({ label, contractAddress, abi, getterName, setterName, inputType, unit, ethPrice, dangerous, warning, onSuccess }: AdminSettingRowProps) {
   const { chain } = useAccount()
   const { switchChain, isPending: switching } = useSwitchChain()
   const { data: current, refetch } = useReadContract({
@@ -65,10 +87,16 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
 
   const isWrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
   const busy = isPending || isConfirming
+  const suffix = unit === 'ethPerMonth' ? 'ETH / mo' : unit === 'eth' ? 'ETH' : inputType === 'uint256' ? 'chars' : null
 
   function startEdit() {
     setLocalError(null)
-    setValue(inputType === 'bool' ? String(!current) : current !== undefined ? String(current) : '')
+    setValue(
+      inputType === 'bool' ? String(!current)
+        : current === undefined ? ''
+        : unit && typeof current === 'bigint' ? trimEth(current)
+        : String(current),
+    )
     setConfirmValue('')
     setEditing(true)
   }
@@ -80,89 +108,133 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
       setLocalError('Retyped value does not match -- confirm you have the right address before submitting.')
       return
     }
+    let arg: unknown = value.trim()
     try {
-      let arg: unknown = value.trim()
-      if (inputType === 'uint256') arg = BigInt(value.trim())
+      if (inputType === 'uint256') arg = unit ? parseEther(value.trim()) : BigInt(value.trim())
       if (inputType === 'bool') arg = value.trim() === 'true'
+    } catch {
+      setLocalError(unit ? 'Enter an amount in ETH.' : 'Enter a whole number.')
+      return
+    }
+    try {
       await writeContractAsync({
         address: contractAddress, abi, functionName: setterName, args: [arg], chainId: CANONICAL_CHAIN.id,
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Transaction failed'
+      if (/reject|denied/i.test(msg)) return
       setLocalError(msg.length > 180 ? `${msg.slice(0, 180)}…` : msg)
     }
   }
 
-  const inputStyle = {
-    width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
-    border: `1px solid ${BORDER}`, borderRadius: 7, padding: '8px 10px',
+  const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
+  const inputStyle: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', background: BG, color: TEXT,
+    border: `1px solid ${BORDER}`, borderRadius: 8, padding: '7px 10px',
     fontFamily: MONO, fontSize: 13, outline: 'none',
   }
-  const btnStyle = (variant: 'primary' | 'ghost') => ({
-    fontFamily: MONO, fontSize: 12, fontWeight: 700, borderRadius: 7, padding: '7px 14px', cursor: 'pointer',
-    border: variant === 'primary' ? 'none' : `1px solid ${BORDER}`,
-    background: variant === 'primary' ? (dangerous === 'confirm' ? RED : PINK) : 'transparent',
-    color: variant === 'primary' ? BG : TEXT2,
-  })
+  const pending = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: TEXT2, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 12, height: 12, borderRadius: 99, border: `2px solid ${BORDER}`, borderTopColor: PINK, animation: 'spin 0.8s linear infinite' }} />
+      Confirm in wallet…
+    </span>
+  )
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 0.3 }}>{label}</div>
-          {!editing && (
-            <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, marginTop: 2, wordBreak: 'break-all' }}>
-              {formatCurrent(inputType, current)}
-            </div>
-          )}
+  let view: React.ReactNode = <span style={{ color: MUTED }}>—</span>
+  if (current !== undefined && current !== null) {
+    if (inputType === 'address') view = <CopyAddr addr={String(current)} />
+    else if (inputType === 'bool') view = <b style={{ color: TEXT }}>{current ? 'Enabled' : 'Disabled'}</b>
+    else if (unit && typeof current === 'bigint') {
+      const eth = Number(current) / 1e18
+      view = (
+        <span>
+          <b style={{ color: TEXT }}>{trimEth(current)} ETH{unit === 'ethPerMonth' ? '/mo' : ''}</b>
+          {ethPrice ? <span style={{ color: MUTED }}> · ≈ ${(eth * ethPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> : null}
+        </span>
+      )
+    } else view = <b style={{ color: TEXT }}>{String(current)}</b>
+  }
+
+  if (dangerous === 'confirm') {
+    if (!editing) {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={startEdit} style={{ background: 'transparent', border: `1px solid ${DANGER}`, borderRadius: 8, padding: '9px 16px', color: DANGER, fontSize: 13, fontWeight: 700, fontFamily: SANS, cursor: 'pointer' }}>{label}</button>
         </div>
-        {!editing && (
-          <button onClick={startEdit} style={btnStyle('ghost')}>Change</button>
-        )}
-      </div>
-
-      {editing && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12 }}>
-          {warning && dangerous === 'warn' && (
-            <p style={{ margin: 0, fontSize: 11.5, color: AMBER, lineHeight: 1.5 }}>{warning}</p>
-          )}
-          {inputType === 'bool' ? (
-            <select value={value} onChange={e => setValue(e.target.value)} style={inputStyle}>
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
-            </select>
-          ) : (
-            <input
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              placeholder={inputType === 'address' ? '0x…' : 'New value'}
-              style={inputStyle}
-              disabled={busy}
-            />
-          )}
-          {dangerous === 'confirm' && (
+      )
+    }
+    const ready = !!value.trim() && !!confirmValue.trim()
+    return (
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: DANGER }}>{label}</div>
+        {warning && <p style={{ margin: '8px 0 12px', fontSize: 13, color: TEXT2, lineHeight: 1.55, maxWidth: '52ch' }}>{warning}</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input value={value} onChange={e => setValue(e.target.value)} placeholder="New admin wallet (0x…)" disabled={busy} style={inputStyle} />
+          <input value={confirmValue} onChange={e => setConfirmValue(e.target.value)} placeholder="Retype to confirm" disabled={busy} style={inputStyle} />
+        </div>
+        {localError && <p style={{ margin: '8px 0 0', fontSize: 12, color: DANGER }}>{localError}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 14 }}>
+          {busy ? pending : (
             <>
-              <p style={{ margin: 0, fontSize: 11.5, color: RED, lineHeight: 1.5 }}>
-                {warning ?? 'This cannot be undone from here. Retype the value above to confirm.'}
-              </p>
-              <input
-                value={confirmValue}
-                onChange={e => setConfirmValue(e.target.value)}
-                placeholder="Retype to confirm"
-                style={inputStyle}
-                disabled={busy}
-              />
+              <button onClick={() => { setEditing(false); setLocalError(null) }} style={{ ...ghostBtn, border: 'none' }}>Cancel</button>
+              <button
+                onClick={handleSave}
+                disabled={!ready || switching}
+                style={{ background: 'transparent', color: DANGER, border: `1px solid ${DANGER}`, borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, fontFamily: SANS, cursor: ready ? 'pointer' : 'not-allowed', opacity: ready ? 1 : 0.4 }}
+              >
+                {isWrongChain ? 'Switch to Base' : label}
+              </button>
             </>
           )}
-          {localError && <p style={{ margin: 0, fontSize: 12, color: RED }}>{localError}</p>}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleSave} disabled={busy || switching || !value.trim()} style={{ ...btnStyle('primary'), opacity: busy || switching || !value.trim() ? 0.5 : 1 }}>
-              {isWrongChain ? 'Switch to Base' : busy ? 'Confirming…' : 'Save'}
-            </button>
-            <button onClick={() => { setEditing(false); setLocalError(null) }} disabled={busy} style={btnStyle('ghost')}>Cancel</button>
-          </div>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '11px 0', borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '170px minmax(0,1fr) auto', gap: 12, alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: TEXT2 }}>{label}</span>
+        {!editing ? (
+          <span style={{ fontSize: 13.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{view}</span>
+        ) : inputType === 'bool' ? (
+          <select value={value} onChange={e => setValue(e.target.value)} disabled={busy} style={inputStyle}>
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        ) : (
+          <span style={{ position: 'relative', minWidth: 0 }}>
+            <input
+              autoFocus
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && value.trim()) handleSave(); if (e.key === 'Escape') setEditing(false) }}
+              placeholder={inputType === 'address' ? '0x…' : undefined}
+              disabled={busy}
+              style={{ ...inputStyle, paddingRight: suffix ? 70 : 10 }}
+            />
+            {suffix && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontFamily: MONO, fontSize: 11, color: MUTED }}>{suffix}</span>}
+          </span>
+        )}
+        <span style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+          {!editing ? (
+            <button onClick={startEdit} style={ghostBtn}>Edit</button>
+          ) : busy ? pending : (
+            <>
+              <button onClick={() => { setEditing(false); setLocalError(null) }} style={{ ...ghostBtn, border: 'none', padding: '5px 6px' }}>Cancel</button>
+              <button
+                onClick={handleSave}
+                disabled={!value.trim() || switching}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, opacity: value.trim() ? 1 : 0.4 }}
+              >
+                {isWrongChain ? 'Switch to Base' : 'Save'}
+              </button>
+            </>
+          )}
+        </span>
+      </div>
+      {editing && warning && dangerous === 'warn' && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{warning}</div>}
+      {localError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{localError}</div>}
     </div>
   )
 }
