@@ -5,12 +5,11 @@ on:
     branches:
       - main
       - dev
-  # Vercel deploys main and dev itself; Vercel's Deployment Checks hold the production deploy
-  # until these checks pass on the pushed commit.
+  # Vercel deploys main itself; its Deployment Checks hold the production deploy until these
+  # checks pass on the merge commit, which the PR run never sees.
   push:
     branches:
       - main
-      - dev
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
