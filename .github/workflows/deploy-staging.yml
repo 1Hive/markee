@@ -1,0 +1,58 @@
+name: Deploy staging
+
+# dev deploys to staging once CI passes. Any other branch can be sent to staging by hand from
+# Actions → Deploy staging → Run workflow, picking the branch there.
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  deploy:
+    name: Deploy to staging
+    needs: ci
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install --global vercel@62.4.0
+
+      - run: vercel pull --yes --environment=preview --git-branch="$GITHUB_REF_NAME" --token="$VERCEL_TOKEN"
+
+      - run: vercel build --token="$VERCEL_TOKEN"
+
+      - id: deploy
+        run: echo "url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")" >> "$GITHUB_OUTPUT"
+
+      - name: Point the staging domain at this deployment
+        env:
+          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
+        run: |
+          if [ -z "$STAGING_DOMAIN" ]; then
+            echo "::warning::Set the STAGING_DOMAIN repository variable to alias staging deploys."
+            exit 0
+          fi
+          vercel alias set "${{ steps.deploy.outputs.url }}" "$STAGING_DOMAIN" --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
