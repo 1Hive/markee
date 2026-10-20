@@ -88,6 +88,22 @@ export function notifyFreqMessage(chainId: number | string, wallet: string, freq
   return `markee-moderation:notify-freq:${chainId}:${wallet.toLowerCase()}:${frequency}:${timestamp}`
 }
 
+// Which emails a wallet gets: moderation queue activity, its messages starting or stopping winning,
+// and its stream balance running under a day. All on until switched off in Settings.
+export interface NotifyEvents { mod: boolean; status: boolean; budget: boolean }
+export const NOTIFY_EVENTS: (keyof NotifyEvents)[] = ['mod', 'status', 'budget']
+
+export function notifyEventsOf(state: { events?: Partial<NotifyEvents> } | null | undefined): NotifyEvents {
+  return { mod: true, status: true, budget: true, ...state?.events }
+}
+
+// Signed to set frequency and events together (Settings' Save); the frequency-only message above is
+// kept for older clients.
+export function notifyPrefsMessage(chainId: number | string, wallet: string, frequency: EmailFrequency, events: NotifyEvents, timestamp: number): string {
+  const flags = NOTIFY_EVENTS.map(k => `${k}=${events[k] ? 1 : 0}`).join(',')
+  return `markee-moderation:notify-prefs:${chainId}:${wallet.toLowerCase()}:${frequency}:${flags}:${timestamp}`
+}
+
 // Signed by the moderator to unsubscribe (remove their notify state entirely).
 export function notifyEmailMessage(chainId: number | string, wallet: string, email: string, timestamp: number): string {
   return `markee-moderation:notify-email:${chainId}:${wallet.toLowerCase()}:${email.toLowerCase()}:${timestamp}`

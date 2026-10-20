@@ -16,11 +16,12 @@ import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE, ETHX_WRAP_ABI, formatRunway, runwaySeconds } from '@/lib/superfluid/streaming'
 import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG, PURPLE } from '@/lib/design-tokens'
-import type { FundedMessage, MyMessage } from '@/components/account/types'
+import type { BestBuy, FundedMessage, MyMessage } from '@/components/account/types'
 import { PanelHead, SECONDS_PER_MONTH, SegToggle, WalletPending, fmtCount, fmtWeiUsd, isUserRejection } from '@/components/account/primitives'
 import { PlatformGlyph, messageShownOn } from '@/components/account/sites'
 import { PulseDot } from '@/components/account/CreatorHub'
 import { useToast } from '@/components/account/Toast'
+import { formatDuration } from '@/components/board-detail/shared'
 
 const label: React.CSSProperties = { fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1.6, textTransform: 'uppercase', color: MUTED }
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', color: TEXT, fontSize: 13.5, outline: 'none', fontFamily: MONO }
@@ -352,6 +353,12 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
   onEdited: () => void
 }) {
   const [filter, setFilter] = useState<'all' | 'winning' | 'outbid'>('all')
+  // Ticks the "Winning for …" durations along; they show minutes at the finest.
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+  useEffect(() => {
+    const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000)
+    return () => clearInterval(id)
+  }, [])
   const [sort, setSort] = useState<{ k: MsgSortKey | null; dir: 'asc' | 'desc' }>({ k: null, dir: 'desc' })
   const [editing, setEditing] = useState<string | null>(null)
   const rentSpend = useRentSpend(owner, bought)
@@ -468,11 +475,17 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, fontSize: 12 }}>
                     {m.isTop ? (
-                      <><PulseDot /><span style={{ color: GREEN, fontWeight: 600 }}>Winning</span></>
+                      <>
+                        <PulseDot /><span style={{ color: GREEN, fontWeight: 600 }}>Winning</span>
+                        {m.winningSince != null && <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11.5 }}>for {formatDuration(now - m.winningSince)}</span>}
+                      </>
                     ) : (
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: 99, border: `1.5px solid ${MUTED}`, boxSizing: 'border-box', flexShrink: 0 }} />
-                        <span style={{ color: MUTED }}>{r.inactive ? 'Stopped' : m.rank ? `Outbid · #${m.rank}` : 'Outbid'}</span>
+                        <span style={{ color: MUTED }}>
+                          {r.inactive ? 'Stopped' : m.rank ? `Outbid · #${m.rank}` : 'Outbid'}
+                          {m.wonSeconds != null && (m.wonSeconds > 0 ? ` · Won for ${formatDuration(m.wonSeconds)} total` : ' · Never won')}
+                        </span>
                       </>
                     )}
                   </span>
@@ -510,6 +523,59 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
           })}
         </div>
       </div>
+    </section>
+  )
+}
+
+// Best Buys: the marketplace's five lowest-CPM Markees (see /api/marketplace/best-buys for how CPM
+// and views are counted). Views are all-time totals until per-period view history exists.
+export function BestBuys({ ethPrice }: { ethPrice: number | null }) {
+  const [buys, setBuys] = useState<BestBuy[] | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/marketplace/best-buys')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setBuys(d?.buys ?? []) })
+      .catch(() => { if (!cancelled) setBuys([]) })
+    return () => { cancelled = true }
+  }, [])
+  if (!buys || buys.length === 0) return null
+
+  const label: React.CSSProperties = { display: 'block', fontFamily: MONO, fontSize: 9.5, letterSpacing: 1.2, textTransform: 'uppercase', color: MUTED }
+  return (
+    <section style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden', marginTop: 16 }}>
+      <PanelHead label="Best Buys" sub="Lowest CPM Markees in the Marketplace.">
+        <a href="/marketplace" style={{ fontSize: 13, fontWeight: 600, color: TEXT2, textDecoration: 'none' }}>View Marketplace →</a>
+      </PanelHead>
+      {buys.map((b, i) => {
+        const rent = b.strategy === 'streaming'
+        const cpm = Number(b.cpmWei) / 1e18
+        return (
+          <a key={b.address} href={`/markee/${b.address}`} className="acct-row acct-row-click" style={{ display: 'grid', gridTemplateColumns: '22px minmax(0,1fr) 72px 72px auto', gap: 14, alignItems: 'center', padding: '11px 18px', borderTop: i ? `1px solid ${BORDER}` : 'none', textDecoration: 'none', color: 'inherit' }}>
+            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{i + 1}</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <PlatformGlyph platform={b.platform} size={13} color={TEXT2} />
+                <span style={{ fontFamily: MONO, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{b.name}</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12, color: MUTED }}>
+                <StrategyBadge strategy={b.strategy} size="xs" />{fmtCount(b.views)} views
+              </span>
+            </span>
+            <span style={{ textAlign: 'right' }}>
+              <span style={label}>CPM</span>
+              <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: GREEN }}>{ethPrice ? `$${(cpm * ethPrice).toFixed(2)}` : `${cpm.toFixed(5)} ETH`}</span>
+            </span>
+            <span style={{ textAlign: 'right' }}>
+              <span style={label}>Price</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap' }}>
+                {fmtWeiUsd(BigInt(b.priceWei), ethPrice)}{rent && <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>/mo</span>}
+              </span>
+            </span>
+            <span style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, color: TEXT }}>Buy</span>
+          </a>
+        )
+      })}
     </section>
   )
 }

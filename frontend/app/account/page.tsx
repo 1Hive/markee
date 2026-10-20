@@ -8,7 +8,7 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, Info } from 'lucide-react'
 import { useSignMessage } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { notifyEmailMessage, notifyFreqMessage, type EmailFrequency } from '@/lib/moderation/queue'
+import { notifyEmailMessage, notifyPrefsMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
 import type { ActivityEvent } from '@/lib/activity/events'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
@@ -28,7 +28,7 @@ import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderbo
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { YourMarkees, compareByRaised } from '@/components/account/CreatorHub'
 import { ManageDrawer } from '@/components/account/ManageDrawer'
-import { StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate, winPrice } from '@/components/account/BuyerHub'
+import { BestBuys, StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate, winPrice } from '@/components/account/BuyerHub'
 import { NeedsAttention } from '@/components/account/NeedsAttention'
 import { LatestActivity } from '@/components/account/ActivityFeed'
 import { fmtAddr, GlowDot, PanelHead, WalletPending } from '@/components/account/primitives'
@@ -277,7 +277,7 @@ function SidebarNav({ section, setSection, attentionCount }: { section: SectionI
 }
 
 // ── Settings section ──────────────────────────────────────────────────────────
-interface NotifyState { email: string | null; verified: boolean; frequency: string }
+interface NotifyState { email: string | null; verified: boolean; frequency: string; events?: NotifyEvents }
 
 function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
@@ -298,9 +298,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const { signMessageAsync } = useSignMessage()
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
   const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
-  const [modOn, setModOn]             = useState(true)
-  const [statusOn, setStatusOn]       = useState(true)
-  const [budgetOn, setBudgetOn]       = useState(true)
+  const [eventsDraft, setEventsDraft] = useState<NotifyEvents>(() => notifyEventsOf(null))
   const [editEmail, setEditEmail]     = useState(false)
   const [emailInput, setEmailInput]   = useState('')
   const [saving, setSaving]           = useState(false)
@@ -319,6 +317,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         if (!data) return
         setNotifyState(data)
         setFreqDraft((data.frequency ?? 'daily') as EmailFrequency)
+        setEventsDraft(notifyEventsOf(data))
         setEditEmail(!data.email)
       })
       .catch(() => {})
@@ -328,11 +327,14 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
   const emailChanged = editEmail && emailInput.trim().toLowerCase() !== (savedEmail ?? '')
   const freqChanged  = freqDraft !== savedFreq
-  const isDirty      = emailChanged || freqChanged
+  const savedEvents  = notifyEventsOf(notifyState)
+  const eventsChanged = (Object.keys(savedEvents) as (keyof NotifyEvents)[]).some(k => savedEvents[k] !== eventsDraft[k])
+  const isDirty      = emailChanged || freqChanged || eventsChanged
   const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())
 
   const discard = () => {
     setFreqDraft(savedFreq)
+    setEventsDraft(savedEvents)
     setEmailInput('')
     setEditEmail(!savedEmail)
     setSaveError(null)
@@ -357,17 +359,17 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         setEmailInput('')
         setEditEmail(false)
       }
-      if (freqChanged) {
+      if (freqChanged || eventsChanged) {
         const ts2 = Math.floor(Date.now() / 1000)
-        const sig2 = await signMessageAsync({ message: notifyFreqMessage(CANONICAL_CHAIN_ID, address, freqDraft, ts2) })
+        const sig2 = await signMessageAsync({ message: notifyPrefsMessage(CANONICAL_CHAIN_ID, address, freqDraft, eventsDraft, ts2) })
         const res2 = await fetch(`${MODERATION_API}/notify`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: address, frequency: freqDraft, signature: sig2, timestamp: ts2 }),
+          body: JSON.stringify({ wallet: address, frequency: freqDraft, events: eventsDraft, signature: sig2, timestamp: ts2 }),
         })
         const body2 = await res2.json().catch(() => null)
         if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
-        setNotifyState(prev => prev ? { ...prev, frequency: freqDraft } : prev)
+        setNotifyState(prev => prev ? { ...prev, frequency: freqDraft, events: eventsDraft } : prev)
       }
       toast(emailChanged ? 'Saved · verification email sent' : 'Notification settings saved')
     } catch (err) {
@@ -458,16 +460,16 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
           <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 10 }}>Choose When You Get Notified</div>
           <div style={{ borderLeft: `1px solid ${BORDER}`, marginLeft: 4, paddingLeft: 14 }}>
             {([
-              { k: 'mod',    label: 'Moderation Activity',   sub: 'A new message is posted for you to moderate.', on: modOn,    set: setModOn },
-              { k: 'status', label: 'Message Status Change', sub: 'Your message starts or stops winning.',        on: statusOn, set: setStatusOn },
-              { k: 'budget', label: 'Low Budget',            sub: 'Your streaming budget falls below 1 day remaining.', on: budgetOn, set: setBudgetOn },
+              { k: 'mod',    label: 'Moderation Activity',   sub: 'A new message is posted for you to moderate.' },
+              { k: 'status', label: 'Message Status Change', sub: 'Your message starts or stops winning.' },
+              { k: 'budget', label: 'Low Budget',            sub: 'Your streaming budget falls below 1 day remaining.' },
             ] as const).map((ev, i) => (
               <div key={ev.k} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 0', borderTop: i ? `1px solid ${BORDER}` : 'none' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: TEXT2 }}>{ev.label}</div>
                   <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{ev.sub}</div>
                 </div>
-                <SettingsSwitch on={ev.on} onChange={ev.set} label={ev.label} />
+                <SettingsSwitch on={eventsDraft[ev.k]} onChange={on => setEventsDraft(d => ({ ...d, [ev.k]: on }))} label={ev.label} />
               </div>
             ))}
           </div>
@@ -996,6 +998,8 @@ function AccountDashboard() {
           rank: m.rank ?? null,
           flowRateRaw: m.flowRateRaw ?? '0',
           markeeRateRaw: m.markeeRateRaw,
+          winningSince: m.winningSince ?? null,
+          wonSeconds: m.wonSeconds ?? null,
           topRateRaw: m.topRateRaw ?? '0',
           isLegacy: false,
           platform: m.platform ?? null,
@@ -1185,8 +1189,9 @@ function AccountDashboard() {
     return bought + funded
   }, [myMessages, fundedMessages])
 
-  // Fetch markee.xyz view counts for CPM calculations
-  // Includes the boards the wallet's messages sit on, not just its own -- buyer views/CPM read from here too.
+  // Fetch markee.xyz view counts for CPM calculations, per board by the shared rule (lib/views/boards.ts:
+  // board key + its top message's key). Includes the boards the wallet's messages sit on, not just its
+  // own -- buyer views/CPM read from here too.
   const viewAddrs = useMemo(() => [...new Set([
     ...allBoards.map(b => b.address.toLowerCase()),
     ...myMessages.map(m => m.strategyId.toLowerCase()),
@@ -1194,7 +1199,7 @@ function AccountDashboard() {
   ])].filter(Boolean).slice(0, 100).join(','), [allBoards, myMessages, fundedMessages])
   useEffect(() => {
     if (!viewAddrs) return
-    fetch(`/api/views?addresses=${viewAddrs}`)
+    fetch(`/api/views?boards=${viewAddrs}`)
       .then(r => r.json())
       .then((data: Record<string, { totalViews: number }>) => {
         setBoardViews(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.totalViews ?? 0])))
@@ -1458,6 +1463,7 @@ function AccountDashboard() {
                   ) : (
                     <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
                   )}
+                  <BestBuys ethPrice={ethPrice} />
                 </div>
               )}
 

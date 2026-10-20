@@ -1,5 +1,5 @@
 // GET  /api/moderation/notify?wallet=0x...
-//   Returns { email: string | null, verified: boolean, frequency: EmailFrequency } for the wallet.
+//   Returns { email: string | null, verified: boolean, frequency: EmailFrequency, events: NotifyEvents }.
 //   The email is masked (u***@example.com) so wallet owners can confirm their subscription without
 //   exposing the full address to unauthenticated callers.
 //
@@ -9,9 +9,10 @@
 //   Signature covers notifyEmailMessage(8453, wallet, email, timestamp).
 //
 // PATCH /api/moderation/notify
-//   { wallet, frequency, signature, timestamp }
-//   Moderator updates their own notification frequency preference (every / daily / off).
-//   Signature covers notifyFreqMessage(8453, wallet, frequency, timestamp).
+//   { wallet, frequency, events?, signature, timestamp }
+//   The wallet updates its own frequency (every / daily / off) and, with `events`, which emails it
+//   gets (mod / status / budget). Signature covers notifyPrefsMessage(8453, wallet, frequency, events,
+//   timestamp), or notifyFreqMessage(8453, wallet, frequency, timestamp) without `events`.
 //
 // DELETE /api/moderation/notify
 //   { wallet, signature, timestamp }
@@ -28,7 +29,11 @@ import {
   EMAIL_FREQUENCIES,
   notifyEmailMessage,
   notifyFreqMessage,
+  notifyPrefsMessage,
+  notifyEventsOf,
+  NOTIFY_EVENTS,
   type EmailFrequency,
+  type NotifyEvents,
 } from '@/lib/moderation/queue'
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
@@ -56,6 +61,7 @@ export async function GET(req: NextRequest) {
     email: state?.email ? maskEmail(state.email) : null,
     verified: state?.verified ?? false,
     frequency: state?.frequency ?? 'every',
+    events: notifyEventsOf(state),
   })
 }
 
@@ -119,9 +125,10 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { wallet: rawWallet, frequency, signature, timestamp } = await req.json() as {
+    const { wallet: rawWallet, frequency, events: rawEvents, signature, timestamp } = await req.json() as {
       wallet?: string
       frequency?: string
+      events?: Partial<Record<keyof NotifyEvents, unknown>>
       signature?: `0x${string}`
       timestamp?: number
     }
@@ -132,6 +139,10 @@ export async function PATCH(req: NextRequest) {
     if (!frequency || !EMAIL_FREQUENCIES.includes(frequency as EmailFrequency)) {
       return NextResponse.json({ error: `frequency must be one of: ${EMAIL_FREQUENCIES.join(', ')}` }, { status: 400 })
     }
+    if (rawEvents !== undefined && !NOTIFY_EVENTS.every(k => typeof rawEvents?.[k] === 'boolean')) {
+      return NextResponse.json({ error: `events must set ${NOTIFY_EVENTS.join(', ')} to true or false` }, { status: 400 })
+    }
+    const events = rawEvents as NotifyEvents | undefined
     if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
       return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
     }
@@ -141,7 +152,9 @@ export async function PATCH(req: NextRequest) {
     }
     const valid = await verifyMessage({
       address: wallet as `0x${string}`,
-      message: notifyFreqMessage(base.id, wallet, frequency as EmailFrequency, timestamp),
+      message: events
+        ? notifyPrefsMessage(base.id, wallet, frequency as EmailFrequency, events, timestamp)
+        : notifyFreqMessage(base.id, wallet, frequency as EmailFrequency, timestamp),
       signature,
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
@@ -150,12 +163,13 @@ export async function PATCH(req: NextRequest) {
     if (!existing) {
       return NextResponse.json({ error: 'No notification subscription found for this wallet' }, { status: 404 })
     }
-    const updated: ModeratorNotifyState = { ...existing, frequency: frequency as EmailFrequency, setAt: now }
+    const updated: ModeratorNotifyState = { ...existing, frequency: frequency as EmailFrequency, ...(events ? { events } : {}), setAt: now }
     await kv.set(notifyStateKey(wallet), updated)
     return NextResponse.json({
       email: maskEmail(existing.email),
       verified: existing.verified,
       frequency: frequency as EmailFrequency,
+      events: notifyEventsOf(updated),
     })
   } catch (e) {
     console.error('[moderation/notify] PATCH error:', e)

@@ -83,6 +83,10 @@ export interface MyMessage {
   markeeRateRaw?: string
   // Streaming boards only: the current #1's rate in wei/sec.
   topRateRaw?: string
+  // From the board's #1 history (lib/leaderboard/topHistory.ts): since when this message has been
+  // #1 (unix seconds, while it is), and its total time at #1. null where the board has no history.
+  winningSince?: number | null
+  wonSeconds?: number | null
   // Legacy TopDawg (subgraph-sourced) vs v1.x LeaderboardFactory (RPC-sourced) — determines
   // whether MarkeeSignModal's RPC-only useLeaderboardDetail can safely target this markee's board.
   isLegacy: boolean
@@ -102,6 +106,8 @@ export interface FundedMessage {
   address: string
   message: string
   name: string
+  winningSince?: number | null
+  wonSeconds?: number | null
   totalFundsAdded: string
   totalContributed: string
   strategyId: string
@@ -118,4 +124,18 @@ export interface FundedMessage {
   siteUrl?: string | null
   repoFullName?: string | null
   repoHtmlUrl?: string | null
+}
+
+// One row of /api/marketplace/best-buys.
+export interface BestBuy {
+  address: string
+  name: string
+  platform: string | null
+  strategy: 'fixed' | 'streaming'
+  servedOn: string | null
+  views: number
+  // Wei per 1k views.
+  cpmWei: string
+  // Sale: the bid that takes #1. Rent: the current #1's monthly rate (wei/month).
+  priceWei: string
 }

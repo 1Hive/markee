@@ -9,6 +9,7 @@ import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions } from '@/lib/streaming/subgraph'
 import { listBoardMessages } from '@/lib/streaming/messages'
+import { withWinTimes } from '@/lib/leaderboard/topHistory'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,7 +63,7 @@ async function fetchStreamingOwned(
   origin: string,
   headers: HeadersInit,
 ) {
-  const data = await fetch(`${origin}/api/streaming/leaderboards`, { headers })
+  const data = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
     .then(r => r.ok ? r.json() : null).catch(() => null)
 
   const boards: Array<{
@@ -156,10 +157,10 @@ export async function GET(request: Request) {
   // Fetch all platform leaderboards (uses their cached responses where available)
   const headers = internalHeaders()
   const [sfData, ghData, oiData, fsData] = await Promise.all([
-    fetch(`${origin}/api/superfluid/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/github/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/openinternet/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/forsale/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/superfluid/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/github/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/openinternet/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/forsale/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
   ])
 
   // Only include leaderboards that have at least one markee
@@ -221,7 +222,7 @@ export async function GET(request: Request) {
 
   if (entries.length === 0) {
     const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => [])
-    return NextResponse.json({ messages: streamingMsgs })
+    return NextResponse.json({ messages: await withWinTimes(streamingMsgs) })
   }
 
   // Multicall owner() on all markees
@@ -279,5 +280,5 @@ export async function GET(request: Request) {
 
   const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => [])
 
-  return NextResponse.json({ messages: [...messages, ...streamingMsgs] })
+  return NextResponse.json({ messages: await withWinTimes([...messages, ...streamingMsgs]) })
 }

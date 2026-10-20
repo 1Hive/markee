@@ -4,7 +4,7 @@ import { pendingKey, readModeratorNotifyStates } from './server'
 import type { ModeratedBoard } from './server'
 
 const BREVO_SMTP = 'https://api.brevo.com/v3/smtp/email'
-const FROM = { email: 'notifications@markee.xyz', name: 'Markee' }
+export const FROM = { email: 'notifications@markee.xyz', name: 'Markee' }
 const QUEUE_URL = 'https://markee.xyz/account'
 
 interface BrevoPayload {
@@ -14,7 +14,7 @@ interface BrevoPayload {
   htmlContent: string
 }
 
-async function sendEmail(payload: BrevoPayload): Promise<void> {
+export async function sendEmail(payload: BrevoPayload): Promise<void> {
   const key = process.env.BREVO_API_KEY
   if (!key) {
     console.warn('[moderation/email] BREVO_API_KEY not set, skipping')
@@ -31,7 +31,7 @@ async function sendEmail(payload: BrevoPayload): Promise<void> {
   }
 }
 
-function escHtml(s: string) {
+export function escHtml(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
@@ -123,7 +123,7 @@ export async function sendNewItemNotifications(
     if (!board) return { sent: 0, errors: 0 }
     const count = pendingByBoard[boardAddr] ?? 0
     const states = await readModeratorNotifyStates(board.moderators)
-    const recipients = states.filter(s => s.verified && s.frequency === 'every')
+    const recipients = states.filter(s => s.verified && s.frequency === 'every' && s.events.mod)
     if (recipients.length === 0) return { sent: 0, errors: 0 }
     const sends = await Promise.all(recipients.map(async ({ email }) => {
       try {
@@ -159,7 +159,7 @@ export async function sendDailyDigest(boards: ModeratedBoard[]): Promise<Notific
   const results = await Promise.all(boardsWithItems.map(async board => {
     const count = counts[boards.indexOf(board)] ?? 0
     const states = await readModeratorNotifyStates(board.moderators)
-    const recipients = states.filter(s => s.verified && s.frequency === 'daily')
+    const recipients = states.filter(s => s.verified && s.frequency === 'daily' && s.events.mod)
     if (recipients.length === 0) return { sent: 0, errors: 0 }
     const sends = await Promise.all(recipients.map(async ({ email }) => {
       try {

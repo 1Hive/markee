@@ -1,10 +1,10 @@
 // app/api/streaming/top-since/route.ts
 //
-// "How long has the current #1 message been on top" -- Superfluid CFA streams flow into the board
-// contract as one pooled inflow with no per-message cumulative-streamed entity on-chain or in the
-// subgraph, so there's no way to reconstruct this historically. This is a lightweight, self-verifying
-// substitute: the server reads the board's own topMarkee() (never trusts a client-supplied address),
-// compares it to what's stored in KV, and resets the timestamp the moment the top changes. Powers
+// "How long has the current #1 message been on top". The answer comes from the board's TopChanged
+// history (lib/leaderboard/topHistory.ts, advanced by the moderation scan) whenever that history
+// agrees with the board's own topMarkee() (never a client-supplied address). In the minutes before
+// the scan records a new #1, it falls back to a self-verifying first-seen timestamp in KV that resets
+// the moment the top changes. Powers
 // both the "Manage Your Stream" modal's time-winning stat and the leaderboard's live "Total Streamed"
 // column (rate x elapsed since this timestamp) -- an honest approximation, not a real historical total.
 
@@ -14,6 +14,7 @@ import { createPublicClient, http, isAddress } from 'viem'
 import { base } from 'viem/chains'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
+import { readTopHistories, winningSince } from '@/lib/leaderboard/topHistory'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
@@ -39,6 +40,10 @@ export async function GET(request: Request) {
     const topMarkee = (await client.readContract({
       address: board as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'topMarkee',
     })) as string
+
+    const spans = (await readTopHistories([board]).catch(() => new Map())).get(board)
+    const recorded = spans ? winningSince(spans, topMarkee) : null
+    if (recorded !== null) return NextResponse.json({ address: topMarkee, since: recorded }, { headers: NO_CACHE })
 
     const key = `streaming:topsince:${board}`
     const stored = await kv.get<{ address: string; since: number }>(key)

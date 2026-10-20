@@ -4,7 +4,7 @@ import { createPublicClient, getAddress, http } from 'viem'
 import { base } from 'viem/chains'
 import { ADMIN_ADDRESSES } from '@/lib/moderation/config'
 import { internalHeaders, internalOrigin } from '@/lib/internal-origin'
-import { normalizeItem, type EmailFrequency, type ModerationItem, type ModerationScope, type ModeratorEntry } from '@/lib/moderation/queue'
+import { normalizeItem, notifyEventsOf, type EmailFrequency, type ModerationItem, type ModerationScope, type ModeratorEntry, type NotifyEvents } from '@/lib/moderation/queue'
 
 export const BASELINE_KEY = 'moderation:baseline'
 export const SCAN_LOCK_KEY = 'moderation:scan:lock'
@@ -32,6 +32,8 @@ export interface ModeratorNotifyState {
   verifiedAt?: number
   // Default 'every' for moderators added with an email; they can change it from /account.
   frequency: EmailFrequency
+  // Absent means every event is on (see notifyEventsOf).
+  events?: Partial<NotifyEvents>
   setAt: number
 }
 
@@ -45,13 +47,13 @@ export interface VerifyToken {
 
 export async function readModeratorNotifyStates(
   wallets: string[],
-): Promise<Array<{ wallet: string; email: string; verified: boolean; frequency: EmailFrequency }>> {
+): Promise<Array<{ wallet: string; email: string; verified: boolean; frequency: EmailFrequency; events: NotifyEvents }>> {
   if (wallets.length === 0) return []
   const rows = await kv.mget<(ModeratorNotifyState | null)[]>(...wallets.map(notifyStateKey))
   return wallets.flatMap((wallet, i) => {
     const state = rows[i]
     if (!state?.email) return []
-    return [{ wallet, email: state.email, verified: state.verified, frequency: state.frequency }]
+    return [{ wallet, email: state.email, verified: state.verified, frequency: state.frequency, events: notifyEventsOf(state) }]
   })
 }
 // Board reviews are indexed per board, site reviews in one index across every board.

@@ -5,6 +5,8 @@ import { FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS } fro
 import { SCOPES, isPendingIn, observeMessage, type MessageObservation } from '@/lib/moderation/queue'
 import { BASELINE_KEY, flagKey, getModerationClient, itemKey, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
 import { recordActivity, type BoardTop } from '@/lib/activity/server'
+import { notifyLowBudgets, notifyStatusChanges } from '@/lib/notifications/buyer'
+import { updateTopHistories } from '@/lib/leaderboard/topHistory'
 
 const PAGE_ABI = [
   { inputs: [], name: 'leaderboardCount', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
@@ -65,6 +67,8 @@ export interface ScanReport {
   // Markees outside the recent/top window read only because an edit event named them.
   fromLogs: number
   activity: number
+  // Message Status Change and Low Budget emails sent this run (daily round-up ones are queued, not counted).
+  buyerEmails?: number
   // Board address → count of newly queued pending items this run (empty when baseline or no new items).
   pendingByBoard: Record<string, number>
 }
@@ -263,10 +267,23 @@ export async function runModerationScan(): Promise<ScanReport> {
   try {
     const seen = new Map(observations.map(o => [o.markee, { author: o.author, message: o.message, name: o.name ?? '' }]))
     const edited = isBaseline ? [] : changed.filter(next => next.kind === 'edited')
-    const { events } = await recordActivity({ tops, streamingBoards: streaming, seen, edited, blockNumber: block.number, at: Number(block.timestamp) })
+    const { events, byWallet } = await recordActivity({ tops, streamingBoards: streaming, seen, edited, blockNumber: block.number, at: Number(block.timestamp) })
     report.activity = events
+    if (!isBaseline) report.buyerEmails = await notifyStatusChanges(byWallet)
   } catch (e) {
     console.warn('[moderation/scan] activity recording failed', e)
+  }
+  // Also secondary, and each guarded on its own: Low Budget alerts (throttled to every 30 min inside)
+  // and the per-board history of who held #1 that account rows and top-since read.
+  try {
+    report.buyerEmails = (report.buyerEmails ?? 0) + await notifyLowBudgets([...streaming])
+  } catch (e) {
+    console.warn('[moderation/scan] low budget check failed', e)
+  }
+  try {
+    await updateTopHistories(client, boards.map(address => ({ address, kind: streaming.has(address) ? 'streaming' : 'sale' })), block.number)
+  } catch (e) {
+    console.warn('[moderation/scan] top history update failed', e)
   }
   return report
 }

@@ -2,7 +2,15 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
+import { createPublicClient, http, isAddress, parseAbi, type Address } from 'viem'
+import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
+import { readBoardViews } from '@/lib/views/boards'
+
+// Counts change with every view: never let Next serve these KV reads from its data cache.
+export const dynamic = 'force-dynamic'
+
+const TOP_ABI = parseAbi(['function getTopMarkees(uint256 limit) view returns (address[], uint256[])'])
 
 function corsHeaders(_origin: string | null): Record<string, string> {
   return {
@@ -46,9 +54,27 @@ export async function OPTIONS(req: NextRequest) {
 // GET /api/views?network=1  → { total: number }  (network-wide total across all markees)
 // GET /api/views?addresses=0x1,0x2,...
 // GET /api/views?address=0x1&messages=msg1||msg2||msg3  (pipe-delimited, per-message counts)
+// GET /api/views?boards=0x1,0x2,...  → { board: { totalViews } }, each board's views by the shared rule
+//   in lib/views/boards.ts (board key + its current top message's key, read live from the board)
 export async function GET(req: NextRequest) {
   const origin = req.headers.get('origin')
   const { searchParams } = new URL(req.url)
+
+  const boardsParam = searchParams.get('boards')
+  if (boardsParam !== null) {
+    const boards = [...new Set(boardsParam.split(',').map(a => a.toLowerCase().trim()).filter(a => isAddress(a)))].slice(0, VIEWS_ADDRESS_LIMIT)
+    if (boards.length === 0) return NextResponse.json({}, { headers: corsHeaders(origin) })
+    const client = createPublicClient({ chain: base, transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org', { fetchOptions: { cache: 'no-store' } }) })
+    // Legacy boards have no getTopMarkees; they count by board address alone.
+    const tops = await client.multicall({
+      contracts: boards.map(address => ({ address: address as Address, abi: TOP_ABI, functionName: 'getTopMarkees' as const, args: [1n] as const })),
+    }).catch(() => [])
+    const views = await readBoardViews(boards.map((address, i) => ({
+      address,
+      topMarkeeAddress: (tops[i]?.result as readonly [readonly string[], readonly bigint[]] | undefined)?.[0]?.[0] ?? null,
+    })))
+    return NextResponse.json(Object.fromEntries(boards.map(b => [b, { totalViews: views.get(b) ?? 0 }])), { headers: corsHeaders(origin) })
+  }
 
   if (searchParams.get('network') === '1') {
     const total = await kv.get<number>('views:network:total') ?? 0

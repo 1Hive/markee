@@ -32,7 +32,7 @@ export async function recordActivity({ tops, streamingBoards, seen, edited, bloc
   edited: ModerationItem[]
   blockNumber: bigint
   at: number
-}): Promise<{ events: number }> {
+}): Promise<{ events: number; byWallet: Map<string, ActivityEvent[]> }> {
   const prevTops = await kv.hgetall<Record<string, string>>(TOPS_KEY)
   const changedTops = prevTops
     ? [...tops].filter(([board, top]) => prevTops[board] && prevTops[board] !== top.markee)
@@ -82,7 +82,7 @@ export async function recordActivity({ tops, streamingBoards, seen, edited, bloc
   if (Object.keys(topWrites).length) pipeline.hset(TOPS_KEY, topWrites)
   if (byWallet.size || Object.keys(topWrites).length) await pipeline.exec()
 
-  return { events: [...byWallet.values()].reduce((n, e) => n + e.length, 0) }
+  return { events: [...byWallet.values()].reduce((n, e) => n + e.length, 0), byWallet }
 }
 
 export async function readActivity(wallet: string, limit = 100): Promise<ActivityEvent[]> {
