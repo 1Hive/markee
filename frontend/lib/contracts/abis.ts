@@ -910,6 +910,9 @@ export const StreamingLeaderboardABI = [
   { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'topMarkee', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  // Owner edits go through the board (it checks owner and length); Markee.setMessage is board-only.
+  { inputs: [{ name: '_markee', type: 'address' }, { name: '_newMessage', type: 'string' }], name: 'updateMessage', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_markee', type: 'address' }, { name: '_newName', type: 'string' }], name: 'updateName', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [], name: 'topRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'percentToBeneficiary', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'percentToPlatformFeeReceiver', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },

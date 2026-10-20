@@ -546,7 +546,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   useEffect(() => {
     if (!isOpen || !initialTargetAddress || !initialView || appliedInitialTargetRef.current) return
     const m = markees.find(x => x.address.toLowerCase() === initialTargetAddress.toLowerCase())
-    if (!m) return
+    // Rows arrive before their per-markee reads (message, owner); opening on one of those would
+    // keep a blank copy ("Loading message…", no owner-only controls) since target isn't refreshed.
+    if (!m || !m.owner) return
     appliedInitialTargetRef.current = true
     if (initialView === 'addFunds') openFund(m)
     else openEdit(m)

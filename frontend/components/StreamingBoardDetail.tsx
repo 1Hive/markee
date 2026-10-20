@@ -403,6 +403,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       />
 
       <StreamMessageEditModal
+        board={board}
         isOpen={!!messageEditTarget}
         onClose={() => setMessageEditTarget(null)}
         markeeAddress={messageEditTarget?.address as Address | undefined}
@@ -416,7 +417,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 // ── Message edit (streaming markees have no on-chain message-edit path through the leaderboard
 // contract -- MarkeeABI.setMessage is called directly on the markee's own address, gated to its
 // owner by the contract itself) ──────────────────────────────────────────────────────────────────
-function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage, onSuccess }: {
+function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, currentMessage, onSuccess }: {
+  board: Address
   isOpen: boolean
   onClose: () => void
   markeeAddress?: Address
@@ -455,11 +457,11 @@ function StreamMessageEditModal({ isOpen, onClose, markeeAddress, currentMessage
     setError(null)
     try {
       const hash = await writeContractAsync({
-        address: markeeAddress, abi: MarkeeABI, functionName: 'setMessage', args: [message], chainId: CANONICAL_CHAIN_ID,
+        address: board, abi: StreamingLeaderboardABI, functionName: 'updateMessage', args: [markeeAddress, message], chainId: CANONICAL_CHAIN_ID,
       })
       setTxHash(hash)
     } catch (e: unknown) {
-      logTransactionError(e, 'StreamMessageEditModal.setMessage')
+      logTransactionError(e, 'StreamMessageEditModal.updateMessage')
       setError(formatTransactionError(e))
     }
   }

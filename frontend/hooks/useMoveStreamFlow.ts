@@ -34,7 +34,8 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
+    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const openRef = useRef(isOpen)
   openRef.current = isOpen
@@ -68,6 +69,16 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
       setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
+
+  // A reverted batch otherwise leaves the modal on "Confirming" with no error (same as useCreateStreamFlow).
+  useEffect(() => {
+    if (txReverted && txHash && isOpen) {
+      setSubmitting(false)
+      logTransactionError(receiptError, 'useMoveStreamFlow.receipt')
+      const decoded = receiptError ? formatTransactionError(receiptError) : null
+      setError(decoded && decoded !== 'Transaction error' ? decoded : 'Transaction failed on-chain. Please try again.')
+    }
+  }, [txReverted, txHash, isOpen, receiptError])
 
   async function moveStream(calc: MoveStreamCalc, opts: { belowMin: boolean; minMonthlyEth: string }) {
     setError(null)
@@ -110,7 +121,10 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: refundPool as Address,
-        wrapValue: calc.value,
+        // Everything sent is wrapped: the deposit top-up too. With only calc.value, a wallet whose
+        // ETHx already covers the stream (calc.value 0) sent the top-up as bare ETH with no wrap op,
+        // and depositBuffer's transferFrom reverted.
+        wrapValue: depositTopUp + calc.value,
       })
 
       // calc.value (not calc.prefund) is the fresh-wrap amount now that callers can compute

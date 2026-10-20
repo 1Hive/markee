@@ -552,8 +552,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const manageNetStreamedWei = manageGrossStreamedWei > manageRefundedWei ? manageGrossStreamedWei - manageRefundedWei : 0n
   const manageStreamedDecimals = decimalsForWeiRate(manageLiveIsTop ? manageLiveRate : 0n)
 
-  // Inline message edit (pencil next to "Message You're Funding") — MarkeeABI.setMessage direct on
-  // the markee's own address, same call StreamingBoardDetail's StreamMessageEditModal makes.
+  // Inline message edit (pencil next to "Message You're Funding") — the board's updateMessage, same
+  // call StreamingBoardDetail's StreamMessageEditModal makes (Markee.setMessage is board-only).
   const [editingMessage, setEditingMessage] = useState(false)
   const [editMessageText, setEditMessageText] = useState('')
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
@@ -566,7 +566,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     setEditMessageError(null)
     try {
       const hash = await writeEditMessage({
-        address: target.address as Address, abi: MarkeeABI, functionName: 'setMessage', args: [editMessageText], chainId: CANONICAL_CHAIN.id,
+        address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'updateMessage', args: [target.address as Address, editMessageText], chainId: CANONICAL_CHAIN.id,
       })
       setEditMessageTxHash(hash)
     } catch (e: unknown) {
@@ -737,7 +737,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   useEffect(() => {
     if (!isOpen || !initialTargetAddress || !initialView || appliedInitialTargetRef.current) return
     const m = markees.find(x => x.address.toLowerCase() === initialTargetAddress.toLowerCase())
-    if (!m) return
+    // Rows arrive before their per-markee reads (message, owner); opening on one of those would
+    // keep a blank copy ("Loading message…", no owner-only controls) since target isn't refreshed.
+    if (!m || !m.owner) return
     appliedInitialTargetRef.current = true
     if (initialView === 'fund') openFund(m)
     else openManage(m)

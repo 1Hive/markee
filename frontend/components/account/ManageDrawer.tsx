@@ -245,9 +245,12 @@ export function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAd
   const settings = isStreaming
     ? { abi: StreamingLeaderboardABI, minPrice: 'minimumMonthlyRate', setMinPrice: 'setMinimumMonthlyRate', unit: 'ethPerMonth' as const, setAdmin: 'setAdmin', limits: true }
     : (lb as BaseLeaderboard).verificationGated
-      ? { abi: TopDawgPartnerStrategyABI, minPrice: 'minimumPrice', setMinPrice: 'setMinimumPrice', unit: 'eth' as const, setAdmin: 'setAdminAddress', limits: true }
+      // For Sale boards are v1.3 Leaderboard clones: the partner-strategy ABI covers their setters except
+      // the admin one, which is setAdmin there (setAdminAddress only exists on the old partner strategy).
+      ? { abi: TopDawgPartnerStrategyABI, minPrice: 'minimumPrice', setMinPrice: 'setMinimumPrice', unit: 'eth' as const, setAdmin: 'setAdmin', adminAbi: LeaderboardV11ABI, limits: true }
       : { abi: LeaderboardV11ABI, minPrice: null, setMinPrice: null, unit: 'eth' as const, setAdmin: 'setAdmin', limits: false }
   const abi = settings.abi as unknown as Abi
+  const adminAbi = ('adminAbi' in settings ? settings.adminAbi : settings.abi) as unknown as Abi
   const saved = (message: string) => () => { toast(message); onSuccess() }
 
   // A Rent minimum far above what the current renter streams is almost always a units mistake.
@@ -349,7 +352,7 @@ export function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAd
           {isAdmin && !isLegacyFixed && (
             <section style={{ padding: '18px 28px', borderTop: `1px solid ${BORDER}` }}>
               <AdminSettingRow
-                label="Transfer Admin" contractAddress={contractAddress} abi={abi} getterName="admin" setterName={settings.setAdmin} inputType="address"
+                label="Transfer Admin" contractAddress={contractAddress} abi={adminAbi} getterName="admin" setterName={settings.setAdmin} inputType="address"
                 dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it."
                 acknowledge="I understand I'll lose all admin access to this Markee"
                 onSuccess={saved('Admin transferred')}
