@@ -14,7 +14,7 @@ import { parseEthInput, sanitizeDecimalInput } from '@/components/modals/StreamU
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE, ETHX_WRAP_ABI, formatRunway, runwaySeconds } from '@/lib/superfluid/streaming'
-import { formatTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG, PURPLE } from '@/lib/design-tokens'
 import type { FundedMessage, MyMessage } from '@/components/account/types'
 import { PanelHead, SECONDS_PER_MONTH, SegToggle, WalletPending, fmtCount, fmtWeiUsd, isUserRejection } from '@/components/account/primitives'
@@ -60,7 +60,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
   const { data: walletBalance } = useBalance({ address: address as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { writeContractAsync, isPending } = useWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
@@ -75,6 +75,11 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
     onDone()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
+
+  // A reverted tx otherwise just re-enables the button with no error.
+  useEffect(() => {
+    if (reverted && hash) setError(formatReceiptError(receiptError, 'BuyerHub.BalanceAction.receipt'))
+  }, [reverted, hash, receiptError])
 
   const go = async () => {
     if (bad) return
@@ -257,7 +262,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const { switchChain } = useSwitchChain()
   const { writeContractAsync, isPending } = useWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
@@ -270,6 +275,10 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
     onDone()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
+
+  useEffect(() => {
+    if (reverted && hash) setError(formatReceiptError(receiptError, 'BuyerHub.InlineEdit.receipt'))
+  }, [reverted, hash, receiptError])
 
   const save = async () => {
     if (!ready) return

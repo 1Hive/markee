@@ -15,7 +15,7 @@ import {
   STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, buildMoveStreamOps,
 } from '@/lib/superfluid/streaming'
 import { retryUntilLoaded } from '@/components/modals/StreamUI'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -74,9 +74,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
   useEffect(() => {
     if (txReverted && txHash && isOpen) {
       setSubmitting(false)
-      logTransactionError(receiptError, 'useMoveStreamFlow.receipt')
-      const decoded = receiptError ? formatTransactionError(receiptError) : null
-      setError(decoded && decoded !== 'Transaction error' ? decoded : 'Transaction failed on-chain. Please try again.')
+      setError(formatReceiptError(receiptError, 'useMoveStreamFlow.receipt'))
     }
   }, [txReverted, txHash, isOpen, receiptError])
 

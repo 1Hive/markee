@@ -25,7 +25,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, formatMarkeeAmount, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
 import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
@@ -482,7 +482,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [cancelTxHash, setCancelTxHash] = useState<Hex | undefined>(undefined)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const { writeContractAsync: writeCancel, isPending: cancelPending } = useWriteContract()
-  const { isLoading: cancelConfirming, isSuccess: cancelSuccess } = useWaitForTransactionReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useWaitForTransactionReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
   async function handleCancel() {
     setCancelError(null)
     try {
@@ -505,6 +505,10 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelSuccess, isOpen])
+  // A reverted cancel/edit otherwise just re-enables its button with no error.
+  useEffect(() => {
+    if (cancelReverted && cancelTxHash) setCancelError(formatReceiptError(cancelReceiptError, 'StreamSignModal.cancelStream.receipt'))
+  }, [cancelReverted, cancelTxHash, cancelReceiptError])
 
   // Decimals derived from the actual accrual rate so the last digit visibly ticks about once a
   // second, instead of a fixed decimal count that looks frozen at typical low stream rates.
@@ -559,7 +563,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
   const editMessageBusy = editMessagePending || editMessageConfirming
   async function handleSaveMessage() {
     if (!target || !editMessageText.trim()) return
@@ -580,6 +584,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
       return () => clearTimeout(t)
     }
   }, [editMessageSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (editMessageReverted && editMessageTxHash) setEditMessageError(formatReceiptError(editMessageReceiptError, 'StreamSignModal.editMessage.receipt'))
+  }, [editMessageReverted, editMessageTxHash, editMessageReceiptError])
 
   // ── Views (batched, per-markee + summed for the header) ────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())

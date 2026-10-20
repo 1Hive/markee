@@ -14,6 +14,7 @@ import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionRecei
 import { formatEther, isAddress, parseEther, type Abi } from 'viem'
 import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 
 export interface AdminSettingRowProps {
@@ -74,7 +75,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
   const [localError, setLocalError] = useState<string | null>(null)
 
   const { writeContractAsync, data: hash, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
 
   useEffect(() => {
     if (!isSuccess) return
@@ -86,6 +87,11 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
     onSuccess?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
+
+  // A reverted setter otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash) setLocalError(formatReceiptError(receiptError, 'AdminSettingRow.receipt'))
+  }, [txReverted, hash, receiptError])
 
   const isWrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
   const typed = value.trim()

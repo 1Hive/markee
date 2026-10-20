@@ -17,7 +17,7 @@ import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { STREAMING_BASE, CFA_FORWARDER_ABI, ratePerSecToMonthly } from '@/lib/superfluid/streaming'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { useStreamingBoardTotal } from '@/hooks/useStreamingBoardTotal'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
@@ -429,7 +429,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const [error, setError] = useState<string | null>(null)
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
   const MAX_LEN = 222
 
   useEffect(() => {
@@ -446,6 +446,11 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
       return () => clearTimeout(t)
     }
   }, [isSuccess, isOpen])
+
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && txHash && isOpen) setError(formatReceiptError(receiptError, 'StreamMessageEditModal.receipt'))
+  }, [txReverted, txHash, isOpen, receiptError])
 
   if (!isOpen || !markeeAddress) return null
 

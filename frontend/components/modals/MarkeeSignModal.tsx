@@ -9,7 +9,7 @@ import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
@@ -344,7 +344,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id,
@@ -410,6 +410,11 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   useEffect(() => {
     if (writeError) logTransactionError(writeError, 'MarkeeSignModal')
   }, [writeError])
+
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash && isOpen) setError(formatReceiptError(receiptError, 'MarkeeSignModal.receipt'))
+  }, [txReverted, hash, isOpen, receiptError])
 
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep
