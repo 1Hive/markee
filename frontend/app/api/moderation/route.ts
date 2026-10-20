@@ -23,6 +23,9 @@ import {
   FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
 } from '@/lib/moderation/server'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
 
 const CORS = {

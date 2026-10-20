@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createSession, expireHostOnlyCookie, SESSION_COOKIE, SESSION_MAX_AGE, sessionCookieOptions } from '@/lib/github/session'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 // Popup-mode response: postMessage the result back to the window that opened us, then close --
 // used instead of a redirect so the host page (which may have this open from inside a modal) never
 // navigates away. targetOrigin is set explicitly (not '*') since this carries the connected login.
