@@ -108,6 +108,10 @@ const nextConfig = {
     return [
       { source: '/ecosystem', destination: '/create-a-markee', permanent: true },
       { source: '/ecosystem/platforms/superfluid', destination: '/campaigns/superfluid', permanent: true },
+      // The GitHub board page was retired: Add to Your Site handles GitHub files, and every board's
+      // detail page is /markee/[address].
+      { source: '/ecosystem/platforms/github', destination: '/marketplace', permanent: true },
+      { source: '/ecosystem/platforms/github/:address', destination: '/markee/:address', permanent: true },
       { source: '/own-the-network', destination: '/owners', permanent: false },
     ]
   },

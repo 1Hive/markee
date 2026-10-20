@@ -13,6 +13,7 @@ import { BoardModerators } from '@/components/moderation'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
+import { unlinkFileMessage } from '@/lib/github/unlink'
 import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
@@ -67,7 +68,15 @@ function IntegrationRow({ board, it, featured, views, canEdit, onChanged }: { bo
     setError(null)
     try {
       const res = it.file
-        ? await fetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: it.file.repoFullName, file: it.file.filePath })}`, { method: 'DELETE' })
+        ? await (async (file) => {
+            const timestamp = Math.floor(Date.now() / 1000)
+            const signature = await signMessageAsync({ message: unlinkFileMessage(CANONICAL_CHAIN_ID, board, file.repoFullName, file.filePath, timestamp) })
+            return fetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ owner: address, signature, timestamp }),
+            })
+          })(it.file)
         : await (async () => {
             const timestamp = Math.floor(Date.now() / 1000)
             const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, board, { removeVerifiedUrl: it.url }, timestamp) })

@@ -1,7 +1,13 @@
 import { test, expect, type Page } from '@playwright/test'
 import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { observeMessage } from '../../../lib/moderation/queue'
+import { mnemonicToAccount } from 'viem/accounts'
+import { unlinkFileMessage } from '../../../lib/github/unlink'
+import { E2E_MNEMONIC } from './env'
 import { E2E_ACCOUNT, E2E_OTHER as OTHER, TX_TIMEOUT, buySale, isolateChain, kv, rpc } from './support'
+
+const ME = mnemonicToAccount(E2E_MNEMONIC)
+const SOMEONE_ELSE = mnemonicToAccount(E2E_MNEMONIC, { addressIndex: 1 })
 
 const TOP_ABI = parseAbi(['function getTopMarkees(uint256 limit) view returns (address[], uint256[])'])
 
@@ -100,6 +106,23 @@ test('approve a new message from the moderation queue (signed message)', async (
   const item = page.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Approve' }) }).last()
   await item.getByRole('button', { name: 'Approve' }).click({ timeout: TX_TIMEOUT })
   await expect(page.getByRole('status').filter({ hasText: 'Message approved' })).toBeVisible({ timeout: TX_TIMEOUT })
+})
+
+test('only the board owner can unlink a GitHub file (signed message)', async ({ page }) => {
+  const file = { repoFullName: 'e2e/repo', repoOwner: 'e2e', repoName: 'repo', repoAvatarUrl: '', repoHtmlUrl: '', filePath: 'README.md', verified: false, linkedByUid: '1', linkedAt: '' }
+  await kv(['SET', `github:markee:${board.toLowerCase()}`, JSON.stringify([file])])
+  const url = `/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`
+  const signed = async (signer: typeof ME) => {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = await signer.signMessage({ message: unlinkFileMessage(8453, board, file.repoFullName, file.filePath, timestamp) })
+    return { owner: signer.address, signature, timestamp }
+  }
+
+  expect((await page.request.delete(url)).status()).toBe(400)
+  expect((await page.request.delete(url, { data: await signed(SOMEONE_ELSE) })).status()).toBe(403)
+  const res = await page.request.delete(url, { data: await signed(ME) })
+  expect(res.status()).toBe(200)
+  expect((await res.json()).linkedFiles).toEqual([])
 })
 
 test('transfer admin', async ({ page }) => {
