@@ -78,6 +78,9 @@ export interface MyMessage {
   strategy?: 'fixed' | 'streaming'
   rank?: number | null
   flowRateRaw?: string
+  // Streaming boards only: the message's own effective rate across all its backers (wei/sec). '0'
+  // means nothing funds it any more: shown dimmed, last, with Reactivate (as on the board page).
+  markeeRateRaw?: string
   // Streaming boards only: the current #1's rate in wei/sec.
   topRateRaw?: string
   // Legacy TopDawg (subgraph-sourced) vs v1.x LeaderboardFactory (RPC-sourced) — determines

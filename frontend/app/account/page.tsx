@@ -995,6 +995,7 @@ function AccountDashboard() {
           strategy: m.strategy ?? 'fixed',
           rank: m.rank ?? null,
           flowRateRaw: m.flowRateRaw ?? '0',
+          markeeRateRaw: m.markeeRateRaw,
           topRateRaw: m.topRateRaw ?? '0',
           isLegacy: false,
           platform: m.platform ?? null,

@@ -8,6 +8,7 @@ import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions } from '@/lib/streaming/subgraph'
+import { listBoardMessages } from '@/lib/streaming/messages'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,73 +81,68 @@ async function fetchStreamingOwned(
   }> = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
   if (boards.length === 0) return []
 
-  // Find this owner's markee on each streaming board
-  const backerResults = await chunkedMulticall(
-    client,
-    boards.map(lb => ({
-      address: lb.address as `0x${string}`,
-      abi: StreamingLeaderboardABI,
-      functionName: 'backerMarkee' as const,
-      args: [owner as `0x${string}`] as const,
-    })),
-  )
+  // Every Rent message this wallet owns, funded or not: the same per-board lists the board pages show
+  // (lib/streaming/messages.ts), so an owned message whose stream ended stays here, ranked last, rather
+  // than vanishing with backerMarkee.
+  const lists = await Promise.all(boards.map(lb =>
+    listBoardMessages(client, lb.address, { only: m => m.owner === owner }).catch(e => {
+      console.warn('[account/messages] streaming board read failed', lb.address, e)
+      return []
+    })))
+  const owned = boards.flatMap((lb, i) => lists[i].map(m => ({ lb, m })))
+  if (owned.length === 0) return []
 
-  const candidates = boards
-    .map((lb, i) => ({ lb, markee: (backerResults[i]?.result as string | undefined)?.toLowerCase() }))
-    .filter((b): b is { lb: typeof boards[0]; markee: string } =>
-      !!b.markee && b.markee !== ZERO)
-
-  if (candidates.length === 0) return []
-
-  const [detailResults, positions] = await Promise.all([
+  const ownedBoards = [...new Set(owned.map(({ lb }) => lb.address.toLowerCase()))]
+  const [funds, backed, positions] = await Promise.all([
     chunkedMulticall(
       client,
-      candidates.flatMap(b => [
-        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const },
-        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const },
-        { address: b.markee as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const },
-      ]),
+      owned.map(({ m }) => ({ address: m.address as `0x${string}`, abi: MarkeeABI, functionName: 'totalFundsAdded' as const })),
+    ),
+    // Which message this wallet's own stream (if any) goes to on each board.
+    chunkedMulticall(
+      client,
+      ownedBoards.map(board => ({ address: board as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'backerMarkee' as const, args: [owner as `0x${string}`] as const })),
     ),
     fetchBackerPositions(
       owner,
-      candidates.map(b => b.lb.address),
+      ownedBoards,
       STREAMING_BASE.ethx,
       BigInt(Math.floor(Date.now() / 1000)),
     ).catch(() => new Map<string, { contributed: bigint; rate: bigint }>()),
   ])
 
-  return candidates
-    .map((b, i) => {
-      const o = i * 3
-      const markeeOwner = (detailResults[o]?.result as string | undefined)?.toLowerCase()
-      if (markeeOwner !== owner) return null
-      const totalFundsAdded = (detailResults[o + 1]?.result as bigint) ?? 0n
-      const message = (detailResults[o + 2]?.result as string) ?? ''
-      const isTop = b.lb.topMarkeeAddress?.toLowerCase() === b.markee
-      const pos = positions.get(b.lb.address.toLowerCase())
+  const backsThis = (board: string) =>
+    (backed[ownedBoards.indexOf(board.toLowerCase())]?.result as string | undefined)?.toLowerCase()
+
+  return owned
+    .map(({ lb, m }, i) => {
+      const isTop = lb.topMarkeeAddress?.toLowerCase() === m.address
+      const pos = positions.get(lb.address.toLowerCase())
       return {
-        address: b.markee,
-        message,
-        name: '',
-        totalFundsAdded: totalFundsAdded.toString(),
-        strategyId: b.lb.address,
-        strategyName: b.lb.name ?? 'Unknown Leaderboard',
+        address: m.address,
+        message: m.message,
+        name: m.name,
+        totalFundsAdded: ((funds[i]?.result as bigint | undefined) ?? 0n).toString(),
+        strategyId: lb.address,
+        strategyName: lb.name ?? 'Unknown Leaderboard',
         isTop,
-        topFundsRaw: b.lb.topFundsAddedRaw ?? '0',
-        topRateRaw: b.lb.topRateRaw ?? '0',
+        topFundsRaw: lb.topFundsAddedRaw ?? '0',
+        topRateRaw: lb.topRateRaw ?? '0',
         strategy: 'streaming' as const,
-        rank: isTop ? 1 : null,
-        flowRateRaw: (pos?.rate ?? 0n).toString(),
-        platform: b.lb.platform ?? null,
-        admin: b.lb.admin ?? null,
-        verifiedUrls: b.lb.verifiedUrls ?? [],
-        linkedFiles: b.lb.linkedFiles ?? [],
-        siteUrl: b.lb.siteUrl ?? null,
-        repoFullName: b.lb.repoFullName ?? null,
-        repoHtmlUrl: b.lb.repoHtmlUrl ?? null,
+        rank: m.rate > 0n ? m.rank : null,
+        // This wallet's own stream to the board, when it goes to this message.
+        flowRateRaw: (backsThis(lb.address) === m.address ? pos?.rate ?? 0n : 0n).toString(),
+        // The message's own effective rate across all its backers; 0 means nothing funds it.
+        markeeRateRaw: m.rate.toString(),
+        platform: lb.platform ?? null,
+        admin: lb.admin ?? null,
+        verifiedUrls: lb.verifiedUrls ?? [],
+        linkedFiles: lb.linkedFiles ?? [],
+        siteUrl: lb.siteUrl ?? null,
+        repoFullName: lb.repoFullName ?? null,
+        repoHtmlUrl: lb.repoHtmlUrl ?? null,
       }
     })
-    .filter((m): m is NonNullable<typeof m> => m !== null)
 }
 
 export async function GET(request: Request) {

@@ -240,6 +240,8 @@ interface MsgRow {
   top: bigint
   rate: bigint
   views: number
+  // A Rent message nothing funds any more.
+  inactive: boolean
 }
 
 function SortTh({ k, label: text, sort, onSort }: { k: MsgSortKey; label: string; sort: { k: MsgSortKey | null; dir: 'asc' | 'desc' }; onSort: (k: MsgSortKey) => void }) {
@@ -360,9 +362,10 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
     return [
       ...bought.map(m => ({
         m, own: true, bid: m.totalFundsAdded, top: m.topFunds, rate: BigInt(m.flowRateRaw ?? '0'), views: views(m),
+        inactive: m.strategy === 'streaming' && m.markeeRateRaw === '0',
         spent: m.strategy === 'streaming' ? (rentSpend[m.address.toLowerCase()] ?? 0n) : m.totalFundsAdded,
       })),
-      ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalFundsAdded), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m) })),
+      ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalFundsAdded), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m), inactive: false })),
     ]
   }, [bought, funded, boardViews, rentSpend])
 
@@ -372,10 +375,11 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
 
   const list = useMemo(() => {
     const filtered = rows.filter(r => filter === 'all' || (filter === 'winning') === r.m.isTop)
-    if (!sort.k) return [...filtered].sort((a, b) => Number(b.m.isTop) - Number(a.m.isTop))
     const val = (r: MsgRow) => sort.k === 'views' ? r.views : sort.k === 'bid' ? Number(bidWei(r)) : (cpmOf(r) ?? Infinity)
     const dir = sort.dir === 'desc' ? -1 : 1
-    return [...filtered].sort((a, b) => (val(a) - val(b)) * dir)
+    // Unfunded Rent messages always sit last, as on the board page.
+    return [...filtered].sort((a, b) => Number(a.inactive) - Number(b.inactive)
+      || (sort.k ? (val(a) - val(b)) * dir : Number(b.m.isTop) - Number(a.m.isTop)))
   // bidWei only reads row fields
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, filter, sort, cpmOf])
@@ -429,7 +433,7 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
                 key={m.address}
                 className="acct-row acct-row-click"
                 onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-                style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '12px 18px', alignItems: 'center', borderTop: `1px solid ${BORDER}` }}
+                style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '12px 18px', alignItems: 'center', borderTop: `1px solid ${BORDER}`, opacity: r.inactive ? 0.5 : 1 }}
               >
                 <span style={{ minWidth: 0 }}>
                   {editing === m.address ? (
@@ -468,7 +472,7 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
                     ) : (
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: 99, border: `1.5px solid ${MUTED}`, boxSizing: 'border-box', flexShrink: 0 }} />
-                        <span style={{ color: MUTED }}>{m.rank ? `Outbid · #${m.rank}` : 'Outbid'}</span>
+                        <span style={{ color: MUTED }}>{r.inactive ? 'Stopped' : m.rank ? `Outbid · #${m.rank}` : 'Outbid'}</span>
                       </>
                     )}
                   </span>
@@ -489,7 +493,9 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
                 <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: 12.5, color: cpm != null ? TEXT2 : MUTED }}>{cpm != null ? `$${cpm.toFixed(2)}` : '-'}</span>
 
                 <span style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                  {m.isTop ? (
+                  {r.inactive ? (
+                    <button onClick={() => onAddFunds(m, r.own)} style={ghostAction}>Reactivate</button>
+                  ) : m.isTop ? (
                     rent && r.own
                       ? <button onClick={() => onChangeBid(m as MyMessage)} style={ghostAction}>Change Bid</button>
                       : <button onClick={() => onAddFunds(m, r.own)} style={ghostAction}>Add Funds</button>

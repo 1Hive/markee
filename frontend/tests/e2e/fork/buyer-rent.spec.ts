@@ -58,3 +58,19 @@ test('cancel the stream', async ({ page }) => {
   await openBuyerHub(page)
   await expect(messageRow(page, EDITED).getByText('Stream ended')).toBeVisible({ timeout: TX_TIMEOUT })
 })
+
+test('an owned message with no funding stays in the hub, last, with Reactivate', async ({ page }) => {
+  // "e2e move from" lost its only stream to the move above.
+  await openBuyerHub(page)
+  const row = messageRow(page, 'e2e move from')
+  await expect(row.getByText('Stopped')).toBeVisible({ timeout: TX_TIMEOUT })
+  await expect(page.locator('.acct-row').last()).toContainText(/e2e (move from|rent edited)/)
+
+  await row.getByRole('button', { name: 'Reactivate' }).click()
+  await page.getByRole('button', { name: 'Review Payment Info' }).click()
+  await page.getByRole('button', { name: 'Confirm Payment' }).click()
+  await expect(page.getByText(/^Success! Your (stream moved to this message|message is live)/)).toBeVisible({ timeout: TX_TIMEOUT })
+
+  await openBuyerHub(page)
+  await expect(messageRow(page, 'e2e move from').getByRole('button', { name: 'Reactivate' })).toHaveCount(0)
+})
