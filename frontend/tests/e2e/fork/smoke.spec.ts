@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
+import { E2E_ACCOUNT } from './env'
 
-// Anvil's first default account, the mock wallet's address (see stubs/privy-wagmi.tsx).
-const ACCOUNT_SHORT = '0xf39F…2266'
+// How the dashboard abbreviates the mock wallet's address.
+const ACCOUNT_SHORT = `${E2E_ACCOUNT.slice(0, 6)}…${E2E_ACCOUNT.slice(-4)}`
 
 test('dashboard opens connected to the mock wallet on the fork', async ({ page }) => {
   await page.goto('/account?section=buyer')

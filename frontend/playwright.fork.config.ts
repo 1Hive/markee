@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
-import { ANVIL, APP_PORT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './tests/e2e/fork/env'
+import { ANVIL, APP_PORT, E2E_ACCOUNT, E2E_KEEPER_KEY, E2E_MNEMONIC, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './tests/e2e/fork/env'
 
 // End-to-end tests against a local fork of Base: real contracts, a mock wallet that never asks
 // anyone to sign (Anvil signs for its unlocked test account), and local Redis in place of Vercel KV.
@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `anvil --fork-url ${FORK_RPC} --fork-block-number ${FORK_BLOCK} --port 8545 --silent`,
+      command: `anvil --fork-url ${FORK_RPC} --fork-block-number ${FORK_BLOCK} --mnemonic "${E2E_MNEMONIC}" --port 8545 --silent`,
       port: 8545,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -53,7 +53,11 @@ export default defineConfig({
       timeout: 240_000,
       env: {
         NEXT_PUBLIC_E2E: '1',
+        NEXT_PUBLIC_E2E_ACCOUNT: E2E_ACCOUNT,
         NEXT_DIST_DIR: '.next-e2e',
+        // Lets the specs trigger cron routes (streaming keeper) themselves.
+        CRON_SECRET: 'e2e',
+        KEEPER_PRIVATE_KEY: E2E_KEEPER_KEY,
         PORT: String(APP_PORT),
         NEXT_PUBLIC_BASE_RPC_URL: ANVIL,
         ALCHEMY_BASE_URL: ANVIL,

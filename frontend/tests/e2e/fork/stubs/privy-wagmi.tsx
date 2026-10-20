@@ -11,8 +11,8 @@ import { mock } from 'wagmi/connectors'
 import type { Chain } from 'viem'
 
 const RPC = process.env.NEXT_PUBLIC_BASE_RPC_URL ?? 'http://127.0.0.1:8545'
-// Anvil's first default account: pre-funded and unlocked on every Anvil instance.
-const ACCOUNT = (process.env.NEXT_PUBLIC_E2E_ACCOUNT ?? '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266') as `0x${string}`
+// The first account of the E2E mnemonic (tests/e2e/fork/env.ts), unlocked and funded by Anvil.
+const ACCOUNT = process.env.NEXT_PUBLIC_E2E_ACCOUNT as `0x${string}`
 
 export function createConfig(params: CreateConfigParameters) {
   const chains = params.chains.map(c => ({ ...c, rpcUrls: { ...c.rpcUrls, default: { http: [RPC] } } })) as unknown as readonly [Chain, ...Chain[]]

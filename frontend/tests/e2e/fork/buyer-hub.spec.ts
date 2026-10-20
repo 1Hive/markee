@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isolateChain } from './support'
 
 // The three bids from manual testing, made through the real buy modals against the fork, then
 // checked in the Buyer Hub's Your Messages table. Boards exist on Base at the pinned fork block.
@@ -23,6 +24,7 @@ async function openBuyModal(page: Page, board: string) {
 
 // Tests run in file order (workers: 1, not fully parallel): the three bids first, then the checks.
 // Not serial mode: each Buyer Hub check should report on its own instead of skipping the rest.
+isolateChain({ serial: false })
 
 test.describe('bids show up in the Buyer Hub', () => {
   test('buy a message on a For Sale board', async ({ page }) => {

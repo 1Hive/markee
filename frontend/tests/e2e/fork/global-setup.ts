@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { encodeFunctionData, parseAbi, parseEther } from 'viem'
-import { ANVIL, APP_PORT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './env'
+import { ANVIL, APP_PORT, E2E_ACCOUNT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './env'
 
 // Every run starts from the same chain state and an empty KV, even when Playwright reuses an Anvil
 // and Redis left running by an earlier run (reuseExistingServer outside CI).
@@ -10,10 +10,9 @@ import { ANVIL, APP_PORT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './env'
 // every storage slot Anvil has already pulled from the upstream RPC, so the next run's first
 // transaction re-fetches hundreds of slots and can take minutes. A revert keeps that cache warm.
 const SNAPSHOT_FILE = join(__dirname, '.anvil-snapshot')
-const E2E_ACCOUNT = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
 const FOR_SALE_BOARD = '0xa52EB22029677029D4e609aD5e54ca6552c0B31F'
 
-async function rpc(method: string, params: unknown[]) {
+async function rpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
   const res = await fetch(ANVIL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
   const body = await res.json()
   if (body.error) throw new Error(`${method}: ${body.error.message}`)
@@ -21,6 +20,10 @@ async function rpc(method: string, params: unknown[]) {
 }
 
 export default async function globalSetup() {
+  const accounts = await rpc<string[]>('eth_accounts', [])
+  if (!accounts.map(a => a.toLowerCase()).includes(E2E_ACCOUNT.toLowerCase())) {
+    throw new Error(`Anvil on ${ANVIL} doesn't have the E2E account unlocked: it was started without the E2E mnemonic. Stop it and let Playwright start it (see playwright.fork.config.ts).`)
+  }
   const saved = existsSync(SNAPSHOT_FILE) ? readFileSync(SNAPSHOT_FILE, 'utf8').trim() : null
   // evm_revert returns false (or errors) when this Anvil never took that snapshot, e.g. it restarted.
   const reverted = saved ? await rpc('evm_revert', [saved]).catch(() => false) : false
