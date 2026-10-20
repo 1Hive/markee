@@ -105,7 +105,8 @@ export async function POST(req: NextRequest) {
     await kv.set(notifyStateKey(wallet), notifyState)
 
     const token = randomBytes(32).toString('hex')
-    const origin = req.headers.get('origin') ?? req.headers.get('x-forwarded-host') ?? 'https://markee.xyz'
+    // The deployment's own origin, as the moderators route uses -- not the caller's Origin header.
+    const origin = req.nextUrl.origin
     const verifyUrl = `${origin}/api/moderation/notify/verify?token=${token}`
     await kv.set(verifyTokenKey(token), { wallet, email }, { ex: VERIFY_TOKEN_TTL })
     await sendVerificationEmail(email, wallet, verifyUrl).catch(e => {

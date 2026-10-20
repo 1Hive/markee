@@ -67,34 +67,34 @@ export async function POST(req: NextRequest) {
     const ids = markeeIds ?? (markeeId ? [markeeId] : [])
 
     if (ids.length === 0 || !chainId || !action || !adminAddress || !signature || !timestamp) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: CORS })
     }
     if (!ACTIONS.includes(action)) {
-      return NextResponse.json({ error: 'Invalid action. Use "flag", "unflag" or "approve".' }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid action. Use "flag", "unflag" or "approve".' }, { status: 400, headers: CORS })
     }
     if (ids.length > MAX_REVIEW_BATCH || ids.some(id => !ADDRESS_PATTERN.test(id))) {
-      return NextResponse.json({ error: 'Invalid markee ids' }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid markee ids' }, { status: 400, headers: CORS })
     }
     if (!ADDRESS_PATTERN.test(adminAddress)) {
-      return NextResponse.json({ error: 'Invalid admin address' }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid admin address' }, { status: 400, headers: CORS })
     }
 
     // Reject signatures older than 5 minutes
     const now = Math.floor(Date.now() / 1000)
     if (Math.abs(now - timestamp) > 300) {
-      return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
+      return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
     }
 
     // Verify the caller actually controls the wallet they claim
     const message = reviewMessage(action, chainId, ids, timestamp)
     const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
     if (!valid) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
     }
 
     const { scopes, boardMap } = await authorizedScopes(adminAddress, ids)
     if (ids.some(id => !scopes.has(id.toLowerCase()))) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403, headers: CORS })
     }
 
     const items = await readItems(ids)
@@ -148,9 +148,9 @@ export async function POST(req: NextRequest) {
       keys: ids.map(flagKey),
       flagged: board,
       siteFlagged: site,
-    })
+    }, { headers: CORS })
   } catch (error) {
     console.error('[moderation] POST error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: CORS })
   }
 }

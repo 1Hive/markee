@@ -169,13 +169,8 @@ export async function POST(req: NextRequest) {
     await kv.set(moderatorsKey(board), next)
     await clearModeratedBoards()
 
-    // Fetch board name for verification emails (best-effort — use board address as fallback).
+    // Board name for verification emails: the address unless the moderated boards listing names it.
     let boardName = board
-    try {
-      const state = await boardState(board)
-      boardName = board // state doesn't return name; the board address is the canonical identifier
-      void state // satisfy lint
-    } catch { /* ignore */ }
 
     // Send verification emails to newly added moderators that have an email address.
     const origin = req.nextUrl.origin
