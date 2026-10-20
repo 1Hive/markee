@@ -94,3 +94,27 @@ export async function openBuyerHub(page: Page) {
 export function messageRow(page: Page, text: string) {
   return page.locator('.acct-row', { hasText: text })
 }
+
+// Makes the next transaction the app sends revert on-chain, after the wallet has estimated it fine:
+// with automine off, `submit` sends it into the pool, the contract it calls gets code that always
+// reverts for the one block that mines it, then gets its own code back. This is the path where a
+// receipt comes back reverted, which a gas-estimation failure never reaches.
+export async function revertNextTx(submit: () => Promise<void>) {
+  type Pool = { pending: Record<string, Record<string, { to: string }>> }
+  await rpc('evm_setAutomine', [false])
+  try {
+    await submit()
+    let target: string | undefined
+    await expect.poll(async () => {
+      const pool = await rpc<Pool>('txpool_content')
+      target = Object.values(pool.pending).flatMap(byNonce => Object.values(byNonce))[0]?.to
+      return target
+    }, { timeout: TX_TIMEOUT }).toBeTruthy()
+    const code = await rpc<string>('eth_getCode', [target, 'latest'])
+    await rpc('anvil_setCode', [target, '0x60006000fd']) // PUSH1 0 PUSH1 0 REVERT
+    await rpc('evm_mine')
+    await rpc('anvil_setCode', [target, code])
+  } finally {
+    await rpc('evm_setAutomine', [true])
+  }
+}
