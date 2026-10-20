@@ -5,11 +5,15 @@ on:
     branches:
       - main
       - dev
-  # The deploy workflows run these same checks before they deploy.
-  workflow_call:
+  # Vercel deploys main and dev itself; Vercel's Deployment Checks hold the production deploy
+  # until these checks pass on the pushed commit.
+  push:
+    branches:
+      - main
+      - dev
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

@@ -1,10 +1,4 @@
 {
-  "git": {
-    "deploymentEnabled": {
-      "main": false,
-      "dev": false
-    }
-  },
   "crons": [
     {
       "path": "/api/cron/superfluid-streaming-points",
