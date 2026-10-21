@@ -18,8 +18,8 @@ import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
-import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, viewReporting, viewReportingTip, type BoardIntegrations } from '@/lib/integrations/featured'
-import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, AMBER } from '@/lib/design-tokens'
+import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, viewReporting, type BoardIntegrations } from '@/lib/integrations/featured'
+import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
 export const BOARD_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
@@ -286,13 +286,14 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
   )
 }
 
-// A site's view count, or an eye-off icon when its embed isn't reporting views (lib/integrations/featured.ts).
+// A site's view count. On this public page a site that has never reported a view gets a quiet
+// eye-off icon explaining why it reads 0; the creator-facing warnings live in the Creator Hub.
+const NO_VIEWS_TIP = 'No views recorded from this site. It might not have view tracking turned on.'
 function SiteViews({ info, itemKey, views, loaded }: { info?: BoardIntegrations; itemKey: string; views: number; loaded: boolean }) {
-  const state = viewReporting(info, itemKey)
-  const tip = viewReportingTip(state, info?.lastView[itemKey])
+  const none = viewReporting(info, itemKey) === 'none'
   return (
-    <span title={tip ?? undefined} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: tip ? AMBER : MUTED }}>
-      {tip ? <EyeOff size={10} aria-label={tip} /> : <Eye size={10} style={{ opacity: 0.7 }} />} {loaded ? formatViews(views) : <ViewsSpinner size={9} />}
+    <span title={none ? NO_VIEWS_TIP : undefined} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
+      {none ? <EyeOff size={10} style={{ opacity: 0.7 }} aria-label={NO_VIEWS_TIP} /> : <Eye size={10} style={{ opacity: 0.7 }} />} {loaded ? formatViews(views) : <ViewsSpinner size={9} />}
     </span>
   )
 }
