@@ -2,12 +2,12 @@
 
 An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The SDK knows the Markee API endpoint; the host only supplies its placement and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
 
-This is an experimental `0.1.0-alpha.3` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
+This is an experimental `0.1.0-alpha.4` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
 
 Install the alpha:
 
 ```sh
-npm install @markee_team/sdk@alpha
+npm install @markee_team/sdk@latest
 ```
 
 Use React 18 or 19 for the optional React entry point. The plain JavaScript entry point does not require React. Both TypeScript bundler and NodeNext resolution are supported.
@@ -146,69 +146,58 @@ No API URL configuration is required. This alpha uses the Markee staging API at 
 Copy this prompt into your coding assistant. It gathers missing requirements before implementing the integration.
 
 ```text
-Integrate @markee_team/sdk@latest into this app. Inspect the app first and
+Integrate @markee_team/sdk@latest into this app. Inspect the codebase first and
 follow its existing framework, styling, and wallet patterns. Read the installed
-release README and types to verify current features and integration requirements.
+package README and types for current capabilities.
 
-Before changing code, inspect what is already available, then ask me the unanswered
-questions below in one concise group. Do not ask again for facts already provided.
-Wait for answers about strategy, placement, and intended scope before implementing.
+Before implementing, ask me to create my leaderboard on Markee at
+https://www.markee.xyz/create-a-markee, then provide its resulting Markee page link.
+If I already have a leaderboard, ask for that link instead; do not create a duplicate.
+Example link format:
+https://www.markee.xyz/markee/0x6ceBC87DE40519Fa52fc40a1d49f16FF968bb439
+Never silently substitute a demo board. Wait for my link before wiring the placement.
 
-1. Choose exactly one strategy: For Sale (one-time funding) or For Rent
-   (recurring streaming payments). Do not offer or implement both.
-2. Is this a proof of concept or an integration with your own Markee placement?
-   For your own placement, what are the chain ID and board address, or the Gardens
-   community address and chain ID? If unknown, ask for the existing Markee/Gardens
-   link so we can identify and verify the placement. Never invent an address or
-   assume a board supports the chosen strategy. Offer demo boards only with consent;
-   explain that they use real Base funds, not a sandbox. If no placement exists,
-   identify that prerequisite instead of silently substituting a demo board.
-3. Where should Markee appear (page/component), what should open the modal, and
-   what should the button say? Is the placement fixed or selected per community?
-4. Should we reuse the app's existing connected wallet or use SDK wallet discovery?
-   Inspect the installed connector first. If a new host wallet connector is needed,
-   ask which one; do not install ConnectKit automatically.
-5. Should the modal match the app's theme, or use specific light/dark/system mode,
-   brand colors, font, and corner radius? Suggest the existing app theme by default.
-6. After a confirmed transaction, should the app show a message, refresh data,
-   navigate, or notify an existing callback? Are there accessibility, mobile, or
-   framework constraints not evident from the code?
+Extract the board address from the /markee/<address> path. Validate the Markee URL
+and the address (0x followed by 40 hexadecimal characters). Markee website boards
+currently use Base, chain ID 8453. Verify the board through the SDK snapshot API;
+if verification fails, explain the error and ask for a corrected link.
 
-Explain that this alpha uses a built-in staging API and supports wallet-funded
-flows; card checkout and incoming bridging are unavailable. If either is required,
-ask whether to proceed with the supported scope instead of promising those features.
-Summarize the agreed requirements and implement only the selected strategy.
+Do not ask me to choose For Sale or For Rent in the host app. That choice is made
+when creating the leaderboard on Markee. The API returns strategy and the SDK
+adapts the modal automatically. Do not add a strategy prop, toggle, or hardcoded mode.
 
-- Install @markee_team/sdk@latest. The SDK knows its API endpoint. Do not
-  request an API URL, build an API proxy, or add RPC/database/provider keys.
-- For React 18/19, import MarkeeModal from @markee_team/sdk/react in a client
-  component and supply open, onClose, and placement. For other apps, import
-  createMarkee from @markee_team/sdk, call createMarkee(), then open({ placement }).
-  Close the instance on teardown. Reuse the built-in modal UI.
-- Use the agreed placement and strategy. Only if I explicitly choose a demo, use
-  the corresponding existing Base board below (use only the chosen strategy):
-  For Sale: { kind: 'board', chainId: 8453,
-    address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' }
-  For Rent: { kind: 'board', chainId: 8453,
-    address: '0x82cbe3BdFC4e01940D186Ac5EA151355647DE0d3' }
-- Wallet integration is optional. Reuse the app's selected EIP-1193 provider via
-  wallet.getProvider(): Promise<provider | null> and optional
-  wallet.connect(): Promise<provider>. For ConnectKit/wagmi, use the active
-  connector's provider, resolve connect after selection, and reject cancellation.
-  Do not create a second wallet context or silently select another injected wallet.
-  If there is no existing wallet integration, omit wallet for SDK wallet discovery.
-- Match the app using theme: mode ('light', 'dark', 'system'), fontFamily, radius,
-  and semantic colors such as primary and primaryText. Preserve the built-in
-  layout and its isolated Shadow DOM styles.
-- Optionally handle onEvent and show success only for a confirmed event. Let the
-  SDK handle payment review, chain switching, submission, and verification.
-  Do not advertise card checkout or incoming bridging: this alpha lacks those
-  features. The demo boards use real Base funds.
-- Run typecheck/build and verify the selected modal flows load without API configuration,
-  open/close correctly, and match the theme. Verify host wallet reuse if available.
-  Do not sign or submit transactions during automated verification. Report changed
-  files, checks, and remaining limitations.
+Ask only the remaining unanswered requirements in one concise group:
+- Where should Markee appear, what opens the modal, and what should the button say?
+- Should it reuse the app's existing wallet or use SDK wallet discovery? Inspect
+  existing connectors first; do not add a second wallet context or install a new
+  connector without agreement.
+- Should the modal match the app theme or use specific colors, font, radius, and
+  light/dark/system mode?
+- What should happen after a confirmed transaction: notification, refresh,
+  navigation, or callback? Are there additional mobile/accessibility requirements?
 
-This alpha automatically uses Markee's temporary staging backend. Read the installed
-package README for exact types and configuration details.
+Then implement the agreed scope:
+1. Install @markee_team/sdk@latest. No API URL or Markee API key is required.
+   Do not create an API proxy or add RPC/database credentials.
+2. Use placement = { kind: 'board', chainId: 8453, address: extractedAddress }.
+   Use new MarkeeClient().snapshot(placement) to verify the board and read strategy,
+   name, minimum, and other metadata. The modal performs its own snapshot loading;
+   do not recreate that loading or strategy logic in the host app.
+3. For React, use MarkeeModal from @markee_team/sdk/react in a client component
+   with open, onClose, and placement. Otherwise use createMarkee() from
+   @markee_team/sdk, then open({ placement }); close it on teardown.
+4. If a host wallet exists, pass its selected EIP-1193 provider through the wallet
+   adapter. For ConnectKit/wagmi use the active connector. Resolve connect after
+   selection, reject cancellation, and do not silently switch wallet providers.
+   Otherwise omit wallet and use SDK wallet discovery.
+5. Apply theme options while preserving the built-in modal layout. Handle onEvent
+   if needed; show success only for a confirmed event. Let the SDK manage review,
+   network switching, submission, and verification.
+6. Verify build/types, loading of the supplied board, automatic strategy selection,
+   open/close behavior, theme, and wallet reuse. Do not sign or send transactions
+   during automated verification. Report changed files, checks, and limitations.
+
+Check the installed release's limitations before promising features. This release
+uses Markee's staging backend and supports wallet-funded flows; card checkout and
+incoming bridging are not yet available. Transactions use real funds.
 ```
