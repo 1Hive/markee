@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createSession, expireHostOnlyCookie, SESSION_COOKIE, SESSION_MAX_AGE, sessionCookieOptions } from '@/lib/github/session'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 // Popup-mode response: postMessage the result back to the window that opened us, then close --
 // used instead of a redirect so the host page (which may have this open from inside a modal) never
 // navigates away. targetOrigin is set explicitly (not '*') since this carries the connected login.
@@ -62,15 +65,15 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   // Used only for early-exit errors before we can read siteOrigin from state.
-  const fallbackBase = `${process.env.NEXT_PUBLIC_SITE_URL}/ecosystem/platforms/github`
+  const fallbackBase = `${process.env.NEXT_PUBLIC_SITE_URL}/account?section=creator`
 
   if (!code || !state) {
-    return NextResponse.redirect(`${fallbackBase}?error=missing_params`)
+    return NextResponse.redirect(`${fallbackBase}&error=missing_params`)
   }
 
   const raw = await kv.getdel(`github:oauth:state:${state}`)
   if (!raw) {
-    return NextResponse.redirect(`${fallbackBase}?error=invalid_state`)
+    return NextResponse.redirect(`${fallbackBase}&error=invalid_state`)
   }
 
   let returnTo = ''
@@ -93,7 +96,8 @@ export async function GET(request: NextRequest) {
     siteOrigin = requestOrigin
   }
 
-  const base = `${siteOrigin}/ecosystem/platforms/github`
+  // With no returnTo, land on the Creator Hub, where each board's Manage drawer lists its GitHub files.
+  const base = `${siteOrigin}/account?section=creator`
 
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -109,7 +113,7 @@ export async function GET(request: NextRequest) {
   if (tokenData.error || !tokenData.access_token) {
     return popup
       ? popupResponse({ success: false, error: 'GitHub sign-in failed.' }, siteOrigin)
-      : NextResponse.redirect(`${base}?error=token_exchange_failed`)
+      : NextResponse.redirect(`${base}&error=token_exchange_failed`)
   }
 
   const userRes = await fetch('https://api.github.com/user', {
@@ -119,7 +123,7 @@ export async function GET(request: NextRequest) {
   if (!user.id) {
     return popup
       ? popupResponse({ success: false, error: 'Could not read your GitHub account.' }, siteOrigin)
-      : NextResponse.redirect(`${base}?error=user_fetch_failed`)
+      : NextResponse.redirect(`${base}&error=user_fetch_failed`)
   }
 
   await kv.set(
@@ -136,11 +140,9 @@ export async function GET(request: NextRequest) {
   const response = popup
     ? popupResponse({ success: true, login: user.login }, siteOrigin)
     : NextResponse.redirect(
-        returnTo === 'modal'
-          ? `${base}?modal=create`
-          : returnTo
-            ? `${siteOrigin}${returnTo}`
-            : base
+        returnTo && returnTo !== 'modal'
+          ? `${siteOrigin}${returnTo}`
+          : base
       )
 
   const sessionId = await createSession(user.id)

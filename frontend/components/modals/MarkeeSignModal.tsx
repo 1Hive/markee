@@ -9,12 +9,12 @@ import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
@@ -230,7 +230,7 @@ function ReceiveCard({ amount, compact = true }: { amount: string; compact?: boo
 
 // Views (left) / "- author" + YOU badge (right). Shared by the leaderboard row and the
 // current-message preview boxes in Add Funds / Edit Message.
-function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: string }) {
+function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: MUTED, fontSize: 11.5, flexShrink: 0 }}>
@@ -287,7 +287,7 @@ function SignRow({
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={subtitle} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{eth} ETH</span>
@@ -344,7 +344,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id,
@@ -410,6 +410,11 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   useEffect(() => {
     if (writeError) logTransactionError(writeError, 'MarkeeSignModal')
   }, [writeError])
+
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash && isOpen) setError(formatReceiptError(receiptError, 'MarkeeSignModal.receipt'))
+  }, [txReverted, hash, isOpen, receiptError])
 
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep
@@ -546,7 +551,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   useEffect(() => {
     if (!isOpen || !initialTargetAddress || !initialView || appliedInitialTargetRef.current) return
     const m = markees.find(x => x.address.toLowerCase() === initialTargetAddress.toLowerCase())
-    if (!m) return
+    // Rows arrive before their per-markee reads (message, owner); opening on one of those would
+    // keep a blank copy ("Loading message…", no owner-only controls) since target isn't refreshed.
+    if (!m || !m.owner) return
     appliedInitialTargetRef.current = true
     if (initialView === 'addFunds') openFund(m)
     else openEdit(m)
@@ -822,7 +829,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       <MessageMeta
                         views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                         isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                        authorLabel={target.name || fmtAddr(target.owner)}
+                        authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                       />
                     </div>
                   </div>
@@ -866,7 +873,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                         <MessageMeta
                           views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                           isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                          authorLabel={target.name || fmtAddr(target.owner)}
+                          authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                         />
                       </div>
                     </div>

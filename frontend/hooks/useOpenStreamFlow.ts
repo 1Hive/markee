@@ -13,7 +13,7 @@ import {
   STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import { retryUntilLoaded } from '@/components/modals/StreamUI'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -32,7 +32,8 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
+    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   // Lets the async flow bail out after each await if the caller closed the modal meanwhile.
   const openRef = useRef(isOpen)
@@ -63,6 +64,14 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
       setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
+
+  // A reverted batch otherwise leaves the modal on "Confirming" with no error (same as useCreateStreamFlow).
+  useEffect(() => {
+    if (txReverted && txHash && isOpen) {
+      setSubmitting(false)
+      setError(formatReceiptError(receiptError, 'useOpenStreamFlow.receipt'))
+    }
+  }, [txReverted, txHash, isOpen, receiptError])
 
   async function openStream(calc: OpenStreamCalc, opts: { belowMin: boolean; minMonthlyEth: string }) {
     setError(null)

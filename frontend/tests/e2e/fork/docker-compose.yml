@@ -1,0 +1,15 @@
+# Local stand-in for Vercel KV: Redis behind serverless-redis-http, which speaks the Upstash REST
+# protocol @vercel/kv uses. Started by playwright.fork.config.ts.
+services:
+  redis:
+    image: redis:7.2-alpine
+  kv:
+    image: hiett/serverless-redis-http:latest
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: e2e
+      SRH_CONNECTION_STRING: redis://redis:6379
+    ports:
+      - "8079:80"
+    depends_on:
+      - redis

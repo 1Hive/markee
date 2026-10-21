@@ -5,155 +5,38 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { Globe2, Github, Zap, Pencil, ChevronDown, Info, Menu } from 'lucide-react'
+import { Globe2, Github, Zap, Info } from 'lucide-react'
+import { useSignMessage } from 'wagmi'
+import { MODERATION_API } from '@/lib/moderation/config'
+import { notifyEmailMessage, notifyPrefsMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
+import type { ActivityEvent } from '@/lib/activity/events'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { EditMessageModal } from '@/components/modals/EditMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { StreamSignModal } from '@/components/modals/StreamSignModal'
-import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
-import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
-import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
-import { type StreamStatus, streamStatusOf, StreamStatusIcon } from '@/components/board-detail/shared'
-import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
-import { logoDevUrl, formatUsd } from '@/lib/utils'
-import { formatEther } from 'viem'
-import { LeaderboardV11ABI, StreamingLeaderboardABI } from '@/lib/contracts/abis'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { runwaySeconds, runwayTier } from '@/lib/superfluid/streaming'
+import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, LAVENDER, HERO_BG, CARD_BG } from '@/lib/design-tokens'
+import type { BaseLeaderboard, LinkedFile, SuperfluidLeaderboard, GithubLeaderboard, WebsiteLeaderboard, AnyLeaderboard, MyMessage, FundedMessage } from '@/components/account/types'
+import { ToastProvider, useToast } from '@/components/account/Toast'
+import { YourMarkees, compareByRaised } from '@/components/account/CreatorHub'
+import { ManageDrawer } from '@/components/account/ManageDrawer'
+import { BestBuys, StreamBalanceCard, YourMessages, useStreamSnapshot, winningRate, winPrice } from '@/components/account/BuyerHub'
+import { NeedsAttention } from '@/components/account/NeedsAttention'
+import { LatestActivity } from '@/components/account/ActivityFeed'
+import { fmtAddr, GlowDot, PanelHead, WalletPending } from '@/components/account/primitives'
+import { formatUsd } from '@/lib/utils'
+import { ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
+import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import type { Abi } from 'viem'
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const SANS   = 'Manrope, system-ui, sans-serif'
-const PURP   = '#7B6AF4'
-const GOLD   = '#FFD45E'
-const SILVER = '#C7CCD6'
-const BRONZE = '#CD7F32'
-const AMBER  = '#FFB020'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface BaseLeaderboard {
-  address: string
-  name: string
-  totalFunds: string
-  totalFundsRaw: string
-  markeeCount: number
-  admin: string
-  // Address-resolved creator (lib/leaderboards/resolveCreators.ts) -- distinct from admin, which for
-  // some platforms (Superfluid) is the beneficiary, and for migrated boards is the Cooperative
-  // multisig, not whoever actually created the board. Populated for superfluid/github/openinternet/
-  // forsale; streaming boards have no separate creator resolution, so callers fall back to admin
-  // (matches the existing lb.creator ?? lb.admin convention already used elsewhere on this page).
-  creator?: string | null
-  topMessage: string | null
-  topMessageOwner?: string | null
-  // Address of the top markee slot itself (distinct from `address`, the leaderboard/board contract) --
-  // already returned by every platform's leaderboards API, just not previously typed here. Needed as
-  // the markeeId for moderation (ModeratedContent/FlagButton key flagged state per-markee, not per-board).
-  topMarkeeAddress?: string | null
-  topFundsAddedRaw: string
-  topRateRaw?: string
-  minimumPriceRaw?: string
-  strategy?: 'fixed' | 'streaming'
-  // Verification is address-based, not platform-based -- a streaming board can be integrated on a
-  // website, GitHub, both, or neither, independent of its on-chain platform tag. Populated for every
-  // board (any platform) from /api/account/verification-status, not just website/github-tagged ones.
-  verifiedUrls?: string[]
-  linkedFiles?: LinkedFile[]
-  // Set on boards from the shared "For Sale" factory (see /api/forsale/leaderboards) -- unlike the
-  // three legacy per-vertical factories, there's no migration history to exempt these from needing a
-  // verified integration to reach "Active Markees".
-  verificationGated?: boolean
-}
-interface SuperfluidLeaderboard extends BaseLeaderboard { platform: 'superfluid' }
-interface LinkedFile {
-  repoFullName: string
-  repoOwner: string
-  repoName: string
-  repoAvatarUrl: string
-  repoHtmlUrl: string
-  filePath: string
-  verified: boolean
-}
-
-interface GithubLeaderboard extends BaseLeaderboard {
-  platform: 'github'
-  repoFullName: string | null
-  repoAvatarUrl: string | null
-  repoHtmlUrl: string | null
-  filePath: string | null
-  linkedFiles: LinkedFile[]
-}
-interface WebsiteLeaderboard extends BaseLeaderboard {
-  platform: 'website'
-  creator: string | null
-  logoUrl: string | null
-  siteUrl: string | null
-  verifiedUrl: string | null
-  verifiedUrls: string[]
-  status: 'pending' | 'verified'
-  isLegacy: boolean
-  slug?: string
-}
-type AnyLeaderboard = SuperfluidLeaderboard | GithubLeaderboard | WebsiteLeaderboard
-
-interface MyMessage {
-  address: string
-  message: string
-  name: string
-  totalFundsAdded: bigint
-  createdAt: number
-  strategyId: string
-  strategyName: string
-  isTop: boolean
-  topFunds: bigint
-  strategy?: 'fixed' | 'streaming'
-  rank?: number | null
-  flowRateRaw?: string
-  // Legacy TopDawg (subgraph-sourced) vs v1.x LeaderboardFactory (RPC-sourced) — determines
-  // whether MarkeeSignModal's RPC-only useLeaderboardDetail can safely target this markee's board.
-  isLegacy: boolean
-  // Verification data for the leaderboard this message lives on -- absent for legacy
-  // subgraph-sourced rows (the subgraph query doesn't carry it), which just fall back to the
-  // "Add to Your Site" / blank state like any other missing-data default in this file.
-  platform?: string | null
-  admin?: string | null
-  verifiedUrls?: string[]
-  linkedFiles?: LinkedFile[]
-  siteUrl?: string | null
-  repoFullName?: string | null
-  repoHtmlUrl?: string | null
-}
-
-interface FundedMessage {
-  address: string
-  message: string
-  name: string
-  totalFundsAdded: string
-  totalContributed: string
-  strategyId: string
-  strategyName: string
-  isTop: boolean
-  topFundsRaw: string
-  strategy?: 'fixed' | 'streaming'
-  rank?: number | null
-  flowRateRaw?: string
-  platform?: string | null
-  admin?: string | null
-  verifiedUrls?: string[]
-  linkedFiles?: LinkedFile[]
-  siteUrl?: string | null
-  repoFullName?: string | null
-  repoHtmlUrl?: string | null
-}
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 const MY_MESSAGES_QUERY = `
@@ -198,10 +81,6 @@ function fmtEth(wei: bigint) {
   return `${n.toFixed(3)} ETH`
 }
 
-function fmtAddr(a: string) {
-  if (!a || a.length < 10) return a
-  return `${a.slice(0, 6)}…${a.slice(-4)}`
-}
 
 function platformColor(lb: AnyLeaderboard) {
   if (lb.platform === 'github')     return TEXT2
@@ -233,27 +112,7 @@ function detailUrl(lb: AnyLeaderboard) {
 }
 
 // Extract hostname from a URL for use with logo.dev. Returns null if unparseable.
-function getLogoDomain(url: string | null): string | null {
-  if (!url) return null
-  try { return new URL(url).hostname } catch { return null }
-}
-
 // Company logo via logo.dev CDN. Falls back to 🪧 if the image fails to load.
-function LogoIcon({ domain, size = 14 }: { domain: string; size?: number }) {
-  const [failed, setFailed] = useState(false)
-  if (failed) return <span style={{ fontSize: size, lineHeight: 1 }}>🪧</span>
-  return (
-    <Image
-      src={logoDevUrl(domain)}
-      alt={`${domain} logo`}
-      width={size}
-      height={size}
-      style={{ objectFit: 'contain', borderRadius: 2 }}
-      onError={() => setFailed(true)}
-    />
-  )
-}
-
 // ── Platform icon ─────────────────────────────────────────────────────────────
 function PlatIcon({ lb, size = 20 }: { lb: AnyLeaderboard; size?: number }) {
   if (lb.platform === 'github')     return <Github size={size} style={{ color: TEXT2 }} />
@@ -262,9 +121,6 @@ function PlatIcon({ lb, size = 20 }: { lb: AnyLeaderboard; size?: number }) {
 }
 
 // ── Overview stats ────────────────────────────────────────────────────────────
-function GlowDot({ size = 8, color }: { size?: number; color: string }) {
-  return <span style={{ width: size, height: size, borderRadius: 99, background: color, boxShadow: `0 0 ${size * 1.5}px ${color}`, flexShrink: 0, display: 'inline-block' }} />
-}
 
 function InfoTip({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
@@ -307,125 +163,362 @@ function InfoTip({ text }: { text: string }) {
   )
 }
 
-function Overview({ raised, active, bought, contributed, loaded }: { raised: bigint; active: number; bought: number; contributed: bigint; loaded: boolean }) {
-  const cells = [
-    { n: fmtEth(raised),      label: 'total raised',    color: PINK,  tip: 'Funds raised by Markees you created. This is not ETH you spent buying messages.' },
-    { n: String(active),      label: 'active signs',    color: GREEN, tip: 'Your live Markees with funded messages. Website Markees also need a verified integration to count here.' },
-    { n: String(bought),      label: 'messages bought', color: TEXT,  tip: 'Paid messages you own. Zero-fund placeholder Markees are not counted.' },
-    { n: fmtEth(contributed), label: 'contributed',     color: BLUE,  tip: 'Total ETH you put into messages, including messages you bought and messages you funded.' },
-  ]
+function OverviewStatCard({ n, label, color, loaded }: { n: string; label: string; color: string; loaded: boolean }) {
+  if (!loaded) return (
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '14px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
+        <div style={{ width: 80, height: 20, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+      </div>
+      <div style={{ width: 90, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+    </div>
+  )
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-      {loaded ? cells.map((c, i) => (
-        <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <GlowDot size={8} color={c.color} />
-              <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: c.color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{c.n}</span>
-            </div>
-            <InfoTip text={c.tip} />
-          </div>
-          <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600 }}>{c.label}</div>
-        </div>
-      )) : [1, 2, 3, 4].map(i => (
-        <div key={i} style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
-            <div style={{ width: 80, height: 22, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
-          </div>
-          <div style={{ width: 100, height: 13, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
-        </div>
-      ))}
+    <div style={{ background: 'rgba(10,15,61,0.5)', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <GlowDot size={6} color={color} />
+        <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color, letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n}</span>
+      </div>
+      <div style={{ color: TEXT2, fontSize: 13, fontWeight: 600, marginTop: 4 }}>{label}</div>
     </div>
   )
 }
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-type TabId = 'pending' | 'live' | 'archive' | 'bought'
+function Overview({ raised, active, buyerViews, buyerCpm, ethPrice, loaded }: {
+  raised: bigint; active: number; buyerViews: number
+  ethPrice: number | null; buyerCpm: number | null; loaded: boolean
+}) {
+  const raisedUsd = ethPrice ? Number(raised) / 1e18 * ethPrice : null
+  const fmtViews  = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
+  const groupLabel: React.CSSProperties = { fontFamily: MONO, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: LAVENDER, marginBottom: 10, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 7 }
+  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }
+  const group = (tint: string): React.CSSProperties => ({ background: `rgba(${tint},0.02)`, border: `1px solid rgba(${tint},0.08)`, borderRadius: 16, padding: 12 })
 
-function useNarrow() {
-  const [narrow, setNarrow] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)')
-    setNarrow(mq.matches)
-    const on = () => setNarrow(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
-  return narrow
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 20 }}>
+      <div style={group('248,151,254')}>
+        <div style={groupLabel}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 16v5M8 21h8" /></svg>
+          Creator
+        </div>
+        <div style={grid2}>
+          <OverviewStatCard n={String(active)} label="Active Signs" color={GREEN} loaded={loaded} />
+          <OverviewStatCard n={raisedUsd != null ? formatUsd(raisedUsd) : fmtEth(raised)} label="Total Raised" color={PINK} loaded={loaded} />
+        </div>
+      </div>
+      <div style={group('124,156,255')}>
+        <div style={groupLabel}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+          Buyer
+        </div>
+        <div style={grid2}>
+          <OverviewStatCard n={fmtViews(buyerViews)} label="Total Views" color={BLUE} loaded={loaded} />
+          <OverviewStatCard n={buyerCpm != null ? formatUsd(buyerCpm) : '-'} label="Cost per 1k Views" color={TEXT2} loaded={loaded} />
+        </div>
+      </div>
+    </div>
+  )
 }
 
-function Tabs({ tab, setTab, counts }: { tab: TabId; setTab: (t: TabId) => void; counts: { pending: number; live: number; archive: number; bought: number } }) {
-  const narrow = useNarrow()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const items: { key: TabId; label: string; n: number; amber?: boolean; muted?: boolean }[] = [
-    ...(counts.pending > 0 ? [{ key: 'pending' as const, label: 'Pending Setup', n: counts.pending, amber: true }] : []),
-    { key: 'live',  label: 'My Live Markees',        n: counts.live },
-    { key: 'bought', label: "Messages I've Bought",  n: counts.bought },
-    ...(counts.archive > 0 ? [{ key: 'archive' as const, label: 'Archive', n: counts.archive, muted: true }] : []),
-  ]
+// ── Section navigation ────────────────────────────────────────────────────────
+type SectionId = 'feed' | 'creator' | 'buyer' | 'settings'
 
-  if (narrow) {
-    const active = items.find(it => it.key === tab) ?? items[0]
+function SidebarNav({ section, setSection, attentionCount }: { section: SectionId; setSection: (s: SectionId) => void; attentionCount: number }) {
+  const items: { key: SectionId; label: string; icon: React.ReactNode; badge?: number }[] = [
+    {
+      key: 'feed', label: 'Activity Feed', badge: attentionCount > 0 ? attentionCount : undefined,
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+    },
+    {
+      key: 'creator', label: 'Creator Hub',
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>,
+    },
+    {
+      key: 'buyer', label: 'Buyer Hub',
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+    },
+  ]
+  const settingsIcon = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+
+  const btn = (key: SectionId, label: string, icon: React.ReactNode, badge?: number) => {
+    const on = section === key
     return (
-      <div style={{ position: 'relative', borderBottom: `1px solid ${BORDER}` }}>
-        <button
-          onClick={() => setMenuOpen(v => !v)}
-          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 4px', color: TEXT, fontFamily: SANS }}
-        >
-          <Menu size={18} color={MUTED} style={{ flexShrink: 0 }} />
-          <span style={{ fontWeight: 700, fontSize: 15, flex: 1, textAlign: 'left' }}>{active.label}</span>
-          <span style={{ fontFamily: MONO, fontSize: 12, color: active.amber ? AMBER : PINK, background: `${active.amber ? AMBER : PINK}1E`, borderRadius: 99, padding: '1px 8px', flexShrink: 0 }}>{active.n}</span>
-          <ChevronDown size={16} color={MUTED} style={{ flexShrink: 0, transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 140ms' }} />
-        </button>
-        {menuOpen && (
-          <>
-            <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, boxShadow: '0 12px 36px rgba(0,0,0,0.5)', zIndex: 20, overflow: 'hidden' }}>
-              {items.map(it => {
-                const on = tab === it.key
-                const accent = it.amber ? AMBER : it.muted ? MUTED : PINK
-                return (
-                  <button
-                    key={it.key}
-                    onClick={() => { setTab(it.key); setMenuOpen(false) }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: on ? `${accent}0F` : 'transparent', border: 'none', cursor: 'pointer', padding: '12px 16px', color: on ? TEXT : TEXT2, fontWeight: on ? 700 : 500, fontSize: 14, fontFamily: SANS, textAlign: 'left' }}
-                  >
-                    <span style={{ flex: 1 }}>{it.label}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: on ? accent : MUTED, background: on ? `${accent}1E` : `${MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
-                  </button>
-                )
-              })}
-              <Link
-                href="/create-a-markee"
-                style={{ display: 'block', padding: '12px 16px', borderTop: `1px solid ${BORDER}`, color: PINK, fontWeight: 700, fontSize: 14, fontFamily: SANS, textDecoration: 'none' }}
-              >
-                + Create a New Markee
-              </Link>
-            </div>
-          </>
+      <button
+        key={key}
+        onClick={() => setSection(key)}
+        aria-current={on ? 'page' : undefined}
+        className="acct-side-item"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 11, width: '100%',
+          padding: '10px 12px', borderRadius: 8, whiteSpace: 'nowrap',
+          border: 'none', boxShadow: on ? `inset 2px 0 0 ${PINK}` : 'none',
+          background: on ? 'rgba(248,151,254,0.08)' : 'transparent',
+          color: on ? TEXT : TEXT2,
+          fontFamily: SANS, fontSize: 14, fontWeight: on ? 700 : 500,
+          cursor: 'pointer', textAlign: 'left' as const,
+        }}
+      >
+        <span style={{ color: on ? PINK : MUTED, flexShrink: 0 }}>{icon}</span>
+        <span style={{ flex: 1 }}>{label}</span>
+        {badge !== undefined && badge > 0 && (
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: AMBER, background: `${AMBER}24`, borderRadius: 99, padding: '1px 8px', flexShrink: 0 }}>{badge}</span>
         )}
-      </div>
+      </button>
     )
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}`, overflowX: 'auto', overflowY: 'hidden' }}>
-      <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-        {items.map(it => {
-          const on = tab === it.key
-          const accent = it.amber ? AMBER : it.muted ? MUTED : PINK
-          return (
-            <button key={it.key} onClick={() => setTab(it.key)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '14px 18px', color: on ? TEXT : (it.amber ? AMBER : MUTED), fontWeight: on ? 700 : 500, fontSize: 15, fontFamily: SANS, whiteSpace: 'nowrap', borderBottom: `2px solid ${on ? accent : 'transparent'}`, marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {it.label}
-              <span style={{ fontFamily: MONO, fontSize: 12, color: on ? accent : (it.amber ? AMBER : MUTED), background: on ? `${accent}1E` : `${it.amber ? AMBER : MUTED}1E`, borderRadius: 99, padding: '1px 8px' }}>{it.n}</span>
-            </button>
-          )
-        })}
+    <nav className="acct-side" aria-label="Dashboard">
+      {items.map(it => btn(it.key, it.label, it.icon, it.badge))}
+      <div role="separator" className="acct-side-sep" style={{ height: 1, background: BORDER, margin: '10px 12px' }} />
+      {btn('settings', 'Settings', settingsIcon)}
+    </nav>
+  )
+}
+
+// ── Settings section ──────────────────────────────────────────────────────────
+interface NotifyState { email: string | null; verified: boolean; frequency: string; events?: NotifyEvents }
+
+function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      style={{ width: 40, height: 23, borderRadius: 99, border: `1px solid ${on ? 'rgba(248,151,254,0.6)' : BORDER}`, background: on ? 'rgba(248,151,254,0.22)' : 'rgba(138,143,191,0.12)', position: 'relative', cursor: 'pointer', padding: 0, flexShrink: 0, transition: 'background 150ms, border-color 150ms' }}
+    >
+      <span style={{ position: 'absolute', top: 2, left: on ? 19 : 2, width: 17, height: 17, borderRadius: 99, background: on ? PINK : MUTED, transition: 'left 150ms' }} />
+    </button>
+  )
+}
+
+function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
+  const toast = useToast()
+  const { signMessageAsync } = useSignMessage()
+  const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
+  const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
+  const [eventsDraft, setEventsDraft] = useState<NotifyEvents>(() => notifyEventsOf(null))
+  const [editEmail, setEditEmail]     = useState(false)
+  const [emailInput, setEmailInput]   = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [saveError, setSaveError]     = useState<string | null>(null)
+  const [showVerifyBanner, setShowVerifyBanner] = useState(!!verifyOk)
+
+  useEffect(() => {
+    if (verifyOk) { setShowVerifyBanner(true); setTimeout(() => setShowVerifyBanner(false), 6000) }
+  }, [verifyOk])
+
+  useEffect(() => {
+    if (!address) return
+    fetch(`${MODERATION_API}/notify?wallet=${address}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: NotifyState | null) => {
+        if (!data) return
+        setNotifyState(data)
+        setFreqDraft((data.frequency ?? 'daily') as EmailFrequency)
+        setEventsDraft(notifyEventsOf(data))
+        setEditEmail(!data.email)
+      })
+      .catch(() => {})
+  }, [address])
+
+  const savedEmail   = notifyState?.email ?? null
+  const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
+  const emailChanged = editEmail && emailInput.trim().toLowerCase() !== (savedEmail ?? '')
+  const freqChanged  = freqDraft !== savedFreq
+  const savedEvents  = notifyEventsOf(notifyState)
+  const eventsChanged = (Object.keys(savedEvents) as (keyof NotifyEvents)[]).some(k => savedEvents[k] !== eventsDraft[k])
+  const isDirty      = emailChanged || freqChanged || eventsChanged
+  const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())
+
+  const discard = () => {
+    setFreqDraft(savedFreq)
+    setEventsDraft(savedEvents)
+    setEmailInput('')
+    setEditEmail(!savedEmail)
+    setSaveError(null)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      if (emailChanged) {
+        const newEmail = emailInput.trim().toLowerCase()
+        const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp) })
+        const res = await fetch(`${MODERATION_API}/notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: address, email: newEmail, signature: sig, timestamp }),
+        })
+        const body = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+        setNotifyState(prev => ({ ...prev ?? { frequency: freqDraft }, email: body.email, verified: false }))
+        setEmailInput('')
+        setEditEmail(false)
+      }
+      if (freqChanged || eventsChanged) {
+        const ts2 = Math.floor(Date.now() / 1000)
+        const sig2 = await signMessageAsync({ message: notifyPrefsMessage(CANONICAL_CHAIN_ID, address, freqDraft, eventsDraft, ts2) })
+        const res2 = await fetch(`${MODERATION_API}/notify`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: address, frequency: freqDraft, events: eventsDraft, signature: sig2, timestamp: ts2 }),
+        })
+        const body2 = await res2.json().catch(() => null)
+        if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
+        setNotifyState(prev => prev ? { ...prev, frequency: freqDraft, events: eventsDraft } : prev)
+      }
+      toast(emailChanged ? 'Saved · verification email sent' : 'Notification settings saved')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (!/reject|denied/i.test(msg)) setSaveError(msg || 'Could not save. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resendVerification = async () => {
+    if (!savedEmail) return
+    // Re-POST with current email triggers a new verification email
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, savedEmail, timestamp) })
+      await fetch(`${MODERATION_API}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, email: savedEmail, signature: sig, timestamp }),
+      })
+      toast('Verification email re-sent')
+    } catch {
+      // best effort: a rejected or failed resend leaves the Resend link to try again
+    }
+  }
+
+  const ghostBtn: React.CSSProperties = { background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontFamily: SANS, color: TEXT2, cursor: 'pointer' }
+  const off = freqDraft === 'off' || (!savedEmail && !editEmail)
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      {showVerifyBanner && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 10, marginBottom: 16 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span style={{ color: GREEN, fontSize: 13, fontWeight: 600 }}>Email verified! You&apos;ll now receive moderation alerts.</span>
+        </div>
+      )}
+
+      <div style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+        <PanelHead label="Email Notifications" />
+
+        {/* Your Email row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' as const }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Your Email</div>
+            {!editEmail && savedEmail && !notifyState?.verified && (
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>Awaiting verification. Check your inbox for the link.</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+            {editEmail ? (
+              <>
+                <input
+                  autoFocus
+                  type="email"
+                  value={emailInput}
+                  onChange={e => setEmailInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') { setEmailInput(''); setEditEmail(!savedEmail) } }}
+                  placeholder="name@example.com"
+                  style={{ background: 'rgba(6,10,42,0.6)', border: `1px solid ${badEmail ? '#FF8A9B' : BORDER}`, borderRadius: 7, padding: '7px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none', width: 220 }}
+                />
+                {savedEmail && (
+                  <button onClick={() => { setEmailInput(''); setEditEmail(false) }} style={{ ...ghostBtn, border: 'none' }}>Cancel</button>
+                )}
+              </>
+            ) : (
+              <>
+                {notifyState?.verified
+                  ? <span style={{ width: 8, height: 8, borderRadius: 99, background: GREEN, flexShrink: 0, display: 'inline-block', boxShadow: `0 0 8px ${GREEN}` }} />
+                  : savedEmail
+                    ? <span style={{ width: 8, height: 8, borderRadius: 99, background: '#FFB547', flexShrink: 0, display: 'inline-block' }} />
+                    : null}
+                <span style={{ fontFamily: MONO, fontSize: 13, color: savedEmail ? TEXT : MUTED }}>
+                  {savedEmail ?? 'No email set'}
+                </span>
+                {savedEmail && !notifyState?.verified && (
+                  <button onClick={resendVerification} style={{ ...ghostBtn, border: 'none', fontSize: 12 }}>Resend</button>
+                )}
+                <button onClick={() => { setEmailInput(savedEmail ?? ''); setEditEmail(true) }} style={ghostBtn}>Edit</button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Event toggles */}
+        <div style={{ opacity: off ? 0.45 : 1, pointerEvents: off ? 'none' : 'auto', borderBottom: `1px solid ${BORDER}`, padding: '14px 18px 6px' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 10 }}>Choose When You Get Notified</div>
+          <div style={{ borderLeft: `1px solid ${BORDER}`, marginLeft: 4, paddingLeft: 14 }}>
+            {([
+              { k: 'mod',    label: 'Moderation Activity',   sub: 'A new message is posted for you to moderate.' },
+              { k: 'status', label: 'Message Status Change', sub: 'Your message starts or stops winning.' },
+              { k: 'budget', label: 'Low Budget',            sub: 'Your streaming budget falls below 1 day remaining.' },
+            ] as const).map((ev, i) => (
+              <div key={ev.k} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 0', borderTop: i ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: TEXT2 }}>{ev.label}</div>
+                  <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{ev.sub}</div>
+                </div>
+                <SettingsSwitch on={eventsDraft[ev.k]} onChange={on => setEventsDraft(d => ({ ...d, [ev.k]: on }))} label={ev.label} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Frequency */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' as const, opacity: !savedEmail && !editEmail ? 0.45 : 1, pointerEvents: !savedEmail && !editEmail ? 'none' : 'auto' }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Frequency</div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>
+              {freqDraft === 'daily' ? "One email a day, only when there's news." : freqDraft === 'every' ? 'An email for each update.' : null}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 3, background: 'rgba(138,143,191,0.08)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 3 }}>
+            {(['every', 'daily', 'off'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFreqDraft(f)}
+                style={{ background: freqDraft === f ? 'rgba(123,106,244,0.55)' : 'transparent', color: freqDraft === f ? TEXT : MUTED, border: freqDraft === f ? `1px solid rgba(123,106,244,0.5)` : '1px solid transparent', borderRadius: 6, padding: '6px 12px', fontFamily: SANS, fontSize: 13, fontWeight: freqDraft === f ? 700 : 500, cursor: 'pointer', transition: 'all 150ms', whiteSpace: 'nowrap' as const }}
+              >
+                {f === 'every' ? 'Every Time' : f === 'daily' ? 'Daily Round-up' : 'Off'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, padding: '12px 18px' }}>
+          {badEmail && <span style={{ fontSize: 12.5, color: DANGER, marginRight: 'auto' }}>Enter a valid email</span>}
+          {saveError && !badEmail && <span style={{ color: DANGER, fontSize: 12.5, marginRight: 'auto' }}>{saveError}</span>}
+          {saving ? (
+            <WalletPending label="Saving…" />
+          ) : (
+            <>
+              {isDirty && (
+                <button onClick={discard} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 13.5, fontFamily: SANS, cursor: 'pointer' }}>Discard</button>
+              )}
+              <button
+                disabled={!isDirty || !!badEmail}
+                onClick={save}
+                className="acct-btn-lg"
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '0 18px', height: 38, fontFamily: SANS, fontWeight: 700, fontSize: 13.5, cursor: isDirty && !badEmail ? 'pointer' : 'not-allowed', opacity: isDirty && !badEmail ? 1 : 0.4, transition: 'opacity 150ms' }}
+              >
+                Save changes
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      <Link href="/create-a-markee" style={{ flexShrink: 0, marginLeft: 16, marginRight: 4, padding: '8px 16px', background: PINK, color: BG, borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-        + Create a New Markee
-      </Link>
     </div>
   )
 }
@@ -527,905 +620,7 @@ function MarkeeCardDash({ lb, archived, onIntegrate, onVerify, onEdit, onArchive
   )
 }
 
-// ── Markee name cell (placard icon + the markee's own name) ──────────────────
-function MarkeeNameCell({ lb }: { lb: AnyLeaderboard }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-      <span style={{ width: 32, height: 32, borderRadius: 8, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15, lineHeight: 1 }}>
-        🪧
-      </span>
-      <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {lb.name}
-      </span>
-    </span>
-  )
-}
-
-// ── Section header count pill ─────────────────────────────────────────────────
-function CountBadge({ n }: { n: number }) {
-  return (
-    <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: TEXT2, background: 'rgba(138,143,191,0.15)', borderRadius: 99, padding: '2px 10px' }}>{n}</span>
-  )
-}
-
-// ── Sortable column header ────────────────────────────────────────────────────
-function SortHead({ label, col, sortKey, sortDir, onSort, align = 'right' }: { label: string; col: string; sortKey: string; sortDir: string; onSort: (col: string) => void; align?: 'left' | 'right' }) {
-  const active = sortKey === col
-  return (
-    <button
-      onClick={() => onSort(col)}
-      style={{
-        background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
-        display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' as const,
-        justifySelf: align === 'right' ? 'end' : 'start',
-        fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const,
-        color: active ? PINK : MUTED, transition: 'color 120ms',
-      }}
-    >
-      <span>{label}</span>
-      <span style={{ fontSize: 8, opacity: active ? 1 : 0.4, lineHeight: 1 }}>
-        {active ? (sortDir === 'asc' ? '▲' : '▼') : '▾'}
-      </span>
-    </button>
-  )
-}
-
-// ── Shared table-sort state machine ───────────────────────────────────────────
-// Every table below (Active/Archived/ReadyToEmbed/Bought/Funded) had its own copy of this exact
-// sortKey/sortDir/onSort/sorted state -- pulled out once so the five don't drift independently.
-// compareAscending should return the same sign convention as Array.sort's comparator when sorting
-// ascending; direction (and the desc-vs-asc default when a column is first clicked) is applied here.
-function useSortableTable<T>(
-  items: T[],
-  initialKey: string,
-  compareAscending: (key: string, a: T, b: T) => number,
-  opts: { initialDir?: 'asc' | 'desc'; ascByDefault?: (key: string) => boolean } = {},
-) {
-  const { initialDir = 'desc', ascByDefault } = opts
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: initialKey, dir: initialDir })
-
-  const onSort = useCallback((col: string) => {
-    setSort(prev => ({
-      key: col,
-      dir: prev.key === col ? (prev.dir === 'asc' ? 'desc' : 'asc') : (ascByDefault?.(col) ? 'asc' : 'desc'),
-    }))
-  }, [ascByDefault])
-
-  const sorted = useMemo(() => {
-    const dir = sort.dir === 'asc' ? 1 : -1
-    return [...items].sort((a, b) => compareAscending(sort.key, a, b) * dir)
-  // compareAscending intentionally omitted: callers pass an inline function (a fresh reference every
-  // render), and it only ever closes over field-accessor logic, never over changing outer state --
-  // including it would re-sort on every render instead of only when the data or sort actually change.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, sort])
-
-  return { sortKey: sort.key, sortDir: sort.dir, onSort, sorted }
-}
-
-function compareByRaised<T extends { totalFundsRaw: string }>(_key: string, a: T, b: T): number {
-  const at = BigInt(a.totalFundsRaw || '0')
-  const bt = BigInt(b.totalFundsRaw || '0')
-  return at > bt ? 1 : at < bt ? -1 : 0
-}
-
-const ascByDefaultRank = (col: string) => col === 'rank'
-
-function compareBySpentOrRank<T extends { isTop: boolean; rank?: number | null }>(
-  key: string, a: T, b: T, spent: (x: T) => bigint,
-): number {
-  if (key === 'rank') {
-    const ar = (a.isTop ? 1 : a.rank) ?? Infinity
-    const br = (b.isTop ? 1 : b.rank) ?? Infinity
-    return ar - br
-  }
-  const as = spent(a), bs = spent(b)
-  return as > bs ? 1 : as < bs ? -1 : 0
-}
-
-// ── Awaiting Activation table ─────────────────────────────────────────────────
-const ACTIVATION_COLS = '1fr 150px 220px 160px'
-
-function ActivationTable({ markees, onActivate, onArchive }: {
-  markees: AnyLeaderboard[]
-  onActivate: (lb: AnyLeaderboard) => void
-  onArchive: (address: string) => void
-}) {
-  const fmtAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 640, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ACTIVATION_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Markee Name', 'Pricing Strategy', 'Beneficiary', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 3 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-        </div>
-        {markees.map(lb => (
-          <div
-            key={lb.address}
-            onClick={() => window.location.href = `/markee/${lb.address}`}
-            style={{ display: 'grid', gridTemplateColumns: ACTIVATION_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <MarkeeNameCell lb={lb} />
-            <div>
-              <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
-            </div>
-            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtAddr(lb.admin)}</span>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                onClick={e => { e.stopPropagation(); onActivate(lb) }}
-                style={{ background: 'transparent', color: TEXT2, border: `1px solid ${TEXT2}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-              >
-                Activate Markee
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); onArchive(lb.address) }}
-                title="Archive"
-                style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'color 120ms, border-color 120ms' }}
-                onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = TEXT2; el.style.borderColor = `${MUTED}66` }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
-              >
-                Archive
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Ready to Embed table (website boards with active message but no verified URL) ──
-const EMBED_COLS = '180px 1fr 90px 130px 160px 150px'
-const EMBED_HEADERS_LEFT = ['Board Name', 'Current Message', 'Strategy'] as const
-
-function ReadyToEmbedRow({ lb, onEmbed, ethPrice }: { lb: AnyLeaderboard; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
-  const isStreaming = lb.strategy === 'streaming'
-  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
-  const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
-  const hasActiveStream = ratePerSec > 0n
-  return (
-    <div
-      onClick={() => window.location.href = `/markee/${lb.address}`}
-      style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-    >
-      <MarkeeNameCell lb={lb} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
-          <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
-            {lb.topMessage || 'No message yet'}
-          </span>
-        </ModeratedContent>
-        {lb.topMarkeeAddress && (
-          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
-        )}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
-      </div>
-      <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <div style={{ textAlign: 'right' }}>
-          {hasActiveStream
-            ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
-            : <SpentCell wei={BigInt(lb.totalFundsRaw)} ethPrice={ethPrice} />
-          }
-        </div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={e => { e.stopPropagation(); onEmbed(lb) }}
-          style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-        >
-          Add to Your Site
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function ReadyToEmbedTable({ markees, onEmbed, ethPrice }: { markees: AnyLeaderboard[]; onEmbed: (lb: AnyLeaderboard) => void; ethPrice: number | null }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
-
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 760, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: EMBED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {EMBED_HEADERS_LEFT.map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Latest Spend</span>
-          <span />
-        </div>
-        {sorted.map(lb => (
-          <ReadyToEmbedRow key={lb.address} lb={lb} onEmbed={onEmbed} ethPrice={ethPrice} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Active Markees table ──────────────────────────────────────────────────────
-const ACT_COLS = '200px 110px 1fr 116px'
-
-function ServedOnCell({ lb, onAddToSite }: { lb: AnyLeaderboard; onAddToSite?: () => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  const iconBox = (child: React.ReactNode) => (
-    <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
-      {child}
-    </span>
-  )
-
-  const pill = (n: number) => (
-    <button
-      onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
-      style={{ background: `${MUTED}20`, border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 99, padding: '1px 6px', fontFamily: MONO, fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' as const }}
-    >
-      +{n}
-    </button>
-  )
-
-  // Only when onAddToSite is passed (My Live Markees) is the dropdown reachable with zero or one
-  // integration -- other callers keep the original behavior of only offering a dropdown once there's
-  // more than one to actually pick between.
-  const chevron = onAddToSite && (
-    <button
-      onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
-      aria-label={open ? 'Hide integrations' : 'Show all integrations'}
-      style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer' }}
-    >
-      <ChevronDown size={12} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
-    </button>
-  )
-
-  const dropdown = (items: Array<{ href: string; label: string }>) => open && (
-    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 6, minWidth: 220, zIndex: 50, boxShadow: '0 16px 44px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {onAddToSite && (
-        <button
-          onClick={e => { e.stopPropagation(); setOpen(false); onAddToSite() }}
-          style={{ color: PINK, background: `${PINK}14`, border: `1px solid rgba(248,151,254,0.3)`, fontSize: 12, fontWeight: 700, fontFamily: MONO, padding: '8px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: items.length > 0 ? 4 : 0 }}
-        >
-          + Add to Another Site
-        </button>
-      )}
-      {items.map(({ href, label }) => (
-        <a
-          key={href}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ color: TEXT2, textDecoration: 'none', fontSize: 12, fontFamily: MONO, padding: '7px 10px', borderRadius: 6, display: 'block', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-        >
-          {label}
-        </a>
-      ))}
-    </div>
-  )
-
-  // GitHub-platform boards always render this way; other-platform boards (e.g. a "For Sale" factory
-  // board, which carries no inherent platform tag) render it too once they have a verified linked
-  // file -- Served On is derived from actual verification, not a rigid creation-time tag.
-  const hasVerifiedGithubFile = (lb.linkedFiles ?? []).some(f => f.verified)
-  if (lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile)) {
-    const gh = lb as GithubLeaderboard
-    const files = gh.linkedFiles ?? []
-    const first = files[0] ?? null
-    const extras = files.length - 1
-    const fileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
-    return (
-      <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-        {iconBox(<Github size={13} style={{ color: TEXT2 }} />)}
-        {first ? (
-          <a
-            href={fileUrl(first)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            title={first.filePath}
-            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
-          >
-            {first.repoFullName}
-          </a>
-        ) : (
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: MUTED }}>
-            {gh.repoFullName || 'GitHub'}
-          </span>
-        )}
-        {onAddToSite ? chevron : extras > 0 && pill(extras)}
-        {dropdown(files.map(f => ({ href: fileUrl(f), label: f.filePath })))}
-      </span>
-    )
-  }
-
-  if (lb.platform === 'superfluid') {
-    // Verification is address-based, independent of platform tag (see the comment above) -- a
-    // Superfluid-platform board can still have a verified website/GitHub integration attached, so
-    // this branch gets the same add/view dropdown as the others rather than a dead-end label.
-    const sfFiles = (lb.linkedFiles ?? []).filter(f => f.verified)
-    const sfUrls = lb.verifiedUrls ?? []
-    const sfFileUrl = (f: LinkedFile) => `https://github.com/${f.repoFullName}/blob/HEAD/${f.filePath}`
-    return (
-      <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-        {iconBox(
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src="/partners/superfluid.png" alt="" width={16} height={16} style={{ objectFit: 'contain' }} />
-        )}
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
-          {lb.name || 'Superfluid'}
-        </span>
-        {onAddToSite && chevron}
-        {dropdown([
-          ...sfFiles.map(f => ({ href: sfFileUrl(f), label: f.filePath })),
-          ...sfUrls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })),
-        ])}
-      </span>
-    )
-  }
-
-  // Website
-  const w = lb as WebsiteLeaderboard
-  const urls = w.verifiedUrls?.length ? w.verifiedUrls : w.verifiedUrl ? [w.verifiedUrl] : []
-  const primaryUrl = urls[0] || w.siteUrl || null
-  const primaryLabel = primaryUrl ? primaryUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (lb.name || fmtAddr(lb.address))
-  const extras = Math.max(0, urls.length - 1)
-  const logoDomain = getLogoDomain(primaryUrl)
-  return (
-    <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, position: 'relative' as const }}>
-      {iconBox(
-        logoDomain
-          ? <LogoIcon domain={logoDomain} size={14} />
-          : <Globe2 size={13} style={{ color: PINK }} />
-      )}
-      {primaryUrl ? (
-        <a
-          href={primaryUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: TEXT2, textDecoration: 'none', borderBottom: `1px dotted ${MUTED}` }}
-        >
-          {primaryLabel}
-        </a>
-      ) : (
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12, color: MUTED }}>
-          {lb.name || fmtAddr(lb.address)}
-        </span>
-      )}
-      {onAddToSite ? chevron : extras > 0 && pill(extras)}
-      {dropdown(urls.map(u => ({ href: u, label: u.replace(/^https?:\/\//, '').replace(/\/$/, '') })))}
-    </span>
-  )
-}
-
-const ACTIVE_COLS = '180px 1fr 90px 130px 160px 96px 110px'
-const ACTIVE_HEADERS_LEFT = ['Served on', 'Current Message', 'Strategy'] as const
-
-// Same formulas the marketplace's price-to-change button uses (priceToOvertake/monthlyRateLabel),
-// applied here to My Live Markees rows so the owner sees the identical price a visitor would.
-function priceToOvertakeLive(lb: AnyLeaderboard): bigint {
-  return BigInt(lb.topFundsAddedRaw || '0') + 1_000_000_000_000_000n
-}
-function priceButtonLabel(lb: AnyLeaderboard, ethPrice: number | null): string {
-  if (lb.strategy === 'streaming') {
-    const monthlyEth = parseFloat(formatEther(BigInt(lb.topRateRaw || '0') * 60n * 60n * 24n * 30n))
-    return ethPrice ? `${formatUsd(monthlyEth * ethPrice)}/mo` : `${monthlyEth.toFixed(4)} ETH/mo`
-  }
-  const priceEth = parseFloat(formatEther(priceToOvertakeLive(lb)))
-  return ethPrice ? formatUsd(priceEth * ethPrice) : `${priceEth.toFixed(3)} ETH`
-}
-
-function RaisedCell({ balance, isLive, ethPrice }: { balance: bigint; isLive: boolean; ethPrice: number | null }) {
-  const eth = Number(balance) / 1e18
-  const usd = ethPrice ? eth * ethPrice : null
-  if (isLive) {
-    return (
-      <div style={{ textAlign: 'right' as const }}>
-        <div style={{ fontFamily: MONO, fontSize: 11.5, color: BLUE, fontWeight: 600, letterSpacing: 0.3 }}>
-          {formatLiveEth(balance, 10)} ETH
-        </div>
-        {usd !== null
-          ? <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>
-          : <div style={{ fontFamily: MONO, fontSize: 10, color: GREEN, marginTop: 1 }}>▲ live</div>
-        }
-      </div>
-    )
-  }
-  const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(3).replace(/\.?0+$/, '')} ETH`
-  return (
-    <div style={{ textAlign: 'right' as const }}>
-      <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
-      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>}
-    </div>
-  )
-}
-
-function ActiveTableRow({ lb, expanded, onToggleExpand, onAddToSite, onOpenPriceButton, ethPrice }: {
-  lb: AnyLeaderboard; expanded: boolean; onToggleExpand: () => void; onAddToSite: () => void; onOpenPriceButton: () => void; ethPrice: number | null
-}) {
-  const isStreaming = lb.strategy === 'streaming'
-  const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
-  const liveBalance = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
-  const hasActiveStream = ratePerSec > 0n
-  return (
-    <div
-      onClick={() => window.location.href = `/markee/${lb.address}`}
-      style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '13px 16px', borderBottom: expanded ? 'none' : `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-    >
-      <ServedOnCell lb={lb} onAddToSite={onAddToSite} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0 flex-1">
-          <span style={{ fontFamily: MONO, fontSize: 12.5, color: lb.topMessage ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: lb.topMessage ? 'normal' : 'italic', display: 'block' }}>
-            {lb.topMessage || 'No message yet'}
-          </span>
-        </ModeratedContent>
-        {lb.topMarkeeAddress && (
-          <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress} boardAdmin={lb.admin} boardCreator={lb.creator} compact />
-        )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="sm" />
-      </div>
-      <RaisedCell balance={liveBalance} isLive={hasActiveStream} ethPrice={ethPrice} />
-      <div style={{ textAlign: 'right' as const }}>
-        {hasActiveStream
-          ? <FlowRateCell weiPerSec={lb.topRateRaw} ethPrice={ethPrice} streamStatus="active" />
-          : <span style={{ color: MUTED }}>—</span>
-        }
-      </div>
-      <div onClick={e => e.stopPropagation()}>
-        <button
-          onClick={onOpenPriceButton}
-          style={{ width: '100%', textAlign: 'center' as const, background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 10px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' as const, boxShadow: '0 2px 10px rgba(248,151,254,0.28)' }}
-        >
-          {priceButtonLabel(lb, ethPrice)}
-        </button>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-        <button
-          onClick={onToggleExpand}
-          aria-expanded={expanded}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: expanded ? `${PINK}14` : 'transparent', color: expanded ? PINK : TEXT2, border: `1px solid ${expanded ? 'rgba(248,151,254,0.35)' : BORDER}`, borderRadius: 7, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms, background 120ms' }}
-        >
-          Admin
-          <ChevronDown size={13} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// Wraps ActiveTableRow with the click-to-expand admin panel -- replaces the old bare "Manage" button
-// (View leaderboard / Edit website info / Embed) entirely; the previously unexposed admin-only
-// contract settings now live in the panel below, gated to the connected admin.
-function LiveMarkeeAdminRow({ lb, onAddToSite, onOpenPriceButton, ethPrice, activeAddress, onSuccess }: {
-  lb: AnyLeaderboard
-  onAddToSite: () => void
-  onOpenPriceButton: () => void
-  ethPrice: number | null
-  activeAddress: string | undefined
-  onSuccess: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <div>
-      <ActiveTableRow lb={lb} expanded={expanded} onToggleExpand={() => setExpanded(v => !v)} onAddToSite={onAddToSite} onOpenPriceButton={onOpenPriceButton} ethPrice={ethPrice} />
-      {expanded && (
-        <LiveMarkeeAdminPanel lb={lb} activeAddress={activeAddress} onSuccess={onSuccess} />
-      )}
-    </div>
-  )
-}
-
-function LiveMarkeeAdminPanel({ lb, activeAddress, onSuccess }: {
-  lb: AnyLeaderboard
-  activeAddress: string | undefined
-  onSuccess: () => void
-}) {
-  const isAdmin = !!activeAddress && !!lb.admin && lb.admin.toLowerCase() === activeAddress.toLowerCase()
-  const isStreaming = lb.strategy === 'streaming'
-  // Legacy is a website-only historical concept (pre-migration TopDawg boards) -- github/superfluid/
-  // streaming-platform listing routes never set it, so every board on those platforms already uses
-  // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
-  const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
-  const contractAddress = lb.address as `0x${string}`
-
-  return (
-    <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${BORDER}`, background: 'rgba(6,10,42,0.35)', padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED, marginBottom: 10 }}>Admin Settings</div>
-        {!isAdmin ? (
-          <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Only this Markee's admin wallet can change these.</p>
-        ) : isLegacyFixed ? (
-          <p style={{ margin: 0, color: MUTED, fontSize: 12.5 }}>Admin settings aren't available for legacy boards from this dashboard.</p>
-        ) : isStreaming ? (
-          <div>
-            <AdminSettingRow label="Minimum Monthly Rate (wei/sec)" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="minimumMonthlyRate" setterName="setMinimumMonthlyRate" inputType="uint256" onSuccess={onSuccess} />
-            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow
-              label="Admin" contractAddress={contractAddress} abi={StreamingLeaderboardABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
-            />
-          </div>
-        ) : (
-          // Only setBeneficiaryAddress and setAdmin are confirmed present, onlyAdmin-gated, and
-          // creator-controllable across every fixed-board contract version still in use (v1.1-v1.3).
-          // The RevNet routing settings (terminal/projectId/percentToBeneficiary/enabled/
-          // platformFeeReceiver/percentToPlatformFeeReceiver) were pulled: v1.3 -- what every "For
-          // Sale" board created today actually runs -- doesn't even have those setters anymore
-          // (contracts/v1.3/Leaderboard.sol has no such functions at all; they're fixed at deploy
-          // time by the Cooperative's factory config), and where they do exist on older v1.1/v1.2
-          // boards, showing them here as if any board's creator could tune RevNet routing was
-          // misleading regardless of technical onlyAdmin gating.
-          <div>
-            <AdminSettingRow label="Beneficiary Address" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={onSuccess} />
-            <AdminSettingRow
-              label="Admin" contractAddress={contractAddress} abi={LeaderboardV11ABI as unknown as Abi} getterName="admin" setterName="setAdmin" inputType="address"
-              dangerous="confirm" warning="Transferring admin away is irreversible from here -- you will permanently lose the ability to change these settings." onSuccess={onSuccess}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Extension point: per-integration moderators are out of scope for now -- nothing like this
-          has ever existed (lib/moderation/config.ts is a single flat platform-wide admin allowlist;
-          a past attempt to add partner-specific moderators to that same list was explicitly reverted:
-          "Honeyswap moderators belong in the Honeyswap repo, not here"). If/when a per-integration
-          moderator system exists, it renders here, admin-gated like the settings section above. */}
-    </div>
-  )
-}
-
-function ActiveTable({ markees, onAddToSite, onOpenPriceButton, ethPrice, activeAddress, onSuccess }: {
-  markees: AnyLeaderboard[]
-  onAddToSite: (lb: AnyLeaderboard) => void
-  onOpenPriceButton: (lb: AnyLeaderboard) => void
-  ethPrice: number | null
-  activeAddress: string | undefined
-  onSuccess: () => void
-}) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(markees, 'raised', compareByRaised)
-
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 840, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {ACTIVE_HEADERS_LEFT.map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Raised" col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Streaming</span>
-          <span />
-          <span />
-        </div>
-        {sorted.map(lb => (
-          <LiveMarkeeAdminRow
-            key={lb.address}
-            lb={lb}
-            onAddToSite={() => onAddToSite(lb)}
-            onOpenPriceButton={() => onOpenPriceButton(lb)}
-            ethPrice={ethPrice}
-            activeAddress={activeAddress}
-            onSuccess={onSuccess}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Archived Markees table ────────────────────────────────────────────────────
-// Most archived boards were never activated, so "Served on"/"Current message"/"Total raised" are
-// almost always empty here -- Markee Name + Beneficiary (the same fmtAddr(lb.admin) pattern
-// ActivationTable already uses; admin() is the beneficiary here, not the creator) is the info that's
-// actually meaningful for a board someone set aside before it ever went live.
-const ARCHIVED_COLS = '1fr 220px 116px'
-
-function ArchivedTable({ markees, onUnarchive }: { markees: AnyLeaderboard[]; onUnarchive: (address: string) => void }) {
-  const fmtAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 500, background: BG2, opacity: 0.8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {['Markee Name', 'Beneficiary Address', ''].map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i === 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-        </div>
-        {markees.map(lb => (
-          <div
-            key={lb.address}
-            onClick={() => window.location.href = `/markee/${lb.address}`}
-            style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <MarkeeNameCell lb={lb} />
-            <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtAddr(lb.admin)}</span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={e => { e.stopPropagation(); onUnarchive(lb.address) }}
-                style={{ background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', transition: 'border-color 120ms, color 120ms' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${MUTED}66`; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = MUTED }}
-              >
-                Unarchive
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Stream status type/icon now live in board-detail/shared.tsx (also used by StreamSignModal's
-// "Manage Your Stream" view) -- imported at the top of this file.
-
-// ── Flow rate cell (wei/sec → ETH/mo blue top, $USD/mo grey bottom) ──────────
-function FlowRateCell({ weiPerSec, ethPrice, streamStatus }: {
-  weiPerSec: string | undefined
-  ethPrice: number | null
-  streamStatus?: StreamStatus
-}) {
-  const rate = BigInt(weiPerSec ?? '0')
-  if (rate === 0n) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        {streamStatus && <StreamStatusIcon status={streamStatus} />}
-        <span style={{ color: MUTED }}>—</span>
-      </div>
-    )
-  }
-  const ethPerMonth = Number(rate) / 1e18 * 60 * 60 * 24 * 30
-  const ethStr = ethPerMonth < 0.001 ? '< 0.001 ETH/mo' : `${ethPerMonth.toFixed(4).replace(/\.?0+$/, '')} ETH/mo`
-  const usd = ethPrice ? ethPerMonth * ethPrice : null
-  return (
-    <div style={{ textAlign: 'right' as const }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        {streamStatus && <StreamStatusIcon status={streamStatus} />}
-        <span style={{ fontFamily: MONO, fontSize: 12, color: BLUE, fontWeight: 600 }}>{ethStr}</span>
-      </div>
-      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 2 }}>${usd.toFixed(2)}/mo</div>}
-    </div>
-  )
-}
-
-// ── ETH + USD stacked cell ────────────────────────────────────────────────────
-function SpentCell({ wei, ethPrice }: { wei: bigint; ethPrice: number | null }) {
-  const eth = Number(wei) / 1e18
-  const ethStr = eth === 0 ? '0 ETH' : eth < 0.001 ? '< 0.001 ETH' : `${eth.toFixed(4).replace(/\.?0+$/, '')} ETH`
-  const usd = ethPrice ? eth * ethPrice : null
-  return (
-    <div style={{ textAlign: 'right' as const }}>
-      <div style={{ fontFamily: MONO, fontSize: 12.5, color: BLUE, fontWeight: 600 }}>{ethStr}</div>
-      {usd !== null && <div style={{ fontFamily: MONO, fontSize: 10.5, color: MUTED, marginTop: 1 }}>${usd.toFixed(2)}</div>}
-    </div>
-  )
-}
-
-// ── Ranking cell ──────────────────────────────────────────────────────────────
-function rankTierColor(r: number): string {
-  if (r === 1) return GOLD
-  if (r === 2) return SILVER
-  if (r === 3) return BRONZE
-  return MUTED
-}
-
-function RankingCell({ isTop, rank }: {
-  isTop: boolean; rank: number | null | undefined
-}) {
-  const effectiveRank = isTop ? 1 : (rank ?? null)
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-      {effectiveRank != null
-        ? <span style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-            border: `1.5px solid ${rankTierColor(effectiveRank)}`,
-            color: rankTierColor(effectiveRank),
-            fontFamily: MONO, fontSize: 12, fontWeight: 800,
-          }}>{effectiveRank}</span>
-        : <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>—</span>
-      }
-    </div>
-  )
-}
-
-// ── Messages I've Bought table ────────────────────────────────────────────────
-const MSG_COLS = '190px 1fr 90px 120px 170px 100px'
-
-// Bought/Funded rows are messages on OTHER people's leaderboards -- "Markee Name" (the creator's own
-// label for their board) isn't meaningful to a buyer the way it is on the creator's own dashboard
-// tabs. What matters here is where the board is actually served, same as every other table on this
-// page, or -- if it isn't served anywhere verified yet -- a way to fix that from here rather than
-// only from the board's own creator's account.
-function toServedOnLb(m: MyMessage | FundedMessage): AnyLeaderboard {
-  const base = {
-    address: m.strategyId, name: m.strategyName, totalFunds: '', totalFundsRaw: '0',
-    markeeCount: 0, admin: m.admin ?? '', topMessage: null, topFundsAddedRaw: '0',
-    strategy: m.strategy, verifiedUrls: m.verifiedUrls ?? [], linkedFiles: m.linkedFiles ?? [],
-  }
-  if (m.platform === 'github') {
-    return { ...base, platform: 'github', repoFullName: m.repoFullName ?? null, repoAvatarUrl: null, repoHtmlUrl: m.repoHtmlUrl ?? null, filePath: null, linkedFiles: m.linkedFiles ?? [] }
-  }
-  if (m.platform === 'superfluid') return { ...base, platform: 'superfluid' }
-  return {
-    ...base, platform: 'website', creator: null, logoUrl: null, siteUrl: m.siteUrl ?? null,
-    verifiedUrl: (m.verifiedUrls ?? [])[0] ?? null, verifiedUrls: m.verifiedUrls ?? [], status: 'pending', isLegacy: false,
-  }
-}
-
-function ServedOnOrAddToSite({ m, onAddToSite }: { m: MyMessage | FundedMessage; onAddToSite: (m: any) => void }) {
-  const lb = toServedOnLb(m)
-  const verified = isVerifiedLeaderboard(lb, { verifiedUrls: m.verifiedUrls, linkedFiles: m.linkedFiles })
-  if (needsVerificationGate(lb) && !verified) {
-    return (
-      <button
-        onClick={e => { e.stopPropagation(); onAddToSite(m) }}
-        style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 7, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }}
-      >
-        Add to Your Site
-      </button>
-    )
-  }
-  return <ServedOnCell lb={lb} />
-}
-
-function BoughtTable({ items, ethPrice, onEdit, onAddFunds, onAddToSite }: { items: MyMessage[]; ethPrice: number | null; onEdit: (m: MyMessage) => void; onAddFunds: (m: MyMessage) => void; onAddToSite: (m: MyMessage) => void }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(
-    items, 'spent',
-    (key, a, b) => compareBySpentOrRank(key, a, b, x => x.totalFundsAdded),
-    { ascByDefault: ascByDefaultRank },
-  )
-
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 800, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Served On', 'Your Message', 'Strategy'] as const).map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-        </div>
-        {sorted.map(m => {
-          const strategy = m.strategy ?? 'fixed'
-          const isStreaming = strategy === 'streaming'
-          const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
-          return (
-            <div
-              key={m.address}
-              onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-              style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            >
-              <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', minWidth: 0 }}>
-                <button
-                  onClick={e => { e.stopPropagation(); onEdit(m) }}
-                  title="Edit message"
-                  style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 5, padding: '3px 6px', cursor: 'pointer', color: MUTED, lineHeight: 0, transition: 'color 120ms, border-color 120ms' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = PINK; el.style.borderColor = `${PINK}66` }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = MUTED; el.style.borderColor = BORDER }}
-                >
-                  <Pencil size={11} />
-                </button>
-                <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
-                  <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic', display: 'block' }}>{m.message || 'No message'}</span>
-                </ModeratedContent>
-                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
-              <SpentCell wei={m.totalFundsAdded} ethPrice={ethPrice} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                <div style={{ textAlign: 'right' }}>
-                  {isStreaming
-                    ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                    : <span style={{ color: MUTED }}>—</span>
-                  }
-                </div>
-              </div>
-              <RankingCell isTop={m.isTop} rank={m.rank} />
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Messages I've Funded table ────────────────────────────────────────────────
-const FUNDED_COLS = '190px 1fr 90px 120px 170px 100px'
-
-function FundedTable({ items, ethPrice, onAddFunds, onAddToSite }: { items: FundedMessage[]; ethPrice: number | null; onAddFunds: (m: FundedMessage) => void; onAddToSite: (m: FundedMessage) => void }) {
-  const { sortKey, sortDir, onSort, sorted } = useSortableTable(
-    items, 'spent',
-    (key, a, b) => compareBySpentOrRank(key, a, b, x => BigInt(x.totalContributed)),
-    { ascByDefault: ascByDefaultRank },
-  )
-
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${BORDER}` }}>
-      <div style={{ minWidth: 800, background: BG2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '11px 16px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
-          {(['Served On', 'Current Message', 'Strategy'] as const).map((h, i) => (
-            <span key={i} style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: i >= 2 ? 'right' as const : 'left' as const }}>{h}</span>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Total Spent" col="spent" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, color: MUTED, textAlign: 'right' as const }}>Current Bid</span>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <SortHead label="Your Rank" col="rank" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          </div>
-        </div>
-        {sorted.map(m => {
-          const strategy = m.strategy ?? 'fixed'
-          const isStreaming = strategy === 'streaming'
-          const streamStatus = isStreaming ? streamStatusOf(m.isTop, m.flowRateRaw) : undefined
-          return (
-            <div
-              key={m.address}
-              onClick={() => window.location.href = `/markee/${m.strategyId || m.address}`}
-              style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}`, alignItems: 'center', cursor: 'pointer', transition: 'background 120ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(124,156,255,0.04)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            >
-              <ServedOnOrAddToSite m={m} onAddToSite={onAddToSite} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
-                  <span style={{ fontFamily: MONO, fontSize: 12.5, color: m.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: m.message ? 'normal' : 'italic', display: 'block' }}>{m.message || 'No message yet'}</span>
-                </ModeratedContent>
-                <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} compact />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}><StrategyBadge strategy={strategy} size="sm" /></div>
-              <SpentCell wei={BigInt(m.totalContributed)} ethPrice={ethPrice} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                <div style={{ textAlign: 'right' }}>
-                  {isStreaming
-                    ? <FlowRateCell weiPerSec={m.flowRateRaw} ethPrice={ethPrice} streamStatus={streamStatus} />
-                    : <span style={{ color: MUTED }}>—</span>
-                  }
-                </div>
-              </div>
-              <RankingCell isTop={m.isTop} rank={m.rank} />
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+const ACTIVE_COLS = '180px 1fr 130px 160px 110px'
 
 // ── Manage integrations modal ─────────────────────────────────────────────────
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -1454,13 +649,193 @@ function fingerprintAddresses(addrs: string[]): string {
   return `${addrs.length}:${(hash >>> 0).toString(36)}`
 }
 
+// ── StatsChart ────────────────────────────────────────────────────────────────
+type ChartType  = 'bar' | 'line'
+type ChartRange = '7d' | '30d' | '90d'
+
+interface ChartMetric { label: string; value: string; delta?: number }
+
+function StatsChart({ metrics, seed = 1 }: { metrics: ChartMetric[]; seed?: number }) {
+  const [chartType, setChartType] = useState<ChartType>('bar')
+  const [range, setRange]         = useState<ChartRange>('30d')
+  const [activeIdx, setActiveIdx] = useState(0)
+
+  const W = 560, H = 160
+  const PAD = { t: 10, b: 28, l: 44, r: 12 }
+  const innerW = W - PAD.l - PAD.r
+  const innerH = H - PAD.t - PAD.b
+
+  const nPoints = range === '7d' ? 7 : range === '30d' ? 30 : 90
+  const barW    = Math.max(2, (innerW / nPoints) * 0.65)
+
+  const data = useMemo(() => {
+    const pts: number[] = []
+    for (let i = 0; i < nPoints; i++) {
+      pts.push(Math.abs(Math.sin(seed * 3.14 + i * 2.71 + i * i * 0.01)) * 0.8 + 0.15)
+    }
+    return pts
+  }, [seed, nPoints])
+
+  const cumData = useMemo(() =>
+    data.reduce((acc, v) => { acc.push((acc[acc.length - 1] ?? 0) + v); return acc }, [] as number[]),
+    [data]
+  )
+
+  const displayData = chartType === 'line' ? cumData : data
+  const dMax = Math.max(...displayData) || 1
+
+  const xLine = (i: number) => PAD.l + (nPoints > 1 ? (i / (nPoints - 1)) * innerW : innerW / 2)
+  const yOf   = (v: number) => PAD.t + innerH - (v / dMax) * innerH
+
+  const linePath = useMemo(() => {
+    const pts = displayData.map((v, i) => [xLine(i), yOf(v)] as [number, number])
+    if (pts.length < 2) return ''
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`
+    for (let i = 1; i < pts.length; i++) {
+      const cpx = ((pts[i - 1][0] + pts[i][0]) / 2).toFixed(1)
+      d += ` C ${cpx} ${pts[i - 1][1].toFixed(1)}, ${cpx} ${pts[i][1].toFixed(1)}, ${pts[i][0].toFixed(1)} ${pts[i][1].toFixed(1)}`
+    }
+    return d
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayData, nPoints])
+
+  const areaPath  = `${linePath} L ${xLine(nPoints - 1).toFixed(1)} ${(PAD.t + innerH).toFixed(1)} L ${PAD.l} ${(PAD.t + innerH).toFixed(1)} Z`
+  const gradId    = `areaGrad-${seed}`
+  const yTick1    = PAD.t + innerH * 0.33
+  const yTick2    = PAD.t + innerH * 0.67
+
+  return (
+    <div style={{ background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 24px 16px', marginBottom: 24 }}>
+      {/* Stat header row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const }}>
+        {metrics.map((m, i) => {
+          const on = i === activeIdx
+          return (
+            <button
+              key={m.label}
+              onClick={() => setActiveIdx(i)}
+              style={{
+                background: on ? `${LAVENDER}1A` : 'transparent',
+                border: `1px solid ${on ? LAVENDER + '44' : 'transparent'}`,
+                borderRadius: 9, padding: '8px 12px', cursor: 'pointer', textAlign: 'left' as const,
+              }}
+            >
+              <div style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase' as const, color: on ? LAVENDER : MUTED, marginBottom: 3 }}>{m.label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: on ? PINK : TEXT }}>{m.value}</span>
+                {m.delta !== undefined && (
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: m.delta >= 0 ? GREEN : DANGER }}>
+                    {m.delta >= 0 ? '▲' : '▼'} {Math.abs(m.delta).toFixed(1)}%
+                  </span>
+                )}
+              </div>
+            </button>
+          )
+        })}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
+          {/* bar / line toggle */}
+          <div style={{ display: 'flex', background: BG, border: `1px solid ${BORDER}`, borderRadius: 7, overflow: 'hidden' }}>
+            {(['bar', 'line'] as ChartType[]).map(t => (
+              <button
+                key={t}
+                onClick={() => setChartType(t)}
+                title={t === 'bar' ? 'Bar chart' : 'Line chart'}
+                style={{ padding: '5px 9px', background: chartType === t ? `${LAVENDER}28` : 'transparent', border: 'none', cursor: 'pointer', color: chartType === t ? LAVENDER : MUTED, display: 'flex', alignItems: 'center' }}
+              >
+                {t === 'bar'
+                  ? <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor"><rect x="0" y="6" width="3" height="7" rx="1"/><rect x="5" y="3" width="3" height="10" rx="1"/><rect x="10" y="0" width="3" height="13" rx="1"/></svg>
+                  : <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="0,10 3,6 6.5,8 10,3 13,1"/></svg>
+                }
+              </button>
+            ))}
+          </div>
+          {/* range buttons */}
+          <div style={{ display: 'flex', background: BG, border: `1px solid ${BORDER}`, borderRadius: 7, overflow: 'hidden' }}>
+            {(['7d', '30d', '90d'] as ChartRange[]).map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                style={{ padding: '4px 10px', background: range === r ? LAVENDER : 'transparent', border: 'none', cursor: 'pointer', fontFamily: MONO, fontSize: 10.5, fontWeight: 700, color: range === r ? BG : MUTED }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* SVG chart */}
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={PINK} stopOpacity="0.3"/>
+            <stop offset="100%" stopColor={PINK} stopOpacity="0.02"/>
+          </linearGradient>
+        </defs>
+
+        {/* Gridlines */}
+        <line x1={PAD.l} y1={yTick1} x2={PAD.l + innerW} y2={yTick1} stroke={BORDER} strokeWidth="1"/>
+        <line x1={PAD.l} y1={yTick2} x2={PAD.l + innerW} y2={yTick2} stroke={BORDER} strokeWidth="1"/>
+        <line x1={PAD.l} y1={PAD.t + innerH} x2={PAD.l + innerW} y2={PAD.t + innerH} stroke={BORDER} strokeWidth="1"/>
+
+        {/* Y-axis labels (proportional to dMax — placeholder scale) */}
+        <text x={PAD.l - 5} y={yTick1} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">
+          {(dMax * 0.67).toFixed(1)}
+        </text>
+        <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">
+          {(dMax * 0.33).toFixed(1)}
+        </text>
+
+        {/* Chart body */}
+        {chartType === 'bar'
+          ? data.map((v, i) => {
+              const x = PAD.l + (i / nPoints) * innerW + (innerW / nPoints - barW) / 2
+              const y = yOf(v)
+              return <rect key={i} x={x.toFixed(1)} y={y.toFixed(1)} width={barW} height={(PAD.t + innerH - y).toFixed(1)} rx="2" fill={LAVENDER} opacity="0.72"/>
+            })
+          : <>
+              <path d={areaPath} fill={`url(#${gradId})`}/>
+              <path d={linePath} fill="none" stroke={PINK} strokeWidth="1.8" strokeLinejoin="round"/>
+            </>
+        }
+
+        {/* X-axis labels */}
+        <text x={PAD.l + innerW / 2} y={H - 3} textAnchor="middle" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">
+          {chartType === 'bar' ? 'Daily totals' : 'Cumulative total'}
+        </text>
+        <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">{nPoints} days ago</text>
+        <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">Today</text>
+      </svg>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AccountPage() {
+  return (
+    <ToastProvider>
+      <AccountDashboard />
+    </ToastProvider>
+  )
+}
+
+function AccountDashboard() {
   const { activeAddress, hasWallet } = useActiveWallet()
   const ethPrice = useEthPrice()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  const [depositManagerOpen, setDepositManagerOpen] = useState(false)
+  const [streamBalanceKey, setStreamBalanceKey] = useState(0)
+  const { snapshot: streamSnapshot, failed: streamFailed } = useStreamSnapshot(activeAddress, streamBalanceKey)
+  const [activity, setActivity] = useState<{ wallet: string; events: ActivityEvent[]; failed: boolean } | null>(null)
+  const [activityKey, setActivityKey] = useState(0)
+  const lowRunway = useMemo(() => {
+    const rate = winningRate(streamSnapshot)
+    if (!streamSnapshot || rate === 0n) return null
+    const runway = runwaySeconds(BigInt(streamSnapshot.ethxBalanceRaw), rate)
+    return runwayTier(runway) === 'normal' ? null : runway
+  }, [streamSnapshot])
+  const [addrCopied, setAddrCopied] = useState(false)
 
   // Platform leaderboards
   const [superfluidBoards, setSuperfluidBoards] = useState<SuperfluidLeaderboard[]>([])
@@ -1476,19 +851,27 @@ export default function AccountPage() {
   // visitor never sees this: the tab content is gated on hasWallet separately, so isLoading staying
   // true forever when there's no wallet to fetch for is inert.
   const [isLoading, setIsLoading]               = useState(true)
+  const { isAdmin: isGlobalModerator } = useModeration()
+  const moderationQueue = useModerationQueue()
 
   // Messages
   const [myMessages, setMyMessages]             = useState<MyMessage[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [fundedMessages, setFundedMessages]     = useState<FundedMessage[]>([])
   const [isLoadingFunded, setIsLoadingFunded]   = useState(false)
+  const [boardViews, setBoardViews]             = useState<Record<string, number>>({})
 
   // UI state
-  // Optimistically default to Pending Setup -- the eviction effect below redirects to My Live
-  // Markees once loading actually finishes and confirms there's genuinely nothing pending, so a
-  // returning user with everything already live doesn't get stuck staring at an empty tab.
-  const [tab, setTab]                         = useState<TabId>('pending')
+  const [section, setSectionState]            = useState<SectionId>('feed')
+  // The section lives in ?section= so a reload or shared link opens the same one.
+  const setSection = useCallback((next: SectionId) => {
+    setSectionState(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set('section', next)
+    window.history.replaceState(null, '', url.toString())
+  }, [])
   const [archived, setArchived]               = useState<string[]>([])
+  const [manageTarget, setManageTarget]       = useState<string | null>(null)
   // "Archive" is purely a local dashboard preference -- there's no on-chain or backend concept of
   // it -- so without persisting it, every reload silently un-archives everything. Keyed per wallet
   // in localStorage; the ref tracks which wallet's list is currently loaded so the save effect below
@@ -1614,6 +997,10 @@ export default function AccountPage() {
           strategy: m.strategy ?? 'fixed',
           rank: m.rank ?? null,
           flowRateRaw: m.flowRateRaw ?? '0',
+          markeeRateRaw: m.markeeRateRaw,
+          winningSince: m.winningSince ?? null,
+          wonSeconds: m.wonSeconds ?? null,
+          topRateRaw: m.topRateRaw ?? '0',
           isLegacy: false,
           platform: m.platform ?? null,
           admin: m.admin ?? null,
@@ -1752,23 +1139,48 @@ export default function AccountPage() {
   const archivedBoards = useMemo(() =>
     allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
 
+  // Each owned board's current #1, so queue rows can say whether a message is live on the sign.
+  const liveMarkees = useMemo(() => new Set(allBoards.flatMap(lb => lb.topMarkeeAddress ? [lb.topMarkeeAddress.toLowerCase()] : [])), [allBoards])
+  const manageBoard = useMemo(() => allBoards.find(lb => lb.address === manageTarget) ?? null, [allBoards, manageTarget])
+
+  const awaitingSiteBoards = useMemo(() =>
+    awaitingVerification.filter(lb => !archived.includes(lb.address)), [awaitingVerification, archived])
+
+  const sortedActiveBoards = useMemo(() =>
+    [...activeBoards].sort((a, b) => compareByRaised(b, a)), [activeBoards])
+
   // draftBoards is exactly the "Pending Setup" tab's contents (awaitingVerification + inactive,
   // both already archived-filtered) -- used here only as its count/visibility source; the tab body
   // itself still renders the two underlying memos directly (see the JSX below) so nothing about
   // their own filtering changes.
   const draftBoards = useMemo(() =>
-    [...awaitingVerification.filter(lb => !archived.includes(lb.address)), ...inactiveBoards], [awaitingVerification, inactiveBoards, archived])
+    [...awaitingSiteBoards, ...inactiveBoards], [awaitingSiteBoards, inactiveBoards])
 
-  // Evict off a tab once its last item disappears (e.g. the last pending board just got activated),
-  // or off the default Pending Setup landing tab once loading confirms there was never anything
-  // pending to begin with. Gated on !isLoading -- draftBoards/archivedBoards both start at length 0
-  // before allBoards has loaded, so without this guard a user who does have pending boards gets
-  // bounced to My Live Markees before the data even arrives, and never bounced back.
+  // Boards the wallet created, plus any it was added to as a moderator (the queue lists those).
+  const isModerator = isGlobalModerator || moderationQueue.boards.length > 0
+
+  // Read initial section and verifyOk from URL params (e.g. after email verification redirect).
+  const [verifyOk, setVerifyOk] = useState(false)
+  const sectionAppliedRef = useRef(false)
   useEffect(() => {
-    if (isLoading) return
-    if (tab === 'pending' && draftBoards.length === 0) setTab('live')
-    if (tab === 'archive' && archivedBoards.length === 0) setTab('live')
-  }, [tab, isLoading, draftBoards.length, archivedBoards.length])
+    if (sectionAppliedRef.current || typeof window === 'undefined') return
+    sectionAppliedRef.current = true
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('section') ?? params.get('tab')
+    const map: Record<string, SectionId> = {
+      settings: 'settings', feed: 'feed', creator: 'creator', buyer: 'buyer',
+      moderation: 'feed', live: 'creator', pending: 'creator', archive: 'creator', bought: 'buyer',
+    }
+    if (raw && map[raw]) setSectionState(map[raw])
+    if (params.get('verifyOk') === '1') setVerifyOk(true)
+    const clean = new URL(window.location.href)
+    if (raw && map[raw]) clean.searchParams.set('section', map[raw])
+    else clean.searchParams.delete('section')
+    clean.searchParams.delete('tab')
+    clean.searchParams.delete('verifyOk')
+    clean.searchParams.delete('verifyError')
+    window.history.replaceState(null, '', clean.toString())
+  }, [])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
   const totalContribWei = useMemo(() => {
@@ -1776,6 +1188,78 @@ export default function AccountPage() {
     const funded = fundedMessages.reduce((s, m) => s + BigInt(m.totalContributed), 0n)
     return bought + funded
   }, [myMessages, fundedMessages])
+
+  // Fetch markee.xyz view counts for CPM calculations, per board by the shared rule (lib/views/boards.ts:
+  // board key + its top message's key). Includes the boards the wallet's messages sit on, not just its
+  // own -- buyer views/CPM read from here too.
+  const viewAddrs = useMemo(() => [...new Set([
+    ...allBoards.map(b => b.address.toLowerCase()),
+    ...myMessages.map(m => m.strategyId.toLowerCase()),
+    ...fundedMessages.map(m => m.strategyId.toLowerCase()),
+  ])].filter(Boolean).slice(0, 100).join(','), [allBoards, myMessages, fundedMessages])
+  useEffect(() => {
+    if (!viewAddrs) return
+    fetch(`/api/views?boards=${viewAddrs}`)
+      .then(r => r.json())
+      .then((data: Record<string, { totalViews: number }>) => {
+        setBoardViews(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.totalViews ?? 0])))
+      })
+      .catch(() => {})
+  }, [viewAddrs])
+
+  const creatorCpm = useMemo(() => {
+    if (!ethPrice) return null
+    const raisedUsd = Number(totalRaisedWei) / 1e18 * ethPrice
+    if (!raisedUsd) return null
+    const totalViews = activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0)
+    if (!totalViews) return null
+    return (raisedUsd / totalViews) * 1000
+  }, [ethPrice, totalRaisedWei, activeBoards, boardViews])
+
+  const buyerViews = useMemo(() => {
+    const addrs = new Set(myMessages.map(m => m.strategyId.toLowerCase()))
+    return [...addrs].reduce((s, a) => s + (boardViews[a] ?? 0), 0)
+  }, [myMessages, boardViews])
+
+  const buyerCpm = useMemo(() => {
+    if (!ethPrice) return null
+    const contribUsd = Number(totalContribWei) / 1e18 * ethPrice
+    if (!contribUsd || !buyerViews) return null
+    return (contribUsd / buyerViews) * 1000
+  }, [ethPrice, totalContribWei, buyerViews])
+
+  useEffect(() => {
+    if (!activeAddress || section !== 'feed') return
+    const wallet = activeAddress.toLowerCase()
+    let cancelled = false
+    fetch(`/api/account/activity?wallet=${wallet}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { if (!cancelled) setActivity({ wallet, events: d.events ?? [], failed: false }) })
+      .catch(() => { if (!cancelled) setActivity({ wallet, events: [], failed: true }) })
+    return () => { cancelled = true }
+  }, [activeAddress, section, activityKey])
+
+  const boardNames = useMemo(() => {
+    const names = new Map<string, string>()
+    myMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
+    fundedMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
+    allBoards.forEach(lb => lb.name && names.set(lb.address.toLowerCase(), lb.name))
+    return names
+  }, [allBoards, myMessages, fundedMessages])
+
+  const ownMessage = useCallback((markee: string) => myMessages.find(m => m.address.toLowerCase() === markee), [myMessages])
+
+  // The board's own buy modal, the same one its marketplace price button opens.
+  const openBoardBuy = useCallback((m: MyMessage | FundedMessage) => setPriceButtonTarget({
+    address: m.strategyId, name: m.strategyName, strategy: m.strategy ?? 'fixed',
+    platform: (m as MyMessage).isLegacy ? 'website' : (m.platform ?? 'website'),
+    isLegacy: !!(m as MyMessage).isLegacy,
+  } as AnyLeaderboard), [])
+
+  const handleActivate = useCallback((lb: AnyLeaderboard) => {
+    if (lb.strategy === 'streaming') setActivateStreamBoard(lb)
+    else setActivateTarget(lb)
+  }, [])
 
   const handleOpenAddToSite = useCallback((lb: AnyLeaderboard) => {
     setEmbedTarget(lb)
@@ -1796,24 +1280,33 @@ export default function AccountPage() {
         className="relative overflow-hidden"
         style={{
           borderBottom: `1px solid ${BORDER}`,
-          background: [
-            'radial-gradient(ellipse at 30% 20%, rgba(248,151,254,0.18), transparent 50%)',
-            'radial-gradient(ellipse at 80% 80%, rgba(124,156,255,0.2), transparent 55%)',
-            'linear-gradient(180deg, #060A2A 0%, #0A0F3D 100%)',
-          ].join(', '),
+          background: `radial-gradient(ellipse 55% 100% at 18% 0%, rgba(123,106,244,0.12), transparent 65%), ${HERO_BG}`,
         }}
       >
-        <HeroBackground />
-        <div className="relative z-10" style={{ maxWidth: 1240, margin: '0 auto', padding: '40px 40px 32px' }}>
+        <div className="relative z-10" style={{ maxWidth: 1240, margin: '0 auto', padding: '36px 32px 30px' }}>
           {/* wallet header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 14, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 13, background: BG, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={PINK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My dashboard</h1>
+              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>My Dashboard</h1>
               {mounted && (activeAddress
-                ? <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14, fontFamily: MONO }}>{fmtAddr(activeAddress)}</p>
+                ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 0' }}>
+                    <span style={{ color: TEXT2, fontSize: 13, fontFamily: MONO }}>{fmtAddr(activeAddress)}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(activeAddress).then(() => { setAddrCopied(true); setTimeout(() => setAddrCopied(false), 2000) }).catch(() => {})}
+                      title="Copy address"
+                      style={{ display: 'flex', background: 'transparent', border: 'none', color: addrCopied ? GREEN : MUTED, cursor: 'pointer', padding: 2, flexShrink: 0 }}
+                    >
+                      {addrCopied
+                        ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      }
+                    </button>
+                  </div>
+                )
                 : <p style={{ margin: '2px 0 0', color: MUTED, fontSize: 14 }}>Connect your wallet to continue</p>
               )}
             </div>
@@ -1821,180 +1314,165 @@ export default function AccountPage() {
               <div style={{ marginLeft: 'auto' }}><ConnectButton /></div>
             )}
             {mounted && hasWallet && (
-              <button
-                onClick={() => setDepositManagerOpen(true)}
-                style={{
-                  marginLeft: 'auto', flexShrink: 0,
-                  background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 10,
-                  padding: '11px 18px', fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                  transition: 'border-color 120ms, color 120ms',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${PINK}66`; (e.currentTarget as HTMLElement).style.color = TEXT }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-              >
-                Deposit Manager
-              </button>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <Link
+                  href="/raise-funding"
+                  className="acct-btn-lg"
+                  style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '0 16px', height: 38, display: 'inline-flex', alignItems: 'center', fontFamily: MONO, fontWeight: 700, fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap', transition: 'background 120ms' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${PINK}18` }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  Create New Markee
+                </Link>
+              </div>
             )}
           </div>
 
           {mounted && hasWallet && (
-            <Overview raised={totalRaisedWei} active={activeBoards.length} bought={myMessages.length} contributed={totalContribWei} loaded={!isLoading} />
+            <Overview
+              raised={totalRaisedWei}
+              active={activeBoards.length}
+              buyerViews={buyerViews}
+              buyerCpm={buyerCpm}
+              ethPrice={ethPrice}
+              loaded={!isLoading && !isLoadingMessages}
+            />
           )}
         </div>
       </section>
 
-      {/* Tabs + content */}
-      <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '0 40px 80px' }}>
+      {/* Sidebar + content */}
+      <div style={{ flex: 1, maxWidth: 1240, width: '100%', margin: '0 auto', padding: '28px 32px 80px', boxSizing: 'border-box' }}>
         {mounted && hasWallet ? (
-          <>
-            <div style={{ position: 'sticky', top: 66, background: BG, zIndex: 10, paddingTop: 24 }}>
-              <Tabs tab={tab} setTab={setTab} counts={{ pending: draftBoards.length, live: activeBoards.length, archive: archivedBoards.length, bought: myMessages.length + fundedMessages.length }} />
-            </div>
+          <div className="acct-layout">
+            <SidebarNav
+              section={section}
+              setSection={setSection}
+              attentionCount={(isModerator ? moderationQueue.items.length : 0) + draftBoards.length + (lowRunway != null ? 1 : 0)}
+            />
 
-            <div style={{ paddingTop: 28 }}>
-              {/* ── Pending Setup ── */}
-              {tab === 'pending' && (
-                isLoading ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 640, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-                    {/* Ready to Activate — boards with no messages yet (shown first, it's step 1) */}
-                    {inactiveBoards.length > 0 && (
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT2 }}>Ready to Activate</h2>
-                          <CountBadge n={inactiveBoards.length} />
-                        </div>
-                        <ActivationTable
-                          markees={inactiveBoards}
-                          onActivate={lb => lb.strategy === 'streaming' ? setActivateStreamBoard(lb) : setActivateTarget(lb)}
-                          onArchive={addr => setArchived(prev => [...prev, addr])}
-                        />
-                      </div>
-                    )}
-
-                    {/* Ready to Add to Your Site — any funded board (any platform/strategy) without a verified website or GitHub integration yet */}
-                    {awaitingVerification.filter(lb => !archived.includes(lb.address)).length > 0 && (
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: PINK }}>Ready to Add to Your Site</h2>
-                          <CountBadge n={awaitingVerification.filter(lb => !archived.includes(lb.address)).length} />
-                        </div>
-                        <ReadyToEmbedTable
-                          markees={awaitingVerification.filter(lb => !archived.includes(lb.address))}
-                          onEmbed={lb => { setEmbedTarget(lb); setEmbedInitialPlatform(lb.platform === 'github' ? 'github' : 'website') }}
-                          ethPrice={ethPrice}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              )}
-
-              {/* ── My Live Markees ── */}
-              {tab === 'live' && (
-                isLoading ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 640, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ACTIVE_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : activeBoards.length === 0 ? (
-                  <Empty icon="🪧" title="No live Markees yet" body="Once a Markee is funded and integrated, it shows up here fully live." ctaLabel="Create a Markee →" ctaHref="/raise-funding" />
-                ) : (
-                  <ActiveTable
-                    markees={activeBoards}
-                    onAddToSite={handleOpenAddToSite}
-                    onOpenPriceButton={lb => setPriceButtonTarget(lb)}
+            <main style={{ flex: 1, minWidth: 0 }}>
+              {/* ── Activity Feed ── */}
+              {section === 'feed' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+                  <NeedsAttention
+                    modLoading={moderationQueue.isLoading}
+                    modItems={isModerator ? moderationQueue.items : []}
+                    modBoards={moderationQueue.boards}
+                    liveMarkees={liveMarkees}
+                    onReview={moderationQueue.review}
+                    onOpenQueue={() => setSection('creator')}
+                    markeesLoading={isLoading}
+                    inactive={inactiveBoards}
+                    awaiting={awaitingSiteBoards}
                     ethPrice={ethPrice}
-                    activeAddress={activeAddress}
-                    onSuccess={() => activeAddress && fetchAll(activeAddress)}
+                    onActivate={handleActivate}
+                    onArchive={lb => setArchived(prev => [...prev, lb.address])}
+                    onAddToSite={handleOpenAddToSite}
+                    lowRunway={lowRunway}
+                    onDeposit={() => setSection('buyer')}
                   />
-                )
-              )}
-
-              {/* ── Archive ── */}
-              {tab === 'archive' && (
-                isLoading ? (
-                  <div style={{ overflow: 'auto' }}>
-                    <div style={{ minWidth: 500, background: BG2 }}>
-                      {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: ARCHIVED_COLS, gap: 16, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                          {[1, 2, 3].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <ArchivedTable
-                    markees={archivedBoards}
-                    onUnarchive={addr => setArchived(prev => prev.filter(a => a !== addr))}
+                  <LatestActivity
+                    events={activity?.wallet === activeAddress?.toLowerCase() ? activity!.events : []}
+                    state={activity?.wallet !== activeAddress?.toLowerCase() ? 'loading' : activity!.failed ? 'failed' : 'ready'}
+                    onRetry={() => { setActivity(null); setActivityKey(k => k + 1) }}
+                    boardName={b => boardNames.get(b) ?? fmtAddr(b)}
+                    ethPrice={ethPrice}
+                    priceLabel={markee => {
+                      const m = ownMessage(markee)
+                      return m && !m.isTop ? winPrice(m, ethPrice) : null
+                    }}
+                    onPrice={markee => { const m = ownMessage(markee); if (m) openBoardBuy(m) }}
+                    onOpen={e => {
+                      if (e.side === 'buy') { setSection('buyer'); return }
+                      const lb = allBoards.find(b => b.address.toLowerCase() === e.board)
+                      if (lb) { setSection('creator'); setManageTarget(lb.address) }
+                      else window.location.href = `/markee/${e.board}`
+                    }}
                   />
-                )
-              )}
-
-              {/* ── Messages I've Bought (Bought + Funded, stacked) ── */}
-              {tab === 'bought' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-                  {isLoadingMessages ? (
-                    <div style={{ overflow: 'auto' }}>
-                      <div style={{ minWidth: 800, background: BG2 }}>
-                        {[1, 2, 3, 4, 5].map(i => (
-                          <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                            {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : myMessages.length > 0 ? (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Bought</h2>
-                        <CountBadge n={myMessages.length} />
-                      </div>
-                      <BoughtTable items={myMessages} ethPrice={ethPrice} onEdit={handleEditMessage} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: m.totalFundsAdded, topFunds: m.topFunds, name: m.name, isLegacy: m.isLegacy })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
-                    </div>
-                  ) : null}
-
-                  {isLoadingFunded ? (
-                    <div style={{ overflow: 'auto' }}>
-                      <div style={{ minWidth: 800, background: BG2 }}>
-                        {[1, 2, 3, 4, 5].map(i => (
-                          <div key={i} style={{ display: 'grid', gridTemplateColumns: FUNDED_COLS, gap: 12, padding: '13px 16px', borderBottom: `1px solid ${BORDER}` }}>
-                            {[1, 2, 3, 4, 5, 6].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : fundedMessages.length > 0 ? (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT }}>Funded</h2>
-                        <CountBadge n={fundedMessages.length} />
-                      </div>
-                      <FundedTable items={fundedMessages} ethPrice={ethPrice} onAddFunds={m => setAddFundsTarget({ strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt(m.totalContributed), topFunds: BigInt(m.topFundsRaw), name: m.name })} onAddToSite={m => { setEmbedTarget({ address: m.strategyId, name: m.strategyName } as AnyLeaderboard); setEmbedInitialPlatform(m.platform === 'github' ? 'github' : 'website') }} />
-                    </div>
-                  ) : null}
-
-                  {!isLoadingMessages && !isLoadingFunded && myMessages.length === 0 && fundedMessages.length === 0 && (
-                    <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
-                  )}
                 </div>
               )}
-            </div>
-          </>
+
+              {/* ── Creator Hub ── */}
+              {section === 'creator' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+                  <StatsChart
+                    seed={1}
+                    metrics={[
+                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', delta: 12.4 },
+                      { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '-', delta: 5.1 },
+                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', delta: 7.2 },
+                    ]}
+                  />
+                  <YourMarkees
+                    active={sortedActiveBoards}
+                    archived={archivedBoards}
+                    inactive={inactiveBoards}
+                    awaiting={awaitingSiteBoards}
+                    loading={isLoading}
+                    boardViews={boardViews}
+                    ethPrice={ethPrice}
+                    selected={manageTarget}
+                    onManage={lb => setManageTarget(lb.address)}
+                    onActivate={handleActivate}
+                    onArchive={lb => setArchived(prev => [...prev, lb.address])}
+                    onRestore={lb => setArchived(prev => prev.filter(a => a !== lb.address))}
+                    onAddToSite={handleOpenAddToSite}
+                  />
+
+                  {/* Moderation */}
+                  {isModerator && <ModerationQueue liveMarkees={liveMarkees} />}
+                </div>
+              )}
+
+              {/* ── Buyer Hub ── */}
+              {section === 'buyer' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+                  <StatsChart
+                    seed={2}
+                    metrics={[
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', delta: -3.2 },
+                      { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', delta: 8.5 },
+                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', delta: -1.8 },
+                    ]}
+                  />
+                  <StreamBalanceCard
+                    snapshot={streamSnapshot}
+                    failed={streamFailed}
+                    ethPrice={ethPrice}
+                    onRetry={() => setStreamBalanceKey(k => k + 1)}
+                    onChanged={() => setStreamBalanceKey(k => k + 1)}
+                  />
+
+                  {isLoadingMessages || isLoadingFunded || myMessages.length > 0 || fundedMessages.length > 0 ? (
+                    <YourMessages
+                      owner={activeAddress}
+                      bought={myMessages}
+                      funded={fundedMessages}
+                      loading={isLoadingMessages || isLoadingFunded}
+                      boardViews={boardViews}
+                      ethPrice={ethPrice}
+                      onEditStreaming={handleEditMessage}
+                      onChangeBid={m => setStreamEditTarget(m)}
+                      onEdited={() => activeAddress && fetchMyMessages(activeAddress)}
+                      onPriceButton={openBoardBuy}
+                      onAddFunds={(m, own) => setAddFundsTarget(own
+                        ? { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: (m as MyMessage).totalFundsAdded, topFunds: (m as MyMessage).topFunds, name: m.name, isLegacy: (m as MyMessage).isLegacy }
+                        : { strategy: m.strategy ?? 'fixed', strategyId: m.strategyId, markeeAddress: m.address, message: m.message, totalFundsAdded: BigInt((m as FundedMessage).totalContributed), topFunds: BigInt((m as FundedMessage).topFundsRaw), name: m.name })}
+                    />
+                  ) : (
+                    <Empty icon="💬" title="No messages bought yet" body="Buy a message on any Markee in the network to get your words in front of an audience." ctaLabel="Browse the Marketplace →" ctaHref="/marketplace" />
+                  )}
+                  <BestBuys ethPrice={ethPrice} />
+                </div>
+              )}
+
+              {/* ── Settings ── */}
+              {section === 'settings' && activeAddress && (
+                <SettingsSection address={activeAddress} verifyOk={verifyOk} />
+              )}
+            </main>
+          </div>
         ) : mounted && !hasWallet ? (
           <div style={{ paddingTop: 80, textAlign: 'center' }}>
             <div style={{ background: BG2, borderRadius: 20, padding: '60px 24px', border: `1px solid ${BORDER}`, maxWidth: 440, margin: '0 auto' }}>
@@ -2005,7 +1483,6 @@ export default function AccountPage() {
             </div>
           </div>
         ) : (
-          // Loading skeleton before hydration
           <div style={{ paddingTop: 28, overflow: 'auto' }}>
             <div style={{ minWidth: 640, background: BG2 }}>
               {[1, 2, 3, 4, 5].map(i => (
@@ -2018,6 +1495,7 @@ export default function AccountPage() {
         )}
       </div>
 
+      {mounted && isModerator && <ModerationToast onReview={() => setSection('feed')} />}
       <Footer />
 
       {/* My Live Markees' price-to-change button -- same modal any visitor would see for that
@@ -2028,7 +1506,7 @@ export default function AccountPage() {
           isOpen
           board={priceButtonTarget.address}
           onClose={() => setPriceButtonTarget(null)}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+          onSuccess={() => { if (activeAddress) { fetchAll(activeAddress); fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy && (
@@ -2045,6 +1523,18 @@ export default function AccountPage() {
           onClose={() => setPriceButtonTarget(null)}
           leaderboardAddress={priceButtonTarget.address}
           onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+        />
+      )}
+
+      {manageBoard && (
+        <ManageDrawer
+          lb={manageBoard}
+          views={boardViews[manageBoard.address.toLowerCase()] ?? 0}
+          ethPrice={ethPrice}
+          activeAddress={activeAddress}
+          onClose={() => setManageTarget(null)}
+          onAddToSite={() => handleOpenAddToSite(manageBoard)}
+          onSuccess={() => activeAddress && fetchAll(activeAddress)}
         />
       )}
 
@@ -2148,7 +1638,6 @@ export default function AccountPage() {
         />
       )}
 
-      <DepositManagerModal isOpen={depositManagerOpen} onClose={() => setDepositManagerOpen(false)} />
     </div>
   )
 }

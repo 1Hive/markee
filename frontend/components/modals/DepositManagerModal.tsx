@@ -17,7 +17,7 @@ import {
 import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { sanitizeDecimalInput, parseEthInput, InfoTip } from '@/components/modals/StreamUI'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
@@ -80,7 +80,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
 
   const { writeContractAsync, isPending, reset: resetWrite } = useWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
   const busy = isPending || isConfirming
 
   useEffect(() => {
@@ -94,6 +94,11 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
+
+  // A reverted deposit/withdraw otherwise just re-enables the button with no error.
+  useEffect(() => {
+    if (txReverted && txHash) setActionError(formatReceiptError(receiptError, 'DepositManagerModal.receipt'))
+  }, [txReverted, txHash, receiptError])
 
   const initialLoading = loading && !data
   // A refresh with data already on screen (post-deposit/withdraw bust=1 refetch) -- distinct from

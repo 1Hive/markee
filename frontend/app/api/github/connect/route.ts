@@ -3,9 +3,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { kv } from '@vercel/kv'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  // Caller passes ?returnTo=modal to get redirected back into the modal after OAuth
+  // Caller passes ?returnTo=<path> to come back to that page after OAuth (no returnTo: the Creator Hub)
   const returnTo = searchParams.get('returnTo') ?? ''
   // ?popup=1: opened via window.open() rather than a full-page nav (GitHubVerify's Connect/Change
   // account flow) -- the callback responds with a postMessage + window.close() page instead of a

@@ -6,5 +6,7 @@
  */
 
 export { ModerationProvider, useModeration } from './ModerationProvider'
-export { ModeratedContent } from './ModeratedContent'
+export { ModeratedContent, ModeratedAuthor } from './ModeratedContent'
 export { FlagButton } from './FlagButton'
+export { ModerationQueue, ModerationItemRow, ModerationToast } from './ModerationQueue'
+export { BoardModerators } from './BoardModerators'

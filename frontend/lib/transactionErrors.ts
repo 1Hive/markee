@@ -107,6 +107,17 @@ export function formatTransactionError(error: unknown): string {
   return candidate
 }
 
+// For a useWaitForTransactionReceipt error (a reverted receipt, or a wait that failed): the decoded
+// revert reason when there is one, else a generic on-chain failure. Logs it under `context`.
+// wagmi replays a reverted tx to read its reason; when the replay has none it throws
+// 'unknown reason', or text decoded from whatever the replay returned.
+export function formatReceiptError(error: unknown, context: string): string {
+  logTransactionError(error, context)
+  const decoded = error ? formatTransactionError(error) : null
+  const useless = !decoded || decoded === 'Transaction error' || decoded === 'unknown reason' || /[\u0000-\u001f\ufffd]/.test(decoded)
+  return useless ? 'Transaction failed on-chain. Please try again.' : decoded
+}
+
 export function logTransactionError(error: unknown, context: string): void {
   if (!error) return
   console.error(`[${context}] Transaction error`, error)

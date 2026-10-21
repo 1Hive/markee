@@ -8,6 +8,7 @@ import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
+import { withWinTimes } from '@/lib/leaderboard/topHistory'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,10 +102,11 @@ async function fixedFunded(
   origin: string,
   headers: HeadersInit,
 ): Promise<FundedMessage[]> {
-  const [sfData, ghData, oiData] = await Promise.all([
-    fetch(`${origin}/api/superfluid/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/github/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/openinternet/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+  const [sfData, ghData, oiData, fsData] = await Promise.all([
+    fetch(`${origin}/api/superfluid/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/github/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/openinternet/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/forsale/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
   ])
 
   const leaderboards: Board[] = [
@@ -114,7 +116,9 @@ async function fixedFunded(
     ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
-  ].filter((lb: any) => lb.markeeCount > 0)
+    // For Sale factory boards come from their own listing route, not the openinternet one.
+    ...(fsData?.leaderboards ?? []),
+  ].filter((lb: any, i, all) => lb.markeeCount > 0 && all.findIndex((x: any) => x.address.toLowerCase() === lb.address.toLowerCase()) === i)
 
   if (leaderboards.length === 0) return []
 
@@ -266,7 +270,7 @@ async function streamingFunded(
   origin: string,
   headers: HeadersInit,
 ): Promise<FundedMessage[]> {
-  const data = await fetch(`${origin}/api/streaming/leaderboards`, { headers })
+  const data = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
     .then(r => r.ok ? r.json() : null).catch(() => null)
 
   const boards: Board[] = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
@@ -359,5 +363,5 @@ export async function GET(request: Request) {
     streamingFunded(client, owner, origin, headers).catch(() => []),
   ])
 
-  return NextResponse.json({ funded: [...fixed, ...streaming] })
+  return NextResponse.json({ funded: await withWinTimes([...fixed, ...streaming]) })
 }
