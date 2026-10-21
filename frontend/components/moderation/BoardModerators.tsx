@@ -50,7 +50,7 @@ function Row({ address, you, children }: { address: string; you: boolean; childr
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderTop: `1px solid ${BORDER}`, minWidth: 0 }}>
       <a
-        href={`https://basescan.org/address/${address}`}
+        href={`https://basescan.org/address/${encodeURIComponent(address)}`}
         target="_blank"
         rel="noreferrer"
         title={address}

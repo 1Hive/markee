@@ -330,7 +330,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const savedEvents  = notifyEventsOf(notifyState)
   const eventsChanged = (Object.keys(savedEvents) as (keyof NotifyEvents)[]).some(k => savedEvents[k] !== eventsDraft[k])
   const isDirty      = emailChanged || freqChanged || eventsChanged
-  const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())
+  const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(emailInput.trim())
 
   const discard = () => {
     setFreqDraft(savedFreq)

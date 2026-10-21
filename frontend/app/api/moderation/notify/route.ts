@@ -39,7 +39,8 @@ import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState } from '@/lib
 import { sendVerificationEmail } from '@/lib/moderation/email'
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Domain labels can't contain dots, so there's only one way to match and no catastrophic backtracking.
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing or invalid wallet address' }, { status: 400 })
     }
     const email = rawEmail?.trim().toLowerCase()
-    if (!email || !EMAIL_RE.test(email)) {
+    if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
       return NextResponse.json({ error: 'Missing or invalid email address' }, { status: 400 })
     }
     if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {

@@ -48,7 +48,7 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
     if (moderators.some(m => !ADDRESS_PATTERN.test(m.wallet))) {
       return NextResponse.json({ error: 'Every moderator must have a valid wallet address' }, { status: 400 })
     }
-    if (moderators.some(m => m.email && !EMAIL_RE.test(m.email))) {
+    if (moderators.some(m => m.email && (m.email.length > 254 || !EMAIL_RE.test(m.email)))) {
       return NextResponse.json({ error: 'One or more email addresses are invalid' }, { status: 400 })
     }
     if (moderators.length > MAX_BOARD_MODERATORS) {
