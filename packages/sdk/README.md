@@ -143,11 +143,40 @@ No API URL configuration is required. This alpha uses the Markee staging API at 
 
 ## LLM implementation prompt
 
-Copy this prompt into your coding assistant. These are existing Base demo boards; replace the placements with your own when integrating your product.
+Copy this prompt into your coding assistant. It gathers missing requirements before implementing the integration.
 
 ```text
 Integrate @markee_team/sdk@0.1.0-alpha.2 into this app. Inspect the app first and
 follow its existing framework, styling, and wallet patterns.
+
+Before changing code, inspect what is already available, then ask me the unanswered
+questions below in one concise group. Do not ask again for facts already provided.
+Wait for answers about strategy, placement, and intended scope before implementing.
+
+1. Do you want For Rent (recurring streaming payments), For Sale (one-time
+   funding), or both?
+2. Is this a proof of concept or an integration with your own Markee placement?
+   For your own placement, what are the chain ID and board address, or the Gardens
+   community address and chain ID? If unknown, ask for the existing Markee/Gardens
+   link so we can identify and verify the placement. Never invent an address or
+   assume a board supports the chosen strategy. Offer demo boards only with consent;
+   explain that they use real Base funds, not a sandbox. If no placement exists,
+   identify that prerequisite instead of silently substituting a demo board.
+3. Where should Markee appear (page/component), what should open the modal, and
+   what should the button say? Is the placement fixed or selected per community?
+4. Should we reuse the app's existing connected wallet or use SDK wallet discovery?
+   Inspect the installed connector first. If a new host wallet connector is needed,
+   ask which one; do not install ConnectKit automatically.
+5. Should the modal match the app's theme, or use specific light/dark/system mode,
+   brand colors, font, and corner radius? Suggest the existing app theme by default.
+6. After a confirmed transaction, should the app show a message, refresh data,
+   navigate, or notify an existing callback? Are there accessibility, mobile, or
+   framework constraints not evident from the code?
+
+Explain that this alpha uses a built-in staging API and supports wallet-funded
+flows; card checkout and incoming bridging are unavailable. If either is required,
+ask whether to proceed with the supported scope instead of promising those features.
+Summarize the agreed requirements and implement only the selected flows.
 
 - Install @markee_team/sdk@0.1.0-alpha.2. The SDK knows its API endpoint. Do not
   request an API URL, build an API proxy, or add RPC/database/provider keys.
@@ -155,7 +184,8 @@ follow its existing framework, styling, and wallet patterns.
   component and supply open, onClose, and placement. For other apps, import
   createMarkee from @markee_team/sdk, call createMarkee(), then open({ placement }).
   Close the instance on teardown. Reuse the built-in modal UI.
-- Add buttons for these existing demo placements:
+- Use the agreed placement and strategy. Only if I explicitly choose a demo, use
+  the corresponding existing Base board below (do not add both unless requested):
   For Sale: { kind: 'board', chainId: 8453,
     address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' }
   For Rent: { kind: 'board', chainId: 8453,
@@ -173,7 +203,7 @@ follow its existing framework, styling, and wallet patterns.
   SDK handle payment review, chain switching, submission, and verification.
   Do not advertise card checkout or incoming bridging: this alpha lacks those
   features. The demo boards use real Base funds.
-- Run typecheck/build and verify both modals load without API configuration,
+- Run typecheck/build and verify the selected modal flows load without API configuration,
   open/close correctly, and match the theme. Verify host wallet reuse if available.
   Do not sign or submit transactions during automated verification. Report changed
   files, checks, and remaining limitations.
