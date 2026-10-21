@@ -156,12 +156,17 @@ export async function sendBuyerDigests(): Promise<number> {
   for (const key of keys) {
     const wallet = key.slice(digestKey('').length)
     const entries = await kv.lrange<DigestEntry>(key, 0, -1)
-    await kv.del(key)
     const [r] = await recipients([wallet], 'status').then(async found => found.length ? found : recipients([wallet], 'budget'))
-    if (!r || entries.length === 0) continue
+    if (!r || entries.length === 0) {
+      await kv.del(key)
+      continue
+    }
     const subject = `Daily summary: ${entries.length} update${entries.length === 1 ? '' : 's'} on your messages`
     try {
       await sendEmail({ sender: FROM, to: [{ email: r.email }], subject, htmlContent: page(subject, entries.map(e => para(e.html)).join(''), 'Open your account') })
+      // Drop only what was sent, after it was sent: a failed send keeps the digest for tomorrow,
+      // and entries queued during the send stay for the next one.
+      await kv.ltrim(key, entries.length, -1)
       sent++
     } catch (err) { console.error('[notifications/buyer] digest send failed', err) }
   }
