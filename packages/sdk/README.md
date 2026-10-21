@@ -1,10 +1,10 @@
-# @markee_team/sdk
+# Markee SDK
 
 An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The SDK knows the Markee API endpoint; the host only supplies its placement and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
 
-This is an experimental `0.1.0-alpha.4` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
+Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent flows, automatic strategy detection, and a configurable theme. Hosted card checkout and incoming cross-chain funding are not included.
 
-Install the alpha:
+## Installation
 
 ```sh
 npm install @markee_team/sdk@latest
@@ -18,6 +18,12 @@ To build from the source repository:
 npm ci --prefix packages/sdk
 npm run build --prefix packages/sdk
 ```
+
+## Connect your leaderboard
+
+Create a leaderboard at [markee.xyz/create-a-markee](https://www.markee.xyz/create-a-markee), or use an existing one. Copy the address from its `https://www.markee.xyz/markee/<address>` link and supply it as a board placement on Base (`chainId: 8453`).
+
+The SDK reads the leaderboard's strategy from Markee and automatically renders the appropriate For Sale or For Rent flow. You do not configure a strategy in your app.
 
 ## Plain JavaScript
 
@@ -44,7 +50,7 @@ markee.open({
 // markee.close();
 ```
 
-Without a wallet adapter, browsing works without a wallet. On a connect click the modal discovers installed wallets using EIP-6963, with an EIP-1193 fallback. Multiple discovered wallets are offered for explicit selection. An adapter always takes precedence over injected discovery. Hosted login/card checkout is not part of milestones 1–4.
+Without a wallet adapter, browsing works without a wallet. On a connect click the modal discovers installed wallets using EIP-6963, with an EIP-1193 fallback. Multiple discovered wallets are offered for explicit selection. An adapter always takes precedence over injected discovery. Hosted login and card checkout are not supported.
 
 ## React
 
@@ -63,7 +69,7 @@ See [`examples/connectkit`](https://github.com/1Hive/markee/tree/feature/markee-
 
 ## Modal layout
 
-Both strategies follow Gardens' For Rent modal: a compact, 512px panel with a fixed header/footer, a collapsible leaderboard, the selected message or editor, and a prominent amount card. The leaderboard pins your loaded messages and offers inline funding selection. Your active rental message is selected when available; otherwise an owned message or the creation form is shown.
+Both strategies use a consistent, compact 512px panel with a fixed header/footer, a collapsible leaderboard, the selected message or editor, and a prominent amount card. The leaderboard pins your loaded messages and offers inline funding selection. Your active rental message is selected when available; otherwise an owned message or the creation form is shown.
 
 For Sale uses the same arrangement with a one-time ETH amount. For Rent uses an ETHx monthly rate and links to Deposit manager. Wallet balances, rewards, refunds, edits, and community treasury actions remain accessible without top-level tabs. The footer holds the review/confirmation actions and Stop streaming when applicable.
 
@@ -135,11 +141,11 @@ Community activation supports the current council Safe, a current Safe owner, or
 - The modal renders escaped text, uses isolated CSS, and supports keyboard focus, Escape, mobile sizing and reduced motion. A host CSP must permit the SDK's inline styles and connections to its configured Markee API. No external font or image is needed by the modal.
 - API failures are explicit. Without moderation data, message text is withheld. No mock balances or fabricated rewards are returned by production handlers.
 
-Backend configuration, endpoint details, and verification evidence: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/feature/markee-sdk/docs/sdk/implementation.md).
+Backend configuration and API reference: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/feature/markee-sdk/docs/sdk/implementation.md).
 
 ## API endpoint
 
-No API URL configuration is required. This alpha uses the Markee staging API at `https://markee-git-feature-markee-sdk-1hive.vercel.app/api/sdk/v1`. For local development or testing only, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The current default is also exported as `DEFAULT_MARKEE_API_URL`.
+No API URL or Markee API key is required. The SDK connects to the Markee-hosted API and centralizes on-chain reads, metadata, and transaction preparation. For local development or testing, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The endpoint used by your installed release is exported as `DEFAULT_MARKEE_API_URL`.
 
 ## LLM implementation prompt
 
@@ -197,7 +203,7 @@ Then implement the agreed scope:
    open/close behavior, theme, and wallet reuse. Do not sign or send transactions
    during automated verification. Report changed files, checks, and limitations.
 
-Check the installed release's limitations before promising features. This release
-uses Markee's staging backend and supports wallet-funded flows; card checkout and
-incoming bridging are not yet available. Transactions use real funds.
+Check the installed release's supported features before promising functionality.
+The SDK supports wallet-funded flows; card checkout and incoming bridging are not
+yet available. Transactions use real funds.
 ```
