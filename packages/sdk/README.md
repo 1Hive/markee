@@ -1,8 +1,8 @@
 # @markee_team/sdk
 
-An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The host supplies a Markee API URL and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
+An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The SDK knows the Markee API endpoint; the host only supplies its placement and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
 
-This is an experimental `0.1.0-alpha.1` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
+This is an experimental `0.1.0-alpha.2` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
 
 Install the alpha:
 
@@ -25,7 +25,6 @@ npm run build --prefix packages/sdk
 import { createMarkee } from '@markee_team/sdk';
 
 const markee = createMarkee({
-  apiUrl: 'https://YOUR-MARKEE-API/api/sdk/v1',
   // Optional. Reuse the wallet selected by your application's wallet connector.
   wallet: {
     getProvider: async () => appWalletProvider ?? null,
@@ -55,7 +54,6 @@ import { MarkeeModal } from '@markee_team/sdk/react';
 <MarkeeModal
   open={open}
   onClose={() => setOpen(false)}
-  apiUrl="https://YOUR-MARKEE-API/api/sdk/v1"
   wallet={walletAdapter}
   placement={{ kind: 'gardens-community', chainId: 100, community: communityAddress }}
 />;
@@ -92,7 +90,7 @@ const theme: MarkeeTheme = {
 
 // React: <MarkeeModal {...modalProps} theme={theme} />
 // JavaScript:
-const markee = createMarkee({ apiUrl, theme });
+const markee = createMarkee({ theme });
 markee.setTheme({ mode: 'dark' });
 markee.setTheme(); // Reset to the default light theme.
 ```
@@ -138,3 +136,48 @@ Community activation supports the current council Safe, a current Safe owner, or
 - API failures are explicit. Without moderation data, message text is withheld. No mock balances or fabricated rewards are returned by production handlers.
 
 Backend configuration, endpoint details, and verification evidence: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/feature/markee-sdk/docs/sdk/implementation.md).
+
+## API endpoint
+
+No API URL configuration is required. This alpha uses the Markee staging API at `https://markee-git-feature-markee-sdk-1hive.vercel.app/api/sdk/v1`. For local development or testing only, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The current default is also exported as `DEFAULT_MARKEE_API_URL`.
+
+## LLM implementation prompt
+
+Copy this prompt into your coding assistant. These are existing Base demo boards; replace the placements with your own when integrating your product.
+
+```text
+Integrate @markee_team/sdk@0.1.0-alpha.2 into this app. Inspect the app first and
+follow its existing framework, styling, and wallet patterns.
+
+- Install @markee_team/sdk@0.1.0-alpha.2. The SDK knows its API endpoint. Do not
+  request an API URL, build an API proxy, or add RPC/database/provider keys.
+- For React 18/19, import MarkeeModal from @markee_team/sdk/react in a client
+  component and supply open, onClose, and placement. For other apps, import
+  createMarkee from @markee_team/sdk, call createMarkee(), then open({ placement }).
+  Close the instance on teardown. Reuse the built-in modal UI.
+- Add buttons for these existing demo placements:
+  For Sale: { kind: 'board', chainId: 8453,
+    address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' }
+  For Rent: { kind: 'board', chainId: 8453,
+    address: '0x82cbe3BdFC4e01940D186Ac5EA151355647DE0d3' }
+- Wallet integration is optional. Reuse the app's selected EIP-1193 provider via
+  wallet.getProvider(): Promise<provider | null> and optional
+  wallet.connect(): Promise<provider>. For ConnectKit/wagmi, use the active
+  connector's provider, resolve connect after selection, and reject cancellation.
+  Do not create a second wallet context or silently select another injected wallet.
+  If there is no existing wallet integration, omit wallet for SDK wallet discovery.
+- Match the app using theme: mode ('light', 'dark', 'system'), fontFamily, radius,
+  and semantic colors such as primary and primaryText. Preserve the built-in
+  layout and its isolated Shadow DOM styles.
+- Optionally handle onEvent and show success only for a confirmed event. Let the
+  SDK handle payment review, chain switching, submission, and verification.
+  Do not advertise card checkout or incoming bridging: this alpha lacks those
+  features. The demo boards use real Base funds.
+- Run typecheck/build and verify both modals load without API configuration,
+  open/close correctly, and match the theme. Verify host wallet reuse if available.
+  Do not sign or submit transactions during automated verification. Report changed
+  files, checks, and remaining limitations.
+
+This alpha automatically uses Markee's temporary staging backend. Read the installed
+package README for exact types and configuration details.
+```

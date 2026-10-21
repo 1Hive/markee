@@ -6,7 +6,6 @@ import type { Address, MarkeeTheme, Placement } from '@markee_team/sdk';
 import { useMarkeeWallet } from './wallet';
 
 const sale = import.meta.env.VITE_SALE_BOARD || '0x2768BC6e90266248BD8bCF5401C36D8049CdF671';
-const apiUrl = import.meta.env.VITE_MARKEE_API_URL || 'http://localhost:3000/api/sdk/v1';
 const themes = {
   light: { mode: 'light' },
   dark: { mode: 'dark' },
@@ -45,6 +44,6 @@ export function App() {
       <div className="config theme-config"><label htmlFor="modal-theme">Modal theme</label><div className="theme-picker"><select id="modal-theme" value={theme} onChange={event => setTheme(event.target.value as keyof typeof themes)}><option value="light">Light</option><option value="dark">Dark</option><option value="system">Match device</option><option value="plum">Plum · custom brand</option></select><span className={`theme-swatch ${theme}`} aria-hidden="true"><i/><i/><i/></span></div></div>
       <div className="launch"><button className="launch-button" disabled={!valid} onClick={() => setOpen(true)}>Open Markee <span>↗</span></button><span className="launch-note">{account.isConnected ? 'Uses your connected app wallet' : 'Browse first. Connect when you’re ready.'}</span></div></section>
     </main><footer className="site-footer"><span>MARK BOTH THE MOMENT & THE FUTURE.</span><span>SDK preview · Milestones 1–4</span></footer>{notice && <div className="toast" role="status">{notice}</div>}
-    <MarkeeModal apiUrl={apiUrl} wallet={wallet} theme={themes[theme]} placement={placement} open={open} onClose={() => setOpen(false)} onEvent={event => { if (event.type === 'confirmed') setNotice('Your Markee transaction is confirmed.'); }} />
+    <MarkeeModal wallet={wallet} theme={themes[theme]} placement={placement} open={open} onClose={() => setOpen(false)} onEvent={event => { if (event.type === 'confirmed') setNotice('Your Markee transaction is confirmed.'); }} />
   </div>;
 }

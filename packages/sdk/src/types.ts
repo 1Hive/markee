@@ -105,7 +105,8 @@ export interface MarkeeTheme {
   radius?: number;
 }
 export interface SDKOptions {
-  apiUrl: string; wallet?: WalletAdapter; fetch?: typeof fetch;
+  /** Optional development override; defaults to the Markee-hosted API. */
+  apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;
   theme?: MarkeeTheme;
   onEvent?: (event: { type: 'submitted' | 'confirmed' | 'error'; hash?: Hex; message?: string }) => void;
 }

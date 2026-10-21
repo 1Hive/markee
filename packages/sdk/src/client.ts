@@ -1,5 +1,8 @@
 import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
 
+/** Markee-hosted API for the alpha release. */
+export const DEFAULT_MARKEE_API_URL = 'https://markee-git-feature-markee-sdk-1hive.vercel.app/api/sdk/v1';
+
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }
 }
@@ -32,8 +35,8 @@ export class MarkeeClient {
   private inMemoryPending: PendingTransaction[] = [];
   private adminMemory: PendingAuthorization | null = null;
   private communityReceipts: Record<string, AdminResult> = {};
-  constructor(readonly options: SDKOptions) {
-    const url = new URL(options.apiUrl);
+  constructor(readonly options: SDKOptions = {}) {
+    const url = new URL(options.apiUrl ?? DEFAULT_MARKEE_API_URL);
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new MarkeeError('Use an HTTPS Markee API URL (HTTP is allowed on localhost).');
     this.apiUrl = url.href.replace(/\/$/, '');
     this.fetcher = options.fetch || globalThis.fetch.bind(globalThis);

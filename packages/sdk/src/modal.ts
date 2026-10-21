@@ -429,7 +429,7 @@ export class MarkeeModal {
 
 }
 
-export function createMarkee(options: SDKOptions) {
+export function createMarkee(options: SDKOptions = {}) {
   const client = new MarkeeClient(options);
   let modal: MarkeeModal | undefined;
   let theme = options.theme;
