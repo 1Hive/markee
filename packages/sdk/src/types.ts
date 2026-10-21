@@ -107,6 +107,11 @@ export interface MarkeeTheme {
 export interface SDKOptions {
   /** Optional development override; defaults to the Markee-hosted API. */
   apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;
+  /** Public page/domain to verify for this board; omit to disable automatic registration. */
+  siteUrl?: string;
+  onSiteVerification?: (result: SiteVerification) => void;
   theme?: MarkeeTheme;
   onEvent?: (event: { type: 'submitted' | 'confirmed' | 'error'; hash?: Hex; message?: string }) => void;
 }
+
+export interface SiteVerification { verified: boolean; url: string; verifiedUrls?: string[]; message?: string }

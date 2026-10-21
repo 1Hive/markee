@@ -51,6 +51,7 @@ export class MarkeeModal {
   };
   constructor(readonly client: MarkeeClient, readonly options: ModalOptions) {
     if (typeof document === 'undefined') throw new Error('Open the Markee modal in a browser.');
+    client.registerSite(options.placement);
     this.previousFocus = document.activeElement as HTMLElement | null;
     this.previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';

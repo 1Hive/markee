@@ -30,6 +30,20 @@ The SDK connects to an existing leaderboard; installing it does not create one.
 
 The SDK reads the leaderboard's strategy from Markee and automatically renders the appropriate For Sale or For Rent flow. You do not configure a strategy in your app.
 
+## Automatic site verification
+
+Pass your public page URL or domain as `siteUrl` to `MarkeeModal` or `createMarkee`, for example `siteUrl="https://your-app.example"`. The React component registers the site when mounted, even while closed; the JavaScript modal registers when opened. No API key is required. Use `onSiteVerification` to inspect success or setup errors; verification does not block browsing or payments.
+
+Markee fetches the public page and verifies that its HTML contains the matching board marker before adding it to **Served on**. The React component renders this marker for server-rendered apps. For client-rendered apps such as Vite, include it in the deployed `index.html` (replace the address with your board):
+
+```html
+<span hidden data-markee-address="0xYOUR_BOARD_ADDRESS"></span>
+```
+
+The marker must be present in the HTML returned by the server, not only injected by JavaScript. The supplied URL must use HTTPS, match the app's origin, and return the final HTML page without redirects. Localhost and private-network sites cannot be publicly verified. Registration currently supports Base boards. It verifies the board's presence, not legal domain ownership.
+
+For an explicit retry after deployment, call `new MarkeeClient().verifySite(placement, siteUrl)`. The endpoint is `POST /api/sdk/v1/sites/verify` with `{ placement, siteUrl }`. Unverified sites are never added to the verified list.
+
 ## Plain JavaScript
 
 ```ts
@@ -184,6 +198,9 @@ Ask only the remaining unanswered requirements in one concise group:
   connector without agreement.
 - Should the modal match the app theme or use specific colors, font, radius, and
   light/dark/system mode?
+- What public domain/page will host this integration? Use it as siteUrl for
+  automatic verification. For Vite/client rendering, add the board marker to the
+  static HTML as documented; do not claim localhost is verified.
 - What should happen after a confirmed transaction: notification, refresh,
   navigation, or callback? Are there additional mobile/accessibility requirements?
 

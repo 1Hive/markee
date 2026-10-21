@@ -1,4 +1,4 @@
-import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
+import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 /** Markee-hosted API for the alpha release. */
 export const DEFAULT_MARKEE_API_URL = 'https://markee-git-feature-markee-sdk-1hive.vercel.app/api/sdk/v1';
@@ -77,6 +77,18 @@ export class MarkeeClient {
     const accounts = await provider.request({ method: 'eth_requestAccounts' });
     if (!Array.isArray(accounts) || !isAddress(accounts[0])) throw new MarkeeError('The wallet did not return an account.');
     return accounts[0];
+  }
+  verifySite(placement: Placement, siteUrl: string): Promise<SiteVerification> {
+    return this.request('sites/verify', { placement, siteUrl });
+  }
+  private siteRequests = new Map<string, Promise<SiteVerification>>();
+  registerSite(placement: Placement): void {
+    if (!this.options.siteUrl) return;
+    const key = JSON.stringify([placement, this.options.siteUrl]);
+    if (this.siteRequests.has(key)) return;
+    const request = this.verifySite(placement, this.options.siteUrl);
+    this.siteRequests.set(key, request);
+    void request.then(result => this.options.onSiteVerification?.(result), error => this.options.onSiteVerification?.({ verified: false, url: this.options.siteUrl!, message: error instanceof Error ? error.message : 'Site verification failed.' })).catch(() => { /* Consumer callbacks must not interrupt the modal. */ });
   }
   async snapshot(placement: Placement, account?: Address | null, offset?: number, signal?: AbortSignal): Promise<Snapshot> {
     const params = new URLSearchParams({ placement: JSON.stringify(placement) });

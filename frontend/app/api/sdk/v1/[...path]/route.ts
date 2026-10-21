@@ -14,6 +14,7 @@ import * as claim from '@/lib/sdk/gardens/claim';
 import * as quote from '@/lib/sdk/gardens/quote';
 import * as community from '@/lib/sdk/gardens/community';
 import * as views from '@/app/api/views/route';
+import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
 
 export const runtime = 'nodejs';
@@ -58,6 +59,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
         return cors(await executeAdmin(path, rebuilt, { nonce: body.nonce, signature: body.signature }, handler), request);
       }
       const body = object(await readLimitedJsonBody(request, 48 * 1024));
+      if (path === 'sites/verify') return cors(NextResponse.json(await verifySite(placement(body.placement), body.siteUrl, request.headers.get('origin'))), request);
       if (path === 'prepare') return cors(NextResponse.json(await prepare(placement(body.placement), address(body.account), parseAction(body.action))), request);
       if (path === 'verify') {
         if (typeof body.id !== 'string') throw new SDKError('INVALID_PREPARATION', 'A preparation ID is required.');

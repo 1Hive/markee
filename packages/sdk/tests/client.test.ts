@@ -65,3 +65,19 @@ test('API errors retain status and never send cookies', async () => {
   } });
   await assert.rejects(client.snapshot(preparation().placement), { status: 429, code: 'RATE_LIMITED' });
 });
+
+test('site registration sends placement and URL once without wallet or credentials', async () => {
+  let calls = 0;
+  const placement = { kind: 'board' as const, chainId: 8453, address: other };
+  const client = new MarkeeClient({ siteUrl: 'https://app.example', fetch: async (url, init) => {
+    calls++;
+    assert.ok(String(url).endsWith('/sites/verify'));
+    assert.equal(init?.credentials, 'omit');
+    assert.deepEqual(JSON.parse(String(init?.body)), { placement, siteUrl: 'https://app.example' });
+    return Response.json({ verified: true, url: 'https://app.example/' });
+  } });
+  client.registerSite(placement);
+  client.registerSite(placement);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls, 1);
+});
