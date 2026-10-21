@@ -19,9 +19,14 @@ npm ci --prefix packages/sdk
 npm run build --prefix packages/sdk
 ```
 
-## Connect your leaderboard
+## Create and connect your leaderboard
 
-Create a leaderboard at [markee.xyz/create-a-markee](https://www.markee.xyz/create-a-markee), or use an existing one. Copy the address from its `https://www.markee.xyz/markee/<address>` link and supply it as a board placement on Base (`chainId: 8453`).
+The SDK connects to an existing leaderboard; installing it does not create one.
+
+1. Open [Create a Markee](https://www.markee.xyz/create-a-markee) and complete the leaderboard setup on Markee. Choose For Sale or For Rent there. If you already have a leaderboard, use it instead.
+2. Copy the resulting Markee page link: `https://www.markee.xyz/markee/<address>`.
+3. Extract the `0x…` address from that link and use it in the SDK placement: `{ kind: 'board', chainId: 8453, address: yourLeaderboardAddress }`.
+4. Open the modal to display your leaderboard. If using a coding assistant, give it the Markee page link along with the LLM implementation prompt below.
 
 The SDK reads the leaderboard's strategy from Markee and automatically renders the appropriate For Sale or For Rent flow. You do not configure a strategy in your app.
 
