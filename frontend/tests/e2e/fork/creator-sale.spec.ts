@@ -20,7 +20,7 @@ let board = ''
 
 async function openDrawer(page: Page) {
   await page.goto('/account?section=creator')
-  const row = page.locator('.acct-row', { hasText: 'example.com' })
+  const row = page.locator('.acct-row', { hasText: /example\.(com|org)/ })
   await expect(row).toBeVisible({ timeout: TX_TIMEOUT })
   await row.getByRole('button', { name: 'Manage' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()

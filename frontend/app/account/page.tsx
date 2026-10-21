@@ -862,13 +862,17 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
           <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.33)}</text>
         </>}
 
+        {loading && (
+          <text x={PAD.l + innerW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">Loading…</text>
+        )}
+
         {/* Days before tracking began */}
         {!loading && untrackedW > 0 && (
           <>
             <rect x={PAD.l} y={PAD.t} width={untrackedW} height={innerH} fill="rgba(138,143,191,0.05)" />
             {untrackedW > 90 && (
               <text x={PAD.l + untrackedW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">
-                {hasData ? `Tracking began ${shortDay(since!)}` : 'Daily history starts today'}
+                {hasData ? `Tracking began ${shortDay(since!)}` : 'Collecting daily history'}
               </text>
             )}
           </>
