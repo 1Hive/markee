@@ -89,7 +89,7 @@ export default function Checkout({ id }: { id: string }) {
     let funds = await request<{ balance: string; target: string }>('balance', { account });
     if (BigInt(funds.balance) < BigInt(funds.target)) {
       setProgress('Complete card funding in the payment provider…');
-      const funded = await fundWallet({ address: account, options: { chain: base, asset: 'native-currency', amount: formatEther(BigInt(funds.target) - BigInt(funds.balance)), defaultFundingMethod: 'card', uiConfig: { receiveFundsTitle: 'Fund your Markee payment' } } });
+      const funded = await fundWallet({ address: account, options: { chain: base, asset: 'native-currency', amount: formatEther(BigInt(funds.target) - BigInt(funds.balance)), defaultFundingMethod: 'card', card: { preferredProvider: 'moonpay' }, uiConfig: { receiveFundsTitle: 'Fund your Markee payment' } } });
       if (funded.status === 'cancelled') throw new Error('Funding was closed. If you completed a card purchase, wait for the ETH to arrive, then continue here.');
       setProgress('Waiting for your ETH to arrive on Base…');
       for (let i = 0; i < 150 && alive.current; i++) {

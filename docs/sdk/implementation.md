@@ -147,7 +147,7 @@ funding for native Base ETH in the Privy dashboard. The host app needs none of
 these credentials. Include the hosted Markee origin in any SDK CORS allowlist.
 
 This implementation uses the installed Privy `useFundWallet` native ETH flow,
-not Stripe's newer stablecoin deposit modal. The provider UI handles card details,
+with MoonPay preferred for credit/debit cards, not Stripe's newer stablecoin deposit modal. Enable MoonPay in Privy before enabling checkout. The provider UI handles card details,
 identity/3DS and eligibility. No backend stores card information. See
 [Privy EVM funding](https://docs.privy.io/wallets/funding/legacy/evm).
 
