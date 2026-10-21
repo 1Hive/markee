@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing or invalid token' }, { status: 400 })
   }
 
-  const payload = await kv.get<VerifyToken>(verifyTokenKey(token)).catch(() => null)
+  // Read and delete in one step, so the token is single-use even under concurrent requests.
+  const payload = await kv.getdel<VerifyToken>(verifyTokenKey(token)).catch(() => null)
   if (!payload) {
     // Token not found or expired — redirect to account with an error hint.
     const url = new URL('/account', req.nextUrl.origin)
@@ -25,7 +26,6 @@ export async function GET(req: NextRequest) {
 
   const now = Math.floor(Date.now() / 1000)
   if (now > payload.expiresAt) {
-    await kv.del(verifyTokenKey(token)).catch(() => {})
     const url = new URL('/account', req.nextUrl.origin)
     url.searchParams.set('verifyError', 'expired')
     return NextResponse.redirect(url, 302)
@@ -42,8 +42,6 @@ export async function GET(req: NextRequest) {
     }
     await kv.set(notifyStateKey(payload.wallet), updated)
   }
-  // Token is single-use.
-  await kv.del(verifyTokenKey(token)).catch(() => {})
 
   const url = new URL('/account', req.nextUrl.origin)
   url.searchParams.set('section', 'settings')

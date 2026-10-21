@@ -137,7 +137,11 @@ export async function notifyLowBudgets(streamingBoards: string[]): Promise<numbe
     if (runway === null || runway >= LOW_BUDGET_SECONDS) { await kv.del(lowBudgetKey(r.wallet)); continue }
     if (!await kv.set(lowBudgetKey(r.wallet), Date.now(), { nx: true })) continue
     try { sent += await deliver(r, 'Your stream balance is running low', { kind: 'budget', html: lowBudgetLine(runway), at: Math.floor(Date.now() / 1000) }) }
-    catch (err) { console.error('[notifications/buyer] low budget send failed', err) }
+    catch (err) {
+      console.error('[notifications/buyer] low budget send failed', err)
+      // Clear the marker so the next check retries the alert.
+      await kv.del(lowBudgetKey(r.wallet)).catch(() => {})
+    }
   }
   return sent
 }

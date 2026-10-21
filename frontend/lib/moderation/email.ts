@@ -159,11 +159,10 @@ export async function sendDailyDigest(boards: ModeratedBoard[]): Promise<Notific
   const counts = await Promise.all(
     boards.map(b => kv.zcard(pendingKey('board', b.address)).catch(() => 0)),
   )
-  const boardsWithItems = boards.filter((_, i) => (counts[i] ?? 0) > 0)
+  const boardsWithItems = boards.map((board, i) => ({ board, count: counts[i] ?? 0 })).filter(b => b.count > 0)
   if (boardsWithItems.length === 0) return { sent: 0, errors: 0 }
 
-  const results = await Promise.all(boardsWithItems.map(async board => {
-    const count = counts[boards.indexOf(board)] ?? 0
+  const results = await Promise.all(boardsWithItems.map(async ({ board, count }) => {
     const states = await readModeratorNotifyStates(board.moderators)
     const recipients = states.filter(s => s.verified && s.frequency === 'daily' && s.events.mod)
     if (recipients.length === 0) return { sent: 0, errors: 0 }
