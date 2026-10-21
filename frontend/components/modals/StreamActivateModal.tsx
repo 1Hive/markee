@@ -269,6 +269,7 @@ export function StreamActivateModal({
         <div style={{ padding: '22px', overflowY: 'auto', flex: 1 }}>
           <PaymentReviewCard
             kind="rent"
+            activating
             message={message}
             amountLabel={`${monthly || '0'} ETH/mo`}
             amountUsd={ethPrice && calc.monthlyWei > 0n ? formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice) : null}

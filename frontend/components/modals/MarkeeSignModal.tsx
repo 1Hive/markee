@@ -576,8 +576,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const btnDisabled = busy || isSuccess || blocksOnBalance
   const btnDisabledReason = busy ? 'Transaction in progress' : blocksOnBalance ? "You don't have enough ETH for this" : null
 
+  const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
-    : fundedMarkees.length === 0 ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
+    : activating ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
 
   return (
     <div
@@ -672,6 +673,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
+                    activating={activating}
                     message={message}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
@@ -809,6 +811,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
+                    activating={activating}
                     message={target.message || ''}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
@@ -851,6 +854,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
+                    activating={activating}
                     message={message}
                     amountLabel="Free — message update only"
                     amountUsd={null}
