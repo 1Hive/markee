@@ -232,7 +232,7 @@ export function PaymentReviewCard({
         {kind === 'rent' && (
           <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED, lineHeight: 1.4 }}>
             {activating && willWin
-              ? "Your payment only streams while your message is winning. Anyone can overtake it by bidding more, pausing your payment until you're winning again. You can cancel at any time."
+              ? 'Your payment only streams while your message is winning.'
               : willWin
               ? "Anyone can overtake your message by bidding more, pausing your payment until you're winning again. You can cancel at any time."
               : "You won't pay for time your message isn't winning, although you'll see an outgoing stream that's being refunded 100% to your wallet."}
