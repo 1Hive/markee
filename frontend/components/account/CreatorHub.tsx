@@ -13,6 +13,8 @@ import type { AnyLeaderboard } from '@/components/account/types'
 import { ArchiveButton, AttnGroup, PanelHead, SECONDS_PER_MONTH, SegToggle, fmtAddr, fmtCount, fmtWeiUsd } from '@/components/account/primitives'
 import { PlatformGlyph, shownOn } from '@/components/account/sites'
 import { useToast } from '@/components/account/Toast'
+import type { BoardIntegrations } from '@/lib/integrations/featured'
+import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 
 export const MK_COLS = 'minmax(0,1fr) 104px 84px 196px'
 
@@ -93,8 +95,9 @@ export function PulseDot() {
   return <span className="acct-pulse" style={{ width: 7, height: 7, borderRadius: 99, background: GREEN, flexShrink: 0, display: 'inline-block' }} />
 }
 
-function MarkeeRow({ lb, archived, selected, views, ethPrice, onRestore, onManage }: {
+function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRestore, onManage }: {
   lb: AnyLeaderboard
+  integrations?: BoardIntegrations
   archived?: boolean
   selected: boolean
   views: number
@@ -106,7 +109,7 @@ function MarkeeRow({ lb, archived, selected, views, ethPrice, onRestore, onManag
   const ratePerSec = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) : 0n
   const raised = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
   const topBid = BigInt(lb.topFundsAddedRaw ?? '0')
-  const site = archived ? null : shownOn(lb)
+  const site = archived ? null : shownOn(lb, integrations)
   const amount = (color: string = TEXT): React.CSSProperties => ({ textAlign: 'right', fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' })
   const dash = <span style={{ textAlign: 'right', color: MUTED, fontSize: 12.5 }}>-</span>
   const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 10px', height: 32, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }
@@ -196,6 +199,7 @@ export function YourMarkees({ active, archived, inactive, awaiting, loading, boa
   const toast = useToast()
   const activeCount = inactive.length + awaiting.length + active.length
   const rows = view === 'active' ? active : archived
+  const { data: integrationData } = useBoardIntegrations(active.map(lb => lb.address))
 
   return (
     <section style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
@@ -238,6 +242,7 @@ export function YourMarkees({ active, archived, inactive, awaiting, loading, boa
                 archived={view === 'archived'}
                 selected={selected === lb.address}
                 views={boardViews[lb.address.toLowerCase()] ?? 0}
+                integrations={integrationData?.[lb.address.toLowerCase()]}
                 ethPrice={ethPrice}
                 onRestore={() => { onRestore(lb); toast(`${markeeName(lb)} restored`) }}
                 onManage={() => onManage(lb)}

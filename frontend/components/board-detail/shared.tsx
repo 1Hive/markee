@@ -17,6 +17,8 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
+import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
+import { fileIntegrationKey, urlIntegrationKey, orderIntegrations } from '@/lib/integrations/featured'
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
@@ -284,12 +286,11 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
   )
 }
 
-export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
+export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
   entry: EcoEntry | null
   /** Still resolving useServedOn -- distinguishes "not verified yet" from "genuinely nothing linked". */
   loading?: boolean
-  /** Top markee's address -- view counts are tracked per-markee, not per-leaderboard. */
-  markeeAddress?: string
+  boardAddress?: string
   onAddToSite?: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -329,36 +330,11 @@ export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
   const files = (entry?.linkedFiles ?? []).filter(f => f.verified)
   const urls = entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []
 
-  const [repoTraffic, setRepoTraffic] = useState<Record<string, number>>({})
-  const [repoTrafficLoaded, setRepoTrafficLoaded] = useState(false)
-  useEffect(() => {
-    if (!entry?.address || files.length === 0) { setRepoTrafficLoaded(true); return }
-    setRepoTrafficLoaded(false)
-    fetch(`/api/github/traffic-multi?address=${entry.address}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((d: { repos?: Record<string, { count: number }> }) => {
-        if (!d?.repos) return
-        const m: Record<string, number> = {}
-        for (const [repo, t] of Object.entries(d.repos)) m[repo] = t.count
-        setRepoTraffic(m)
-      })
-      .catch(() => {})
-      .finally(() => setRepoTrafficLoaded(true))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.address, files.length])
-
-  const [urlViews, setUrlViews] = useState<Record<string, number>>({})
-  const [urlViewsLoaded, setUrlViewsLoaded] = useState(false)
-  useEffect(() => {
-    if (urls.length === 0 || !markeeAddress) { setUrlViewsLoaded(true); return }
-    setUrlViewsLoaded(false)
-    fetch(`/api/views?address=${markeeAddress}&urls=${urls.map(encodeURIComponent).join('||')}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((d: Record<string, number> | null) => { if (d) setUrlViews(d) })
-      .catch(() => {})
-      .finally(() => setUrlViewsLoaded(true))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urls.join('||'), markeeAddress])
+  // Views and the featured pick come from one place, so this agrees with the Marketplace and the
+  // dashboard (lib/integrations/featured.ts).
+  const { data: integrationData } = useBoardIntegrations(boardAddress ? [boardAddress] : [])
+  const info = boardAddress ? integrationData?.[boardAddress.toLowerCase()] : undefined
+  const viewsLoaded = integrationData !== null
 
   if (!entry) {
     if (loading) return <ViewsSpinner size={14} color={MUTED} />
@@ -374,11 +350,11 @@ export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
   const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
   const host = (u: string) => getLogoDomain(u) ?? clean(u)
 
-  type Item = { kind: 'file'; file: LinkedFile; views: number; viewsLoaded: boolean } | { kind: 'url'; url: string; views: number; viewsLoaded: boolean }
-  const items: Item[] = [
-    ...files.map(file => ({ kind: 'file' as const, file, views: repoTraffic[file.repoFullName] ?? 0, viewsLoaded: repoTrafficLoaded })),
-    ...urls.map(url => ({ kind: 'url' as const, url, views: urlViews[url] ?? 0, viewsLoaded: urlViewsLoaded })),
-  ].sort((a, b) => b.views - a.views)
+  type Item = { kind: 'file'; file: LinkedFile; key: string; views: number; viewsLoaded: boolean } | { kind: 'url'; url: string; key: string; views: number; viewsLoaded: boolean }
+  const items: Item[] = orderIntegrations<Item>([
+    ...files.map(file => ({ kind: 'file' as const, file, key: fileIntegrationKey(file), views: info?.views[fileIntegrationKey(file)] ?? 0, viewsLoaded })),
+    ...urls.map(url => ({ kind: 'url' as const, url, key: urlIntegrationKey(url), views: info?.views[urlIntegrationKey(url)] ?? 0, viewsLoaded })),
+  ], i => i.key, info)
 
   const hasAny = items.length > 0
   const extra = items.length - 1
@@ -485,11 +461,10 @@ export function MetricValue({ text, color = TEXT, title }: { text: string; color
   )
 }
 
-export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onAddToSite, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, entryLoading, onAddToSite, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
   entryLoading?: boolean
-  topMarkeeAddress?: string
   onAddToSite?: () => void
   // Sum of views across every message on this board, not just the current top one.
   totalViews: number
@@ -509,7 +484,7 @@ export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onA
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0 6px', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
+      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} boardAddress={address} onAddToSite={onAddToSite} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(totalViews)} color={BLUE} />)}
       {cell(messagesLabel, messagesLoading ? <ViewsSpinner size={16} color={TEXT} /> : <MetricValue text={markeeCount.toLocaleString()} />)}

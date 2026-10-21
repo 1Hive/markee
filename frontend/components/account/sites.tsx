@@ -2,6 +2,7 @@
 
 import { Github, Globe2, Zap } from 'lucide-react'
 import type { AnyLeaderboard, FundedMessage, LinkedFile, MyMessage, WebsiteLeaderboard } from '@/components/account/types'
+import { fileIntegrationKey, orderIntegrations, urlIntegrationKey, type BoardIntegrations } from '@/lib/integrations/featured'
 
 export interface Integration {
   key: string
@@ -18,14 +19,15 @@ export function integrationsOf(lb: AnyLeaderboard): Integration[] {
   const w = lb as WebsiteLeaderboard
   const urls = lb.verifiedUrls?.length ? lb.verifiedUrls : w.verifiedUrl ? [w.verifiedUrl] : []
   return [
-    ...(lb.linkedFiles ?? []).map(f => ({ key: `f:${f.repoFullName}/${f.filePath}`, label: `${f.repoFullName} · ${f.filePath}`, href: fileUrl(f), file: f })),
-    ...urls.map(u => ({ key: `u:${u}`, label: urlLabel(u), href: u, url: u })),
+    ...(lb.linkedFiles ?? []).map(f => ({ key: fileIntegrationKey(f), label: `${f.repoFullName} · ${f.filePath}`, href: fileUrl(f), file: f })),
+    ...urls.map(u => ({ key: urlIntegrationKey(u), label: urlLabel(u), href: u, url: u })),
   ]
 }
 
 // "Shown on" for a table row: the repo or host only (the file path lives in the Manage drawer).
-export function shownOn(lb: AnyLeaderboard): { label: string; more: number } | null {
-  const live = integrationsOf(lb).filter(i => i.url || i.file?.verified)
+// The featured integration leads when it's known (lib/integrations/featured.ts).
+export function shownOn(lb: AnyLeaderboard, info?: BoardIntegrations | null): { label: string; more: number } | null {
+  const live = orderIntegrations(integrationsOf(lb).filter(i => i.url || i.file?.verified), i => i.key, info)
   if (!live.length) return null
   return { label: live[0].file ? live[0].file.repoFullName : live[0].label, more: live.length - 1 }
 }

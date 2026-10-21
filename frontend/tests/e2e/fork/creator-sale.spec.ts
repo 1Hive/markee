@@ -3,6 +3,7 @@ import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { observeMessage } from '../../../lib/moderation/queue'
 import { mnemonicToAccount } from 'viem/accounts'
 import { unlinkFileMessage } from '../../../lib/github/unlink'
+import { featuredIntegrationMessage } from '../../../lib/integrations/featured'
 import { E2E_MNEMONIC } from './env'
 import { E2E_ACCOUNT, E2E_OTHER as OTHER, TX_TIMEOUT, buySale, isolateChain, kv, rpc } from './support'
 
@@ -123,6 +124,39 @@ test('only the board owner can unlink a GitHub file (signed message)', async ({ 
   const res = await page.request.delete(url, { data: await signed(ME) })
   expect(res.status()).toBe(200)
   expect((await res.json()).linkedFiles).toEqual([])
+})
+
+test('the featured site is the most viewed until the owner picks one', async ({ page }) => {
+  const b = board.toLowerCase()
+  const meta = JSON.parse(await kv<string>(['GET', `oi:meta:${b}`]))
+  const first = meta.verifiedUrls?.[0] ?? meta.verifiedUrl
+  const second = 'https://second.example.org'
+  await kv(['SET', `oi:meta:${b}`, JSON.stringify({ ...meta, verifiedUrls: [first, second] })])
+  // The first site's views are split between the board and its top message; the second has more.
+  const top = decodeFunctionResult({ abi: TOP_ABI, functionName: 'getTopMarkees', data: await rpc<`0x${string}`>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, functionName: 'getTopMarkees', args: [1n] }) }, 'latest']) })[0][0].toLowerCase()
+  await kv(['MSET', `views:url:${b}:example.com`, '2', `views:url:${top}:example.com`, '3', `views:url:${b}:second.example.org`, '7'])
+
+  const read = async () => (await (await page.request.get(`/api/boards/integrations?boards=${b}`)).json())[b]
+  expect(await read()).toEqual({ featured: `u:${second}`, chosen: false, views: { [`u:${first}`]: 5, [`u:${second}`]: 7 } })
+
+  const signed = async (signer: typeof ME, key: string | null) => {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = await signer.signMessage({ message: featuredIntegrationMessage(8453, b, key, timestamp) })
+    return { board: b, key, owner: signer.address, signature, timestamp }
+  }
+  expect((await page.request.put('/api/boards/integrations', { data: await signed(SOMEONE_ELSE, `u:${first}`) })).status()).toBe(403)
+
+  // The owner picks the less viewed site from the Manage drawer.
+  const drawer = await openDrawer(page)
+  const row = drawer.locator('div', { hasText: 'example.com' }).filter({ has: page.getByRole('button', { name: 'Feature' }) }).last()
+  await row.getByRole('button', { name: 'Feature' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Featured site updated' })).toBeVisible({ timeout: TX_TIMEOUT })
+  expect(await read()).toMatchObject({ featured: `u:${first}`, chosen: true })
+
+  // And can go back to the most viewed one.
+  expect((await page.request.put('/api/boards/integrations', { data: await signed(ME, null) })).status()).toBe(200)
+  expect(await read()).toMatchObject({ featured: `u:${second}`, chosen: false })
+  await kv(['SET', `oi:meta:${b}`, JSON.stringify(meta)])
 })
 
 test('transfer admin', async ({ page }) => {

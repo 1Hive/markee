@@ -14,6 +14,8 @@ import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI }
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
+import { featuredIntegrationMessage, orderIntegrations } from '@/lib/integrations/featured'
+import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
@@ -54,8 +56,8 @@ function FeaturedTag() {
   )
 }
 
-function IntegrationRow({ board, it, featured, views, canEdit, onChanged }: { board: string; it: Integration; featured: boolean; views: number | null; canEdit: boolean; onChanged: () => void }) {
-  const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying'>('idle')
+function IntegrationRow({ board, it, featured, chosen, views, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
+  const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
   const { signMessageAsync } = useSignMessage()
   const { address } = useAccount()
@@ -116,6 +118,28 @@ function IntegrationRow({ board, it, featured, views, canEdit, onChanged }: { bo
     }
   }
 
+  // key: this integration, or null to go back to the most viewed one.
+  const setFeatured = async (key: string | null) => {
+    setState('featuring')
+    setError(null)
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const signature = await signMessageAsync({ message: featuredIntegrationMessage(CANONICAL_CHAIN_ID, board, key, timestamp) })
+      const res = await fetch('/api/boards/integrations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ board, key, owner: address, signature, timestamp }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
+      toast(key ? 'Featured site updated' : 'Featuring the most viewed site')
+      onFeaturedChanged()
+    } catch (e) {
+      if (!isUserRejection(e)) setError(e instanceof Error && e.message ? e.message : 'Could not change the featured site.')
+    } finally {
+      setState('idle')
+    }
+  }
+
   const textBtn = (color: string): React.CSSProperties => ({ background: 'transparent', border: 'none', color, cursor: 'pointer', fontSize: 12.5, fontFamily: SANS, padding: '2px 0 2px 4px' })
 
   return (
@@ -136,6 +160,7 @@ function IntegrationRow({ board, it, featured, views, canEdit, onChanged }: { bo
         )}
         {canEdit && (
           state === 'removing' ? <WalletPending label={it.file ? 'Removing…' : 'Confirm in wallet…'} />
+          : state === 'featuring' ? <WalletPending label="Confirm in wallet…" />
           : state === 'verifying' ? <WalletPending label="Checking…" />
           : state === 'confirm' ? (
             <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
@@ -145,6 +170,8 @@ function IntegrationRow({ board, it, featured, views, canEdit, onChanged }: { bo
           ) : (
             <>
               {unverifiedFile && <button onClick={verify} style={textBtn(PINK)}>Verify</button>}
+              {!featured && !unverifiedFile && <button onClick={() => setFeatured(it.key)} style={textBtn(PINK)}>Feature</button>}
+              {featured && chosen && <button onClick={() => setFeatured(null)} title="Feature whichever site gets the most views" style={textBtn(TEXT2)}>Use most viewed</button>}
               <button
                 onClick={() => verifiedFile ? setError('Remove the Markee markers from this file first, then it can be unlinked.') : setState('confirm')}
                 style={textBtn(verifiedFile ? MUTED : DANGER)}
@@ -212,7 +239,7 @@ function VerifyUrl({ board, onVerified, onCancel }: { board: string; onVerified:
   )
 }
 
-export function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAddToSite, onSuccess }: {
+export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite, onSuccess }: {
   lb: AnyLeaderboard
   views: number
   ethPrice: number | null
@@ -231,9 +258,10 @@ export function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAd
   // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
   const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
   const contractAddress = lb.address as `0x${string}`
-  const integrations = integrationsOf(lb)
-  const urls = integrations.flatMap(i => i.url ? [i.url] : [])
-  const [urlViews, setUrlViews] = useState<Record<string, number>>({})
+  const { data: integrationData, reload: reloadIntegrations } = useBoardIntegrations([lb.address])
+  const info = integrationData?.[lb.address.toLowerCase()]
+  // Featured first, then by views, the same order as the board's public page.
+  const integrations = orderIntegrations(integrationsOf(lb), i => i.key, info)
   const [verifying, setVerifying] = useState(false)
 
   useEffect(() => {
@@ -242,14 +270,6 @@ export function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAd
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const urlsKey = urls.join('||')
-  useEffect(() => {
-    if (!urlsKey) return
-    fetch(`/api/views?address=${lb.address}&urls=${urlsKey.split('||').map(encodeURIComponent).join('||')}`)
-      .then(r => r.ok ? r.json() : {})
-      .then(setUrlViews)
-      .catch(() => {})
-  }, [lb.address, urlsKey])
 
   const settings = isStreaming
     ? { abi: StreamingLeaderboardABI, minPrice: 'minimumMonthlyRate', setMinPrice: 'setMinimumMonthlyRate', unit: 'ethPerMonth' as const, setAdmin: 'setAdmin', limits: true }
@@ -297,15 +317,17 @@ export function ManageDrawer({ lb, views, ethPrice, activeAddress, onClose, onAd
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <DrawerSection title="Integrated Sites">
             {integrations.length === 0 && <div style={{ fontSize: 13, color: MUTED, padding: '12px 0', borderTop: `1px solid ${BORDER}` }}>Not on any site yet.</div>}
-            {integrations.map((it, i) => (
+            {integrations.map(it => (
               <IntegrationRow
                 key={it.key}
                 board={lb.address}
                 it={it}
-                featured={i === 0}
-                views={it.url ? (urlViews[it.url] ?? null) : integrations.length === 1 ? views : null}
+                featured={!!info && info.featured === it.key}
+                chosen={!!info?.chosen}
+                views={info ? info.views[it.key] ?? null : null}
                 canEdit={isOwner}
-                onChanged={onSuccess}
+                onChanged={() => { reloadIntegrations(); onSuccess() }}
+                onFeaturedChanged={reloadIntegrations}
               />
             ))}
             {verifying && <VerifyUrl board={lb.address} onCancel={() => setVerifying(false)} onVerified={() => { setVerifying(false); onSuccess() }} />}
