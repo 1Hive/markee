@@ -1,8 +1,18 @@
-# @markee/sdk
+# @markee_team/sdk
 
 An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The host supplies a Markee API URL and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
 
-This is an unpublished `0.1.0-alpha.1` package. Build and consume the local package before publishing it under an npm scope you control.
+This is an experimental `0.1.0-alpha.1` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
+
+Install the alpha:
+
+```sh
+npm install @markee_team/sdk@alpha
+```
+
+Use React 18 or 19 for the optional React entry point. The plain JavaScript entry point does not require React. Both TypeScript bundler and NodeNext resolution are supported.
+
+To build from the source repository:
 
 ```sh
 npm ci --prefix packages/sdk
@@ -12,7 +22,7 @@ npm run build --prefix packages/sdk
 ## Plain JavaScript
 
 ```ts
-import { createMarkee } from '@markee/sdk';
+import { createMarkee } from '@markee_team/sdk';
 
 const markee = createMarkee({
   apiUrl: 'https://YOUR-MARKEE-API/api/sdk/v1',
@@ -40,7 +50,7 @@ Without a wallet adapter, browsing works without a wallet. On a connect click th
 ## React
 
 ```tsx
-import { MarkeeModal } from '@markee/sdk/react';
+import { MarkeeModal } from '@markee_team/sdk/react';
 
 <MarkeeModal
   open={open}
@@ -51,7 +61,7 @@ import { MarkeeModal } from '@markee/sdk/react';
 />;
 ```
 
-See [`examples/connectkit`](../../examples/connectkit) for a complete adapter. Its connection promise resolves only once ConnectKit has selected a provider and rejects when the picker is dismissed. The SDK does not install a second wallet context.
+See [`examples/connectkit`](https://github.com/1Hive/markee/tree/feature/markee-sdk/examples/connectkit) for a complete adapter. Its connection promise resolves only once ConnectKit has selected a provider and rejects when the picker is dismissed. The SDK does not install a second wallet context.
 
 ## Modal layout
 
@@ -66,7 +76,7 @@ MIN and WIN/2× fill the amount without sending a payment. Suggestions use the l
 Pass a typed `theme` option to `createMarkee` or a `theme` prop to the React modal. Light is the default; `mode: 'dark'` selects the dark palette and `mode: 'system'` follows device changes while the modal is open.
 
 ```tsx
-import { createMarkee, type MarkeeTheme } from '@markee/sdk';
+import { createMarkee, type MarkeeTheme } from '@markee_team/sdk';
 
 const theme: MarkeeTheme = {
   mode: 'system',
@@ -127,4 +137,4 @@ Community activation supports the current council Safe, a current Safe owner, or
 - The modal renders escaped text, uses isolated CSS, and supports keyboard focus, Escape, mobile sizing and reduced motion. A host CSP must permit the SDK's inline styles and connections to its configured Markee API. No external font or image is needed by the modal.
 - API failures are explicit. Without moderation data, message text is withheld. No mock balances or fabricated rewards are returned by production handlers.
 
-Backend configuration, endpoint details, and verification evidence: [`docs/sdk/implementation.md`](../../docs/sdk/implementation.md).
+Backend configuration, endpoint details, and verification evidence: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/feature/markee-sdk/docs/sdk/implementation.md).

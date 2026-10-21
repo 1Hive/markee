@@ -5,7 +5,7 @@ import { createConfig, http, useAccount, useConfig, WagmiProvider } from 'wagmi'
 import { getAccount, watchAccount } from 'wagmi/actions';
 import { injected } from 'wagmi/connectors';
 import { base, mainnet, optimism, arbitrum, polygon, gnosis, celo, sepolia, optimismSepolia, arbitrumSepolia } from 'wagmi/chains';
-import type { EIP1193Provider, WalletAdapter } from '@markee/sdk';
+import type { EIP1193Provider, WalletAdapter } from '@markee_team/sdk';
 
 const chains = [base, mainnet, optimism, arbitrum, polygon, gnosis, celo, sepolia, optimismSepolia, arbitrumSepolia] as const;
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;

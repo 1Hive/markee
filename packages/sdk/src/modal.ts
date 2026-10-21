@@ -1,10 +1,10 @@
-import { discoverWallets, MarkeeClient, type DiscoveredWallet, type PendingTransaction } from './client';
-import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount';
-import { styles } from './styles';
-import { createThemeController } from './theme';
-import { fundingPresets, MONTH } from './presentation';
-import type { MarkeeTheme } from './types';
-import type { Action, Address, AdminOperation, AdminResult, Authorization, EIP1193Provider, Entry, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types';
+import { discoverWallets, MarkeeClient, type DiscoveredWallet, type PendingTransaction } from './client.js';
+import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount.js';
+import { styles } from './styles.js';
+import { createThemeController } from './theme.js';
+import { fundingPresets, MONTH } from './presentation.js';
+import type { MarkeeTheme } from './types.js';
+import type { Action, Address, AdminOperation, AdminResult, Authorization, EIP1193Provider, Entry, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
 
 export interface ModalOptions { placement: Placement; onClose?: () => void; theme?: MarkeeTheme }
 type FormState = { kind: 'fund' | 'stream' | 'edit-message' | 'edit-name'; entry: Entry };

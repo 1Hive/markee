@@ -1,4 +1,4 @@
-import type { MarkeeTheme, MarkeeThemeColors } from './types';
+import type { MarkeeTheme, MarkeeThemeColors } from './types.js';
 
 const light: MarkeeThemeColors = {
   background: '#fbfcff', surface: '#ffffff', text: '#181b21', muted: '#687080', border: '#dce1ea',

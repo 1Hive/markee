@@ -1,4 +1,4 @@
-import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types';
+import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
 
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }

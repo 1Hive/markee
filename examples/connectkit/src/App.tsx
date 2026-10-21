@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ConnectKitButton } from 'connectkit';
 import { useAccount } from 'wagmi';
-import { MarkeeModal } from '@markee/sdk/react';
-import type { Address, MarkeeTheme, Placement } from '@markee/sdk';
+import { MarkeeModal } from '@markee_team/sdk/react';
+import type { Address, MarkeeTheme, Placement } from '@markee_team/sdk';
 import { useMarkeeWallet } from './wallet';
 
 const sale = import.meta.env.VITE_SALE_BOARD || '0x2768BC6e90266248BD8bCF5401C36D8049CdF671';

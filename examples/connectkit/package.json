@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": { "dev": "vite --host 127.0.0.1", "build": "tsc --noEmit && vite build", "preview": "vite preview --host 127.0.0.1" },
   "dependencies": {
-    "@markee/sdk": "file:../../packages/sdk",
+    "@markee_team/sdk": "file:../../packages/sdk",
     "@tanstack/react-query": "^5.90.0",
     "connectkit": "^1.9.1",
     "react": "^18.3.1", "react-dom": "^18.3.1", "viem": "^2.38.0", "wagmi": "^2.18.0"

@@ -1,7 +1,7 @@
 'use client';
 import { createElement, useEffect, useRef, type ReactNode } from 'react';
-import { createMarkee } from './modal';
-import type { Placement, SDKOptions } from './types';
+import { createMarkee } from './modal.js';
+import type { Placement, SDKOptions } from './types.js';
 
 export interface MarkeeModalProps extends SDKOptions { open: boolean; placement: Placement; onClose(): void }
 /** No wagmi, ConnectKit, Privy, or React provider is required by this wrapper. */

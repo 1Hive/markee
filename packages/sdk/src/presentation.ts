@@ -1,4 +1,4 @@
-import type { Entry, Snapshot } from './types';
+import type { Entry, Snapshot } from './types.js';
 
 export const MONTH = 2628000n;
 const INCREMENT = 10n ** 15n; // 0.001 ETH, or ETH/month, above the loaded ranking.

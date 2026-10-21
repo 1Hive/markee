@@ -2,7 +2,7 @@
 
 Use **Modal theme** to try Light, Dark, Match device, or Plum. Plum demonstrates custom colors, font, and corner radius. The typed presets in `src/App.tsx` are passed directly to the modal's `theme` prop; they can be replaced with your app's brand. See the [theme API](../../packages/sdk/README.md#theme) for all options and live updates.
 
-This Vite/React app embeds `@markee/sdk/react` and lends it the wallet already selected by ConnectKit. Installed wallets work without a WalletConnect project ID. Setting the optional ID enables WalletConnect as well.
+This Vite/React app embeds `@markee_team/sdk/react` and lends it the wallet already selected by ConnectKit. Installed wallets work without a WalletConnect project ID. Setting the optional ID enables WalletConnect as well.
 
 From the repository root:
 
