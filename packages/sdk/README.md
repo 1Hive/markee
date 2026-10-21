@@ -153,8 +153,8 @@ Before changing code, inspect what is already available, then ask me the unanswe
 questions below in one concise group. Do not ask again for facts already provided.
 Wait for answers about strategy, placement, and intended scope before implementing.
 
-1. Do you want For Rent (recurring streaming payments), For Sale (one-time
-   funding), or both?
+1. Choose exactly one strategy: For Sale (one-time funding) or For Rent
+   (recurring streaming payments). Do not offer or implement both.
 2. Is this a proof of concept or an integration with your own Markee placement?
    For your own placement, what are the chain ID and board address, or the Gardens
    community address and chain ID? If unknown, ask for the existing Markee/Gardens
@@ -176,7 +176,7 @@ Wait for answers about strategy, placement, and intended scope before implementi
 Explain that this alpha uses a built-in staging API and supports wallet-funded
 flows; card checkout and incoming bridging are unavailable. If either is required,
 ask whether to proceed with the supported scope instead of promising those features.
-Summarize the agreed requirements and implement only the selected flows.
+Summarize the agreed requirements and implement only the selected strategy.
 
 - Install @markee_team/sdk@0.1.0-alpha.3. The SDK knows its API endpoint. Do not
   request an API URL, build an API proxy, or add RPC/database/provider keys.
@@ -185,7 +185,7 @@ Summarize the agreed requirements and implement only the selected flows.
   createMarkee from @markee_team/sdk, call createMarkee(), then open({ placement }).
   Close the instance on teardown. Reuse the built-in modal UI.
 - Use the agreed placement and strategy. Only if I explicitly choose a demo, use
-  the corresponding existing Base board below (do not add both unless requested):
+  the corresponding existing Base board below (use only the chosen strategy):
   For Sale: { kind: 'board', chainId: 8453,
     address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' }
   For Rent: { kind: 'board', chainId: 8453,
