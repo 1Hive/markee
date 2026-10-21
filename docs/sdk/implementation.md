@@ -133,5 +133,48 @@ No deployment, npm publication or live transaction is performed by these tests.
 
 - Configure the deployed Markee backend with its existing database, authorized routers/keeper and provider credentials, then run a staging acceptance pass. No production deployment or npm publication is implied by these code changes.
 - Outbound bridge providers are wired to the existing quote/execute paths with status normalization. No live cross-chain treasury transfer was performed during implementation; validate each enabled route in staging before production rollout. Sources: [Across API authentication](https://docs.across.to/api-reference), [Across deposit status](https://docs.across.to/api-reference/deposit/status/get), [LI.FI transfer status](https://docs.li.fi/api-reference/check-the-status-of-a-cross-chain-transfer).
-- Milestone 5: hosted wallet/login and card popup, including the Stripe feasibility/recipient flow. Milestone 6: incoming cross-chain funding. Milestone 7: production Gardens migration, broader wallet compatibility and npm release.
+- Milestone 5: hosted wallet/login and native-ETH card checkout is implemented behind a capability gate; live provider acceptance remains to be validated. Milestone 6: incoming cross-chain funding. Milestone 7: production Gardens migration, broader wallet compatibility and npm release.
 - Direct SDK transactions currently require an EIP-1193 on-chain hash with the connected account as sender. UserOperation-only/relayed transaction submission is not enabled. ERC-1271 community authorization is supported separately.
+
+## Hosted checkout (scenario 3)
+
+Implemented in `/checkout/[id]` with durable KV sessions and the SDK's Pay by card
+handoff. This source feature remains disabled until Markee sets
+`MARKEE_HOSTED_CHECKOUT_ENABLED=true`. It requires the existing public Privy app ID,
+working KV REST URL/token, a stable 32+ character SDK signing secret, and Base RPC.
+Configure Privy's allowed origins for the checkout deployment and enable card
+funding for native Base ETH in the Privy dashboard. The host app needs none of
+these credentials. Include the hosted Markee origin in any SDK CORS allowlist.
+
+This implementation uses the installed Privy `useFundWallet` native ETH flow,
+not Stripe's newer stablecoin deposit modal. The provider UI handles card details,
+identity/3DS and eligibility. No backend stores card information. See
+[Privy EVM funding](https://docs.privy.io/wallets/funding/legacy/evm).
+
+- GET `checkout/config`: deployment capability; SDK hides the card button when disabled.
+- POST `checkout/create`: validated Base For Sale placement/action and return origin;
+  returns opaque session ID plus separate read and write capabilities.
+- POST `checkout/status`: read capability; polls verified payment and rewards.
+- POST `checkout/read`, `balance`, `prepare`, `arm`, `rejected`, `verify`/`submitted`:
+  write capability. The fragment carries it to the popup, which removes the fragment
+  and retains it in sessionStorage. Capabilities are hashed in KV, not logged.
+- Creation expires after one hour; pending receipts remain recoverable for seven days.
+- Before card funding, board/reward eligibility and funding-target membership are
+  validated. The wallet is bound before funding. Balance checks use Markee's RPC.
+- Funding includes a 0.0001 ETH reserve, explicitly not an exact gas quote. Preparation
+  estimates actual gas and simulates the payment after funding. Excess stays with the user.
+- The selected embedded wallet signs and pays directly. The contract delivers rewards
+  to that payer; receipt Transfer events determine the actual amount displayed.
+- KV compare-and-set allows one payment arm. Sender, destination, calldata, value and
+  nonce must match; a transaction receipt cannot satisfy two sessions. Unknown send
+  errors stay locked. Only an explicit wallet rejection allows a new preparation.
+- Host polling is independent of popup messages; neither origin messages nor funding
+  callbacks are accepted as proof of payment. A submitted receipt can finalize through
+  host polling even after the popup is closed.
+
+Local sample: `examples/card-checkout`, port 5178, no host wallet integration. It
+uses the local SDK package. SDK/backend unit tests are mocked; they do not demonstrate
+real card acceptance or wallet signing. Before enabling for users, validate Privy
+login/card funding, popup and mobile return, cancellation, reload/pending recovery,
+actual Base receipt and MARKEE transfer with an explicitly authorized real payment.
+Do not represent the feature gate or a local sample as a completed live payment test.

@@ -115,3 +115,9 @@ export interface SDKOptions {
 }
 
 export interface SiteVerification { verified: boolean; url: string; verifiedUrls?: string[]; message?: string }
+
+export interface CheckoutSession { id: string; readToken: string; writeToken: string; expiresAt: number }
+export interface CheckoutStatus {
+  id: string; status: 'created' | 'ready' | 'signing' | 'submitted' | 'confirmed' | 'reverted';
+  account?: Address; result?: TransactionResult; expiresAt: number;
+}

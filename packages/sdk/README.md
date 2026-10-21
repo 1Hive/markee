@@ -2,7 +2,7 @@
 
 An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The SDK knows the Markee API endpoint; the host only supplies its placement and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
 
-Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent flows, automatic strategy detection, and a configurable theme. Hosted card checkout and incoming cross-chain funding are not included.
+Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent flows, automatic strategy detection, and a configurable theme. Eligible Base For Sale boards can also offer Markee-hosted card checkout when enabled by Markee. Incoming cross-chain funding is not included.
 
 ## Installation
 
@@ -69,7 +69,7 @@ markee.open({
 // markee.close();
 ```
 
-Without a wallet adapter, browsing works without a wallet. On a connect click the modal discovers installed wallets using EIP-6963, with an EIP-1193 fallback. Multiple discovered wallets are offered for explicit selection. An adapter always takes precedence over injected discovery. Hosted login and card checkout are not supported.
+Without a wallet adapter, browsing works without a wallet. On a connect click the modal discovers installed wallets using EIP-6963, with an EIP-1193 fallback. Multiple discovered wallets are offered for explicit selection. An adapter always takes precedence over injected discovery. Eligible boards also offer hosted login and card checkout when enabled by Markee; the host app does not need its own wallet integration.
 
 ## React
 
@@ -193,7 +193,8 @@ adapts the modal automatically. Do not add a strategy prop, toggle, or hardcoded
 
 Ask only the remaining unanswered requirements in one concise group:
 - Where should Markee appear, what opens the modal, and what should the button say?
-- Should it reuse the app's existing wallet or use SDK wallet discovery? Inspect
+- Should it reuse the app's existing wallet, use SDK wallet discovery, or use
+  Markee-hosted card checkout without an app wallet (For Sale on Base only)? Inspect
   existing connectors first; do not add a second wallet context or install a new
   connector without agreement.
 - Should the modal match the app theme or use specific colors, font, radius, and
@@ -217,7 +218,9 @@ Then implement the agreed scope:
 4. If a host wallet exists, pass its selected EIP-1193 provider through the wallet
    adapter. For ConnectKit/wagmi use the active connector. Resolve connect after
    selection, reject cancellation, and do not silently switch wallet providers.
-   Otherwise omit wallet and use SDK wallet discovery.
+   Otherwise omit wallet. The SDK offers wallet discovery and, when Markee enables
+   it for a supported board, Pay by card in a Markee-hosted checkout. Do not install
+   Privy or collect card details in the host app.
 5. Apply theme options while preserving the built-in modal layout. Handle onEvent
    if needed; show success only for a confirmed event. Let the SDK manage review,
    network switching, submission, and verification.
@@ -226,6 +229,29 @@ Then implement the agreed scope:
    during automated verification. Report changed files, checks, and limitations.
 
 Check the installed release's supported features before promising functionality.
-The SDK supports wallet-funded flows; card checkout and incoming bridging are not
-yet available. Transactions use real funds.
+Wallet-funded flows are supported. Hosted card checkout requires Markee's backend
+capability to be enabled; do not promise availability when it is disabled. Incoming
+bridging is not available. Transactions and card funding use real funds.
 ```
+
+## Pay by card without an app wallet
+
+For Sale boards on Base with MARKEE rewards can offer **Pay by card** automatically
+when the Markee backend enables hosted checkout. No Privy provider, payment keys or
+API configuration is needed in the integrating app. Omit the `wallet` adapter.
+
+The SDK opens Markee, where the user signs in, receives a Privy embedded wallet,
+funds it with native Base ETH through Privy's card funding provider, and confirms
+the Markee payment. The contract sends MARKEE directly to that user's paying
+wallet. The host receives `onEvent({ type: 'confirmed', hash })` only after
+server-side receipt verification. Card funding alone is not a successful payment.
+
+The checkout can resume after closing or refreshing. If a wallet submission has an
+unknown result, it asks the user to check the existing transaction instead of
+sending again. On browsers that block popups, it navigates to Markee in the same
+tab. Reopen Pay by card after returning to recover the confirmed result.
+
+Card availability, fees, minimum purchase amounts and identity checks depend on
+the funding provider and user eligibility. Any unused ETH remains in the user's
+wallet. For Rent, incoming bridging, automatic rewards forwarding to a different
+wallet and Stripe stablecoin-to-ETH swaps are outside this checkout flow.

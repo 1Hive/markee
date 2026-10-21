@@ -14,6 +14,7 @@ import * as claim from '@/lib/sdk/gardens/claim';
 import * as quote from '@/lib/sdk/gardens/quote';
 import * as community from '@/lib/sdk/gardens/community';
 import * as views from '@/app/api/views/route';
+import { checkoutEnabled, checkoutOrigin, createCheckout, checkoutRequest } from '@/lib/sdk/checkout';
 import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
 
@@ -31,6 +32,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
     const path = context.params.path.join('/');
     const search = request.nextUrl.searchParams;
     if (request.method === 'GET') {
+      if (path === 'checkout/config') return cors(NextResponse.json({ enabled: checkoutEnabled() }), request);
       if (path.startsWith('operations/')) return cors(NextResponse.json(await operationStatus(path.slice(11))), request);
       if (path === 'snapshot') {
         const p = placement(JSON.parse(search.get('placement') || '{}'));
@@ -59,6 +61,14 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
         return cors(await executeAdmin(path, rebuilt, { nonce: body.nonce, signature: body.signature }, handler), request);
       }
       const body = object(await readLimitedJsonBody(request, 48 * 1024));
+      if (path.startsWith('checkout/')) {
+        if (!checkoutEnabled() && !['checkout/status', 'checkout/read', 'checkout/verify', 'checkout/submitted'].includes(path)) throw new SDKError('NOT_CONFIGURED', 'Markee card checkout is not available yet.', 503);
+        if (path === 'checkout/create') {
+          const origin = checkoutOrigin(request.headers.get('origin') || body.origin);
+          return cors(NextResponse.json(await createCheckout(body, origin)), request);
+        }
+        return cors(NextResponse.json(await checkoutRequest(path.slice(9), body)), request);
+      }
       if (path === 'sites/verify') return cors(NextResponse.json(await verifySite(placement(body.placement), body.siteUrl, request.headers.get('origin'))), request);
       if (path === 'prepare') return cors(NextResponse.json(await prepare(placement(body.placement), address(body.account), parseAction(body.action))), request);
       if (path === 'verify') {

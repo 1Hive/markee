@@ -39,6 +39,8 @@ const cspDirectives = {
     // Privy
     'https://auth.privy.io',
     'https://*.rpc.privy.systems',
+    // Privy native-ETH card funding quotes.
+    'https://api.moonpay.com',
     // WalletConnect
     'wss://relay.walletconnect.com',
     'wss://relay.walletconnect.org',

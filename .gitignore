@@ -26,3 +26,5 @@ node_modules/
 /examples/connectkit/dist/
 /output/playwright/
 /.playwright-cli/
+
+/examples/card-checkout/dist/

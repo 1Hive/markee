@@ -1,3 +1,4 @@
+import { openHostedCheckout } from './checkout.js';
 import { discoverWallets, MarkeeClient, type DiscoveredWallet, type PendingTransaction } from './client.js';
 import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount.js';
 import { styles } from './styles.js';
@@ -17,6 +18,7 @@ export class MarkeeModal {
   private root: ShadowRoot;
   private theme: ReturnType<typeof createThemeController>;
   private snapshot?: Snapshot;
+  private cardAvailable = false;
   private account: Address | null = null;
   private tab = 'main';
   private leaderboardOpen = false;
@@ -64,6 +66,7 @@ export class MarkeeModal {
     this.root.addEventListener('submit', this.onSubmit);
     this.root.addEventListener('keydown', this.onKey);
     this.root.addEventListener('input', () => { this.captureDraft(); this.updateFields(); });
+    void client.request<{ enabled: boolean }>('checkout/config').then(config => { this.cardAvailable = config.enabled; this.render(); }).catch(() => {});
     this.render(); this.root.querySelector<HTMLButtonElement>('[data-cmd="close"]')?.focus(); void this.reload(); void this.watchAccount();
   }
   close() {
@@ -201,6 +204,27 @@ export class MarkeeModal {
       if (entry) { this.form = { kind: kind as FormState['kind'], entry }; this.tab = 'main'; }
       this.render(); return;
     }
+    if (cmd === 'card' && this.snapshot?.strategy === 'sale') {
+      this.captureDraft();
+      const form = this.root.querySelector<HTMLFormElement>('#markee-action');
+      if (!form || !form.reportValidity()) return;
+      const fields = new FormData(form);
+      let action: Action;
+      try {
+        const amount = parseEth(String(fields.get('amount') || ''));
+        action = this.form?.kind === 'fund' ? { kind: 'fund', markee: this.form.entry.address, amount } : { kind: 'create', message: String(fields.get('message') || ''), name: String(fields.get('name') || ''), amount };
+      } catch (error) { this.error = (error as Error).message; this.render(); return; }
+      // Start synchronously from the gesture so mobile browsers can open the popup.
+      const payment = openHostedCheckout(this.client, this.options.placement, action);
+      void this.task(async () => {
+        const result = await payment;
+        if (result.status !== 'confirmed') throw new Error('Payment was not confirmed.');
+        this.result = result;
+        this.client.options.onEvent?.({ type: 'confirmed', hash: result.hash });
+        await this.reload();
+      });
+      return;
+    }
     void this.task(async () => {
       if (cmd === 'connect') await this.connect();
       else if (cmd.startsWith('wallet:')) { await this.client.connect(this.wallets![Number(cmd.slice(7))].provider); this.wallets = undefined; await this.reload(); }
@@ -314,7 +338,7 @@ export class MarkeeModal {
     const defaultAmount = BigInt(s.minimum) > presets.minimum ? BigInt(s.minimum) : presets.minimum;
     const initial = current > defaultAmount ? current : defaultAmount;
     const minimum = !rent && entry ? 1n : BigInt(s.minimum);
-    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${exact(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span><span>${w ? `Balance ${formatEth(w.eth)} ETH` : 'Connect to see your balance'}</span></div><div class="funding-tools">${btn('tab:wallet', rent ? 'Deposit manager →' : 'Wallet & rewards →', 'text-button')}<span class="meta">${rent ? w?.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days remaining` : w ? `${formatEth(w.ethx)} ETHx available` : 'ETH funds your ETHx balance' : 'One-time payment'}</span></div></section><p class="meta funding-hint">${rent ? 'Unspent rent is refunded while your message is not the winner. You can stop streaming at any time.' : entry ? 'Adding funds keeps the current message owner.' : 'Your connected wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`;
+    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${exact(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span><span>${w ? `Balance ${formatEth(w.eth)} ETH` : 'Connect to see your balance'}</span></div><div class="funding-tools">${btn('tab:wallet', rent ? 'Deposit manager →' : 'Wallet & rewards →', 'text-button')}<span class="meta">${rent ? w?.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days remaining` : w ? `${formatEth(w.ethx)} ETHx available` : 'ETH funds your ETHx balance' : 'One-time payment'}</span></div></section><p class="meta funding-hint">${rent ? 'Unspent rent is refunded while your message is not the winner. You can stop streaming at any time.' : entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`;
   }
   private formHtml() {
     const s = this.snapshot!, form = this.form;
@@ -376,7 +400,7 @@ export class MarkeeModal {
     else if (s && this.tab === 'main' && s.board) {
       const editing = this.form?.kind.startsWith('edit');
       const secondary = editing ? btn('back', 'Cancel') : s.strategy === 'rent' && BigInt(s.wallet?.flowRate ?? '0') > 0n ? btn('stop', 'Stop streaming', 'danger') : '';
-      actions = secondary + (!this.account ? btn('connect', 'Connect wallet', 'primary') : `<button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button>`);
+      actions = (this.cardAvailable && s.strategy === 'sale' && s.chainId === 8453 && s.placement.kind === 'board' && s.revnetEnabled && !!s.token && !editing ? btn('card', 'Pay by card', 'primary') : '') + secondary + (!this.account ? btn('connect', 'Connect wallet', 'primary') : `<button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button>`);
     } else if (s) actions = btn('tab:main', 'Back to Markee');
     return `<footer><div class="footer-actions">${actions}</div><div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${s?.community && s.board && this.tab !== 'community' && !this.review && !this.authorization && !this.pending ? btn('tab:community', 'Community treasury', 'text-button') : ''}</div></footer>`;
   }
