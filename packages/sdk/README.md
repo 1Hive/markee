@@ -146,8 +146,9 @@ No API URL configuration is required. This alpha uses the Markee staging API at 
 Copy this prompt into your coding assistant. It gathers missing requirements before implementing the integration.
 
 ```text
-Integrate @markee_team/sdk@0.1.0-alpha.3 into this app. Inspect the app first and
-follow its existing framework, styling, and wallet patterns.
+Integrate @markee_team/sdk@latest into this app. Inspect the app first and
+follow its existing framework, styling, and wallet patterns. Read the installed
+release README and types to verify current features and integration requirements.
 
 Before changing code, inspect what is already available, then ask me the unanswered
 questions below in one concise group. Do not ask again for facts already provided.
@@ -178,7 +179,7 @@ flows; card checkout and incoming bridging are unavailable. If either is require
 ask whether to proceed with the supported scope instead of promising those features.
 Summarize the agreed requirements and implement only the selected strategy.
 
-- Install @markee_team/sdk@0.1.0-alpha.3. The SDK knows its API endpoint. Do not
+- Install @markee_team/sdk@latest. The SDK knows its API endpoint. Do not
   request an API URL, build an API proxy, or add RPC/database/provider keys.
 - For React 18/19, import MarkeeModal from @markee_team/sdk/react in a client
   component and supply open, onClose, and placement. For other apps, import
