@@ -2,7 +2,7 @@
 
 An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The SDK knows the Markee API endpoint; the host only supplies its placement and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
 
-This is an experimental `0.1.0-alpha.2` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
+This is an experimental `0.1.0-alpha.3` release for wallet-funded For Sale and For Rent flows. Hosted card checkout and incoming cross-chain funding are not included.
 
 Install the alpha:
 
@@ -146,7 +146,7 @@ No API URL configuration is required. This alpha uses the Markee staging API at 
 Copy this prompt into your coding assistant. It gathers missing requirements before implementing the integration.
 
 ```text
-Integrate @markee_team/sdk@0.1.0-alpha.2 into this app. Inspect the app first and
+Integrate @markee_team/sdk@0.1.0-alpha.3 into this app. Inspect the app first and
 follow its existing framework, styling, and wallet patterns.
 
 Before changing code, inspect what is already available, then ask me the unanswered
@@ -178,7 +178,7 @@ flows; card checkout and incoming bridging are unavailable. If either is require
 ask whether to proceed with the supported scope instead of promising those features.
 Summarize the agreed requirements and implement only the selected flows.
 
-- Install @markee_team/sdk@0.1.0-alpha.2. The SDK knows its API endpoint. Do not
+- Install @markee_team/sdk@0.1.0-alpha.3. The SDK knows its API endpoint. Do not
   request an API URL, build an API proxy, or add RPC/database/provider keys.
 - For React 18/19, import MarkeeModal from @markee_team/sdk/react in a client
   component and supply open, onClose, and placement. For other apps, import
