@@ -457,7 +457,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const winAmountFormatted = view === 'addFunds'
     ? (winForTarget ? Number(formatEther(winForTarget)).toFixed(3) : null)
     : (winForCreate ? Number(formatEther(winForCreate)).toFixed(3) : null)
-  const isAlreadyTop = view === 'addFunds' && !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
+  const targetIsTop = !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
+  const isAlreadyTop = view === 'addFunds' && targetIsTop
   // 2X replaces WIN for a message that's already #1: adding its current total again doubles it.
   const twoXAmountFormatted = isAlreadyTop && target ? Number(formatEther(target.totalFundsAdded)).toFixed(3) : null
 
@@ -466,7 +467,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
   const reviewWinTarget = view === 'addFunds' ? winForTarget : winForCreate
   const reviewWillWin = view === 'edit'
-    ? isAlreadyTop
+    ? targetIsTop
     : isAlreadyTop || !reviewWinTarget || reviewAmountWei >= reviewWinTarget
   const reviewShortfallWei = !reviewWillWin && reviewWinTarget && reviewWinTarget > reviewAmountWei
     ? reviewWinTarget - reviewAmountWei : 0n
@@ -811,7 +812,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
-                    activating={activating}
+                    alreadyWinning={isAlreadyTop}
                     message={target.message || ''}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
@@ -854,7 +855,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
-                    activating={activating}
+                    editing
                     message={message}
                     amountLabel="Free — message update only"
                     amountUsd={null}

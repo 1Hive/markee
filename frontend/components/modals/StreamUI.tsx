@@ -159,11 +159,15 @@ export function Row({ label, value, bold, info }: { label: string; value: string
 // its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
 export function PaymentReviewCard({
   kind, message, amountLabel, amountUsd, depositLabel, runwayLabel, markeeEarnedLabel, willWin, minToWinLabel,
-  activating, chainId, markeeId, boardAdmin, boardCreator,
+  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin, boardCreator,
 }: {
   kind: 'fixed' | 'rent'
   // The board's first message: there's nothing to beat yet, so the banner says what activation does.
   activating?: boolean
+  // Changing the text of an existing message rather than paying to rank it.
+  editing?: boolean
+  // The message is already #1, so adding funds to it changes nothing worth a banner.
+  alreadyWinning?: boolean
   message: string
   amountLabel: string
   amountUsd?: string | null
@@ -206,16 +210,17 @@ export function PaymentReviewCard({
         <Row label="You'll earn" value={markeeEarnedLabel} />
       </div>
 
-      <div style={{
+      {!(alreadyWinning && !editing) && <div style={{
         borderRadius: 10, padding: '12px 14px',
         border: `1px solid ${willWin ? 'rgba(29,178,39,0.35)' : kind === 'rent' ? 'rgba(255,215,0,0.35)' : 'rgba(255,142,142,0.35)'}`,
         background: willWin ? 'rgba(29,178,39,0.06)' : kind === 'rent' ? 'rgba(255,215,0,0.06)' : 'rgba(255,142,142,0.06)',
-        display: 'flex', flexDirection: 'column', gap: 4,
-        ...(activating && { alignItems: 'center', textAlign: 'center' }),
+        display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 4,
       }}>
         <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: willWin ? GREEN : kind === 'rent' ? GOLD : RED }}>
           {activating && willWin
             ? 'Your Markee will be activated with this message displayed'
+            : editing && willWin
+            ? 'Your message will be updated immediately'
             : willWin
             ? kind === 'fixed'
               ? 'Your message will be featured immediately'
@@ -238,7 +243,7 @@ export function PaymentReviewCard({
               : "You won't pay for time your message isn't winning, although you'll see an outgoing stream that's being refunded 100% to your wallet."}
           </span>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
