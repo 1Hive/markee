@@ -6,7 +6,7 @@ import { createPublicClient, http, isAddress, parseAbi, type Address } from 'vie
 import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { readBoardViews } from '@/lib/views/boards'
-import { normalizeHost } from '@/lib/views/host'
+import { normalizeHost, lastSiteViewKey } from '@/lib/views/host'
 import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/daily'
 
 // Counts change with every view: never let Next serve these KV reads from its data cache.
@@ -165,8 +165,6 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
-  // Optional: which verified site the view came from (used for per-URL counter below).
-  const host = typeof body.url === 'string' ? normalizeHost(body.url) : null
 
   // ── Referer / origin guard ──────────────────────────────────────────────────
   // Prefer the browser-set `Origin` header (cross-origin requests always send it and it
@@ -178,6 +176,10 @@ export async function POST(req: NextRequest) {
   // site owner can't manufacture traffic by calling the API directly from their server.
   const rawReferer = req.headers.get('origin') ?? req.headers.get('referer')
   const refHost    = rawReferer ? normalizeHost(rawReferer) : null
+  // Which site the view came from, for the per-site counters: the body's url when the embed sends
+  // it, otherwise the browser's Origin/Referer, so embeds that leave url out are still attributed.
+  // Views from markee.xyz itself belong to no site.
+  const host = (typeof body.url === 'string' ? normalizeHost(body.url) : null) ?? (isTrustedHost(refHost) ? null : refHost)
 
   if (!isTrustedHost(refHost)) {
     const meta = await kv.get<{ verifiedUrls?: string[]; verifiedUrl?: string }>(`oi:meta:${address}`).catch(() => null)
@@ -201,6 +203,10 @@ export async function POST(req: NextRequest) {
     }
   }
   // ───────────────────────────────────────────────────────────────────────────
+
+  // The last time this site reported a view, counted or not, so the dashboard can tell a site whose
+  // embed isn't reporting views from one that just hasn't had visitors (lib/integrations/server.ts).
+  if (host) await kv.set(lastSiteViewKey(address, host), Math.floor(Date.now() / 1000)).catch(() => {})
 
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)

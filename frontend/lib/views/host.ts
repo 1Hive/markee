@@ -10,3 +10,6 @@ export function normalizeHost(raw: string): string | null {
     return null
   }
 }
+
+// Unix seconds of the last view a site reported for a board or message address.
+export const lastSiteViewKey = (address: string, host: string) => `views:url:last:${address.toLowerCase()}:${host}`

@@ -5,7 +5,7 @@ import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
 import { getGithubToken, fetchRepoTraffic } from '@/lib/github/traffic'
 import { getModerationClient } from '@/lib/moderation/server'
 import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
-import { normalizeHost } from '@/lib/views/host'
+import { lastSiteViewKey, normalizeHost } from '@/lib/views/host'
 import { fileIntegrationKey, urlIntegrationKey, type BoardIntegrations } from '@/lib/integrations/featured'
 
 // The owner's pick, as an integration key. Absent means "most viewed".
@@ -59,6 +59,11 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
     return host ? [b, ...(messagesOf.get(b) ?? [])].map(a => `views:url:${a}:${host}`) : []
   }))
   const urlCounts = await mgetNumbers([...new Set(urlKeys)])
+  const lastKeys = boards.flatMap((b, i) => urlsOf[i].flatMap(url => {
+    const host = normalizeHost(url)
+    return host ? [b, ...(messagesOf.get(b) ?? [])].map(a => lastSiteViewKey(a, host)) : []
+  }))
+  const lastSeen = await mgetNumbers([...new Set(lastKeys)])
 
   // One traffic read per repo (cached for an hour), with the token of whoever linked it.
   const repoLinker = new Map<string, string>()
@@ -71,18 +76,20 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
 
   return Object.fromEntries(boards.map((b, i) => {
     const views: Record<string, number> = {}
+    const lastView: Record<string, number | null> = {}
     // Same order as the dashboard lists them: GitHub files, then sites. Ties go to the earlier one.
     filesOf[i].forEach(f => { views[fileIntegrationKey(f)] = repoViews.get(f.repoFullName) ?? 0 })
     urlsOf[i].forEach(url => {
       const host = normalizeHost(url)
-      views[urlIntegrationKey(url)] = host
-        ? [b, ...(messagesOf.get(b) ?? [])].reduce((sum, a) => sum + (urlCounts.get(`views:url:${a}:${host}`) ?? 0), 0)
-        : 0
+      const addrs = [b, ...(messagesOf.get(b) ?? [])]
+      views[urlIntegrationKey(url)] = host ? addrs.reduce((sum, a) => sum + (urlCounts.get(`views:url:${a}:${host}`) ?? 0), 0) : 0
+      const last = host ? Math.max(0, ...addrs.map(a => lastSeen.get(lastSiteViewKey(a, host)) ?? 0)) : 0
+      lastView[urlIntegrationKey(url)] = last || null
     })
     const keys = Object.keys(views)
     const choice = choices[i]
     const chosen = !!choice && keys.includes(choice)
     const featured = chosen ? choice : keys.reduce<string | null>((best, k) => best === null || views[k] > views[best] ? k : best, null)
-    return [b, { featured, chosen, views }]
+    return [b, { featured, chosen, views, lastView }]
   }))
 }

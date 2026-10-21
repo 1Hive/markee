@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import type { Abi } from 'viem'
-import { ArrowUpRight, ExternalLink, Eye, Info, Link2 } from 'lucide-react'
+import { ArrowUpRight, ExternalLink, Eye, EyeOff, Info, Link2 } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { BoardModerators } from '@/components/moderation'
@@ -14,9 +14,9 @@ import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI }
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
-import { featuredIntegrationMessage, orderIntegrations } from '@/lib/integrations/featured'
+import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
-import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER } from '@/lib/design-tokens'
+import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
 import { integrationsOf, type Integration } from '@/components/account/sites'
@@ -56,7 +56,7 @@ function FeaturedTag() {
   )
 }
 
-function IntegrationRow({ board, it, featured, chosen, views, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
+function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; reportingTip: string | null; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
   const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
   const { signMessageAsync } = useSignMessage()
@@ -154,8 +154,8 @@ function IntegrationRow({ board, it, featured, chosen, views, canEdit, onChanged
         {featured && !unverifiedFile && <FeaturedTag />}
         {unverifiedFile && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: MUTED, border: '1px solid rgba(138,143,191,0.35)', borderRadius: 99, padding: '1px 7px' }}>Not verified</span>}
         {views != null && (
-          <span title="Views" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 12, color: TEXT2, whiteSpace: 'nowrap' }}>
-            <Eye size={13} style={{ color: MUTED }} aria-label="views" />{fmtCount(views)}
+          <span title={reportingTip ?? 'Views'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 12, color: reportingTip ? AMBER : TEXT2, whiteSpace: 'nowrap' }}>
+            {reportingTip ? <EyeOff size={13} aria-label={reportingTip} /> : <Eye size={13} style={{ color: MUTED }} aria-label="views" />}{fmtCount(views)}
           </span>
         )}
         {canEdit && (
@@ -182,6 +182,11 @@ function IntegrationRow({ board, it, featured, chosen, views, canEdit, onChanged
           )
         )}
       </div>
+      {reportingTip && canEdit && (
+        <div style={{ fontSize: 12, color: AMBER, padding: '0 0 10px', lineHeight: 1.45 }}>
+          {reportingTip}. Check the site sends the view call from the embed prompt&apos;s View tracking step.
+        </div>
+      )}
       {error && <div style={{ fontSize: 12, color: verifiedFile ? MUTED : DANGER, padding: '0 0 10px' }}>{error}</div>}
     </div>
   )
@@ -325,6 +330,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 featured={!!info && info.featured === it.key}
                 chosen={!!info?.chosen}
                 views={info ? info.views[it.key] ?? null : null}
+                reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
                 canEdit={isOwner}
                 onChanged={() => { reloadIntegrations(); onSuccess() }}
                 onFeaturedChanged={reloadIntegrations}

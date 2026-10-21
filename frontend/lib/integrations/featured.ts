@@ -12,6 +12,27 @@ export interface BoardIntegrations {
   chosen: boolean
   // Views per integration key.
   views: Record<string, number>
+  // Sites only: unix seconds of the last view the site reported, or null if none since we started
+  // recording it.
+  lastView: Record<string, number | null>
+}
+
+// Whether a site's embed is reporting views. 'none': no view ever logged. 'stale': none for
+// STALE_DAYS. GitHub files report through GitHub's own traffic, so they're always 'ok' here.
+export type ViewReporting = 'ok' | 'none' | 'stale'
+export const STALE_DAYS = 14
+
+export function viewReporting(info: BoardIntegrations | null | undefined, key: string, now: number = Date.now()): ViewReporting {
+  if (!info || !key.startsWith('u:') || !(key in info.views)) return 'ok'
+  const last = info.lastView[key] ?? null
+  if (last === null) return info.views[key] > 0 ? 'ok' : 'none'
+  return now / 1000 - last > STALE_DAYS * 86_400 ? 'stale' : 'ok'
+}
+
+export function viewReportingTip(state: ViewReporting, last?: number | null): string | null {
+  if (state === 'none') return "This embed hasn't logged any views yet"
+  if (state === 'stale') return `This embed hasn't logged a view since ${new Date((last ?? 0) * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  return null
 }
 
 // Signed by a board owner to pick its featured integration (key) or go back to most viewed (null).

@@ -137,7 +137,11 @@ test('the featured site is the most viewed until the owner picks one', async ({ 
   await kv(['MSET', `views:url:${b}:example.com`, '2', `views:url:${top}:example.com`, '3', `views:url:${b}:second.example.org`, '7'])
 
   const read = async () => (await (await page.request.get(`/api/boards/integrations?boards=${b}`)).json())[b]
-  expect(await read()).toEqual({ featured: `u:${second}`, chosen: false, views: { [`u:${first}`]: 5, [`u:${second}`]: 7 } })
+  expect(await read()).toEqual({
+    featured: `u:${second}`, chosen: false,
+    views: { [`u:${first}`]: 5, [`u:${second}`]: 7 },
+    lastView: { [`u:${first}`]: null, [`u:${second}`]: null },
+  })
 
   const signed = async (signer: typeof ME, key: string | null) => {
     const timestamp = Math.floor(Date.now() / 1000)
@@ -156,6 +160,10 @@ test('the featured site is the most viewed until the owner picks one', async ({ 
   // And can go back to the most viewed one.
   expect((await page.request.put('/api/boards/integrations', { data: await signed(ME, null) })).status()).toBe(200)
   expect(await read()).toMatchObject({ featured: `u:${second}`, chosen: false })
+
+  // A view from the site's own page marks it as reporting, even without the url field.
+  await page.request.post('/api/views', { data: { address: top, message: 'e2e' }, headers: { Origin: second } })
+  expect((await read()).lastView[`u:${second}`]).toBeGreaterThan(0)
   await kv(['SET', `oi:meta:${b}`, JSON.stringify(meta)])
 })
 

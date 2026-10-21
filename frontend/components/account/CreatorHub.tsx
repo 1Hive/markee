@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, Eye } from 'lucide-react'
+import { ArrowUpRight, Eye, EyeOff } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, CARD_BG } from '@/lib/design-tokens'
@@ -13,7 +13,7 @@ import type { AnyLeaderboard } from '@/components/account/types'
 import { ArchiveButton, AttnGroup, PanelHead, SECONDS_PER_MONTH, SegToggle, fmtAddr, fmtCount, fmtWeiUsd } from '@/components/account/primitives'
 import { PlatformGlyph, shownOn } from '@/components/account/sites'
 import { useToast } from '@/components/account/Toast'
-import type { BoardIntegrations } from '@/lib/integrations/featured'
+import { viewReporting, viewReportingTip, type BoardIntegrations } from '@/lib/integrations/featured'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 
 export const MK_COLS = 'minmax(0,1fr) 104px 84px 196px'
@@ -110,6 +110,12 @@ function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRe
   const raised = useLiveBalance(BigInt(lb.totalFundsRaw), ratePerSec)
   const topBid = BigInt(lb.topFundsAddedRaw ?? '0')
   const site = archived ? null : shownOn(lb, integrations)
+  // Sites whose embed isn't reporting views; the Manage drawer says which and what to check.
+  const notReportingKeys = archived || !integrations ? [] : Object.keys(integrations.views).filter(k => viewReporting(integrations, k) !== 'ok')
+  const notReporting = notReportingKeys.length
+  const notReportingTip = notReporting === 1 && Object.keys(integrations?.views ?? {}).length === 1
+    ? viewReportingTip(viewReporting(integrations, notReportingKeys[0]), integrations?.lastView[notReportingKeys[0]])
+    : `${notReporting} of these embeds ${notReporting === 1 ? "isn't" : "aren't"} logging views. Open Manage to see which.`
   const amount = (color: string = TEXT): React.CSSProperties => ({ textAlign: 'right', fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' })
   const dash = <span style={{ textAlign: 'right', color: MUTED, fontSize: 12.5 }}>-</span>
   const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 10px', height: 32, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }
@@ -131,6 +137,14 @@ function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRe
             <>
               <span title={site.label} style={{ fontFamily: MONO, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{site.label}</span>
               {site.more > 0 && <span style={{ fontSize: 12, color: MUTED }}>+{site.more}</span>}
+              {notReporting > 0 && (
+                <span
+                  title={notReportingTip ?? undefined}
+                  style={{ display: 'inline-flex', color: AMBER, flexShrink: 0 }}
+                >
+                  <EyeOff size={13} aria-label="Not logging views" />
+                </span>
+              )}
             </>
           ) : (
             <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{markeeName(lb)}</span>

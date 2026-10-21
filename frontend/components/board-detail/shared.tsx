@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
 import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
-import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User, Zap } from 'lucide-react'
+import { Eye, EyeOff, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User, Zap } from 'lucide-react'
 import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
@@ -18,8 +18,8 @@ import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
-import { fileIntegrationKey, urlIntegrationKey, orderIntegrations } from '@/lib/integrations/featured'
-import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
+import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, viewReporting, viewReportingTip, type BoardIntegrations } from '@/lib/integrations/featured'
+import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, AMBER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
 export const BOARD_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
@@ -286,6 +286,17 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
   )
 }
 
+// A site's view count, or an eye-off icon when its embed isn't reporting views (lib/integrations/featured.ts).
+function SiteViews({ info, itemKey, views, loaded }: { info?: BoardIntegrations; itemKey: string; views: number; loaded: boolean }) {
+  const state = viewReporting(info, itemKey)
+  const tip = viewReportingTip(state, info?.lastView[itemKey])
+  return (
+    <span title={tip ?? undefined} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: tip ? AMBER : MUTED }}>
+      {tip ? <EyeOff size={10} aria-label={tip} /> : <Eye size={10} style={{ opacity: 0.7 }} />} {loaded ? formatViews(views) : <ViewsSpinner size={9} />}
+    </span>
+  )
+}
+
 export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
   entry: EcoEntry | null
   /** Still resolving useServedOn -- distinguishes "not verified yet" from "genuinely nothing linked". */
@@ -442,9 +453,7 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
                 <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(item.url)}</span>
                 <ExternalLink size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
               </span>
-              <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {item.viewsLoaded ? formatViews(item.views) : <ViewsSpinner size={9} />}
-              </span>
+              <SiteViews info={info} itemKey={item.key} views={item.views} loaded={item.viewsLoaded} />
             </a>
           ))}
         </div>,
