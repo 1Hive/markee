@@ -424,12 +424,14 @@ export function BuyMessageModal({
   // Review-step prediction: activeTakeFirstAmount is already "total wei needed to take #1" in the
   // right unit for whichever tab is active (a one-time total for create, an increment for addFunds),
   // so willWin/shortfall both fall straight out of it without re-deriving the ranking math.
-  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  // An update pays nothing, so its shortfall is the top-up the user's message needs to reach #1.
+  const reviewAmountWei = activeTab === 'updateMessage' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewTakeFirstAmount = activeTab === 'updateMessage' ? addFundsTakeFirstAmount : activeTakeFirstAmount
   const reviewWillWin = activeTab === 'updateMessage'
     ? userIsTop
     : !activeTakeFirstAmount || reviewAmountWei >= activeTakeFirstAmount
-  const reviewShortfallWei = !reviewWillWin && activeTakeFirstAmount && activeTakeFirstAmount > reviewAmountWei
-    ? activeTakeFirstAmount - reviewAmountWei : 0n
+  const reviewShortfallWei = !reviewWillWin && reviewTakeFirstAmount && reviewTakeFirstAmount > reviewAmountWei
+    ? reviewTakeFirstAmount - reviewAmountWei : 0n
   const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
 
   const inputStyle = {

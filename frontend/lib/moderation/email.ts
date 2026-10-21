@@ -68,19 +68,23 @@ function buildHtml(boardName: string, boardAddress: string, count: number): stri
 </html>`
 }
 
-function buildVerifyHtml(boardName: string, verifyUrl: string): string {
-  const name = escHtml(boardName)
+// boardName is null when the wallet set its own email from Settings rather than being added to a board.
+function buildVerifyHtml(boardName: string | null, verifyUrl: string): string {
   const url = escHtml(verifyUrl)
+  const heading = boardName === null ? 'Verify your email' : "You've been added as a moderator"
+  const intro = boardName === null
+    ? 'Verify your email to start receiving Markee notifications, then manage your preferences from your account.'
+    : `You were added as a moderator on <strong>${escHtml(boardName)}</strong>.
+    Verify your email to receive moderation notifications, then manage your preferences from your account.`
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:system-ui,sans-serif;background:#f5f5f5;margin:0;padding:32px 16px">
 <div style="background:#fff;border-radius:10px;max-width:520px;margin:0 auto;padding:28px 28px 24px;border:1px solid #e5e5e5">
   <p style="font-size:12px;color:#999;letter-spacing:1px;text-transform:uppercase;margin:0 0 18px">Markee Protocol</p>
-  <h1 style="font-size:20px;font-weight:700;color:#060A2A;margin:0 0 10px">You've been added as a moderator</h1>
+  <h1 style="font-size:20px;font-weight:700;color:#060A2A;margin:0 0 10px">${heading}</h1>
   <p style="font-size:14px;color:#555;line-height:1.6;margin:0 0 22px">
-    You were added as a moderator on <strong>${name}</strong>.
-    Verify your email to receive moderation notifications, then manage your preferences from your account.
+    ${intro}
   </p>
   <a href="${url}"
      style="display:inline-block;background:#F897FE;color:#060A2A;text-decoration:none;
@@ -96,11 +100,13 @@ function buildVerifyHtml(boardName: string, verifyUrl: string): string {
 </html>`
 }
 
-export async function sendVerificationEmail(email: string, boardName: string, verifyUrl: string): Promise<void> {
+export async function sendVerificationEmail(email: string, boardName: string | null, verifyUrl: string): Promise<void> {
   await sendEmail({
     sender: FROM,
     to: [{ email }],
-    subject: `You've been added as a moderator on "${boardName}" — verify your email`,
+    subject: boardName === null
+      ? 'Verify your email for Markee notifications'
+      : `You've been added as a moderator on "${boardName}" — verify your email`,
     htmlContent: buildVerifyHtml(boardName, verifyUrl),
   })
 }

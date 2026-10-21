@@ -1,6 +1,6 @@
 // GET /api/moderation/notify/verify?token=<token>
 //   Validates a one-time email verification token issued when a board admin adds a moderator with
-//   an email address. On success, marks the moderator's email as verified in KV and redirects to
+//   an email address, or when a wallet sets its own email from Settings. On success, marks the moderator's email as verified in KV and redirects to
 //   /account so they can manage their notification frequency preferences.
 
 import { NextRequest, NextResponse } from 'next/server'

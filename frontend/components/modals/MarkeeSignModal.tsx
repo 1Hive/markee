@@ -464,8 +464,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   // Review-step prediction, reusing the win-target wei already derived above for whichever view is
   // active instead of re-deriving the ranking math.
-  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
-  const reviewWinTarget = view === 'addFunds' ? winForTarget : winForCreate
+  // An edit pays nothing, so its shortfall is the top-up this message needs to reach #1.
+  const reviewAmountWei = view === 'edit' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewWinTarget = view === 'addFunds' || view === 'edit' ? winForTarget : winForCreate
   const reviewWillWin = view === 'edit'
     ? targetIsTop
     : isAlreadyTop || !reviewWinTarget || reviewAmountWei >= reviewWinTarget
