@@ -10,6 +10,7 @@ import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions } from '@/lib/streaming/subgraph'
 import { listBoardMessages } from '@/lib/streaming/messages'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
+import { boughtSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
 
 export const dynamic = 'force-dynamic'
 
@@ -146,6 +147,13 @@ async function fetchStreamingOwned(
     })
 }
 
+// The wallet's running total spent on its own messages, for the Buyer Hub chart (lib/stats/daily.ts).
+// Only written when every part of the read succeeded, so a partial read can't look like a refund.
+async function snapshotBought(owner: string, messages: { totalFundsAdded: string }[]) {
+  const total = messages.reduce((sum, m) => sum + BigInt(m.totalFundsAdded || '0'), 0n)
+  await snapshotTotals([{ key: boughtSnapshotKey(owner), total }]).catch(e => console.error('[account/messages] snapshot failed', e))
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const origin = internalOrigin()
@@ -221,8 +229,9 @@ export async function GET(request: Request) {
   }
 
   if (entries.length === 0) {
-    const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => [])
-    return NextResponse.json({ messages: await withWinTimes(streamingMsgs) })
+    const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => null)
+    if (streamingMsgs) await snapshotBought(owner, streamingMsgs)
+    return NextResponse.json({ messages: await withWinTimes(streamingMsgs ?? []) })
   }
 
   // Multicall owner() on all markees
@@ -278,7 +287,8 @@ export async function GET(request: Request) {
     }
   })
 
-  const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => [])
+  const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => null)
+  if (streamingMsgs) await snapshotBought(owner, [...messages, ...streamingMsgs])
 
-  return NextResponse.json({ messages: await withWinTimes([...messages, ...streamingMsgs]) })
+  return NextResponse.json({ messages: await withWinTimes([...messages, ...(streamingMsgs ?? [])]) })
 }

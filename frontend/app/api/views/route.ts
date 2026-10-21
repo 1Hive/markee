@@ -6,6 +6,8 @@ import { createPublicClient, http, isAddress, parseAbi, type Address } from 'vie
 import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { readBoardViews } from '@/lib/views/boards'
+import { normalizeHost } from '@/lib/views/host'
+import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/daily'
 
 // Counts change with every view: never let Next serve these KV reads from its data cache.
 export const dynamic = 'force-dynamic'
@@ -22,19 +24,6 @@ function corsHeaders(_origin: string | null): Record<string, string> {
 
 function hashMessage(message: string): string {
   return createHash('md5').update(message.trim().toLowerCase()).digest('hex').slice(0, 8)
-}
-
-// Bare hostname, lowercased, no protocol/path/www — the key both the POST increment and the GET
-// per-URL lookup normalize to, so "https://Example.com/blog" and "example.com" count together.
-function normalizeHost(raw: string): string | null {
-  const trimmed = raw.trim().slice(0, 253) // longest valid hostname
-  if (!trimmed) return null
-  try {
-    const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`
-    return new URL(withProtocol).hostname.replace(/^www\./, '').toLowerCase() || null
-  } catch {
-    return null
-  }
 }
 
 function getClientIp(req: NextRequest): string {
@@ -235,6 +224,10 @@ export async function POST(req: NextRequest) {
   pipeline.set(dedupeKey, '1', { ex: 3600 })
   pipeline.incr('views:network:total')
   if (host) pipeline.incr(`views:url:${address}:${host}`)
+  // Day-by-day history for the dashboard charts (lib/stats/daily.ts).
+  const day = dayOf()
+  pipeline.hincrby(dailyViewsKey(address), day, 1)
+  pipeline.set(VIEWS_SINCE_KEY, day, { nx: true })
   const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number, number?]>()
 
   return NextResponse.json(

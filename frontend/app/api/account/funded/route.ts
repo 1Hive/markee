@@ -9,6 +9,7 @@ import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
+import { fundedSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
 
 export const dynamic = 'force-dynamic'
 
@@ -359,9 +360,17 @@ export async function GET(request: Request) {
 
   // One strategy failing should not blank out the other's positions.
   const [fixed, streaming] = await Promise.all([
-    fixedFunded(client, owner, origin, headers).catch(() => []),
-    streamingFunded(client, owner, origin, headers).catch(() => []),
+    fixedFunded(client, owner, origin, headers).catch(() => null),
+    streamingFunded(client, owner, origin, headers).catch(() => null),
   ])
+  const funded = [...(fixed ?? []), ...(streaming ?? [])]
 
-  return NextResponse.json({ funded: await withWinTimes([...fixed, ...streaming]) })
+  // The wallet's running total put into other people's messages, for the Buyer Hub chart
+  // (lib/stats/daily.ts). Skipped when either read failed, so a partial read can't look like a refund.
+  if (fixed && streaming) {
+    const total = funded.reduce((sum, m) => sum + BigInt(m.totalContributed || '0'), 0n)
+    await snapshotTotals([{ key: fundedSnapshotKey(owner), total }]).catch(e => console.error('[account/funded] snapshot failed', e))
+  }
+
+  return NextResponse.json({ funded: await withWinTimes(funded) })
 }
