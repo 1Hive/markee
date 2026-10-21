@@ -1316,7 +1316,7 @@ function AccountDashboard() {
             {mounted && hasWallet && (
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                 <Link
-                  href="/raise-funding"
+                  href="/create-a-markee"
                   className="acct-btn-lg"
                   style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '0 16px', height: 38, display: 'inline-flex', alignItems: 'center', fontFamily: MONO, fontWeight: 700, fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap', transition: 'background 120ms' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${PINK}18` }}

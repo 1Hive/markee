@@ -206,7 +206,7 @@ export function YourMarkees({ active, archived, inactive, awaiting, loading, boa
           onChange={setView}
           options={[{ k: 'active', l: 'Active', n: activeCount }, { k: 'archived', l: 'Archived', n: archived.length }]}
         />
-        <Link href="/raise-funding" style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '0 14px', height: 32, display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+        <Link href="/create-a-markee" style={{ background: 'transparent', color: PINK, border: `1px solid ${PINK}`, borderRadius: 8, padding: '0 14px', height: 32, display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 700, fontFamily: SANS, textDecoration: 'none', whiteSpace: 'nowrap' }}>
           Create New Markee
         </Link>
       </PanelHead>
