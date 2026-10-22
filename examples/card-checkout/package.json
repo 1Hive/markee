@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
-    "@markee_team/sdk": "0.1.0-alpha.7",
+    "@markee_team/sdk": "0.1.0-alpha.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
