@@ -1,0 +1,197 @@
+import { test, expect, type Page } from '@playwright/test'
+import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
+import { observeMessage } from '../../../lib/moderation/queue'
+import { mnemonicToAccount } from 'viem/accounts'
+import { unlinkFileMessage } from '../../../lib/github/unlink'
+import { featuredIntegrationMessage } from '../../../lib/integrations/featured'
+import { E2E_MNEMONIC } from './env'
+import { E2E_ACCOUNT, E2E_OTHER as OTHER, TX_TIMEOUT, buySale, isolateChain, kv, rpc } from './support'
+
+const ME = mnemonicToAccount(E2E_MNEMONIC)
+const SOMEONE_ELSE = mnemonicToAccount(E2E_MNEMONIC, { addressIndex: 1 })
+
+const TOP_ABI = parseAbi(['function getTopMarkees(uint256 limit) view returns (address[], uint256[])'])
+
+// Creating a For Sale board, activating it, and running every Manage drawer setting on it.
+isolateChain()
+
+const BOARD_NAME = 'E2E Sale Board'
+let board = ''
+
+async function openDrawer(page: Page) {
+  await page.goto('/account?section=creator')
+  const row = page.locator('.acct-row', { hasText: /example\.(com|org)/ })
+  await expect(row).toBeVisible({ timeout: TX_TIMEOUT })
+  await row.getByRole('button', { name: 'Manage' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  return page.getByRole('dialog')
+}
+
+async function editSetting(page: Page, label: string, value: string, toast: string) {
+  const drawer = await openDrawer(page)
+  const row = drawer.locator('div', { has: page.getByText(label, { exact: true }) }).filter({ has: page.getByRole('button', { name: 'Edit' }) }).last()
+  await row.getByRole('button', { name: 'Edit' }).click()
+  await row.getByRole('textbox').fill(value)
+  await row.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('status').filter({ hasText: toast })).toBeVisible({ timeout: TX_TIMEOUT })
+}
+
+test('create a For Sale board and activate it', async ({ page }) => {
+  await page.goto('/create-a-markee')
+  await page.getByPlaceholder('My Project').fill(BOARD_NAME)
+  await page.getByPlaceholder('0x... (receives ETH on Base Network)').fill(E2E_ACCOUNT)
+  await page.getByText('For Sale', { exact: true }).first().click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Deploy Markee' }).click()
+  await expect(page.getByText('Transaction confirmed')).toBeVisible({ timeout: TX_TIMEOUT })
+
+  // Activate: the first message.
+  await page.getByRole('button', { name: 'Activate Markee →' }).click()
+  await page.getByPlaceholder('Your message here...').fill('e2e first message')
+  await page.getByRole('button', { name: 'Review Payment Info' }).click()
+  await page.getByRole('button', { name: /Confirm Payment|Activate Markee/ }).last().click()
+  await page.waitForURL(/\/markee\/0x[0-9a-fA-F]{40}/, { timeout: TX_TIMEOUT })
+  board = page.url().match(/0x[0-9a-fA-F]{40}/)![0]
+})
+
+test('the board shows in Your Markees once it is on a site', async ({ page }) => {
+  // Verifying a real site needs the public internet; seed the verified integration in local KV.
+  await kv(['SET', `oi:meta:${board.toLowerCase()}`, JSON.stringify({ verifiedUrls: ['https://example.com'], verifiedUrl: 'https://example.com', status: 'verified' })])
+  await kv(['DEL', 'cache:forsale:leaderboards'])
+  const drawer = await openDrawer(page)
+  await expect(drawer.getByText('Integrated Sites')).toBeVisible()
+})
+
+test('change the minimum price', async ({ page }) => {
+  await editSetting(page, 'Minimum Price', '0.002', 'Minimum price updated')
+})
+
+test('change the beneficiary', async ({ page }) => {
+  await editSetting(page, 'Beneficiary', OTHER, 'Beneficiary updated')
+})
+
+test('change the max message length', async ({ page }) => {
+  await editSetting(page, 'Max Message Characters', '150', 'Message limit updated')
+})
+
+test('add a moderator (signed message)', async ({ page }) => {
+  const drawer = await openDrawer(page)
+  await drawer.getByRole('button', { name: 'Add Moderator' }).click()
+  await drawer.getByPlaceholder('Wallet (0x…)').fill(OTHER)
+  await drawer.getByRole('button', { name: 'Add', exact: true }).click()
+  await drawer.getByRole('button', { name: 'Save moderators' }).click()
+  await expect(drawer.getByText('Moderators saved')).toBeVisible({ timeout: TX_TIMEOUT })
+})
+
+// The moderation-scan cron crawls every board on Base, which takes most of ten minutes against a
+// cold fork. Instead, queue the one new message the way the scan would: same observeMessage(), same
+// KV keys. The purchase and the Approve are real.
+async function queueForReview(markee: string, message: string) {
+  const at = Math.floor(Date.now() / 1000)
+  const item = observeMessage(null, {
+    markee: markee.toLowerCase(), board: board.toLowerCase(), message, name: '', author: E2E_ACCOUNT.toLowerCase(),
+    blockNumber: BigInt(await rpc<string>('eth_blockNumber')).toString(), at,
+  }, { flagged: { board: false, site: false }, preexisting: false })!
+  await kv(['SET', `moderation:item:8453:${markee.toLowerCase()}`, JSON.stringify(item)])
+  await kv(['ZADD', `moderation:pending:${board.toLowerCase()}`, at, markee.toLowerCase()])
+  await kv(['ZADD', 'moderation:pending:site', at, markee.toLowerCase()])
+}
+
+test('approve a new message from the moderation queue (no signature)', async ({ page }) => {
+  await buySale(page, board, 'e2e needs review')
+  const top = await rpc<string>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, args: [1n] }) }, 'latest'])
+  const [[markee]] = decodeFunctionResult({ abi: TOP_ABI, data: top as `0x${string}` })
+  await queueForReview(markee, 'e2e needs review')
+
+  await page.goto('/account?section=creator')
+  const item = page.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Approve' }) }).last()
+  await item.getByRole('button', { name: 'Approve' }).click({ timeout: TX_TIMEOUT })
+  await expect(page.getByRole('status').filter({ hasText: 'Message approved' })).toBeVisible({ timeout: TX_TIMEOUT })
+})
+
+test('flag a visible message, then unflag it from Flagged (signed messages)', async ({ page }) => {
+  await page.goto('/account?section=creator')
+  const panel = page.locator('section', { has: page.getByText('Moderation', { exact: true }) })
+  const visible = panel.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Flag' }) }).last()
+  await expect(visible.getByText('Winning')).toBeVisible({ timeout: TX_TIMEOUT })
+  await visible.getByRole('button', { name: 'Flag' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Message flagged' })).toBeVisible({ timeout: TX_TIMEOUT })
+
+  // Approve needs no signature, so it must not be able to lift a flag.
+  const top = await rpc<string>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, args: [1n] }) }, 'latest'])
+  const [[markee]] = decodeFunctionResult({ abi: TOP_ABI, data: top as `0x${string}` })
+  await page.request.post('/api/moderation', { data: { markeeIds: [markee], chainId: 8453, action: 'approve', adminAddress: E2E_ACCOUNT } })
+  expect((await (await page.request.get('/api/moderation')).json()).flagged).toContain(`8453:${markee.toLowerCase()}`)
+
+  await panel.getByRole('radio', { name: /^Flagged/ }).click()
+  const flagged = panel.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Unflag' }) }).last()
+  await flagged.getByRole('button', { name: 'Unflag' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Message unflagged' })).toBeVisible({ timeout: TX_TIMEOUT })
+})
+
+test('only the board owner can unlink a GitHub file (signed message)', async ({ page }) => {
+  const file = { repoFullName: 'e2e/repo', repoOwner: 'e2e', repoName: 'repo', repoAvatarUrl: '', repoHtmlUrl: '', filePath: 'README.md', verified: false, linkedByUid: '1', linkedAt: '' }
+  await kv(['SET', `github:markee:${board.toLowerCase()}`, JSON.stringify([file])])
+  const url = `/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`
+  const signed = async (signer: typeof ME) => {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = await signer.signMessage({ message: unlinkFileMessage(8453, board, file.repoFullName, file.filePath, timestamp) })
+    return { owner: signer.address, signature, timestamp }
+  }
+
+  expect((await page.request.delete(url)).status()).toBe(400)
+  expect((await page.request.delete(url, { data: await signed(SOMEONE_ELSE) })).status()).toBe(403)
+  const res = await page.request.delete(url, { data: await signed(ME) })
+  expect(res.status()).toBe(200)
+  expect((await res.json()).linkedFiles).toEqual([])
+})
+
+test('the featured site is the most viewed until the owner picks one', async ({ page }) => {
+  const b = board.toLowerCase()
+  const meta = JSON.parse(await kv<string>(['GET', `oi:meta:${b}`]))
+  const first = meta.verifiedUrls?.[0] ?? meta.verifiedUrl
+  const second = 'https://second.example.org'
+  await kv(['SET', `oi:meta:${b}`, JSON.stringify({ ...meta, verifiedUrls: [first, second] })])
+  // The first site's views are split between the board and its top message; the second has more.
+  const top = decodeFunctionResult({ abi: TOP_ABI, functionName: 'getTopMarkees', data: await rpc<`0x${string}`>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, functionName: 'getTopMarkees', args: [1n] }) }, 'latest']) })[0][0].toLowerCase()
+  await kv(['MSET', `views:url:${b}:example.com`, '2', `views:url:${top}:example.com`, '3', `views:url:${b}:second.example.org`, '7'])
+
+  const read = async () => (await (await page.request.get(`/api/boards/integrations?boards=${b}`)).json())[b]
+  expect(await read()).toEqual({
+    featured: `u:${second}`, chosen: false,
+    views: { [`u:${first}`]: 5, [`u:${second}`]: 7 },
+    lastView: { [`u:${first}`]: null, [`u:${second}`]: null },
+  })
+
+  const signed = async (signer: typeof ME, key: string | null) => {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = await signer.signMessage({ message: featuredIntegrationMessage(8453, b, key, timestamp) })
+    return { board: b, key, owner: signer.address, signature, timestamp }
+  }
+  expect((await page.request.put('/api/boards/integrations', { data: await signed(SOMEONE_ELSE, `u:${first}`) })).status()).toBe(403)
+
+  // The owner picks the less viewed site from the Manage drawer.
+  const drawer = await openDrawer(page)
+  const row = drawer.locator('div', { hasText: 'example.com' }).filter({ has: page.getByRole('button', { name: 'Feature' }) }).last()
+  await row.getByRole('button', { name: 'Feature' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Featured site updated' })).toBeVisible({ timeout: TX_TIMEOUT })
+  expect(await read()).toMatchObject({ featured: `u:${first}`, chosen: true })
+
+  // And can go back to the most viewed one.
+  expect((await page.request.put('/api/boards/integrations', { data: await signed(ME, null) })).status()).toBe(200)
+  expect(await read()).toMatchObject({ featured: `u:${second}`, chosen: false })
+
+  // A view from the site's own page marks it as reporting, even without the url field.
+  await page.request.post('/api/views', { data: { address: top, message: 'e2e' }, headers: { Origin: second } })
+  expect((await read()).lastView[`u:${second}`]).toBeGreaterThan(0)
+  await kv(['SET', `oi:meta:${b}`, JSON.stringify(meta)])
+})
+
+test('transfer admin', async ({ page }) => {
+  const drawer = await openDrawer(page)
+  await drawer.getByRole('button', { name: 'Transfer Admin' }).click()
+  await drawer.getByPlaceholder('New admin wallet (0x…)').fill(OTHER)
+  await drawer.getByRole('checkbox').check()
+  await drawer.getByRole('button', { name: 'Transfer Admin' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Admin transferred' })).toBeVisible({ timeout: TX_TIMEOUT })
+})

@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useAccount, useSignMessage } from 'wagmi'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { metaUpdateMessage } from '@/lib/openinternet/meta'
 
 interface EditWebsiteMetaModalProps {
   isOpen: boolean
@@ -25,6 +28,8 @@ export function EditWebsiteMetaModal({
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
 
   useEffect(() => {
     if (isOpen) {
@@ -59,16 +64,15 @@ export function EditWebsiteMetaModal({
     setError(null)
     setIsSaving(true)
     try {
+      const update = { siteUrl: siteUrl.trim() || undefined, logoUrl: logoUrl.trim() || undefined }
+      const timestamp = Math.floor(Date.now() / 1000)
+      const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, leaderboardAddress, update, timestamp) })
       const res = await fetch('/api/openinternet/meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaderboardAddress,
-          ...(siteUrl.trim() && { siteUrl: siteUrl.trim() }),
-          ...(logoUrl.trim() && { logoUrl: logoUrl.trim() }),
-        }),
+        body: JSON.stringify({ leaderboardAddress, ...update, owner: address, signature, timestamp }),
       })
-      if (!res.ok) throw new Error('Failed to save')
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Failed to save')
       setSaved(true)
       onSuccess?.()
       setTimeout(onClose, 1500)

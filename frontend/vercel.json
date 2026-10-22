@@ -7,6 +7,18 @@
     {
       "path": "/api/cron/streaming-keeper",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/moderation-scan",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-moderation-digest",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/stats-snapshot",
+      "schedule": "15 * * * *"
     }
   ]
 }

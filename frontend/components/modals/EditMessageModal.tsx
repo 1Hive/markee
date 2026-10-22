@@ -8,7 +8,7 @@ import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { TxProgress } from '@/components/modals/StreamUI'
 import { ModeratedContent } from '@/components/moderation'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { formatTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, BG2, BG, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
 const MAX_LEN = 222
@@ -37,7 +37,7 @@ export function EditMessageModal({
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   useEffect(() => {
     if (!isOpen) return
@@ -58,6 +58,11 @@ export function EditMessageModal({
   useEffect(() => {
     if (isError && writeError) setError(formatTransactionError(writeError))
   }, [isError, writeError])
+
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash && isOpen) setError(formatReceiptError(receiptError, 'EditMessageModal.receipt'))
+  }, [txReverted, hash, isOpen, receiptError])
 
   useEffect(() => {
     if (!isOpen) return

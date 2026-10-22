@@ -8,8 +8,6 @@ export const CANONICAL_CHAIN_ID = base.id
 export const BASE_MARKEE_EVENTS_FROM_BLOCK = 43_452_028n
 // MARKEE token address (same across all chains)
 export const MARKEE_TOKEN = '0xF6627cF19317C33B457f77452876e6e297c4942F' as const
-// Partner Reserve Distributor (Base only)
-export const PARTNER_RESERVE_DISTRIBUTOR = '0x7FD2aF60B309f872a2cDAcCa853A9F7885466577' as const
 // Markee Cooperative multisig — default beneficiary for non-partner strategies
 export const COOPERATIVE_MULTISIG = '0xAf4401E765dFf079aB6021BBb8d46E53E27613DB' as const
 

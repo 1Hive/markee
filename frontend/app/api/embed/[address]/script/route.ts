@@ -33,10 +33,12 @@ export async function GET(
   var SEL='[data-markee="'+ADDR+'"]';
 
   function applyMessage(d){
-    if(!d||!d.message)return;
+    if(!d)return;
+    var text=d.flagged?'Content unavailable':d.message;
+    if(!text)return;
     document.querySelectorAll(SEL).forEach(function(el){
-      if(el.tagName==='A'){el.textContent=d.message;if(!el.href)el.href=PAGE;}
-      else{el.textContent=d.message;}
+      if(el.tagName==='A'){el.textContent=text;if(!el.href)el.href=PAGE;}
+      else{el.textContent=text;}
       el.title=d.name?'By '+d.name:'';
     });
   }

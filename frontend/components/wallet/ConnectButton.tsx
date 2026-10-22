@@ -1,12 +1,28 @@
 'use client'
 import Link from 'next/link'
-import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth'
 import { useAccount } from 'wagmi'
 import { useState, useEffect } from 'react'
-import { Check, ChevronDown, Copy, LayoutDashboard, LogOut } from 'lucide-react'
+import { ChevronDown, LogOut, RefreshCw, User } from 'lucide-react'
+import { useModerationQueue } from '@/hooks/useModerationQueue'
 
 const MONO   = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const BORDER = 'rgba(138,143,191,0.2)'
+
+function QueueBadge({ n }: { n: number }) {
+  return (
+    <span
+      aria-label={`${n} messages to review`}
+      style={{
+        minWidth: 18, height: 18, borderRadius: 99, padding: '0 5px', boxSizing: 'border-box',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        background: '#FFB020', color: '#060A2A', fontSize: 10, fontWeight: 700, fontFamily: MONO,
+      }}
+    >
+      {n > 99 ? '99+' : n}
+    </span>
+  )
+}
 
 function GlowDot() {
   return (
@@ -17,14 +33,57 @@ function GlowDot() {
   )
 }
 
+// Circular account icon button — sits to the left of ConnectButton in the header.
+// Shows the moderation queue badge and links to /account. Only renders when authenticated.
+export function AccountButton() {
+  const { authenticated, ready } = usePrivy()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  const { items: queueItems } = useModerationQueue()
+
+  if (!mounted || !ready || !authenticated) return null
+
+  return (
+    <Link
+      href="/account"
+      aria-label="Account"
+      style={{
+        position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 38, height: 38, borderRadius: 99, flexShrink: 0,
+        border: `1px solid ${BORDER}`, background: 'transparent',
+        color: '#8A8FBF', textDecoration: 'none',
+        transition: 'border-color 160ms, color 160ms',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = 'rgba(248,151,254,0.35)'
+        el.style.color = '#EDEEFF'
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = BORDER
+        el.style.color = '#8A8FBF'
+      }}
+    >
+      <User size={17} />
+      {queueItems.length > 0 && (
+        <span style={{ position: 'absolute', top: -4, right: -4 }}>
+          <QueueBadge n={queueItems.length} />
+        </span>
+      )}
+    </Link>
+  )
+}
+
 export function ConnectButton() {
   const { authenticated, ready, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
+  const { connectWallet } = useConnectWallet()
   const { address } = useAccount()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  const { items: queueItems } = useModerationQueue()
 
   // Before Privy finishes checking for a stored session, `authenticated` just defaults to false --
   // showing "Connect" here would read as "you're logged out" when the real answer is "still checking."
@@ -66,11 +125,9 @@ export function ConnectButton() {
     ? `${displayAddress.slice(0, 6)}…${displayAddress.slice(-4)}`
     : user?.email?.address ?? 'Account'
 
-  const copyAddress = async () => {
-    if (!displayAddress) return
-    await navigator.clipboard.writeText(displayAddress)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const handleChangeAccount = () => {
+    setMenuOpen(false)
+    connectWallet()
   }
 
   const handleDisconnect = async () => {
@@ -122,43 +179,25 @@ export function ConnectButton() {
             role="menu"
             style={{
               position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 50,
-              width: 210, overflow: 'hidden', borderRadius: 8,
+              width: 180, overflow: 'hidden', borderRadius: 8,
               border: `1px solid ${BORDER}`, background: '#0A0F3D',
               boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
             }}
           >
-            <Link
-              href="/account"
+            <button
+              type="button"
               role="menuitem"
-              onClick={() => setMenuOpen(false)}
+              onClick={handleChangeAccount}
               style={{
                 display: 'flex', alignItems: 'center', gap: 9, width: '100%',
                 padding: '11px 13px', background: 'transparent', border: 0,
                 color: '#EDEEFF', fontFamily: MONO, fontSize: 12,
-                cursor: 'pointer', textAlign: 'left', textDecoration: 'none',
-                boxSizing: 'border-box',
+                cursor: 'pointer', textAlign: 'left',
               }}
             >
-              <LayoutDashboard size={15} color="#8A8FBF" />
-              Dashboard
-            </Link>
-            {displayAddress && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={copyAddress}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-                  padding: '11px 13px', background: 'transparent', border: 0,
-                  borderTop: `1px solid ${BORDER}`,
-                  color: '#EDEEFF', fontFamily: MONO, fontSize: 12,
-                  cursor: 'pointer', textAlign: 'left',
-                }}
-              >
-                {copied ? <Check size={15} color="#1DB227" /> : <Copy size={15} color="#8A8FBF" />}
-                {copied ? 'Copied address' : 'Copy address'}
-              </button>
-            )}
+              <RefreshCw size={15} color="#8A8FBF" />
+              Change account
+            </button>
             <button
               type="button"
               role="menuitem"
