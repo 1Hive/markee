@@ -215,3 +215,26 @@ real card acceptance or wallet signing. Before enabling for users, validate Priv
 login/card funding, popup and mobile return, cancellation, reload/pending recovery,
 actual Base receipt and MARKEE transfer with an explicitly authorized real payment.
 Do not represent the feature gate or a local sample as a completed live payment test.
+
+
+## Checkout error alerts
+
+`DISCORD_ERROR_WEBHOOK_URL` is used in both Vercel Production and Preview. Preview
+alerts have `[STAGING]` titles; production alerts have `[PRODUCTION]` titles. The
+Deployment field identifies the actual Vercel deployment. Add the existing channel
+webhook to the Preview environment and redeploy to activate staging delivery.
+Local development never sends Discord alerts.
+
+Hosted checkout reports caught errors with only the stage, requested provider
+(route preference, not necessarily the actual provider), and an allowlisted error
+code. Reports exclude raw provider errors, stacks, checkout IDs, capabilities,
+wallet addresses, card details and URLs. Duplicate client reports are suppressed
+within the open checkout; the reporting endpoint retains its per-IP rate limit.
+Explicit wallet rejection and the known closed-funding result are not alerts.
+Checkout API failures (5xx, receipt mismatch/reuse, conversion failure) also report
+safe operation/status/code metadata, limited to three alerts per operation/status
+per minute across server instances. If the shared limiter is unavailable, API
+diagnostics fall back to server logs without changing the payment response.
+Expected disabled checkout and pending
+transactions are not API alerts. Errors rendered only inside a provider's separate
+window cannot be observed unless its SDK returns a failure to Markee.

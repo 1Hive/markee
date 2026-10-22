@@ -1,4 +1,5 @@
 'use client';
+import { checkoutAlert, type CheckoutStage } from '../../../lib/checkout-alerts';
 import { useEffect, useRef, useState } from 'react';
 import { usePrivy, useWallets, useFundWallet, useSendTransaction, useCreateWallet, useDepositFunds } from '@privy-io/react-auth';
 import { base } from 'viem/chains';
@@ -32,6 +33,16 @@ export default function Checkout({ id }: { id: string }) {
   const [recoveryHash, setRecoveryHash] = useState('');
   const token = useRef('');
   const running = useRef(false);
+  const stage = useRef<CheckoutStage>('loading');
+  const reported = useRef(new Set<string>());
+  function reportFailure(error: unknown) {
+    if (explicitlyRejected(error) || (error instanceof Error && /^(Payment confirmation was declined|Conversion declined|Funding was closed)/.test(error.message))) return;
+    const context = checkoutAlert({ stage: stage.current, provider: session?.funding || provider, code: error instanceof CheckoutError ? error.code : undefined })!;
+    const signature = JSON.stringify(context);
+    if (reported.current.has(signature)) return;
+    reported.current.add(signature);
+    void fetch('/api/errors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true, body: JSON.stringify({ type: 'checkout', ...context }) }).catch(() => {});
+  }
   const alive = useRef(true);
   const key = `markee:checkout:${id}`;
   const wallet = wallets.find(w => ['privy', 'privy-v2'].includes(w.walletClientType) && (!session?.account || w.address.toLowerCase() === session.account.toLowerCase()));
@@ -68,6 +79,7 @@ export default function Checkout({ id }: { id: string }) {
   async function verify(hash: Hex) {
     setRecoveryHash(hash);
     try { sessionStorage.setItem(`${key}:hash`, hash); } catch { /* Server also retains accepted hashes. */ }
+    stage.current = 'verification';
     setProgress('Confirming your payment on Base…');
     for (let i = 0; i < 150 && alive.current; i++) {
       try {
@@ -84,7 +96,7 @@ export default function Checkout({ id }: { id: string }) {
   async function run(work: () => Promise<void>) {
     if (running.current) return;
     running.current = true; setBusy(true); setError('');
-    try { await work(); } catch (e) { if (alive.current) { setError(e instanceof Error ? e.message : 'Unable to continue checkout.'); setProgress(''); } }
+    try { await work(); } catch (e) { reportFailure(e); if (alive.current) { setError(e instanceof Error ? e.message : 'Unable to continue checkout.'); setProgress(''); } }
     finally { running.current = false; if (alive.current) { setBusy(false); await refresh().catch(() => {}); } }
   }
   async function pay() {
@@ -92,6 +104,7 @@ export default function Checkout({ id }: { id: string }) {
     const current = await refresh();
     if (!['created', 'ready'].includes(current.status)) throw new Error('Check the existing payment below before continuing.');
     const account = wallet.address;
+    stage.current = 'balance';
     setProgress('Checking your wallet balance…');
     let funds = await request<{ balance: string; target: string }>('balance', { account });
     if (BigInt(funds.balance) < BigInt(funds.target)) {
@@ -108,6 +121,7 @@ export default function Checkout({ id }: { id: string }) {
       }
       if (current.funding) throw new Error('Your card funding was already opened. Check for arriving funds, or confirm below that no purchase is pending before opening it again.');
       await request('funding-start', { provider: selected });
+      stage.current = 'funding';
       setProgress('Complete card funding in the payment provider…');
       if (selected === 'stripe') {
         // Provider preference is not a guarantee: Privy shows eligible alternatives before purchase.
@@ -133,6 +147,7 @@ export default function Checkout({ id }: { id: string }) {
       if (BigInt(funds.balance) < BigInt(funds.target)) throw new Error('Funding is still pending or below the required amount. Check your existing purchase before buying again.');
     }
     if (!alive.current) return;
+    stage.current = 'payment';
     setProgress('Preparing your Markee payment…');
     await wallet.switchChain(base.id);
     const preparation = await request<PreparedAction>('prepare', { account });
@@ -153,6 +168,7 @@ export default function Checkout({ id }: { id: string }) {
   async function verifyConversion(hash: Hex) {
     setConversionHash(hash);
     try { sessionStorage.setItem(`${key}:conversion`, hash); } catch { /* Server retains accepted hashes too. */ }
+    stage.current = 'conversion';
     setProgress('Confirming conversion on Base…');
     for (let i = 0; i < 150 && alive.current; i++) {
       try {
@@ -173,6 +189,7 @@ export default function Checkout({ id }: { id: string }) {
   }
   async function convert() {
     if (!wallet || !conversionReview) return;
+    stage.current = 'conversion';
     await wallet.switchChain(base.id);
     await request('conversion-arm', { stepId: conversionReview.id });
     const tx = conversionReview.transaction;

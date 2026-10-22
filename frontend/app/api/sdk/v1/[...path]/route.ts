@@ -1,3 +1,4 @@
+import { underRateLimit } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import { isHex, type Hex } from 'viem';
 import { executeAdmin, operationStatus } from '@/lib/sdk/operations';
@@ -86,7 +87,20 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
   } catch (error) {
     if (error instanceof SnapshotUnavailable) return cors(NextResponse.json({ error: error.message, code: 'SNAPSHOT_UNAVAILABLE' }, { status: 503, headers: { 'Retry-After': String(error.retryAfter) } }), request);
     const status = error instanceof SDKError ? error.status : error instanceof RequestBodyTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 502;
-    if (status === 502) console.error('[sdk:v1]', error instanceof Error ? error.name : 'upstream error');
+    const operation = context.params.path.join('/');
+    if (operation.startsWith('checkout/') && ((status >= 500 && !(error instanceof SDKError && error.code === 'NOT_CONFIGURED')) || (error instanceof SDKError && ['TRANSACTION_MISMATCH', 'TRANSACTION_REUSED', 'CONVERSION_FAILED'].includes(error.code)))) {
+      // Bound retry alerts across serverless instances; never let diagnostics change the response.
+      const knownOperations = ['config', 'create', 'status', 'read', 'verify', 'submitted', 'balance', 'prepare', 'arm', 'rejected', 'funding-start', 'funding-reset', 'conversion-quote', 'conversion-prepare', 'conversion-arm', 'conversion-rejected', 'conversion-verify'];
+      const alertOperation = knownOperations.includes(operation.slice(9)) ? operation : 'checkout/unknown';
+      try {
+        if (await underRateLimit('checkout-alerts', `${process.env.VERCEL_ENV || 'local'}:${alertOperation}:${status}`, 3, 60)) {
+          const { logger } = await import('@/lib/server/logger');
+          await logger.error('Checkout API failure', { name: 'CheckoutError', message: error instanceof SDKError ? error.code : 'UPSTREAM_ERROR' }, { operation: alertOperation, status });
+        }
+      } catch {
+        console.error('[sdk:v1] Checkout diagnostics unavailable', { operation: alertOperation, status });
+      }
+    } else if (status === 502) console.error('[sdk:v1]', error instanceof Error ? error.name : 'upstream error');
     const message = error instanceof SDKError ? error.message : status === 413 ? 'Request body is too large.' : status === 400 ? 'Invalid JSON request.' : 'Markee could not complete this request. Please retry.';
     return cors(NextResponse.json({ error: message, code: error instanceof SDKError ? error.code : 'REQUEST_FAILED' }, { status }), request);
   }
