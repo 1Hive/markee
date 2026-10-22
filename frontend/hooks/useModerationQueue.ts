@@ -14,7 +14,7 @@ const IDLE_POLL_MS = 5 * 60_000
 export const moderationQueueKey = (address: string | undefined) => ['moderation-queue', address?.toLowerCase()]
 
 // Shared by the account nav badge and the /account queue: both read the same query, so only one
-// poll runs. Reading the queue needs no signature; each review does.
+// poll runs. Reading the queue and approving need no signature; flagging and unflagging do.
 export function useModerationQueue() {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
@@ -40,8 +40,9 @@ export function useModerationQueue() {
     try {
       for (let i = 0; i < markeeIds.length; i += MAX_REVIEW_BATCH) {
         const ids = markeeIds.slice(i, i + MAX_REVIEW_BATCH)
+        // Approving only clears messages from the queue, so it needs no signature (see /api/moderation).
         const timestamp = Math.floor(Date.now() / 1000)
-        const signature = await signMessageAsync({ message: reviewMessage(action, CANONICAL_CHAIN_ID, ids, timestamp) })
+        const signature = action === 'approve' ? undefined : await signMessageAsync({ message: reviewMessage(action, CANONICAL_CHAIN_ID, ids, timestamp) })
         const res = await fetch(MODERATION_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

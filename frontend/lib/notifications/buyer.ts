@@ -94,6 +94,16 @@ export async function notifyStatusChanges(byWallet: Map<string, ActivityEvent[]>
       catch (err) { console.error('[notifications/buyer] status send failed', err) }
     }
   }
+  // A stream whose balance ran out goes to Low Budget alerts. A cancelled one isn't emailed: the
+  // buyer did it themselves.
+  const ranOut = new Map([...byWallet].map(([w, events]) => [w, events.filter(e => e.side === 'buy' && e.kind === 'ran_out')]))
+  for (const r of await recipients([...ranOut].filter(([, events]) => events.length).map(([w]) => w), 'budget')) {
+    for (const e of ranOut.get(r.wallet) ?? []) {
+      const html = `Your stream balance ran out, so &ldquo;${escHtml(e.message || 'your message')}&rdquo; stopped streaming and lost the top spot. Deposit to bid again.`
+      try { sent += await deliver(r, 'Your stream balance ran out', { kind: 'budget', html, at: e.at }) }
+      catch (err) { console.error('[notifications/buyer] ran out send failed', err) }
+    }
+  }
   return sent
 }
 

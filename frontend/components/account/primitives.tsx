@@ -4,7 +4,7 @@
 // group, archive button, status dot, wallet-pending state and amount formatting.
 
 import { useState } from 'react'
-import { Archive, ChevronDown } from 'lucide-react'
+import { Archive, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatUsd } from '@/lib/utils'
 import { MONO, PINK, BG, BORDER, TEXT2, MUTED, SANS, AMBER, LAVENDER } from '@/lib/design-tokens'
 
@@ -77,16 +77,35 @@ export function ArchiveButton({ onClick, label }: { onClick: () => void; label: 
   )
 }
 
-export function AttnGroup<T>({ title, sub, items, render, noun = ['Markee', 'Markees'], right }: {
+// "1–10 of 42" with previous/next; renders nothing when everything fits on one page.
+export function Pager({ page, total, pageSize, onPage }: { page: number; total: number; pageSize: number; onPage: (page: number) => void }) {
+  if (total <= pageSize) return null
+  const last = Math.ceil(total / pageSize) - 1
+  const btn = (disabled: boolean): React.CSSProperties => ({ background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 7, width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: disabled ? MUTED : TEXT2, opacity: disabled ? 0.4 : 1, cursor: disabled ? 'default' : 'pointer' })
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
+      <span>{page * pageSize + 1}–{Math.min(total, (page + 1) * pageSize)} of {total}</span>
+      <button aria-label="Previous page" disabled={page === 0} onClick={() => onPage(page - 1)} style={btn(page === 0)}><ChevronLeft size={14} /></button>
+      <button aria-label="Next page" disabled={page >= last} onClick={() => onPage(page + 1)} style={btn(page >= last)}><ChevronRight size={14} /></button>
+    </div>
+  )
+}
+
+// pageSize pages the group instead of the default "show 3, then show more".
+export function AttnGroup<T>({ title, sub, items, render, noun = ['Markee', 'Markees'], right, pageSize }: {
   title: string
   sub: string
   items: T[]
   render: (item: T) => React.ReactNode
   noun?: [string, string]
   right?: React.ReactNode
+  pageSize?: number
 }) {
   const [all, setAll] = useState(false)
-  const hidden = items.length - 3
+  const [page, setPage] = useState(0)
+  const lastPage = pageSize ? Math.max(0, Math.ceil(items.length / pageSize) - 1) : 0
+  const shownPage = Math.min(page, lastPage)
+  const hidden = pageSize ? 0 : items.length - 3
   return (
     <section>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -96,7 +115,8 @@ export function AttnGroup<T>({ title, sub, items, render, noun = ['Markee', 'Mar
         {right && <><span style={{ flex: 1 }} />{right}</>}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {(all ? items : items.slice(0, 3)).map(render)}
+        {(pageSize ? items.slice(shownPage * pageSize, (shownPage + 1) * pageSize) : all ? items : items.slice(0, 3)).map(render)}
+        {pageSize && <Pager page={shownPage} total={items.length} pageSize={pageSize} onPage={setPage} />}
         {hidden > 0 && (
           <button
             onClick={() => setAll(v => !v)}

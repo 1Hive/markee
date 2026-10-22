@@ -13,7 +13,8 @@ import { PanelHead, SECONDS_PER_MONTH, SegToggle, fmtWeiUsd } from '@/components
 const KIND: Record<ActivityKind, { dot: string; hollow?: boolean; title: string }> = {
   winning: { dot: PINK, title: 'Your message is now winning' },
   outbid: { dot: MUTED, hollow: true, title: 'Your message was outbid' },
-  stopped: { dot: MUTED, hollow: true, title: 'Your message stopped streaming' },
+  stopped: { dot: MUTED, hollow: true, title: 'You stopped streaming to your message' },
+  ran_out: { dot: DANGER, hollow: true, title: 'Your stream balance ran out' },
   new_top: { dot: GREEN, title: 'New winning message' },
   edited: { dot: BLUE, title: 'A message was edited' },
 }
@@ -109,7 +110,7 @@ export function LatestActivity({ events, state, onRetry, boardName, ethPrice, pr
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, boxSizing: 'border-box', ...(k.hollow ? { border: `1.5px solid ${k.dot}` } : { background: k.dot }) }} />
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: e.kind === 'outbid' || e.kind === 'stopped' ? TEXT2 : TEXT, whiteSpace: 'nowrap' }}>{k.title}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: e.kind === 'outbid' || e.kind === 'stopped' || e.kind === 'ran_out' ? TEXT2 : TEXT, whiteSpace: 'nowrap' }}>{k.title}</span>
                   <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>on {boardName(e.board)}</span>
                 </span>
                 {e.message && (

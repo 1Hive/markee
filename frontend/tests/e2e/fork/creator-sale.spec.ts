@@ -85,7 +85,7 @@ test('add a moderator (signed message)', async ({ page }) => {
 
 // The moderation-scan cron crawls every board on Base, which takes most of ten minutes against a
 // cold fork. Instead, queue the one new message the way the scan would: same observeMessage(), same
-// KV keys. The purchase and the signed Approve are real.
+// KV keys. The purchase and the Approve are real.
 async function queueForReview(markee: string, message: string) {
   const at = Math.floor(Date.now() / 1000)
   const item = observeMessage(null, {
@@ -97,7 +97,7 @@ async function queueForReview(markee: string, message: string) {
   await kv(['ZADD', 'moderation:pending:site', at, markee.toLowerCase()])
 }
 
-test('approve a new message from the moderation queue (signed message)', async ({ page }) => {
+test('approve a new message from the moderation queue (no signature)', async ({ page }) => {
   await buySale(page, board, 'e2e needs review')
   const top = await rpc<string>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, args: [1n] }) }, 'latest'])
   const [[markee]] = decodeFunctionResult({ abi: TOP_ABI, data: top as `0x${string}` })
@@ -107,6 +107,26 @@ test('approve a new message from the moderation queue (signed message)', async (
   const item = page.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Approve' }) }).last()
   await item.getByRole('button', { name: 'Approve' }).click({ timeout: TX_TIMEOUT })
   await expect(page.getByRole('status').filter({ hasText: 'Message approved' })).toBeVisible({ timeout: TX_TIMEOUT })
+})
+
+test('flag a visible message, then unflag it from Flagged (signed messages)', async ({ page }) => {
+  await page.goto('/account?section=creator')
+  const panel = page.locator('section', { has: page.getByText('Moderation', { exact: true }) })
+  const visible = panel.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Flag' }) }).last()
+  await expect(visible.getByText('Winning')).toBeVisible({ timeout: TX_TIMEOUT })
+  await visible.getByRole('button', { name: 'Flag' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Message flagged' })).toBeVisible({ timeout: TX_TIMEOUT })
+
+  // Approve needs no signature, so it must not be able to lift a flag.
+  const top = await rpc<string>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, args: [1n] }) }, 'latest'])
+  const [[markee]] = decodeFunctionResult({ abi: TOP_ABI, data: top as `0x${string}` })
+  await page.request.post('/api/moderation', { data: { markeeIds: [markee], chainId: 8453, action: 'approve', adminAddress: E2E_ACCOUNT } })
+  expect((await (await page.request.get('/api/moderation')).json()).flagged).toContain(`8453:${markee.toLowerCase()}`)
+
+  await panel.getByRole('radio', { name: /^Flagged/ }).click()
+  const flagged = panel.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Unflag' }) }).last()
+  await flagged.getByRole('button', { name: 'Unflag' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Message unflagged' })).toBeVisible({ timeout: TX_TIMEOUT })
 })
 
 test('only the board owner can unlink a GitHub file (signed message)', async ({ page }) => {

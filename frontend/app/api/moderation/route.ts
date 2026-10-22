@@ -7,7 +7,10 @@
  *                                                   board hides these (embeds read this field).
  *                                    siteFlagged -- markee.xyz-only flags, set by global admins.
  * POST /api/moderation          → Flag, unflag, or approve markees. Applies in every scope the
- *                                  signer holds for each markee (see authorizedScopes).
+ *                                  moderator holds for each markee (see authorizedScopes).
+ *                                  Flag and unflag change what's hidden, so they need a signature.
+ *                                  Approve only clears a pending message from the queue and never
+ *                                  touches a flag, so it doesn't.
  *
  * Markee keys use the format: `{chainId}:{lowercase markeeId}` to support multi-chain.
  *
@@ -19,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, SCOPES, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
+import { underRateLimit, clientIp } from '@/lib/rate-limit'
 import {
   FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
 } from '@/lib/moderation/server'
@@ -27,6 +31,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
+const APPROVE_RATE_MAX = 60
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,7 +71,8 @@ export async function POST(req: NextRequest) {
     }
     const ids = markeeIds ?? (markeeId ? [markeeId] : [])
 
-    if (ids.length === 0 || !chainId || !action || !adminAddress || !signature || !timestamp) {
+    const signed = action !== 'approve'
+    if (ids.length === 0 || !chainId || !action || !adminAddress || (signed && (!signature || !timestamp))) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: CORS })
     }
     if (!ACTIONS.includes(action)) {
@@ -79,17 +85,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid admin address' }, { status: 400, headers: CORS })
     }
 
-    // Reject signatures older than 5 minutes
-    const now = Math.floor(Date.now() / 1000)
-    if (Math.abs(now - timestamp) > 300) {
-      return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
-    }
+    if (signed) {
+      // Reject signatures older than 5 minutes
+      const now = Math.floor(Date.now() / 1000)
+      if (Math.abs(now - timestamp) > 300) {
+        return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
+      }
 
-    // Verify the caller actually controls the wallet they claim
-    const message = reviewMessage(action, chainId, ids, timestamp)
-    const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
-    if (!valid) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
+      // Verify the caller actually controls the wallet they claim
+      const message = reviewMessage(action, chainId, ids, timestamp)
+      const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
+      if (!valid) {
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
+      }
+    } else if (!await underRateLimit('moderation:approve', clientIp(req), APPROVE_RATE_MAX, 60)) {
+      return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...CORS, 'Retry-After': '60' } })
     }
 
     const { scopes, boardMap } = await authorizedScopes(adminAddress, ids)
@@ -101,8 +111,12 @@ export async function POST(req: NextRequest) {
     const reviewedAt = Math.floor(Date.now() / 1000)
     const pipeline = kv.pipeline()
     ids.forEach((id, i) => {
-      const held = scopes.get(id.toLowerCase())!
-      held.forEach(scope => {
+      // Approve only settles scopes where the message is still pending: never a flag, never a stub.
+      const held = action === 'approve'
+        ? scopes.get(id.toLowerCase())!.filter(scope => items[i]?.reviews[scope].status === 'pending')
+        : scopes.get(id.toLowerCase())!
+      if (action === 'approve' && held.length === 0) return
+      if (action !== 'approve') held.forEach(scope => {
         if (action === 'flag') pipeline.sadd(FLAGGED_KEYS[scope], flagKey(id))
         else pipeline.srem(FLAGGED_KEYS[scope], ...flagKeyVariants(id))
       })

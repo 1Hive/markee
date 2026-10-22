@@ -935,7 +935,9 @@ function AccountDashboard() {
     const rate = winningRate(streamSnapshot)
     if (!streamSnapshot || rate === 0n) return null
     const runway = runwaySeconds(BigInt(streamSnapshot.ethxBalanceRaw), rate)
-    return runwayTier(runway) === 'normal' ? null : runway
+    // Needs Attention only once it's under a day, the same point the low-budget email goes out. The
+    // Stream Balance card already turns amber from a week out.
+    return runwayTier(runway) === 'danger' ? runway : null
   }, [streamSnapshot])
   const [addrCopied, setAddrCopied] = useState(false)
 
@@ -1241,8 +1243,6 @@ function AccountDashboard() {
   const archivedBoards = useMemo(() =>
     allBoards.filter(lb => archived.includes(lb.address)), [allBoards, archived])
 
-  // Each owned board's current #1, so queue rows can say whether a message is live on the sign.
-  const liveMarkees = useMemo(() => new Set(allBoards.flatMap(lb => lb.topMarkeeAddress ? [lb.topMarkeeAddress.toLowerCase()] : [])), [allBoards])
   const manageBoard = useMemo(() => allBoards.find(lb => lb.address === manageTarget) ?? null, [allBoards, manageTarget])
 
   const awaitingSiteBoards = useMemo(() =>
@@ -1479,9 +1479,7 @@ function AccountDashboard() {
                     modLoading={moderationQueue.isLoading}
                     modItems={isModerator ? moderationQueue.items : []}
                     modBoards={moderationQueue.boards}
-                    liveMarkees={liveMarkees}
                     onReview={moderationQueue.review}
-                    onOpenQueue={() => setSection('creator')}
                     markeesLoading={isLoading}
                     inactive={inactiveBoards}
                     awaiting={awaitingSiteBoards}
@@ -1537,7 +1535,7 @@ function AccountDashboard() {
                   />
 
                   {/* Moderation */}
-                  {isModerator && <ModerationQueue liveMarkees={liveMarkees} />}
+                  {isModerator && <ModerationQueue />}
                 </div>
               )}
 

@@ -1,7 +1,7 @@
 export type ModerationStatus = 'pending' | 'approved' | 'flagged'
 export type ModerationAction = 'flag' | 'unflag' | 'approve'
-// The queue approves rather than unflags, since approving also settles the item's pending review.
-export type QueueAction = Exclude<ModerationAction, 'unflag'>
+// Approve clears a pending message from the queue; unflag reveals a flagged one. Both settle the review.
+export type QueueAction = ModerationAction
 
 export const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
@@ -181,4 +181,17 @@ export function reviewItem(
     reviews[s] = { status: action === 'flag' ? 'flagged' : 'approved', reviewedBy: reviewer.toLowerCase(), reviewedAt: now }
   })
   return { ...item, reviews }
+}
+
+// An unflagged message on a board a wallet moderates, for the Creator Hub's Visible list
+// (/api/moderation/messages).
+export interface VisibleMessage {
+  markee: string
+  board: string
+  boardName: string
+  // 1 is the board's winning message.
+  rank: number
+  message: string
+  name: string
+  author: string
 }

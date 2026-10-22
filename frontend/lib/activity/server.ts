@@ -1,7 +1,9 @@
 import 'server-only'
 import { kv } from '@vercel/kv'
 import { base } from 'viem/chains'
-import { readBoardOwners } from '@/lib/moderation/server'
+import { erc20Abi, type Address } from 'viem'
+import { getModerationClient, readBoardOwners } from '@/lib/moderation/server'
+import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import type { ModerationItem } from '@/lib/moderation/queue'
 import type { ActivityEvent } from '@/lib/activity/events'
 
@@ -9,6 +11,9 @@ export const activityKey = (wallet: string) => `activity:${base.id}:${wallet.toL
 // board → markee that was #1 at the last scan. A change between scans is a new winner.
 const TOPS_KEY = `activity:tops:${base.id}`
 export const MAX_EVENTS = 200
+// Below this much ETHx, a stream that stopped ran out of balance rather than being cancelled:
+// Superfluid closes a stream once its sender's balance is spent.
+const RAN_OUT_BELOW = 10n ** 13n
 
 export interface BoardTop {
   markee: string
@@ -51,6 +56,22 @@ export async function recordActivity({ tops, streamingBoards, seen, edited, bloc
     byWallet.set(wallet, [...(byWallet.get(wallet) ?? []), full])
   }
 
+  // Rent messages that lost #1 because their own rate fell to zero. Whether the owner still holds
+  // ETHx tells a cancelled stream (balance left) from one that ran out (balance spent).
+  const stoppedAuthors = [...new Set(changedTops.flatMap(([board, top]) => {
+    const prev = seen.get(prevTops![board])
+    return prev && streamingBoards.has(board) && (top.values.get(prevTops![board]) ?? 0n) === 0n ? [prev.author] : []
+  }))].filter(Boolean)
+  const balances = stoppedAuthors.length
+    ? await getModerationClient().multicall({
+        contracts: stoppedAuthors.map(w => ({ address: STREAMING_BASE.ethx as Address, abi: erc20Abi, functionName: 'balanceOf' as const, args: [w as Address] })),
+      }).catch(() => [])
+    : []
+  const ranOut = new Set(stoppedAuthors.filter((_, i) => {
+    const r = balances[i]
+    return r?.status === 'success' && (r.result as bigint) < RAN_OUT_BELOW
+  }))
+
   for (const [board, top] of changedTops) {
     const now = seen.get(top.markee)
     const prevMarkee = prevTops![board]
@@ -58,10 +79,11 @@ export async function recordActivity({ tops, streamingBoards, seen, edited, bloc
     const text = { message: now?.message ?? '', name: now?.name ?? '' }
     push(now?.author, { kind: 'winning', side: 'buy', board, markee: top.markee, ...text })
     if (prev && prev.author !== now?.author) {
-      // A Rent message whose rate is now zero lost the top spot because its own stream stopped
-      // (cancelled, or the balance ran out), not because someone bid more.
+      // A Rent message whose rate is now zero lost the top spot because its own stream stopped, not
+      // because someone bid more.
       const stopped = streamingBoards.has(board) && (top.values.get(prevMarkee) ?? 0n) === 0n
-      push(prev.author, { kind: stopped ? 'stopped' : 'outbid', side: 'buy', board, markee: prevMarkee, message: prev.message, name: prev.name })
+      const kind = !stopped ? 'outbid' : ranOut.has(prev.author) ? 'ran_out' : 'stopped'
+      push(prev.author, { kind, side: 'buy', board, markee: prevMarkee, message: prev.message, name: prev.name })
     }
     for (const owner of ownersOf.get(board) ?? []) {
       if (owner === now?.author) continue
