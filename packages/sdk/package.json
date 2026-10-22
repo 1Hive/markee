@@ -1,0 +1,64 @@
+{
+  "name": "@markee_team/sdk",
+  "version": "0.1.0-alpha.8",
+  "description": "Self-contained Markee modal and API client, with an optional React adapter.",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && esbuild src/index.ts src/react.ts --bundle --format=esm --outdir=dist --external:react --minify",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "prepack": "npm run build",
+    "test:declarations": "tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext dist/index.d.ts dist/react.d.ts"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1Hive/markee.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/1Hive/markee/tree/feature/markee-sdk/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/1Hive/markee/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "alpha",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT"
+}

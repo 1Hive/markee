@@ -11,7 +11,7 @@ const cspDirectives = {
   'default-src':     ["'self'"],
   // Next.js injects inline scripts; 'unsafe-inline' is required without nonces.
   // 'unsafe-eval' is required by some wallet SDKs (WalletConnect, MetaMask SDK).
-  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com', 'https://vercel.live'],
+  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com', 'https://vercel.live', 'https://js.stripe.com', 'https://crypto-js.stripe.com'],
   'style-src':       ["'self'", "'unsafe-inline'"],
   // Partner logos come from arbitrary HTTPS sources stored in KV — allow all HTTPS images.
   'img-src':         ["'self'", 'data:', 'blob:', 'https:'],
@@ -24,11 +24,23 @@ const cspDirectives = {
   // Privy auth iframe + WalletConnect verification iframes
   'child-src': [
     'https://auth.privy.io',
+    'https://js.stripe.com',
+    'https://crypto-js.stripe.com',
+    'https://hooks.stripe.com',
+    'https://crypto.link.com',
+    'https://buy.moonpay.com',
+    'https://buy-sandbox.moonpay.com',
     'https://verify.walletconnect.com',
     'https://verify.walletconnect.org',
   ],
   'frame-src': [
     'https://auth.privy.io',
+    'https://js.stripe.com',
+    'https://crypto-js.stripe.com',
+    'https://hooks.stripe.com',
+    'https://crypto.link.com',
+    'https://buy.moonpay.com',
+    'https://buy-sandbox.moonpay.com',
     'https://verify.walletconnect.com',
     'https://verify.walletconnect.org',
     'https://challenges.cloudflare.com',
@@ -38,7 +50,17 @@ const cspDirectives = {
     "'self'",
     // Privy
     'https://auth.privy.io',
+    'https://js.stripe.com',
+    'https://crypto-js.stripe.com',
+    'https://hooks.stripe.com',
+    'https://crypto.link.com',
+    'https://buy.moonpay.com',
+    'https://buy-sandbox.moonpay.com',
     'https://*.rpc.privy.systems',
+    'https://api.stripe.com',
+    'https://m.stripe.network',
+    // Privy native-ETH card funding quotes.
+    'https://api.moonpay.com',
     // WalletConnect
     'wss://relay.walletconnect.com',
     'wss://relay.walletconnect.org',

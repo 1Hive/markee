@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { clientIp, underRateLimit } from '@/lib/rate-limit'
+import { checkoutAlert } from '@/lib/checkout-alerts'
 import { logger } from '@/lib/server/logger'
 import { withServerError } from '@/lib/server/withServerError'
 
@@ -32,6 +33,13 @@ export const POST = withServerError('POST /api/errors', async (request: NextRequ
   }
 
   const report = body as Record<string, unknown>
+  if (report.type === 'checkout') {
+    const context = checkoutAlert(report)
+    if (!context) return NextResponse.json({ error: 'Invalid checkout stage' }, { status: 400 })
+    await logger.error('Checkout client failure', { name: 'CheckoutError', message: context.code }, context)
+    return new NextResponse(null, { status: 204 })
+  }
+
   const message = limitedString(report.message, 1_000)
   if (!message) {
     return NextResponse.json({ error: 'Missing error message' }, { status: 400 })
