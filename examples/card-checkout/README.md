@@ -8,4 +8,4 @@ Stripe/MoonPay funding and USDC-to-ETH conversion run on Markee’s hosted check
 
 The SDK discovers hosted checkout availability from Markee. Until the backend is configured, this sample displays an availability message and the SDK hides the card button. For local backend development only, `VITE_MARKEE_API_URL=http://localhost:3000/api/sdk/v1` overrides the built-in endpoint. Normal implementers do not supply an API URL or key.
 
-Open the modal, enter a message and amount, and choose Pay by card. Markee handles login, embedded wallet, card funding, transaction confirmation and receipt verification. MARKEE goes to the same user-owned wallet that pays. Real card/on-chain acceptance is a separate manual test with real funds.
+Open the modal, enter a message and amount, and choose Pay. Markee handles login, embedded wallet, card funding, transaction confirmation and receipt verification. MARKEE goes to the same user-owned wallet that pays. Real card/on-chain acceptance is a separate manual test with real funds.

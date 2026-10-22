@@ -218,8 +218,8 @@ Then implement the agreed scope:
 4. If a host wallet exists, pass its selected EIP-1193 provider through the wallet
    adapter. For ConnectKit/wagmi use the active connector. Resolve connect after
    selection, reject cancellation, and do not silently switch wallet providers.
-   Otherwise omit wallet. The SDK offers wallet discovery and, when Markee enables
-   it for a supported board, Pay by card in a Markee-hosted checkout. Do not install
+   Otherwise omit wallet. Without a connected app account, the modal shows only
+   Pay, opening Markee-hosted checkout for supported boards. Do not install
    Privy or collect card details in the host app.
 5. Apply theme options while preserving the built-in modal layout. Handle onEvent
    if needed; show success only for a confirmed event. Let the SDK manage review,
@@ -236,12 +236,14 @@ bridging is not available. Transactions and card funding use real funds.
 
 ## Pay by card without an app wallet
 
-For Sale boards on Base with MARKEE rewards can offer **Pay by card** automatically
+Without a connected app wallet, the modal shows **Pay** as its only payment action
+and hides wallet balances and wallet-management sections. For Sale boards on Base
+with MARKEE rewards support this flow
 when the Markee backend enables hosted checkout. No Privy provider, payment keys or
 API configuration is needed in the integrating app. Omit the `wallet` adapter.
 
 The SDK opens Markee, where the user signs in, receives a Privy embedded wallet,
-funds it with native Base ETH through Privy's card funding provider, and confirms
+funds it through Stripe (Base USDC converted to ETH) or MoonPay (Base ETH), and confirms
 the Markee payment. The contract sends MARKEE directly to that user's paying
 wallet. The host receives `onEvent({ type: 'confirmed', hash })` only after
 server-side receipt verification. Card funding alone is not a successful payment.
@@ -249,9 +251,12 @@ server-side receipt verification. Card funding alone is not a successful payment
 The checkout can resume after closing or refreshing. If a wallet submission has an
 unknown result, it asks the user to check the existing transaction instead of
 sending again. On browsers that block popups, it navigates to Markee in the same
-tab. Reopen Pay by card after returning to recover the confirmed result.
+tab. Reopen Pay after returning to recover the confirmed result.
 
 Card availability, fees, minimum purchase amounts and identity checks depend on
-the funding provider and user eligibility. Any unused ETH remains in the user's
-wallet. For Rent, incoming bridging, automatic rewards forwarding to a different
-wallet and Stripe stablecoin-to-ETH swaps are outside this checkout flow.
+the funding provider and user eligibility. Any unused USDC or ETH remains in the
+user's wallet. Conversion uses a capped approval and maximum 1% slippage, with
+wallet confirmation and Markee-sponsored conversion gas. For Rent, incoming
+bridging and automatic rewards forwarding to a different wallet are outside this
+checkout flow. If hosted checkout is unavailable, Pay is disabled with an
+availability message; the modal does not fall back to asking for a wallet.
