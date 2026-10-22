@@ -62,7 +62,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
       }
       const body = object(await readLimitedJsonBody(request, 48 * 1024));
       if (path.startsWith('checkout/')) {
-        if (!checkoutEnabled() && !['checkout/status', 'checkout/read', 'checkout/verify', 'checkout/submitted'].includes(path)) throw new SDKError('NOT_CONFIGURED', 'Markee card checkout is not available yet.', 503);
+        if (!checkoutEnabled() && !['checkout/status', 'checkout/read', 'checkout/verify', 'checkout/submitted', 'checkout/conversion-verify'].includes(path)) throw new SDKError('NOT_CONFIGURED', 'Markee card checkout is not available yet.', 503);
         if (path === 'checkout/create') {
           const origin = checkoutOrigin(request.headers.get('origin') || body.origin);
           return cors(NextResponse.json(await createCheckout(body, origin)), request);

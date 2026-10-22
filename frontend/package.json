@@ -11,14 +11,16 @@
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "start": "next start",
     "lint": "next lint",
-    "test:sdk": "tsx --test tests/sdk.test.ts tests/sdk-cache.test.ts tests/sdk-sites.test.ts tests/sdk-checkout.test.ts",
+    "test:sdk": "tsx --test tests/sdk.test.ts tests/sdk-cache.test.ts tests/sdk-sites.test.ts tests/sdk-checkout.test.ts tests/sdk-conversion.test.ts",
     "test:sdk:fork": "tsx --test --test-concurrency=1 tests/sdk-fork.test.ts tests/sdk-community-fork.test.ts"
   },
   "dependencies": {
     "@apollo/client": "^3.8.5",
-    "@privy-io/react-auth": "^3.22.1",
+    "@privy-io/react-auth": "3.51.0",
     "@privy-io/wagmi": "^4.0.5",
     "@rainbow-me/rainbowkit": "^2.1.0",
+    "@solana-program/memo": "0.10.0",
+    "@stripe/crypto": "1.1.3",
     "@tanstack/react-query": "^5.56.0",
     "@vercel/analytics": "^1.4.1",
     "@vercel/kv": "^2.0.0",

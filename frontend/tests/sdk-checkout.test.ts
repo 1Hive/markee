@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { checkoutDeps, checkoutRequest, createCheckout, checkoutOrigin, type CheckoutRecord } from '../lib/sdk/checkout';
+import { conversionDeps, conversionTransaction, type ConversionStep } from '../lib/sdk/conversion';
 import type { PreparedAction, TransactionResult } from '../../packages/sdk/src/types';
 const board = '0x1111111111111111111111111111111111111111' as const;
 const account = '0x2222222222222222222222222222222222222222' as const;
@@ -79,4 +80,52 @@ test('explicit rejection allows a fresh preparation; expired checkout cannot fun
   await checkoutRequest('prepare', { ...req, account });
   records.get(s.id)!.expiresAt = Date.now() - 1;
   await assert.rejects(checkoutRequest('balance', { ...req, account }), errorCode('CHECKOUT_EXPIRED'));
+});
+
+test('funding intent persists across reloads; retries require acknowledgement and cannot pay', async () => {
+  const s = await create(); const req = { id: s.id, token: s.writeToken };
+  await checkoutRequest('balance', { ...req, account });
+  await checkoutRequest('funding-start', { ...req, provider: 'stripe' });
+  assert.equal(records.get(s.id)?.funding, 'stripe');
+  assert.equal(records.get(s.id)?.status, 'created');
+  await assert.rejects(checkoutRequest('funding-start', { ...req, provider: 'moonpay' }), errorCode('FUNDING_PENDING'));
+  await assert.rejects(checkoutRequest('funding-reset', req), errorCode('FUNDING_PENDING'));
+  await checkoutRequest('funding-reset', { ...req, confirmNoPendingPurchase: true });
+  await checkoutRequest('funding-start', { ...req, provider: 'moonpay' });
+  assert.equal(records.get(s.id)?.funding, 'moonpay');
+});
+
+test('conversion arming is atomic, blocks funding/payment, and reuses an approved quote', async () => {
+  const previous = { ...conversionDeps }; const previousQuote = checkoutDeps.conversionQuote;
+  const previousStep = checkoutDeps.conversionStep; const previousBalance = checkoutDeps.balance;
+  try {
+    checkoutDeps.balance = async () => 0n;
+    conversionDeps.block = async () => 100n;
+    conversionDeps.ethBalance = async () => 0n;
+    const q = { eth: '100000000001000', usdcMaximum: '3000000', usdcBalance: '10000000', fee: 500, expiresAt: Date.now() + 180000 };
+    checkoutDeps.conversionQuote = async () => q;
+    checkoutDeps.conversionStep = async (address, quote, id) => ({ id, kind: 'approval', status: 'ready', quote, transaction: conversionTransaction(address, quote, true) });
+    const s = await create(); const req = { id: s.id, token: s.writeToken };
+    await checkoutRequest('balance', { ...req, account });
+    const step = await checkoutRequest('conversion-prepare', req) as ConversionStep;
+    const arms = await Promise.allSettled([checkoutRequest('conversion-arm', { ...req, stepId: step.id }), checkoutRequest('conversion-arm', { ...req, stepId: step.id })]);
+    assert.equal(arms.filter(r => r.status === 'fulfilled').length, 1);
+    for (const operation of ['prepare', 'funding-start', 'conversion-prepare']) await assert.rejects(checkoutRequest(operation, { ...req, account, provider: 'stripe' }), errorCode('CONVERSION_PENDING'));
+    assert.equal(records.get(s.id)?.status, 'created');
+    const pendingHash = `0x${'ee'.repeat(32)}`;
+    conversionDeps.receipt = async () => { const e = new Error('pending'); e.name = 'TransactionReceiptNotFoundError'; throw e; };
+    await checkoutRequest('conversion-verify', { ...req, hash: pendingHash });
+    assert.equal(receipts.has(pendingHash), false, 'unverified hashes cannot reserve other payments');
+    assert.equal(records.get(s.id)?.conversion?.status, 'submitted');
+    records.get(s.id)!.conversion!.status = 'confirmed';
+    checkoutDeps.conversionQuote = async () => { throw new Error('Should reuse approved quote'); };
+    assert.deepEqual(await checkoutRequest('conversion-quote', req), q);
+    await checkoutRequest('conversion-prepare', req);
+    await checkoutRequest('conversion-arm', { ...req, stepId: records.get(s.id)!.conversion!.id });
+    await checkoutRequest('conversion-rejected', req);
+    assert.equal(records.get(s.id)?.conversion, undefined);
+  } finally {
+    Object.assign(conversionDeps, previous); checkoutDeps.conversionQuote = previousQuote;
+    checkoutDeps.conversionStep = previousStep; checkoutDeps.balance = previousBalance;
+  }
 });

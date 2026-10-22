@@ -133,7 +133,7 @@ No deployment, npm publication or live transaction is performed by these tests.
 
 - Configure the deployed Markee backend with its existing database, authorized routers/keeper and provider credentials, then run a staging acceptance pass. No production deployment or npm publication is implied by these code changes.
 - Outbound bridge providers are wired to the existing quote/execute paths with status normalization. No live cross-chain treasury transfer was performed during implementation; validate each enabled route in staging before production rollout. Sources: [Across API authentication](https://docs.across.to/api-reference), [Across deposit status](https://docs.across.to/api-reference/deposit/status/get), [LI.FI transfer status](https://docs.li.fi/api-reference/check-the-status-of-a-cross-chain-transfer).
-- Milestone 5: hosted wallet/login and native-ETH card checkout is implemented behind a capability gate; live provider acceptance remains to be validated. Milestone 6: incoming cross-chain funding. Milestone 7: production Gardens migration, broader wallet compatibility and npm release.
+- Milestone 5: hosted wallet/login and card checkout is implemented behind a capability gate; live provider acceptance remains to be validated. Milestone 6: incoming cross-chain funding. Milestone 7: production Gardens migration, broader wallet compatibility and npm release.
 - Direct SDK transactions currently require an EIP-1193 on-chain hash with the connected account as sender. UserOperation-only/relayed transaction submission is not enabled. ERC-1271 community authorization is supported separately.
 
 ## Hosted checkout (scenario 3)
@@ -143,13 +143,50 @@ handoff. This source feature remains disabled until Markee sets
 `MARKEE_HOSTED_CHECKOUT_ENABLED=true`. It requires the existing public Privy app ID,
 working KV REST URL/token, a stable 32+ character SDK signing secret, and Base RPC.
 Configure Privy's allowed origins for the checkout deployment and enable card
-funding for native Base ETH in the Privy dashboard. The host app needs none of
+funding in the Privy dashboard and app-pays gas sponsorship on Base. The host app needs none of
 these credentials. Include the hosted Markee origin in any SDK CORS allowlist.
 
-This implementation uses the installed Privy `useFundWallet` native ETH flow,
-with MoonPay preferred for credit/debit cards, not Stripe's newer stablecoin deposit modal. Enable MoonPay in Privy before enabling checkout. The provider UI handles card details,
-identity/3DS and eligibility. No backend stores card information. See
-[Privy EVM funding](https://docs.privy.io/wallets/funding/legacy/evm).
+Checkout offers Stripe through Privy's `useDepositFunds` (Base USDC) and MoonPay
+through `useFundWallet` (native Base ETH). Enable both providers in Privy. Stripe
+is a quote preference, so Privy may show another eligible provider before purchase.
+The provider handles card details, identity/3DS, fees, minimums and regional
+eligibility; Markee never stores card information. No Stripe API key is needed
+in the implementing app.
+
+Stripe's public Embedded Components asset list does not list native Base ETH;
+Base USDC is supported. This does not imply that every other Stripe onramp product
+has the same asset support, or prove account-specific live eligibility. Sources:
+[Privy deposit modal](https://docs.privy.io/wallets/funding/use-deposit-funds),
+[Privy funding configuration](https://docs.privy.io/financial-flows/deposits/configuration),
+[Stripe embedded integration](https://docs.stripe.com/crypto/onramp/embedded-components-integration-guide?platform=web).
+
+For USDC funding, Markee quotes the ETH shortfall plus the existing gas reserve
+using Base Uniswap v3 (500/3000 pools). It displays a maximum USDC spend including
+1% slippage, approves only that amount, swaps exact output and unwraps WETH into
+the same wallet atomically. Quotes expire after three minutes; each approval/swap
+is simulated and explicitly confirmed by the user. No external swap API key is
+required. Leftover USDC and ETH stay in the wallet. The initial USD amount is an
+approximation of the USDC shortfall, not a provider quote; the provider can impose
+higher minimums or fees and users must check the actual USDC received.
+
+Privy **app-pays gas sponsorship on Base** must cover the USDC approval and router
+transaction. Funding alone does not give a new wallet gas to convert USDC. Native
+sponsorship uses EIP-7702/4337, so the outer transaction sender can be a bundler.
+Conversion verification checks canonical USDC events, capped spending, the same
+wallet's ETH balance increase, block ordering and two confirmations. It does not
+claim to attest the complete sponsored call trace. Concurrent wallet activity can
+cause conservative verification failures requiring manual recovery. The final
+Markee payment explicitly disables sponsorship and retains exact sender/calldata/
+value/nonce validation. Only its verified receipt confirms payment and rewards.
+
+- POST `checkout/funding-start`, `funding-reset`: persist the selected funding route
+  before opening a provider. Another purchase requires explicit confirmation that
+  no prior purchase is pending. Provider errors never trigger an automatic recharge.
+- POST `checkout/conversion-quote`, `conversion-prepare`, `conversion-arm`,
+  `conversion-rejected`, `conversion-verify`: write-capability operations, bound to
+  the checkout wallet. Pending conversions block further funding and payment.
+  Receipt recovery remains available after checkout expiry or feature-gate shutdown.
+  Unknown submission outcomes stay locked for transaction-hash recovery.
 
 - GET `checkout/config`: deployment capability; SDK hides the card button when disabled.
 - POST `checkout/create`: validated Base For Sale placement/action and return origin;
