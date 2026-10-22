@@ -260,3 +260,19 @@ wallet confirmation and Markee-sponsored conversion gas. For Rent, incoming
 bridging and automatic rewards forwarding to a different wallet are outside this
 checkout flow. If hosted checkout is unavailable, Pay is disabled with an
 availability message; the modal does not fall back to asking for a wallet.
+
+### Reuse a Markee login
+
+Pay opens a temporary browser tab on Markee, where the existing Privy session is
+restored before showing sign-in. The SDK does not copy login tokens into the host
+app. The tab closes after the host verifies the payment. If tabs are blocked,
+checkout falls back to a same-tab redirect. To always redirect, pass
+`checkoutWindow: 'redirect'` (`checkoutWindow="redirect"` in React).
+
+Session reuse requires the same exact Markee origin and Privy app ID. A login on
+`www.markee.xyz` is not a login on a Vercel preview domain. Markee can set
+`MARKEE_CHECKOUT_ORIGIN=https://www.markee.xyz` on its API deployment **after** the
+checkout route is deployed there. Both deployments must use the same checkout KV,
+signing secret, supported configuration and Privy app. Omit this setting to keep
+checkout on the API origin. Integrators do not configure an API or checkout URL.
+Existing pending checkout sessions retain their original destination.

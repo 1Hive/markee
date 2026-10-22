@@ -106,6 +106,7 @@ export interface MarkeeTheme {
 }
 export interface SDKOptions {
   /** Optional development override; defaults to the Markee-hosted API. */
+  checkoutWindow?: 'tab' | 'redirect';
   apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;
   /** Public page/domain to verify for this board; omit to disable automatic registration. */
   siteUrl?: string;
@@ -116,7 +117,7 @@ export interface SDKOptions {
 
 export interface SiteVerification { verified: boolean; url: string; verifiedUrls?: string[]; message?: string }
 
-export interface CheckoutSession { id: string; readToken: string; writeToken: string; expiresAt: number }
+export interface CheckoutSession { checkoutOrigin?: string; id: string; readToken: string; writeToken: string; expiresAt: number }
 export interface CheckoutStatus {
   id: string; status: 'created' | 'ready' | 'signing' | 'submitted' | 'confirmed' | 'reverted';
   account?: Address; result?: TransactionResult; expiresAt: number;

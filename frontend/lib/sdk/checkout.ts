@@ -34,6 +34,14 @@ export const checkoutDeps = {
   nonce: (account: Address) => getEnvPublicClient(8453).getTransactionCount({ address: account, blockTag: 'pending' }),
   transaction: (hash: Hex) => getEnvPublicClient(8453).getTransaction({ hash }),
 };
+/** Markee-owned setting; integrators never supply an authentication destination. */
+export function hostedCheckoutOrigin(): string | undefined {
+  const value = process.env.MARKEE_CHECKOUT_ORIGIN;
+  if (!value) return undefined;
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.origin !== value) throw new SDKError('NOT_CONFIGURED', 'Markee checkout origin must be an HTTPS origin.', 503);
+  return url.origin;
+}
 export function checkoutEnabled() {
   return process.env.MARKEE_HOSTED_CHECKOUT_ENABLED === 'true' && !!process.env.NEXT_PUBLIC_PRIVY_APP_ID &&
     !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN && (process.env.MARKEE_SDK_SIGNING_SECRET?.length || 0) >= 32;
@@ -51,6 +59,7 @@ export function checkoutAction(input: unknown): PaymentAction {
   return a;
 }
 export async function createCheckout(body: Record<string, unknown>, origin: string) : Promise<CheckoutSession> {
+  const checkoutOriginOverride = hostedCheckoutOrigin();
   const p = placement(body.placement), action = checkoutAction(body.action);
   if (p.kind !== 'board' || p.chainId !== 8453) throw new SDKError('UNSUPPORTED_CHECKOUT', 'Hosted checkout supports Base boards.');
   const c = await checkoutDeps.board(8453, p.address);
@@ -69,7 +78,7 @@ export async function createCheckout(body: Record<string, unknown>, origin: stri
   const s: CheckoutRecord = { id: randomBytes(24).toString('hex'), revision: 0, origin: checkoutOrigin(origin), createdAt: Date.now(), expiresAt: Date.now() + 3600000,
     readHash: digest(readToken), writeHash: digest(writeToken), placement: p, action, name: c.name, status: 'created' };
   await checkoutDeps.create(s);
-  return { id: s.id, readToken, writeToken, expiresAt: s.expiresAt };
+  return { id: s.id, readToken, writeToken, expiresAt: s.expiresAt, ...(checkoutOriginOverride ? { checkoutOrigin: checkoutOriginOverride } : {}) };
 }
 async function load(id: unknown, token: unknown, write = false) {
   if (typeof id !== 'string' || !/^[a-f0-9]{48}$/.test(id) || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new SDKError('CHECKOUT_NOT_FOUND', 'Checkout not found.', 404);

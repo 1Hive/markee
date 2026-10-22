@@ -23,7 +23,7 @@ test('popup opens during gesture; only server-verified receipt succeeds; tokens 
   const target = new URL(destination);
   assert.equal(target.pathname, `/checkout/${session.id}`); assert.equal(target.search, '');
   assert.equal(new URLSearchParams(target.hash.slice(1)).get('token'), session.writeToken);
-  assert.equal(savedCheckout(client, placement), null); assert.equal(requests.length, 2);
+  assert.equal(savedCheckout(client, placement), null); assert.equal(requests.length, 2); assert.equal(closed, true);
 });
 test('closing a funded but unpaid popup retains its session; resume does not create another checkout', async () => {
   storage.clear(); closed = true; let creates = 0;
@@ -43,4 +43,15 @@ test('popup-blocked navigation preserves session for mobile return', async () =>
   await assert.rejects(openHostedCheckout(client, placement, action), /Continuing payment/);
   assert.equal(savedCheckout(client, placement)?.id, session.id);
   assert.match(destination, /\/checkout\//);
+});
+
+test('Markee supplies the session origin and explicit redirect never opens a tab', async () => {
+  storage.clear(); let opened = false;
+  window.open = (() => { opened = true; return null; }) as typeof window.open;
+  const client = new MarkeeClient({ checkoutWindow: 'redirect', fetch: async () => Response.json({ ...session, checkoutOrigin: 'https://www.markee.xyz' }) });
+  await assert.rejects(openHostedCheckout(client, placement, action), /Continuing payment/);
+  assert.equal(opened, false);
+  assert.equal(new URL(destination).origin, 'https://www.markee.xyz');
+  assert.equal(new URL(destination).search, '');
+  assert.equal(savedCheckout(client, placement)?.checkoutOrigin, 'https://www.markee.xyz');
 });

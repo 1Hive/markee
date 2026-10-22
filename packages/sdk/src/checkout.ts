@@ -13,7 +13,7 @@ export function forgetCheckout(client: MarkeeClient, placement: Placement) {
 }
 /** Call directly from a click handler to preserve popup permission. */
 export async function openHostedCheckout(client: MarkeeClient, placement: Placement, action: Action): Promise<TransactionResult> {
-  const popup = window.open('about:blank', '_blank', 'popup,width=520,height=780');
+  const popup = client.options.checkoutWindow === 'redirect' ? null : window.open('about:blank', '_blank');
   if (popup) popup.opener = null;
   let session = savedCheckout(client, placement);
   try {
@@ -31,15 +31,16 @@ export async function openHostedCheckout(client: MarkeeClient, placement: Placem
       session = await client.request<CheckoutSession>('checkout/create', { placement, action, origin: window.location.origin });
       try { localStorage.setItem(storageKey(client, placement), JSON.stringify(session)); } catch { /* Popup still retains its own session. */ }
     }
-    const url = new URL(`/checkout/${session.id}`, client.apiUrl);
+    const url = new URL(`/checkout/${session.id}`, session.checkoutOrigin || client.apiUrl);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) throw new Error('Invalid Markee checkout destination.');
     url.hash = new URLSearchParams({ token: session.writeToken }).toString();
     if (popup) popup.location.replace(url.href);
     else { window.location.assign(url.href); throw new Error('Continuing payment on Markee.'); }
     for (let i = 0; i < 1800; i++) {
       const state = await checkoutStatus(client, session);
-      if (state.result && state.status === 'confirmed') { forgetCheckout(client, placement); return state.result; }
+      if (state.result && state.status === 'confirmed') { forgetCheckout(client, placement); popup.close(); return state.result; }
       if (state.status === 'reverted') { forgetCheckout(client, placement); throw new Error('Payment reverted. Any unspent funds remain in your Markee wallet.'); }
-      if (popup.closed) throw new Error('Markee checkout closed. Choose Pay by card again to resume; funding alone does not complete payment.');
+      if (popup.closed) throw new Error('Markee checkout closed. Choose Pay again to resume; funding alone does not complete payment.');
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
     throw new Error('Checkout is still pending. Reopen it to check the payment; do not pay again.');

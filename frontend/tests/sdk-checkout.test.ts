@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkoutDeps, checkoutRequest, createCheckout, checkoutOrigin, type CheckoutRecord } from '../lib/sdk/checkout';
+import { checkoutDeps, checkoutRequest, createCheckout, checkoutOrigin, hostedCheckoutOrigin, type CheckoutRecord } from '../lib/sdk/checkout';
 import { conversionDeps, conversionTransaction, type ConversionStep } from '../lib/sdk/conversion';
 import type { PreparedAction, TransactionResult } from '../../packages/sdk/src/types';
 const board = '0x1111111111111111111111111111111111111111' as const;
@@ -128,4 +128,16 @@ test('conversion arming is atomic, blocks funding/payment, and reuses an approve
     Object.assign(conversionDeps, previous); checkoutDeps.conversionQuote = previousQuote;
     checkoutDeps.conversionStep = previousStep; checkoutDeps.balance = previousBalance;
   }
+});
+
+test('checkout origin is server-selected and validated before creating a session', async () => {
+  const old = process.env.MARKEE_CHECKOUT_ORIGIN;
+  try {
+    process.env.MARKEE_CHECKOUT_ORIGIN = 'https://www.markee.xyz';
+    assert.equal((await create()).checkoutOrigin, 'https://www.markee.xyz');
+    for (const invalid of ['http://www.markee.xyz', 'https://www.markee.xyz/path', 'https://user:password@www.markee.xyz']) {
+      process.env.MARKEE_CHECKOUT_ORIGIN = invalid;
+      assert.throws(hostedCheckoutOrigin);
+    }
+  } finally { if (old === undefined) delete process.env.MARKEE_CHECKOUT_ORIGIN; else process.env.MARKEE_CHECKOUT_ORIGIN = old; }
 });
