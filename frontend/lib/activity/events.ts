@@ -1,7 +1,7 @@
 // Per-wallet activity events written by the moderation scan (see lib/activity/server.ts) and read by
 // the /account Activity Feed. `own` events are about a board the wallet owns, `buy` events about a
 // message the wallet owns.
-export type ActivityKind = 'winning' | 'outbid' | 'new_top' | 'edited'
+export type ActivityKind = 'winning' | 'outbid' | 'stopped' | 'new_top' | 'edited'
 
 export interface ActivityEvent {
   id: string

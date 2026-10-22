@@ -1503,12 +1503,7 @@ function AccountDashboard() {
                       return m && !m.isTop ? winPrice(m, ethPrice) : null
                     }}
                     onPrice={markee => { const m = ownMessage(markee); if (m) openBoardBuy(m) }}
-                    onOpen={e => {
-                      if (e.side === 'buy') { setSection('buyer'); return }
-                      const lb = allBoards.find(b => b.address.toLowerCase() === e.board)
-                      if (lb) { setSection('creator'); setManageTarget(lb.address) }
-                      else window.location.href = `/markee/${e.board}`
-                    }}
+                    onOpen={e => { window.location.href = `/markee/${e.board}` }}
                   />
                 </div>
               )}

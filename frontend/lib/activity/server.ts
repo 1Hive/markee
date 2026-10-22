@@ -13,6 +13,8 @@ export const MAX_EVENTS = 200
 export interface BoardTop {
   markee: string
   value: bigint
+  // Every listed top message's funds (Sale) or rate (Rent), to tell an outbid from a stopped stream.
+  values: Map<string, bigint>
 }
 
 interface Seen {
@@ -56,7 +58,10 @@ export async function recordActivity({ tops, streamingBoards, seen, edited, bloc
     const text = { message: now?.message ?? '', name: now?.name ?? '' }
     push(now?.author, { kind: 'winning', side: 'buy', board, markee: top.markee, ...text })
     if (prev && prev.author !== now?.author) {
-      push(prev.author, { kind: 'outbid', side: 'buy', board, markee: prevMarkee, message: prev.message, name: prev.name })
+      // A Rent message whose rate is now zero lost the top spot because its own stream stopped
+      // (cancelled, or the balance ran out), not because someone bid more.
+      const stopped = streamingBoards.has(board) && (top.values.get(prevMarkee) ?? 0n) === 0n
+      push(prev.author, { kind: stopped ? 'stopped' : 'outbid', side: 'buy', board, markee: prevMarkee, message: prev.message, name: prev.name })
     }
     for (const owner of ownersOf.get(board) ?? []) {
       if (owner === now?.author) continue

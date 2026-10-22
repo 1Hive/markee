@@ -141,7 +141,13 @@ async function listMarkees(client: Client, boards: string[], blockNumber: bigint
     const top = tops[i]
     const [topList, values] = top?.status === 'success' ? (top.result as [string[], bigint[]]) : [[], []]
     const topAddresses = addresses({ status: 'success', result: topList })
-    if (topList[0] && topList[0] !== ZERO_ADDRESS) boardTops.set(board, { markee: topList[0].toLowerCase(), value: values[0] ?? 0n })
+    if (topList[0] && topList[0] !== ZERO_ADDRESS) {
+      boardTops.set(board, {
+        markee: topList[0].toLowerCase(),
+        value: values[0] ?? 0n,
+        values: new Map(topList.map((m, j) => [m.toLowerCase(), values[j] ?? 0n])),
+      })
+    }
     return [...new Set([...addresses(recent[i]), ...topAddresses])].map(markee => ({ board, markee }))
   })
   return { pairs, tops: boardTops }
