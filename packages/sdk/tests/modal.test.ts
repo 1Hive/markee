@@ -96,3 +96,17 @@ test('wallet polling does not invalidate a slow initial snapshot or repeat a wal
   account = address;
   await poll(); assert.equal(changes, 3, 'reconnection refreshes');
 });
+
+
+test('sale payment above wallet balance is rejected before API preparation', async () => {
+  let requests = 0;
+  const modal = Object.create(MarkeeModal.prototype);
+  Object.assign(modal, { account: address, snapshot: { strategy: 'sale', wallet: { eth: '1688000000000000' } },
+    options: { placement: { kind: 'board', chainId: 8453, address } },
+    client: { prepare: async () => { requests++; return {}; } },
+  });
+  await assert.rejects(modal.prepare({ kind: 'fund', markee: address, amount: '498910000000000000' }), /Not enough ETH/);
+  assert.equal(requests, 0);
+  await modal.prepare({ kind: 'fund', markee: address, amount: '1000000000000000' });
+  assert.equal(requests, 1, 'affordable payment still gets server-side gas validation');
+});

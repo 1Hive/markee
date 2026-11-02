@@ -147,6 +147,10 @@ export class MarkeeModal {
   private async prepare(action: Action) {
     if (this.pending) throw new Error('Check your pending transaction before preparing another action.');
     if (!this.account) { await this.connect(); return; }
+    const nativeAmount = action.kind === 'wrap' || (this.snapshot?.strategy === 'sale' && (action.kind === 'fund' || action.kind === 'create')) ? action.amount : undefined;
+    if (nativeAmount && this.snapshot?.wallet && BigInt(nativeAmount) > BigInt(this.snapshot.wallet.eth)) {
+      throw new Error('Not enough ETH for this payment. Lower the amount or add ETH to your wallet.');
+    }
     this.review = await this.client.prepare(this.options.placement, action);
     this.authorization = undefined;
   }

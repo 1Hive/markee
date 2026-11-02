@@ -130,8 +130,11 @@ export async function prepare(p: Placement, account: Address, action: Action): P
   }
   // eth_estimateGas executes the exact call from the user, catching ownership, minimum,
   // buffer and leaderboard races before the wallet prompts. No backend key signs it.
-  const [estimated, gasPrice, balance] = await Promise.all([
-    c.client.estimateGas({ account, to, data, value }), c.client.getGasPrice(), c.client.getBalance({ address: account }),
+  // Reject an unaffordable value before RPC estimation can turn it into a generic provider error.
+  const balance = await c.client.getBalance({ address: account });
+  if (balance < value) throw new SDKError('INSUFFICIENT_FUNDS', 'Not enough ETH for this payment. Lower the amount or add ETH to your wallet.');
+  const [estimated, gasPrice] = await Promise.all([
+    c.client.estimateGas({ account, to, data, value }), c.client.getGasPrice(),
   ]);
   const gas = (estimated * 125n + 99n) / 100n;
   const cost = gas * gasPrice;
