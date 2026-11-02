@@ -99,7 +99,7 @@ const placement = { kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD
 
 `MarkeeSign` is a compact, clickable sign with the winner's message, view count, and a suggested monthly rate on For Rent boards. By default, clicking it opens the SDK modal. Pass `onOpen={() => setOpen(true)}` to open your own controlled `MarkeeModal` instead, or `showAction={false}` to render a non-clickable sign. The sign and modal accept separate `theme` values. No app-side moderation database, RPC key, or moderation provider is needed. To render from plain JavaScript, call `createMarkeeSign(containerElement, { placement })`; its return value has `refresh()`, `setTheme()`, and `destroy()`.
 
-The sign's hover background is enabled by default. Set `theme={{ mode: 'dark', sign: { hoverBackground: '#32483b' } }}` to choose a color, or `sign: { hoverBackground: false }` to keep the normal sign surface on hover. This option applies only to the sign, so the modal can use its own theme.
+The sign fades in the real MARKEE logo behind the message on hover and keyboard focus, following the Gardens sign treatment. It selects the light or dark logo with the sign's theme, including system-mode changes. Set `theme={{ mode: 'dark', sign: { hoverLogo: false } }}` to disable the watermark. `sign.hoverBackground` remains available for an optional hover surface color; otherwise the sign keeps its normal surface. These options apply only to the sign, so the modal can use its own theme.
 
 The SDK snapshot API reads **board moderation flags** from Markee's database. A flagged winner is blurred with a notice. The sign does not offer a reveal action or count a view for flagged content. If moderation data cannot be loaded, it withholds the message until the status is known. Visible, unflagged signs record one view per message. The sign refreshes every 30 seconds while mounted and can be refreshed on demand. Markee-only site flags intentionally apply only on markee.xyz; they do not censor a partner's embedded sign. Moderators still manage flags on Markee; moderation writes invalidate SDK snapshots so embedded signs can pick up changes on their next refresh.
 
@@ -145,7 +145,8 @@ Theme changes update styles in place: drafts, focus, scroll, wallet sessions, an
 | `fontFamily` | CSS font stack; the app supplies any custom font |
 | `radius` | Panel radius in pixels, 0–48 (default 22); card and control corners scale with it |
 | `colors` | Partial overrides for the semantic tokens below |
-| `sign.hoverBackground` | Sign hover background color; defaults to a light/dark theme color, or `false` to disable the background change |
+| `sign.hoverLogo` | Show the theme-matched MARKEE logo on hover/focus (default `true`) |
+| `sign.hoverBackground` | Optional sign hover surface color; defaults to the normal surface |
 
 Color tokens: `background`, `surface`, `text`, `muted`, `border`, `inputBackground`, `inputText`, `primary`, `primaryText`, `accent`, `accentText`, `accentSurface`, `accentSurfaceText`, `accentBorder`, `selected`, `selectedText`, `info`, `infoText`, `error`, `errorText`, `success`, `successText`, `link`, `focusRing`, and `overlay`. Set foreground/background pairs together and check your brand's contrast in both modes. Overrides apply over either selected palette; omitted values use that palette's defaults. Invalid CSS color/font values fall back to defaults.
 

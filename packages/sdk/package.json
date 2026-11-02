@@ -1,6 +1,6 @@
 {
   "name": "@markee_team/sdk",
-  "version": "0.1.0-alpha.13",
+  "version": "0.1.0-alpha.14",
   "description": "Self-contained Markee modal and API client, with an optional React adapter.",
   "type": "module",
   "sideEffects": false,
@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && esbuild src/index.ts src/react.ts --bundle --format=esm --outdir=dist --external:react --minify",
+    "build": "node scripts/embed-logos.mjs && tsc && esbuild src/index.ts src/react.ts --bundle --format=esm --outdir=dist --external:react --minify",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "prepack": "npm run build",

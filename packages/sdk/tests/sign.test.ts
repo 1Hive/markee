@@ -28,8 +28,11 @@ test('the sign is one themed button with views and a rental rate; action can be 
   assert.match(sale, /<button class="sign" type="button" data-markee-open/);
   assert.match(sale, /aria-label="0 views"/);
   assert.match(sale, />Current message<\/span>/);
+  assert.match(sale, /class="logo-dark" src="data:image\/png;base64,/);
+  assert.match(sale, /class="logo-light" src="data:image\/png;base64,/);
   assert.doesNotMatch(sale, /<button[^>]*>.*<button/s);
   const rent = signHtml({ ...snapshot, strategy: 'rent' }, true);
   assert.match(rent, /class="rate">0\.001 ETH\/mo to change<\/span>/);
   assert.match(signHtml(snapshot, false), /<div class="sign" aria-label="Sample Markee sign"/);
+  assert.doesNotMatch(signHtml(snapshot, false), /class="watermark"/);
 });
