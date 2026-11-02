@@ -776,27 +776,33 @@ Don't import Markee's own color palette. Before building the modal, read this si
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
-export function buildEmbedPrompt({ address, name, strategy, framework, wallet, agent }: BuildEmbedPromptInput): string {
-  const buyUrl = `https://markee.xyz/markee/${address}`
-  const sections = [
-    coreIdentityFragment({ address, name, buyUrl, strategy }),
-    triggerCardFragment(),
-    walletFragment(wallet),
-    strategyFragment(strategy, address),
-    buyFlowFragment(strategy),
-    proxyRouteFragment(framework, address),
-    viewTrackingFragment(),
-    moderationFragment(),
-    healthEndpointFragment(),
-    themeAdoptionFragment(),
-    `## Implementation notes
-- The \`data-markee-address="${address.toLowerCase()}"\` attribute must be present on the widget's server-rendered HTML for integration verification -- setting it only via \`useEffect\`/\`document.setAttribute()\` runs client-side only and won't be detected. This is the one hard requirement for the "Verify Embed" step on markee.xyz.
-- Poll the leaderboard data every 60 seconds. After a successful transaction, re-fetch with \`?bust=1\` appended to your own proxy route's fetch of the upstream markee.xyz endpoint (and have your proxy forward it) -- the upstream data passes through multiple stacked ~60s server caches, so a plain re-fetch shortly after a transaction will very likely still return the pre-transaction value. \`?bust=1\` skips all of them for one request; don't pass it on regular page loads.
-- Before creating any new file or route, check whether this repo already has one that does the same job (an existing API proxy layer, an existing env-var naming convention, an existing Superfluid/wallet setup) and extend that instead of assuming a blank slate -- these instructions describe the shape of what's needed, not a mandate to create every file listed here from scratch regardless of what's already present.
-- Style to match this site's existing design system (see above) -- the pattern works with any CSS approach.
+export function buildEmbedPrompt({ address, name, framework, wallet, agent }: BuildEmbedPromptInput): string {
+  const intro = agent === 'other' ? '' : `Paste into ${AGENT_LABEL[agent]} alongside this repository.\n\n`
+  return intro + `Integrate @markee_team/sdk@latest into this ${framework} app. Inspect the repository first and follow its framework, wallet, and design patterns.
 
-Please look at this codebase and implement the embed. Choose an appropriate location for the trigger (header, footer, sidebar widget). Match the existing code style, and keep it minimal.`,
-  ]
-  const intro = agent === 'other' ? '' : `<!-- Paste this into ${AGENT_LABEL[agent]} alongside this repo. -->\n\n`
-  return intro + sections.join('\n\n---\n\n')
+The leaderboard is already created${name ? ` (${JSON.stringify(name)})` : ''}:
+https://www.markee.xyz/markee/${address}
+Use placement = { kind: 'board', chainId: 8453, address: '${address}' }.
+Verify it with new MarkeeClient().snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
+
+Ask only unanswered requirements:
+- Where should the sign appear and what should open the modal?
+- Which colors, font, light/dark mode, and panel/card/control radii should match the app?
+- What public HTTPS page/domain should be registered as siteUrl?
+- What should happen after a confirmed payment?
+${wallet === 'none'
+    ? '- There is no existing wallet integration. Ask whether to add a host wallet or use Markee-hosted checkout. Hosted checkout is only available for eligible For Sale boards when enabled by the API; For Rent requires a wallet. Do not promise card checkout if disabled.'
+    : `- The selected wallet setup is ${wallet}. Reuse its active EIP-1193 provider; inspect the connector and ask only if its integration is unclear. Do not install a second wallet context.`}
+
+Implementation:
+1. Install @markee_team/sdk@latest and read its current README/types. The SDK knows its API endpoint. Do not request API keys or create RPC, database, moderation, or view-tracking proxies.
+2. For React/Next.js, use MarkeeSign and MarkeeModal from @markee_team/sdk/react in a client component. Use static imports, placement, open, and onClose. For other frameworks, use createMarkee from @markee_team/sdk and close it on teardown. Follow the installed README for the sign API.
+3. Pass the host wallet adapter when available. Resolve connect only after selection, handle cancellation, and never silently use a different provider. Do not collect card details or install Privy in the host app for hosted checkout.
+4. Pass theme with mode, colors, fontFamily, radius, cardRadius, and controlRadius. Include link, focusRing, border, selected, and accent colors. Preserve the SDK layout and transaction logic; do not rebuild the modal.
+5. Pass the agreed public URL as siteUrl. Include data-markee-address="${address.toLowerCase()}" in server-rendered or static HTML so Markee can verify the site. For client-only apps, put a hidden marker in the static HTML. Use onSiteVerification or client.verifySite after deployment; localhost is not a verified public integration.
+6. Let the SDK handle strategy detection, balances, moderation, views, reward estimates, refunds, review refresh, network switching, and confirmation. Show success only after the confirmed event, then refresh the sign if needed.
+7. Check build/types, board loading, theme, open/close, and wallet reuse. Do not sign transactions or spend funds during automated verification. Report changed files and any limitations.
+
+Use the latest package, not a pinned prerelease in these instructions. Base payments use real funds.
+`
 }
