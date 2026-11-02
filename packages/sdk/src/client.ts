@@ -1,7 +1,7 @@
 import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 /** Markee-hosted API used by integrations unless overridden for local development. */
-export const DEFAULT_MARKEE_API_URL = 'https://2staging.markee.xyz/api/sdk/v1';
+export const DEFAULT_MARKEE_API_URL = 'https://staging.markee.xyz/api/sdk/v1';
 
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }
