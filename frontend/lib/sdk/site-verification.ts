@@ -33,7 +33,11 @@ export async function fetchSiteHtml(url: URL): Promise<string> {
   if (!records.length || records.some(r => !publicIPv4(r.address))) throw new SDKError('INVALID_SITE', 'Site must resolve to public IPv4 addresses.');
   // Pin the vetted address for the connection. Never follow redirects or re-resolve DNS.
   return new Promise((resolve, reject) => {
-    const req = request(url, { method: 'GET', headers: { 'User-Agent': 'Markee-Verifier/2.0', Accept: 'text/html', 'Accept-Encoding': 'identity' }, lookup: (_host, _options, cb) => cb(null, records[0].address, 4), signal: AbortSignal.timeout(10_000) }, res => {
+    const req = request(url, { method: 'GET', family: 4, headers: { 'User-Agent': 'Markee-Verifier/2.0', Accept: 'text/html', 'Accept-Encoding': 'identity' }, lookup: (_host, options, cb) => {
+      const pinned = { address: records[0].address, family: 4 };
+      if (typeof options === 'object' && options.all) cb(null, [pinned]);
+      else cb(null, pinned.address, pinned.family);
+    }, signal: AbortSignal.timeout(10_000) }, res => {
       if (res.statusCode !== 200 || !res.headers['content-type']?.toLowerCase().includes('text/html')) { res.resume(); reject(new SDKError('SITE_UNREACHABLE', 'Use the final public HTML page URL (redirects are not followed).', 422)); return; }
       let size = 0; const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 1024 * 1024) res.destroy(new Error('Site HTML exceeds 1 MB')); else chunks.push(chunk); });

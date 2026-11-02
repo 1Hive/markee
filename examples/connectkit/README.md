@@ -23,6 +23,8 @@ For a new integration, [create a Markee leaderboard](https://www.markee.xyz/crea
 
 Deploy this repository as a Vite project on Vercel. The build command is `npm run build` and the output directory is `dist`. No environment variables are required for the default boards. If you enable WalletConnect, add `VITE_WALLETCONNECT_PROJECT_ID` to the Vercel project and redeploy.
 
+The published sample registers `https://markee-sdk-connectkit-example.vercel.app` with Markee for both default boards. If you fork it, set `VITE_PUBLIC_SITE_URL` to your public HTTPS origin and update the `data-markee-address` markers in `index.html` to match your boards. Markee reads the published HTML before accepting the site.
+
 ```sh
 npm run build
 ```
