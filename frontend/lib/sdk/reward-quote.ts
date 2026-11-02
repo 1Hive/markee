@@ -13,8 +13,8 @@ export function buyerPayment(amount: bigint, beneficiaryBps: bigint, platformFee
   return hasFeeReceiver ? revnetAmount - revnetAmount * platformFeeBps / 10_000n : revnetAmount;
 }
 
-export async function quoteSaleReward(c: BoardContext, amount: bigint, account: Address): Promise<bigint | null> {
-  if (c.strategy !== 'sale' || !c.revnetEnabled || !c.token || amount === 0n) return null;
+export async function quoteReward(c: BoardContext, amount: bigint, account: Address): Promise<bigint | null> {
+  if (!c.revnetEnabled || !c.token || amount === 0n) return null;
   const [beneficiaryBps, platformFeeBps, feeReceiver, terminal, projectId] = await Promise.all([
     c.r<bigint>('percentToBeneficiary'), c.r<bigint>('percentToPlatformFeeReceiver'),
     c.r<Address>('platformFeeReceiver'), c.r<Address>('revNetTerminal'), c.r<bigint>('revNetProjectId'),

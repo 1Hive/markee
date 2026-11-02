@@ -10,7 +10,7 @@ import { executeAdmin, operationStatus } from '../lib/sdk/operations';
 import { NextRequest } from 'next/server';
 import { GET, POST, OPTIONS } from '../app/api/sdk/v1/[...path]/route';
 import { publicDataProxyEnabled, readPresentationData, recordPublicView } from '../lib/sdk/presentation-data';
-import { buyerPayment, quoteSaleReward } from '../lib/sdk/reward-quote';
+import { buyerPayment, quoteReward } from '../lib/sdk/reward-quote';
 
 const a = '0x1111111111111111111111111111111111111111' as const;
 const b = '0x2222222222222222222222222222222222222222' as const;
@@ -26,10 +26,12 @@ test('sale quote follows live board splits and terminal output', async () => {
       platformFeeReceiver: b, revNetTerminal: c, revNetProjectId: 7n } as Record<string, unknown>)[name],
     client: { simulateContract: async (args: Record<string, unknown>) => { simulated = args; return { result: 42n }; } },
   };
-  assert.equal(await quoteSaleReward(context as never, 10n ** 18n, a), 42n);
+  assert.equal(await quoteReward(context as never, 10n ** 18n, a), 42n);
   assert.equal(simulated?.value, 235600000000000000n);
   assert.equal(simulated?.blockNumber, 123n);
-  assert.equal(await quoteSaleReward({ ...context, revnetEnabled: false } as never, 10n ** 18n, a), null);
+  assert.equal(await quoteReward({ ...context, strategy: 'rent' } as never, 10n ** 18n, a), 42n);
+  assert.equal(simulated?.value, 235600000000000000n, 'rental monthly quote uses rent splits, not deposit value');
+  assert.equal(await quoteReward({ ...context, revnetEnabled: false } as never, 10n ** 18n, a), null);
 });
 
 test('API input validation rejects unsupported chains, arbitrary actions and UTF-8 overflow', () => {

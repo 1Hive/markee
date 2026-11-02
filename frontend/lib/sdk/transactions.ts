@@ -7,7 +7,7 @@ import { boardContext, read, resolvePlacement, streamContext } from './snapshot'
 import { assertTextLength, SDKError, wei } from './validation';
 import { invalidateVerifiedDisplay } from './cached-display';
 import { buildMarkeeOpenStreamOperations, CFA_V1_FORWARDER_ADDRESS, cfaV1ForwarderABI, getMarkeeAutoFunding, getMarkeeStreamAmounts, getMarkeeWithdrawableDeposit, superfluidHostABI } from './gardens/streaming';
-import { quoteSaleReward } from './reward-quote';
+import { quoteReward } from './reward-quote';
 
 const devSecret = randomBytes(32).toString('hex');
 function secret() {
@@ -38,6 +38,7 @@ export async function prepare(p: Placement, account: Address, action: Action): P
   let to = c.board;
   let data: Hex;
   let value = 0n;
+  let monthlyRewardAmount = 0n;
   const lines: string[] = [];
   let title: string = action.kind;
   let reward = 'This action does not issue MARKEE.';
@@ -74,6 +75,7 @@ export async function prepare(p: Placement, account: Address, action: Action): P
       const monthly = wei(action.monthlyAmount);
       if (monthly < c.minimum) throw new SDKError('BELOW_MINIMUM', `Minimum monthly rate is ${formatEther(c.minimum)} ETH.`);
       const { ratePerSecond } = getMarkeeStreamAmounts(monthly, 0n, c.minimum);
+      monthlyRewardAmount = ratePerSecond * 2628000n;
       if (ratePerSecond >= 2n ** 95n) throw new SDKError('INVALID_RATE', 'Stream rate is out of range.');
       const nativeBalance = await c.client.getBalance({ address: account });
       const funding = getMarkeeAutoFunding({ ethxAvailableBalance: s.available, existingDeposit: s.deposit, nativeBalance, ratePerSecond });
@@ -140,9 +142,9 @@ export async function prepare(p: Placement, account: Address, action: Action): P
   const cost = gas * gasPrice;
   if (balance < value + cost) throw new SDKError('INSUFFICIENT_GAS', 'Keep enough native ETH for this transaction and network fees.');
   let estimatedTokens: string | undefined;
-  if (c.strategy === 'sale' && (action.kind === 'create' || action.kind === 'fund') && c.revnetEnabled) {
+  if (c.revnetEnabled && ((c.strategy === 'sale' && (action.kind === 'create' || action.kind === 'fund')) || action.kind === 'stream')) {
     // A quote is informative only. RPC/provider outages must not block a valid payment.
-    try { estimatedTokens = (await quoteSaleReward(c, value, account))?.toString(); }
+    try { estimatedTokens = (await quoteReward(c, action.kind === 'stream' ? monthlyRewardAmount : value, account))?.toString(); }
     catch { /* The review retains its qualitative reward description. */ }
   }
   const transaction = { from: account, to, data, chainId: c.chainId, value: toHex(value), gas: toHex(gas) };

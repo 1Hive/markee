@@ -65,13 +65,18 @@ test('rental payment review shows monthly rate and immediate ETH deposit', () =>
   modal.review = {
     action: { kind: 'stream', markee: address, monthlyAmount: '2000000000000000' },
     transaction: { from: address, to: address, chainId: 8453, value: '0x38d7ea4c68000' },
-    review: { title: 'Start your rental stream', lines: ['Wrap 0.001 ETH into ETHx.'], estimatedGasCost: '11000000000000', reward: 'MARKEE is earned from rent actually spent.' },
+    review: { estimatedTokens: '16430000000000000000', title: 'Start your rental stream', lines: ['Wrap 0.001 ETH into ETHx.'], estimatedGasCost: '11000000000000', reward: 'MARKEE is earned from rent actually spent.' },
   };
   const html = modal.reviewHtml();
   assert.match(html, /<span>Paying<\/span><strong>0\.002 ETHx\/mo<\/strong>/);
   assert.match(html, /<span>Depositing now<\/span><strong>0\.001 ETH<\/strong>/);
   assert.match(html, /Your payment only streams while your message is winning/);
-  assert.match(html, /Wrap 0\.001 ETH into ETHx/);
+  assert.doesNotMatch(html, /Wrap 0\.001 ETH into ETHx/);
+  const details = html.split('<summary>Transaction details</summary>')[1].split('</details>')[0];
+  assert.equal((details.match(/class="review-row"/g) || []).length, 3);
+  assert.doesNotMatch(details, /<p>/);
+  assert.match(html, /<span>Estimated network fee<\/span>/);
+  assert.match(html, /16\.43 MARKEE\/month \(estimated while winning\)/);
 });
 
 
@@ -109,4 +114,21 @@ test('sale payment above wallet balance is rejected before API preparation', asy
   assert.equal(requests, 0);
   await modal.prepare({ kind: 'fund', markee: address, amount: '1000000000000000' });
   assert.equal(requests, 1, 'affordable payment still gets server-side gas validation');
+});
+
+test('wallet events preserve the reviewed payment while confirmation is pending', () => {
+  const modal = Object.create(MarkeeModal.prototype);
+  const review = { id: 'review-being-signed' };
+  let reloads = 0;
+  Object.assign(modal, {
+    busy: true, closed: false, review,
+    render: () => {}, reload: async () => { reloads++; },
+  });
+  modal.handleWalletChange();
+  assert.equal(modal.review, review);
+  assert.equal(reloads, 0);
+  modal.busy = false;
+  modal.handleWalletChange();
+  assert.equal(modal.review, undefined);
+  assert.equal(reloads, 1);
 });

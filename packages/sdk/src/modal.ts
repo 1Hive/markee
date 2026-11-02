@@ -1,5 +1,5 @@
 import { openHostedCheckout } from './checkout.js';
-import { discoverWallets, MarkeeClient, type DiscoveredWallet, type PendingTransaction } from './client.js';
+import { discoverWallets, MarkeeClient, MarkeeError, type DiscoveredWallet, type PendingTransaction } from './client.js';
 import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount.js';
 import { styles } from './styles.js';
 import { createThemeController } from './theme.js';
@@ -35,6 +35,7 @@ export class MarkeeModal {
   private pending?: PendingTransaction;
   private wallets?: DiscoveredWallet[];
   private busy = false;
+  private busyMessage = 'Working…';
   private error = '';
   private closed = false;
   private epoch = 0;
@@ -47,7 +48,11 @@ export class MarkeeModal {
   private drafts = new Map<string, Record<string, string>>();
   private viewObserver?: IntersectionObserver;
   private viewed = new Set<string>();
-  private walletChanged = () => {
+  private walletChanged = () => { this.handleWalletChange(); };
+  private handleWalletChange() {
+    // Wallet confirmation can switch chains. Keep its review until the request
+    // resolves; account polling catches a real account change after the task.
+    if (this.busy || this.closed) return;
     this.initialSelection = false;
     this.review = undefined; this.authorization = undefined; this.form = undefined; this.tab = 'main';
     this.result = undefined; this.error = '';
@@ -133,7 +138,7 @@ export class MarkeeModal {
     if (this.busy) return;
     this.busy = true; this.error = ''; this.render();
     try { await work(); } catch (error) { this.fail(error); }
-    finally { this.busy = false; this.render(); }
+    finally { this.busy = false; this.busyMessage = 'Working…'; this.render(); }
   }
   private async connect() {
     if (!this.client.options.wallet) {
@@ -257,7 +262,15 @@ export class MarkeeModal {
       else if (cmd === 'more') await this.reload(this.snapshot?.nextOffset ?? undefined);
       else if (cmd === 'send' && this.review) {
         const preparation = this.review;
-        const hash = await this.client.send(preparation);
+        let hash;
+        try { hash = await this.client.send(preparation); }
+        catch (error) {
+          if (!(error instanceof MarkeeError) || error.code !== 'REVIEW_EXPIRED') throw error;
+          this.busyMessage = 'Refreshing payment details…';
+          this.render();
+          await this.prepare(preparation.action);
+          return; // A refreshed review always requires another confirmation.
+        }
         this.pending = { preparation, hash }; this.review = undefined; this.form = undefined; this.result = undefined;
         void this.poll();
       } else if (cmd === 'check') await this.poll();
@@ -334,8 +347,9 @@ export class MarkeeModal {
     const payment = paying !== null;
     const rows = payment ? [
       ['Paying', paying],
-      [action.kind === 'stream' && value > 0n ? 'Depositing now' : 'Estimated network fee', action.kind === 'stream' && value > 0n ? `${formatEth(value.toString())} ETH` : `${formatEth(review.review.estimatedGasCost)} ETH`],
-      ["You'll earn", review.review.estimatedTokens !== undefined ? `${formatEth(review.review.estimatedTokens, 4)} MARKEE (estimated)` : this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
+      ...(action.kind === 'stream' && value > 0n ? [['Depositing now', `${formatEth(value.toString())} ETH`]] : []),
+      ['Estimated network fee', `${formatEth(review.review.estimatedGasCost)} ETH`],
+      ["You'll earn", review.review.estimatedTokens !== undefined ? `${formatEth(review.review.estimatedTokens, 4)} ${action.kind === 'stream' ? 'MARKEE/month (estimated while winning)' : 'MARKEE (estimated)'}` : this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
     ] : [
       ['Action', review.review.title],
       ['Native ETH sent', `${formatEth(value.toString())} ETH`],
@@ -348,7 +362,7 @@ export class MarkeeModal {
       : action.kind === 'create' && payment ? 'Your payment gives you this Markee message'
       : 'Review this wallet action';
     const calloutText = action.kind === 'stream' ? 'Anyone can overtake your message. The refund pool offsets rent while you are not winning; you can stop the stream at any time.' : review.review.reward;
-    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div><div class="review-row"><span>Recipient</span><div class="review-address"><strong class="mono" title="${e(review.transaction.to)}">${e(shortAddress(review.transaction.to))}</strong>${btn('copy-recipient', 'Copy', 'review-copy', 'aria-label="Copy recipient address"')}</div></div><div class="review-row"><span>Wallet</span><div class="review-address"><strong class="mono" title="${e(review.transaction.from)}">${e(shortAddress(review.transaction.from))}</strong>${btn('copy-wallet', 'Copy', 'review-copy', 'aria-label="Copy wallet address"')}</div></div>${action.kind === 'stream' && value > 0n ? `<div class="review-row"><span>Estimated network fee</span><strong>${formatEth(review.review.estimatedGasCost)} ETH</strong></div>` : ''}${context.map(line => `<p>${e(line)}</p>`).join('')}${action.kind === 'stream' ? `<p>${e(review.review.reward)}</p>` : ''}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p></details></div>`;
+    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div><div class="review-row"><span>Recipient</span><div class="review-address"><strong class="mono" title="${e(review.transaction.to)}">${e(shortAddress(review.transaction.to))}</strong>${btn('copy-recipient', 'Copy', 'review-copy', 'aria-label="Copy recipient address"')}</div></div><div class="review-row"><span>Wallet</span><div class="review-address"><strong class="mono" title="${e(review.transaction.from)}">${e(shortAddress(review.transaction.from))}</strong>${btn('copy-wallet', 'Copy', 'review-copy', 'aria-label="Copy wallet address"')}</div></div>${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
@@ -378,7 +392,7 @@ export class MarkeeModal {
     const owned = s.entries.find(item => item.owner.toLowerCase() === this.account?.toLowerCase());
     const top = entry.address.toLowerCase() === s.top?.toLowerCase();
     const backing = entry.address.toLowerCase() === w?.backedMarkee?.toLowerCase() && BigInt(w?.flowRate ?? '0') > 0n;
-    return `<section class="message-card ${top ? 'winner' : ''}"><div class="row between"><span class="eyebrow">${own ? 'Your Markee' : 'Markee you’re funding'}</span>${top ? '<span class="pill">Winner</span>' : ''}</div>${this.entryMessageHtml(entry)}${entry.moderated === false && entry.name ? `<p class="name">${e(entry.name)}</p>` : ''}<div class="row message-tools">${own ? btn(`form:edit-message:${entry.address}`, 'Edit message', 'text-button') + btn(`form:edit-name:${entry.address}`, 'Edit name', 'text-button') : ''}${!own && owned ? btn(`form:${s.strategy === 'rent' ? 'stream' : 'fund'}:${owned.address}`, 'Back to your Markee', 'text-button') : ''}${btn('create', 'Create your own Markee', 'text-button')}${s.strategy === 'rent' && this.account ? btn(`claim-refund:${entry.address}`, 'Collect refund', 'text-button') : ''}</div><div class="message-stats">${s.strategy === 'rent' ? `<span class="meta">${!this.account ? 'Live message ranking' : backing ? top ? '● Active stream' : w?.poolConnected ? '● Stream refunded while not the winner' : '● Connect your refund pool in Deposit manager' : 'No active stream from your wallet to this message'}</span><div class="stats-grid"><div><span class="stat-label">Ranking rate</span><strong>${formatEth((BigInt(entry.score) * MONTH).toString())} ETH/mo</strong></div>${this.account ? `<div><span class="stat-label">Your rate</span><strong>${formatEth((backing ? BigInt(w!.flowRate) * MONTH : 0n).toString())} ETH/mo</strong></div>` : ''}${w ? `<div><span class="stat-label">ETHx balance</span><strong>${formatEth(w.ethx)} ETHx</strong></div><div><span class="stat-label">Funds remaining</span><strong title="Across all of your ETHx flows">${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div>` : ''}</div>${BigInt(entry.legacyFloor) > 0n ? `<p class="meta">Ranking includes a decaying legacy floor of ${formatEth((BigInt(entry.legacyFloor) * MONTH).toString())} ETH/mo.</p>` : ''}` : `<div class="stats-grid"><div><span class="stat-label">Total funded</span><strong>${formatEth(entry.totalFunds)} ETH</strong></div><div><span class="stat-label">Views</span><strong>${entry.views === null ? 'Unavailable' : entry.views.toLocaleString()}</strong></div></div>`}</div></section>`;
+    return `<section class="message-card ${top ? 'winner' : ''}"><div class="row between"><span class="eyebrow">${own ? 'Your Markee' : 'Markee you’re funding'}</span>${top ? '<span class="pill">Winner</span>' : ''}</div>${this.entryMessageHtml(entry)}${entry.moderated === false && entry.name ? `<p class="name">${e(entry.name)}</p>` : ''}<div class="row message-tools">${own ? btn(`form:edit-message:${entry.address}`, 'Edit message', 'text-button') + btn(`form:edit-name:${entry.address}`, 'Edit name', 'text-button') : ''}${!own && owned ? btn(`form:${s.strategy === 'rent' ? 'stream' : 'fund'}:${owned.address}`, 'Back to your Markee', 'text-button') : ''}${btn('create', 'Create your own Markee', 'text-button')}${s.strategy === 'rent' && this.account && entry.address.toLowerCase() === w?.backedMarkee?.toLowerCase() && BigInt(w?.poolClaimable ?? '0') > 0n ? btn(`claim-refund:${entry.address}`, 'Collect refund', 'text-button') : ''}</div><div class="message-stats">${s.strategy === 'rent' ? `<span class="meta">${!this.account ? 'Live message ranking' : backing ? top ? '● Active stream' : w?.poolConnected ? '● Stream refunded while not the winner' : '● Connect your refund pool in Deposit manager' : 'No active stream from your wallet to this message'}</span><div class="stats-grid"><div><span class="stat-label">Ranking rate</span><strong>${formatEth((BigInt(entry.score) * MONTH).toString())} ETH/mo</strong></div>${this.account ? `<div><span class="stat-label">Your rate</span><strong>${formatEth((backing ? BigInt(w!.flowRate) * MONTH : 0n).toString())} ETH/mo</strong></div>` : ''}${w ? `<div><span class="stat-label">ETHx balance</span><strong>${formatEth(w.ethx)} ETHx</strong></div><div><span class="stat-label">Funds remaining</span><strong title="Across all of your ETHx flows">${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div>` : ''}</div>${BigInt(entry.legacyFloor) > 0n ? `<p class="meta">Ranking includes a decaying legacy floor of ${formatEth((BigInt(entry.legacyFloor) * MONTH).toString())} ETH/mo.</p>` : ''}` : `<div class="stats-grid"><div><span class="stat-label">Total funded</span><strong>${formatEth(entry.totalFunds)} ETH</strong></div><div><span class="stat-label">Views</span><strong>${entry.views === null ? 'Unavailable' : entry.views.toLocaleString()}</strong></div></div>`}</div></section>`;
   }
   private fundingHtml(entry?: Entry) {
     const s = this.snapshot!, w = s.wallet, rent = s.strategy === 'rent';
@@ -485,7 +499,7 @@ export class MarkeeModal {
         actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<span class="review-action"><button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button><span id="balance-tooltip" class="balance-tooltip" role="tooltip" hidden>You don’t have enough ETH for this payment.</span></span>`;
       }
     } else if (s) actions = btn('tab:main', 'Back to Markee');
-    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}><div class="footer-actions">${actions}</div>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community treasury', 'text-button') : ''}</div>`}</footer>`;
+    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}><div class="footer-actions">${actions}</div>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community accumulated revenue', 'text-button') : ''}</div>`}</footer>`;
   }
   private render() {
     if (this.closed) return;
@@ -507,7 +521,7 @@ export class MarkeeModal {
     else if (this.tab === 'wallet') body = this.walletHtml();
     else body = `${this.form?.kind.startsWith('edit') ? '' : this.entriesHtml()}${this.formHtml()}${!this.account ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.hostedEligible() ? 'Pay in Markee is not supported for this board yet.' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
     const result = this.result ? `<div class="${this.result.status === 'reverted' || this.result.settlement === 'deferred' ? 'error' : 'success'}">${this.result.status === 'reverted' ? 'Transaction reverted. No action was completed.' : this.result.settlement === 'deferred' ? 'The transaction confirmed, but reward settlement was deferred. Your claim remains available.' : `Transaction confirmed.${this.result.tokensReceived && BigInt(this.result.tokensReceived) > 0n ? ` ${formatEth(this.result.tokensReceived, 2)} MARKEE delivered to your wallet.` : ''}`} ${link(this.result.explorerUrl, 'View receipt')}</div>` : '';
-    this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1><p class="header-caption">${e(s?.name || 'Markee')}${s ? ` · ${s.strategy === 'rent' ? 'For rent' : 'For sale'}${s.chainId === 8453 ? ' · Base' : s.chainId === 11155111 ? ' · Sepolia testnet' : ''}` : ''}</p></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy || (!s && !this.error)}"><div role="status" aria-live="polite">${this.busy ? '<p class="meta"><span class="spinner"></span>Working…</p>' : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
+    this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1><p class="header-caption">${e(s?.name || 'Markee')}${s ? ` · ${s.strategy === 'rent' ? 'For rent' : 'For sale'}${s.chainId === 8453 ? ' · Base' : s.chainId === 11155111 ? ' · Sepolia testnet' : ''}` : ''}</p></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy || (!s && !this.error)}"><div role="status" aria-live="polite">${this.busy ? `<p class="meta"><span class="spinner"></span>${e(this.busyMessage)}</p>` : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
     if (this.busy) this.root.querySelectorAll<HTMLButtonElement>('button:not([data-cmd="close"])').forEach(b => { b.disabled = true; });
     const draft = this.drafts.get(this.draftKey());
     if (draft) for (const field of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input,textarea,select')) {
