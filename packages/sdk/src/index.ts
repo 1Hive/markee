@@ -6,3 +6,5 @@ export type { ModalOptions } from './modal.js';
 export { parseEth, formatEth } from './amount.js';
 
 export { openHostedCheckout, checkoutStatus, savedCheckout } from './checkout.js';
+export { createMarkeeSign, signContent } from './sign.js';
+export type { MarkeeSignOptions } from './sign.js';

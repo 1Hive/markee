@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
+import { randomUUID } from 'node:crypto'
 import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, SCOPES, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 import {
@@ -51,7 +52,8 @@ export async function GET() {
     return NextResponse.json({ flagged: board, siteFlagged: site }, { headers: CORS })
   } catch (error) {
     console.error('[moderation] GET error:', error)
-    return NextResponse.json({ flagged: [], siteFlagged: [] }, { headers: CORS })
+    // Never turn a storage outage into an apparently unmoderated board.
+    return NextResponse.json({ error: 'Moderation is temporarily unavailable.' }, { status: 503, headers: CORS })
   }
 }
 
@@ -153,6 +155,9 @@ export async function POST(req: NextRequest) {
         if (items[i]) held.forEach(scope => pipeline.zrem(pendingKey(scope, item!.board), item!.markee))
       }
     })
+    // Board flags are consumed by SDK snapshots. Move reads to a fresh cache namespace
+    // in the same write batch so integrations do not wait for the stale snapshot TTL.
+    if (action !== 'approve') pipeline.set('sdk:snapshots:generation', randomUUID())
     await pipeline.exec()
 
     const { board, site } = await readAllFlagged()

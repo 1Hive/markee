@@ -2,6 +2,7 @@
 import { createElement, useEffect, useRef, type ReactNode } from 'react';
 import { MarkeeClient } from './client.js';
 import { createMarkee } from './modal.js';
+import { createMarkeeSign, type MarkeeSignOptions } from './sign.js';
 import type { Placement, SDKOptions } from './types.js';
 
 export interface MarkeeModalProps extends SDKOptions { open: boolean; placement: Placement; onClose(): void }
@@ -37,4 +38,28 @@ export function MarkeeModal(props: MarkeeModalProps) {
 
 export function MarkeeButton({ children = 'Open Markee', onClick, ...props }: { children?: ReactNode; onClick(): void; className?: string; disabled?: boolean }) {
   return createElement('button', { ...props, type: 'button', onClick }, children);
+}
+
+export interface MarkeeSignProps extends MarkeeSignOptions { className?: string }
+/** The current sign, including Markee-hosted moderation, without an app-side data provider. */
+export function MarkeeSign(props: MarkeeSignProps) {
+  const container = useRef<HTMLDivElement>(null);
+  const current = useRef(props); current.current = props;
+  const instance = useRef<ReturnType<typeof createMarkeeSign>>();
+  const placementKey = JSON.stringify(props.placement);
+  useEffect(() => {
+    if (!container.current) return;
+    const sign = createMarkeeSign(container.current, { ...current.current, wallet: current.current.wallet ? {
+      getProvider: () => current.current.wallet!.getProvider(),
+      connect: () => current.current.wallet?.connect?.() ?? Promise.reject(new Error('Connect the app wallet first.')),
+    } : undefined,
+    onEvent: event => current.current.onEvent?.(event),
+    onSiteVerification: result => current.current.onSiteVerification?.(result),
+    });
+    instance.current = sign;
+    return () => { sign.destroy(); instance.current = undefined; };
+  }, [placementKey, props.apiUrl, props.fetch, props.showAction, props.refreshIntervalMs, props.siteUrl, !!props.wallet]);
+  useEffect(() => { instance.current?.setTheme(props.theme); }, [props.theme]);
+  return createElement('div', { ref: container, className: props.className },
+    props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null);
 }
