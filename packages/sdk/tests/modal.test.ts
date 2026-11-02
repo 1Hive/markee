@@ -73,3 +73,26 @@ test('rental payment review shows monthly rate and immediate ETH deposit', () =>
   assert.match(html, /Your payment only streams while your message is winning/);
   assert.match(html, /Wrap 0\.001 ETH into ETHx/);
 });
+
+
+test('wallet polling does not invalidate a slow initial snapshot or repeat a wallet transition', async () => {
+  let account: string | null = address;
+  let changes = 0;
+  const modal = Object.create(MarkeeModal.prototype);
+  Object.assign(modal, { account: null, busy: false, closed: false,
+    client: { provider: async () => null, account: async () => account },
+    walletChanged: () => { changes++; },
+  });
+  const poll = async () => { await modal.watchAccount(); clearTimeout(modal.accountTimer); };
+  await poll(); await poll(); await poll();
+  assert.equal(changes, 0, 'initial connected wallet is not a change while snapshot is pending');
+  account = '0x2222222222222222222222222222222222222222';
+  await poll(); await poll();
+  assert.equal(changes, 1, 'real switch refreshes once even before its snapshot resolves');
+  modal.busy = true; account = null;
+  await poll(); assert.equal(changes, 1);
+  modal.busy = false;
+  await poll(); await poll(); assert.equal(changes, 2, 'deferred disconnect still refreshes');
+  account = address;
+  await poll(); assert.equal(changes, 3, 'reconnection refreshes');
+});

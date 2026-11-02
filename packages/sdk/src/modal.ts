@@ -21,6 +21,7 @@ export class MarkeeModal {
   private cardAvailable = false;
   private checkoutChecked = false;
   private account: Address | null = null;
+  private observedAccount: Address | null | undefined;
   private tab = 'main';
   private leaderboardOpen = false;
   private initialSelection = false;
@@ -92,7 +93,14 @@ export class MarkeeModal {
         provider?.on?.('accountsChanged', this.walletChanged); provider?.on?.('chainChanged', this.walletChanged);
       }
       const account = await this.client.account();
-      if (account?.toLowerCase() !== this.account?.toLowerCase() && !this.busy) this.walletChanged();
+      if (this.closed) return;
+      // Compare wallet observations, not the last API snapshot. A slow initial
+      // snapshot must not look like a wallet change and invalidate itself every poll.
+      if (this.observedAccount === undefined) this.observedAccount = account;
+      else if (account?.toLowerCase() !== this.observedAccount?.toLowerCase() && !this.busy) {
+        this.observedAccount = account;
+        this.walletChanged();
+      }
     } catch { /* A disconnected wallet does not prevent public browsing. */ }
     if (!this.closed) this.accountTimer = setTimeout(() => void this.watchAccount(), 2000);
   }
