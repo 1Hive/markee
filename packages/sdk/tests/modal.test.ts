@@ -44,6 +44,9 @@ test('payment review follows the compact Gardens summary without hiding transact
   assert.match(html, /<span>You&#39;ll earn<\/span>/);
   assert.match(html, /65\.74 MARKEE \(estimated\)/);
   assert.match(html, /<details class="review-details"><summary>Transaction details<\/summary>/);
+  assert.match(html, /data-cmd="copy-recipient" aria-label="Copy recipient address"/);
+  assert.match(html, /data-cmd="copy-wallet" aria-label="Copy wallet address"/);
+  assert.equal((html.match(/title="0x1111111111111111111111111111111111111111"/g) || []).length, 2);
   assert.doesNotMatch(html, /<ul>|<li>/);
   assert.match(modal.footerHtml(), />Confirm payment<\/button>/);
 });

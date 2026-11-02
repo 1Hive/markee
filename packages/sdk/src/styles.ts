@@ -78,6 +78,8 @@ footer{flex-shrink:0;padding:14px 20px;border-top:1px solid var(--markee-border)
 .review-details summary{cursor:pointer;color:var(--markee-link);font-size:12px}
 .review-details .review-row{font-size:11px;padding:7px 0}
 .review-details .review-row strong{font-size:11px;color:var(--markee-text)}
+.review-address{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.review-copy{padding:3px 7px;font-size:10px;line-height:1.3;color:var(--markee-link);white-space:nowrap}
 .review-details p{margin:8px 0}
 .review-footer .footer-actions{justify-content:flex-end}
 .review-footer .footer-actions>.primary:last-child{margin-left:0}

@@ -178,6 +178,16 @@ export class MarkeeModal {
     if (!button) return;
     const cmd = button.dataset.cmd!;
     if (cmd === 'close') { this.close(); return; }
+    if ((cmd === 'copy-recipient' || cmd === 'copy-wallet') && this.review) {
+      const address = cmd === 'copy-recipient' ? this.review.transaction.to : this.review.transaction.from;
+      const copying = navigator.clipboard?.writeText(address);
+      if (!copying) { button.textContent = 'Copy unavailable'; return; }
+      void copying.then(() => {
+        button.textContent = 'Copied';
+        setTimeout(() => { if (button.isConnected) button.textContent = 'Copy'; }, 2000);
+      }).catch(() => { button.textContent = 'Copy failed'; });
+      return;
+    }
     if (this.busy) return;
     this.captureDraft();
     if (cmd === 'leaderboard') { this.leaderboardOpen = !this.leaderboardOpen; this.render(); return; }
@@ -324,7 +334,7 @@ export class MarkeeModal {
       : action.kind === 'create' && payment ? 'Your payment gives you this Markee message'
       : 'Review this wallet action';
     const calloutText = action.kind === 'stream' ? 'Anyone can overtake your message. The refund pool offsets rent while you are not winning; you can stop the stream at any time.' : review.review.reward;
-    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div><div class="review-row"><span>Recipient</span><strong class="mono">${e(shortAddress(review.transaction.to))}</strong></div><div class="review-row"><span>Wallet</span><strong class="mono">${e(shortAddress(review.transaction.from))}</strong></div>${action.kind === 'stream' && value > 0n ? `<div class="review-row"><span>Estimated network fee</span><strong>${formatEth(review.review.estimatedGasCost)} ETH</strong></div>` : ''}${context.map(line => `<p>${e(line)}</p>`).join('')}${action.kind === 'stream' ? `<p>${e(review.review.reward)}</p>` : ''}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p></details></div>`;
+    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div><div class="review-row"><span>Recipient</span><div class="review-address"><strong class="mono" title="${e(review.transaction.to)}">${e(shortAddress(review.transaction.to))}</strong>${btn('copy-recipient', 'Copy', 'review-copy', 'aria-label="Copy recipient address"')}</div></div><div class="review-row"><span>Wallet</span><div class="review-address"><strong class="mono" title="${e(review.transaction.from)}">${e(shortAddress(review.transaction.from))}</strong>${btn('copy-wallet', 'Copy', 'review-copy', 'aria-label="Copy wallet address"')}</div></div>${action.kind === 'stream' && value > 0n ? `<div class="review-row"><span>Estimated network fee</span><strong>${formatEth(review.review.estimatedGasCost)} ETH</strong></div>` : ''}${context.map(line => `<p>${e(line)}</p>`).join('')}${action.kind === 'stream' ? `<p>${e(review.review.reward)}</p>` : ''}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p></details></div>`;
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
