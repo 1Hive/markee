@@ -34,7 +34,7 @@ test('payment review follows the compact Gardens summary without hiding transact
   modal.review = {
     action: { kind: 'fund', markee: address, amount: '2000000000000000' },
     transaction: { from: address, to: address, chainId: 8453, value: '0x71afd498d0000' },
-    review: { title: 'Fund this Markee', lines: ['Funding keeps the current message owner.', 'Native ETH sent: 0.002 ETH', 'Network: Base', `Recipient: ${address}`], estimatedGasCost: '11000000000000', reward: 'MARKEE reaches your wallet.' },
+    review: { title: 'Fund this Markee', lines: ['Funding keeps the current message owner.', 'Native ETH sent: 0.002 ETH', 'Network: Base', `Recipient: ${address}`], estimatedGasCost: '11000000000000', estimatedTokens: '65740030623460125633', reward: 'MARKEE reaches your wallet.' },
   };
   const html = modal.reviewHtml();
   assert.match(html, /class="review-message"/);
@@ -42,6 +42,7 @@ test('payment review follows the compact Gardens summary without hiding transact
   assert.match(html, /<span>Paying<\/span><strong>0\.002 ETH<\/strong>/);
   assert.match(html, /<span>Estimated network fee<\/span>/);
   assert.match(html, /<span>You&#39;ll earn<\/span>/);
+  assert.match(html, /65\.74 MARKEE \(estimated\)/);
   assert.match(html, /<details class="review-details"><summary>Transaction details<\/summary>/);
   assert.doesNotMatch(html, /<ul>|<li>/);
   assert.match(modal.footerHtml(), />Confirm payment<\/button>/);

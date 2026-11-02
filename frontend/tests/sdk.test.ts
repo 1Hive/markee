@@ -10,10 +10,27 @@ import { executeAdmin, operationStatus } from '../lib/sdk/operations';
 import { NextRequest } from 'next/server';
 import { GET, POST, OPTIONS } from '../app/api/sdk/v1/[...path]/route';
 import { publicDataProxyEnabled, readPresentationData, recordPublicView } from '../lib/sdk/presentation-data';
+import { buyerPayment, quoteSaleReward } from '../lib/sdk/reward-quote';
 
 const a = '0x1111111111111111111111111111111111111111' as const;
 const b = '0x2222222222222222222222222222222222222222' as const;
 const c = '0x3333333333333333333333333333333333333333' as const;
+
+test('sale quote follows live board splits and terminal output', async () => {
+  assert.equal(buyerPayment(10n ** 18n, 6200n, 3800n, true), 235600000000000000n);
+  assert.equal(buyerPayment(10n ** 18n, 6200n, 3800n, false), 380000000000000000n);
+  let simulated: Record<string, unknown> | undefined;
+  const context = {
+    strategy: 'sale', revnetEnabled: true, token: c, blockNumber: 123n,
+    r: async (name: string) => ({ percentToBeneficiary: 6200n, percentToPlatformFeeReceiver: 3800n,
+      platformFeeReceiver: b, revNetTerminal: c, revNetProjectId: 7n } as Record<string, unknown>)[name],
+    client: { simulateContract: async (args: Record<string, unknown>) => { simulated = args; return { result: 42n }; } },
+  };
+  assert.equal(await quoteSaleReward(context as never, 10n ** 18n, a), 42n);
+  assert.equal(simulated?.value, 235600000000000000n);
+  assert.equal(simulated?.blockNumber, 123n);
+  assert.equal(await quoteSaleReward({ ...context, revnetEnabled: false } as never, 10n ** 18n, a), null);
+});
 
 test('API input validation rejects unsupported chains, arbitrary actions and UTF-8 overflow', () => {
   assert.throws(() => placement({ kind: 'board', chainId: 1, address: a }));

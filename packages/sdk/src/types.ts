@@ -43,7 +43,7 @@ export type Action =
 export interface PreparedAction {
   id: string; expiresAt: number; placement: Placement; action: Action;
   transaction: { from: Address; to: Address; chainId: number; data: Hex; value: Hex; gas: Hex };
-  review: { title: string; lines: string[]; estimatedGasCost: string; reward: string };
+  review: { title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string };
 }
 export interface TransactionResult {
   status: 'pending' | 'confirmed' | 'reverted'; hash: Hex; explorerUrl: string;

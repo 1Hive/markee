@@ -311,7 +311,7 @@ export class MarkeeModal {
     const rows = payment ? [
       ['Paying', paying],
       [action.kind === 'stream' && value > 0n ? 'Depositing now' : 'Estimated network fee', action.kind === 'stream' && value > 0n ? `${formatEth(value.toString())} ETH` : `${formatEth(review.review.estimatedGasCost)} ETH`],
-      ["You'll earn", this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
+      ["You'll earn", review.review.estimatedTokens !== undefined ? `${formatEth(review.review.estimatedTokens, 4)} MARKEE (estimated)` : this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
     ] : [
       ['Action', review.review.title],
       ['Native ETH sent', `${formatEth(value.toString())} ETH`],

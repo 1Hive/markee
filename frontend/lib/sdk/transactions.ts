@@ -7,6 +7,7 @@ import { boardContext, read, resolvePlacement, streamContext } from './snapshot'
 import { assertTextLength, SDKError, wei } from './validation';
 import { invalidateVerifiedDisplay } from './cached-display';
 import { buildMarkeeOpenStreamOperations, CFA_V1_FORWARDER_ADDRESS, cfaV1ForwarderABI, getMarkeeAutoFunding, getMarkeeStreamAmounts, getMarkeeWithdrawableDeposit, superfluidHostABI } from './gardens/streaming';
+import { quoteSaleReward } from './reward-quote';
 
 const devSecret = randomBytes(32).toString('hex');
 function secret() {
@@ -135,11 +136,17 @@ export async function prepare(p: Placement, account: Address, action: Action): P
   const gas = (estimated * 125n + 99n) / 100n;
   const cost = gas * gasPrice;
   if (balance < value + cost) throw new SDKError('INSUFFICIENT_GAS', 'Keep enough native ETH for this transaction and network fees.');
+  let estimatedTokens: string | undefined;
+  if (c.strategy === 'sale' && (action.kind === 'create' || action.kind === 'fund') && c.revnetEnabled) {
+    // A quote is informative only. RPC/provider outages must not block a valid payment.
+    try { estimatedTokens = (await quoteSaleReward(c, value, account))?.toString(); }
+    catch { /* The review retains its qualitative reward description. */ }
+  }
   const transaction = { from: account, to, data, chainId: c.chainId, value: toHex(value), gas: toHex(gas) };
   const expiresAt = Date.now() + 5 * 60_000;
   const id = signEnvelope({ transaction, placement: p, action, expiresAt, token: c.token, board: c.board, issuedAt: Date.now() });
   lines.push(`Native ETH sent: ${formatEther(value)} ETH`, `Network: ${resolveClientChain(c.chainId).name}`, `Recipient: ${to}`);
-  return { id, expiresAt, placement: p, action, transaction, review: { title, lines, estimatedGasCost: cost.toString(), reward } };
+  return { id, expiresAt, placement: p, action, transaction, review: { title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {
