@@ -140,7 +140,12 @@ No deployment, npm publication or live transaction is performed by these tests.
 
 Implemented in `/checkout/[id]` with durable KV sessions and the SDK's Pay by card
 handoff. This source feature remains disabled until Markee sets
-`MARKEE_HOSTED_CHECKOUT_ENABLED=true`. It requires the existing public Privy app ID,
+`FLAG_SDK_PAY_IN_MARKEE=true`. This server-only flag defaults to false (only the
+exact value `true` enables it). The SDK reads `GET /api/sdk/v1/checkout/config`
+and uses its `enabled` value; integrators do not configure this flag. The former
+`MARKEE_HOSTED_CHECKOUT_ENABLED` variable no longer enables checkout. Disabling
+the flag prevents new checkout/payment actions while preserving status and receipt
+verification for existing payments. It requires the existing public Privy app ID,
 working KV REST URL/token, a stable 32+ character SDK signing secret, and Base RPC.
 Configure Privy's allowed origins for the checkout deployment and enable card
 funding in the Privy dashboard and app-pays gas sponsorship on Base. The host app needs none of

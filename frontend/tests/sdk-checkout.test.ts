@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkoutDeps, checkoutRequest, createCheckout, checkoutOrigin, hostedCheckoutOrigin, type CheckoutRecord } from '../lib/sdk/checkout';
+import { checkoutEnabled, checkoutDeps, checkoutRequest, createCheckout, checkoutOrigin, hostedCheckoutOrigin, type CheckoutRecord } from '../lib/sdk/checkout';
 import { conversionDeps, conversionTransaction, type ConversionStep } from '../lib/sdk/conversion';
 import type { PreparedAction, TransactionResult } from '../../packages/sdk/src/types';
 const board = '0x1111111111111111111111111111111111111111' as const;
@@ -140,4 +140,38 @@ test('checkout origin is server-selected and validated before creating a session
       assert.throws(hostedCheckoutOrigin);
     }
   } finally { if (old === undefined) delete process.env.MARKEE_CHECKOUT_ORIGIN; else process.env.MARKEE_CHECKOUT_ORIGIN = old; }
+});
+
+
+test('SDK Pay in Markee defaults off and requires an explicit flag plus configured services', () => {
+  const values = {
+    FLAG_SDK_PAY_IN_MARKEE: 'true',
+    MARKEE_HOSTED_CHECKOUT_ENABLED: 'true',
+    NEXT_PUBLIC_PRIVY_APP_ID: 'test-app',
+    KV_REST_API_URL: 'https://example.test',
+    KV_REST_API_TOKEN: 'test-token',
+    MARKEE_SDK_SIGNING_SECRET: 's'.repeat(32),
+  };
+  const previous = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  try {
+    Object.assign(process.env, values);
+    assert.equal(checkoutEnabled(), true);
+    for (const flag of [undefined, '', 'false', 'TRUE', '1']) {
+      if (flag === undefined) delete process.env.FLAG_SDK_PAY_IN_MARKEE;
+      else process.env.FLAG_SDK_PAY_IN_MARKEE = flag;
+      assert.equal(checkoutEnabled(), false, `flag ${flag} must not enable checkout`);
+    }
+    process.env.FLAG_SDK_PAY_IN_MARKEE = 'true';
+    for (const key of ['NEXT_PUBLIC_PRIVY_APP_ID', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'MARKEE_SDK_SIGNING_SECRET']) {
+      const value = process.env[key];
+      delete process.env[key];
+      assert.equal(checkoutEnabled(), false, `${key} is required`);
+      process.env[key] = value;
+    }
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });

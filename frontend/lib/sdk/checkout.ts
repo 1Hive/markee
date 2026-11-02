@@ -43,7 +43,7 @@ export function hostedCheckoutOrigin(): string | undefined {
   return url.origin;
 }
 export function checkoutEnabled() {
-  return process.env.MARKEE_HOSTED_CHECKOUT_ENABLED === 'true' && !!process.env.NEXT_PUBLIC_PRIVY_APP_ID &&
+  return process.env.FLAG_SDK_PAY_IN_MARKEE === 'true' && !!process.env.NEXT_PUBLIC_PRIVY_APP_ID &&
     !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN && (process.env.MARKEE_SDK_SIGNING_SECRET?.length || 0) >= 32;
 }
 export function checkoutOrigin(input: unknown) {
