@@ -5,6 +5,7 @@
 // across every streaming board. Opened from the auto-deposit line on the streaming buy/fund modals
 // and from a button on /account -- entirely wallet-scoped, so it takes no board/markee props.
 
+import { CardDeposit } from '@/components/checkout/CardDeposit'
 import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useBalance, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
@@ -359,6 +360,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                       {busy ? (isPending ? 'Confirm…' : 'Pending…') : action === 'deposit' ? 'Deposit' : 'Withdraw'}
                     </button>
                   </div>
+                  {action === 'deposit' && activeAddress && <CardDeposit address={activeAddress} amount={amount} onRefresh={() => { void refetchBalance(); refresh(true) }} />}
                   {action === 'deposit' ? (
                     streamingNowRate > 0n ? (
                       <div style={{ display: 'flex', gap: 8 }}>
