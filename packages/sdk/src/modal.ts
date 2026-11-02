@@ -50,7 +50,9 @@ export class MarkeeModal {
   private walletChanged = () => {
     this.initialSelection = false;
     this.review = undefined; this.authorization = undefined; this.form = undefined; this.tab = 'main';
-    this.result = undefined; this.error = 'Wallet changed. Refreshing this placement…';
+    this.result = undefined; this.error = '';
+    this.snapshot = undefined;
+    this.render();
     void this.reload();
   };
   constructor(readonly client: MarkeeClient, readonly options: ModalOptions) {
@@ -475,13 +477,13 @@ export class MarkeeModal {
     if (this.wallets) body = `<h2>Choose your wallet</h2><div class="wallets">${this.wallets.map((w, i) => btn(`wallet:${i}`, e(w.name))).join('')}</div>`;
     else if (this.review) body = this.reviewHtml();
     else if (this.authorization) body = this.authorizationHtml();
-    else if (!s) body = this.error ? btn('refresh', 'Retry', 'primary') : '<div class="loading"><span class="spinner"></span>Loading Markee…</div>';
+    else if (!s) body = this.error ? btn('refresh', 'Retry', 'primary') : '<div class="loading" role="status" aria-live="polite"><span class="spinner"></span>Loading Markee…</div>';
     else if (this.pending) body = `<h2>Waiting for confirmation</h2><p>Your transaction was sent. You can close this modal and come back to check it.</p><p class="meta mono">${e(this.pending.hash)}</p><p class="note">Do not send a second payment while this transaction is pending.</p>`;
     else if (!s.board || this.tab === 'community') body = this.communityHtml();
     else if (this.tab === 'wallet') body = this.walletHtml();
     else body = `${this.form?.kind.startsWith('edit') ? '' : this.entriesHtml()}${this.formHtml()}${!this.account ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.hostedEligible() ? 'Pay in Markee is not supported for this board yet.' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
     const result = this.result ? `<div class="${this.result.status === 'reverted' || this.result.settlement === 'deferred' ? 'error' : 'success'}">${this.result.status === 'reverted' ? 'Transaction reverted. No action was completed.' : this.result.settlement === 'deferred' ? 'The transaction confirmed, but reward settlement was deferred. Your claim remains available.' : `Transaction confirmed.${this.result.tokensReceived && BigInt(this.result.tokensReceived) > 0n ? ` ${formatEth(this.result.tokensReceived, 2)} MARKEE delivered to your wallet.` : ''}`} ${link(this.result.explorerUrl, 'View receipt')}</div>` : '';
-    this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1><p class="header-caption">${e(s?.name || 'Markee')}${s ? ` · ${s.strategy === 'rent' ? 'For rent' : 'For sale'}${s.chainId === 8453 ? ' · Base' : s.chainId === 11155111 ? ' · Sepolia testnet' : ''}` : ''}</p></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy}"><div role="status" aria-live="polite">${this.busy ? '<p class="meta"><span class="spinner"></span>Working…</p>' : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
+    this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1><p class="header-caption">${e(s?.name || 'Markee')}${s ? ` · ${s.strategy === 'rent' ? 'For rent' : 'For sale'}${s.chainId === 8453 ? ' · Base' : s.chainId === 11155111 ? ' · Sepolia testnet' : ''}` : ''}</p></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy || (!s && !this.error)}"><div role="status" aria-live="polite">${this.busy ? '<p class="meta"><span class="spinner"></span>Working…</p>' : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
     if (this.busy) this.root.querySelectorAll<HTMLButtonElement>('button:not([data-cmd="close"])').forEach(b => { b.disabled = true; });
     const draft = this.drafts.get(this.draftKey());
     if (draft) for (const field of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input,textarea,select')) {
