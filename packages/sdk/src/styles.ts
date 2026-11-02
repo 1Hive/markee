@@ -104,6 +104,7 @@ footer{flex-shrink:0;padding:14px 20px;border-top:1px solid var(--markee-border)
 .funding-card>label{font-size:11px;color:var(--markee-muted);font-weight:500;margin-bottom:8px}.amount-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.amount-value{display:flex;gap:6px;align-items:baseline;min-width:0;flex:1 1 140px}.amount-value input{background:transparent;border:0;border-radius:2px;box-shadow:none;font-family:ui-monospace,monospace;font-size:23px;font-weight:600;min-width:0;width:100%;padding:3px 0;color:var(--markee-text)}.amount-value>span{font-size:11px;color:var(--markee-muted);white-space:nowrap}.amount-presets{display:flex;gap:6px;margin-left:auto}.amount-presets button{color:var(--markee-link)}.amount-presets button[aria-pressed=true]{border-color:var(--markee-link);background:var(--markee-selected);color:var(--markee-selected-text)}
 .funding-caption{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;margin-top:9px;color:var(--markee-muted);font-size:10px}.funding-tools{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid var(--markee-border);margin-top:13px;padding-top:12px}.funding-tools .meta{font-size:10px}.funding-hint{font-size:11px;margin:0}.funding-hint+.note{margin:0;font-size:11px}
 .footer-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.footer-actions>.primary:last-child{margin-left:auto}.footer-actions:empty{display:none}.footer-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:10px}.footer-meta .text-button{font-size:10px}
+.payment-choice-footer .footer-actions{justify-content:flex-end}.payment-choice-footer .footer-actions>.primary:last-child{margin-left:0}
 
 @media(max-width:560px){.overlay{padding:8px;align-items:flex-end}
 .panel{border-radius:var(--markee-radius) var(--markee-radius) var(--markee-control-radius) var(--markee-control-radius);max-height:94dvh}
@@ -116,6 +117,7 @@ footer{padding:12px 18px}
 .btn{padding:10px 12px}
 .compact{padding:5px 9px}.text-button{padding:0}.footer-actions>.btn{flex:1;white-space:normal}.footer-actions>.primary:last-child{margin-left:0}
 .review-footer .footer-actions>.btn{flex:0 1 auto}
+.payment-choice-footer .footer-actions>.btn{flex:0 1 auto}
 }
 
 @media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}

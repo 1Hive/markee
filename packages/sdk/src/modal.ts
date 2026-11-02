@@ -420,6 +420,7 @@ export class MarkeeModal {
   private footerHtml() {
     const s = this.snapshot;
     let actions = '';
+    let alignPaymentActions = false;
     if (this.wallets) actions = btn('back', 'Back');
     else if (this.review) actions = btn('back', 'Back') + btn('send', this.review.action.kind === 'fund' || this.review.action.kind === 'stream' || this.review.action.kind === 'create' && BigInt(this.review.transaction.value) > 0n ? 'Confirm payment' : 'Confirm in wallet', 'primary');
     else if (this.authorization) actions = btn('back', 'Back') + btn('sign', 'Sign authorization', 'primary');
@@ -428,9 +429,12 @@ export class MarkeeModal {
       const editing = this.form?.kind.startsWith('edit');
       const secondary = editing ? btn('back', 'Cancel') : s.strategy === 'rent' && BigInt(s.wallet?.flowRate ?? '0') > 0n ? btn('stop', 'Stop streaming', 'danger') : '';
       if (!this.account) actions = btn('card', 'Pay', 'primary', !this.checkoutChecked || !this.cardAvailable || !this.hostedEligible() ? 'disabled' : '');
-      else actions = (this.cardAvailable && s.strategy === 'sale' && s.chainId === 8453 && s.placement.kind === 'board' && s.revnetEnabled && !!s.token && !editing ? btn('card', 'Pay by card', 'primary') : '') + secondary + (!this.account ? btn('connect', 'Connect wallet', 'primary') : `<button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button>`);
+      else {
+        alignPaymentActions = this.cardAvailable && this.hostedEligible() && !editing;
+        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button>`;
+      }
     } else if (s) actions = btn('tab:main', 'Back to Markee');
-    return `<footer${this.review ? ' class="review-footer"' : ''}><div class="footer-actions">${actions}</div>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community treasury', 'text-button') : ''}</div>`}</footer>`;
+    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}><div class="footer-actions">${actions}</div>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community treasury', 'text-button') : ''}</div>`}</footer>`;
   }
   private render() {
     if (this.closed) return;
