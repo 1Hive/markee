@@ -103,6 +103,10 @@ export interface MarkeeTheme {
   fontFamily?: string;
   /** Panel corner radius in pixels, clamped to 0–48. Controls scale with it. Default: 22. */
   radius?: number;
+  /** Card corner radius in pixels, 0–48. Defaults to 64% of radius. */
+  cardRadius?: number;
+  /** Button and input corner radius in pixels, 0–48. Defaults to 45% of radius. */
+  controlRadius?: number;
   /** Sign hover surface color. Defaults to the normal surface; set false to keep it unchanged. */
   sign?: {
     hoverBackground?: string | false;

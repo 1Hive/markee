@@ -121,7 +121,9 @@ import { createMarkee, type MarkeeTheme } from '@markee_team/sdk';
 const theme: MarkeeTheme = {
   mode: 'system',
   fontFamily: '"DM Sans", system-ui, sans-serif',
-  radius: 12,
+  radius: 16,
+  cardRadius: 12,
+  controlRadius: 8,
   colors: {
     primary: '#743a84',
     primaryText: '#ffffff',
@@ -143,7 +145,9 @@ Theme changes update styles in place: drafts, focus, scroll, wallet sessions, an
 | --- | --- |
 | `mode` | `light`, `dark`, or `system` |
 | `fontFamily` | CSS font stack; the app supplies any custom font |
-| `radius` | Panel radius in pixels, 0–48 (default 22); card and control corners scale with it |
+| `radius` | Panel radius in pixels, 0–48 (default 22) |
+| `cardRadius` | Card radius in pixels, 0–48; defaults to 64% of panel radius |
+| `controlRadius` | Button and input radius in pixels, 0–48; defaults to 45% of panel radius |
 | `colors` | Partial overrides for the semantic tokens below |
 | `sign.hoverLogo` | Show the theme-matched MARKEE logo on hover/focus (default `true`) |
 | `sign.hoverBackground` | Optional sign hover surface color; defaults to the normal surface |

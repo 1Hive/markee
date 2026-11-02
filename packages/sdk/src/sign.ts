@@ -42,8 +42,10 @@ button.sign:hover .watermark img,button.sign:focus-visible .watermark img{opacit
 .obscured{filter:blur(8px);user-select:none;pointer-events:none}
 .veil{position:absolute;z-index:2;inset:25px 12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--markee-surface) 75%,transparent);color:var(--markee-muted);font-size:13px;text-align:center;padding:12px}
 .notice{position:relative;z-index:1;color:var(--markee-muted);font-size:13px;margin:0}
-.rate{position:absolute;z-index:3;bottom:-12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:8px;background:var(--markee-accent);color:var(--markee-accent-text);box-shadow:0 7px 20px color-mix(in srgb,var(--markee-accent) 35%,transparent);padding:4px 13px;font-family:ui-monospace,monospace;font-size:11px;font-weight:700;line-height:1.2}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.rate{opacity:0;pointer-events:none;transition:opacity 200ms ease;position:absolute;z-index:3;bottom:-12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:8px;background:var(--markee-accent);color:var(--markee-accent-text);box-shadow:0 7px 20px color-mix(in srgb,var(--markee-accent) 35%,transparent);padding:4px 13px;font-family:ui-monospace,monospace;font-size:11px;font-weight:700;line-height:1.2}
+button.sign:hover .rate,button.sign:focus-visible .rate{opacity:1}
+@media(hover:none){button.sign .rate{opacity:1}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 `;
 
 /** @internal Pure renderer kept separate so hidden-content behavior can be verified. */

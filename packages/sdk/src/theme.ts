@@ -45,8 +45,10 @@ export function createThemeController(host: HTMLElement, initial?: MarkeeTheme) 
       host.style.setProperty('--markee-font-family', theme.fontFamily && CSS.supports('font-family', theme.fontFamily) ? theme.fontFamily : defaultFont);
       const radius = typeof theme.radius === 'number' && Number.isFinite(theme.radius) ? Math.max(0, Math.min(48, theme.radius)) : 22;
       host.style.setProperty('--markee-radius', `${radius}px`);
-      host.style.setProperty('--markee-card-radius', `${radius * 0.64}px`);
-      host.style.setProperty('--markee-control-radius', `${radius * 0.45}px`);
+      const corner = (value: number | undefined, fallback: number) =>
+        typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(48, value)) : fallback;
+      host.style.setProperty('--markee-card-radius', `${corner(theme.cardRadius, radius * 0.64)}px`);
+      host.style.setProperty('--markee-control-radius', `${corner(theme.controlRadius, radius * 0.45)}px`);
       host.style.setProperty('--markee-small-radius', `${radius * 0.32}px`);
     };
     apply();
