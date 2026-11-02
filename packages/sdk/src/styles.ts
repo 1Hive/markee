@@ -32,6 +32,11 @@ p{margin:8px 0 14px}
 .btn{border:1px solid var(--markee-border);border-radius:var(--markee-control-radius);background:var(--markee-surface);color:var(--markee-text);padding:10px 15px;font-weight:600;font-size:13px}
 .primary{background:var(--markee-primary);border-color:var(--markee-primary);color:var(--markee-primary-text)}
 .accent{background:var(--markee-accent);border-color:var(--markee-accent);color:var(--markee-accent-text)}
+.review-action{position:relative;display:inline-flex;margin-left:auto}.review-action>button{width:100%}
+.review-action.insufficient,.review-action.insufficient button{cursor:not-allowed}
+.balance-tooltip{position:absolute;bottom:calc(100% + 8px);right:0;width:max-content;max-width:min(280px,75vw);padding:8px 12px;border:1px solid var(--markee-border);border-radius:8px;background:var(--markee-background);color:var(--markee-text);font-size:12px;line-height:1.5;z-index:2;visibility:hidden}
+.balance-tooltip[hidden]{display:none}
+.review-action:hover .balance-tooltip,.review-action:focus .balance-tooltip{visibility:visible}
 .danger{color:var(--markee-error-text)}
 .full{width:100%}
 .card{border:1px solid var(--markee-border);border-radius:var(--markee-card-radius);background:var(--markee-surface);padding:17px 18px}

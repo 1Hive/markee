@@ -388,7 +388,7 @@ export class MarkeeModal {
     const defaultAmount = BigInt(s.minimum) > presets.minimum ? BigInt(s.minimum) : presets.minimum;
     const initial = current > defaultAmount ? current : defaultAmount;
     const minimum = !rent && entry ? 1n : BigInt(s.minimum);
-    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${exact(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${this.account && w ? `<span>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div><div class="funding-tools">${this.account ? btn('tab:wallet', rent ? 'Deposit manager →' : 'Wallet & rewards →', 'text-button') : ''}<span class="meta">${rent ? w?.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days remaining` : w ? `${formatEth(w.ethx)} ETHx available` : 'ETH funds your ETHx balance' : 'One-time payment'}</span></div></section><p class="meta funding-hint">${rent ? 'Unspent rent is refunded while your message is not the winner. You can stop streaming at any time.' : entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`;
+    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${exact(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div><div class="funding-tools">${this.account ? btn('tab:wallet', rent ? 'Deposit manager →' : 'Wallet & rewards →', 'text-button') : ''}<span class="meta">${rent ? w?.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days remaining` : w ? `${formatEth(w.ethx)} ETHx available` : 'ETH funds your ETHx balance' : 'One-time payment'}</span></div></section><p class="meta funding-hint">${rent ? 'Unspent rent is refunded while your message is not the winner. You can stop streaming at any time.' : entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`;
   }
   private formHtml() {
     const s = this.snapshot!, form = this.form;
@@ -408,6 +408,30 @@ export class MarkeeModal {
       const presets = fundingPresets(this.snapshot, this.form?.entry);
       let value: bigint | undefined;
       try { value = BigInt(parseEth(amount.value, this.snapshot.strategy === 'sale')); } catch { /* Keep draft text while typing. */ }
+      const insufficient = !!this.account && this.snapshot.strategy === 'sale' && !!this.snapshot.wallet
+        && value !== undefined && value > BigInt(this.snapshot.wallet.eth);
+      this.root.querySelector('[data-wallet-balance]')?.classList.toggle('danger', insufficient);
+      const reviewButton = this.root.querySelector<HTMLButtonElement>('button[form="markee-action"]');
+      const tooltip = this.root.querySelector<HTMLElement>('#balance-tooltip');
+      const wrapper = this.root.querySelector<HTMLElement>('.review-action');
+      if (reviewButton) {
+        reviewButton.disabled = this.busy || insufficient;
+        if (insufficient) reviewButton.setAttribute('aria-describedby', 'balance-tooltip');
+        else reviewButton.removeAttribute('aria-describedby');
+      }
+      if (tooltip) tooltip.hidden = !insufficient;
+      if (wrapper) {
+        wrapper.classList.toggle('insufficient', insufficient);
+        if (insufficient) {
+          wrapper.tabIndex = 0;
+          wrapper.setAttribute('aria-label', 'Review payment unavailable: not enough ETH.');
+          wrapper.setAttribute('aria-describedby', 'balance-tooltip');
+        } else {
+          wrapper.removeAttribute('tabindex');
+          wrapper.removeAttribute('aria-label');
+          wrapper.removeAttribute('aria-describedby');
+        }
+      }
       const minimum = this.snapshot.strategy === 'sale' && this.form ? 1n : BigInt(this.snapshot.minimum);
       amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${exact(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
       this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum));
@@ -458,7 +482,7 @@ export class MarkeeModal {
       if (!this.account) actions = btn('card', 'Pay', 'primary', !this.checkoutChecked || !this.cardAvailable || !this.hostedEligible() ? 'disabled' : '');
       else {
         alignPaymentActions = this.cardAvailable && this.hostedEligible() && !editing;
-        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button>`;
+        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<span class="review-action"><button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button><span id="balance-tooltip" class="balance-tooltip" role="tooltip" hidden>You don’t have enough ETH for this payment.</span></span>`;
       }
     } else if (s) actions = btn('tab:main', 'Back to Markee');
     return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}><div class="footer-actions">${actions}</div>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community treasury', 'text-button') : ''}</div>`}</footer>`;
