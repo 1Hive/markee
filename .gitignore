@@ -20,3 +20,11 @@ node_modules/
 
 # Local-only streaming dev/testnet scripts (kept out of the repo)
 /frontend/scripts/
+
+# SDK and sample build artifacts
+/packages/sdk/dist/
+/examples/connectkit/dist/
+/output/playwright/
+/.playwright-cli/
+
+/examples/card-checkout/dist/

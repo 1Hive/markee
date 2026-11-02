@@ -7,7 +7,7 @@ import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { readBoardViews } from '@/lib/views/boards'
 import { normalizeHost, lastSiteViewKey } from '@/lib/views/host'
-import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/daily'
+import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/keys'
 
 // Counts change with every view: never let Next serve these KV reads from its data cache.
 export const dynamic = 'force-dynamic'

@@ -3,6 +3,8 @@ import { kv } from '@vercel/kv'
 import { parseAbi, type Address } from 'viem'
 import { getModerationClient } from '@/lib/moderation/server'
 import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
+import { dayOf, dailyViewsKey } from './keys'
+export { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from './keys'
 
 // Day-by-day history for the dashboard charts. Everything is stored per UTC day, as a hash field
 // named YYYY-MM-DD on one key per address, so history grows by one field per day.
@@ -10,12 +12,6 @@ import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
 // Views are exact: /api/views counts each view into its day as it lands. Money is a running total
 // snapshotted once a day (boards by the stats-snapshot cron, wallets when their dashboard loads); a
 // day's amount is how much the total grew since the snapshot before it.
-
-export const dayOf = (ms: number = Date.now()) => new Date(ms).toISOString().slice(0, 10)
-
-export const dailyViewsKey = (address: string) => `views:daily:${address.toLowerCase()}`
-// First day views were counted by day, so the charts know where real history begins.
-export const VIEWS_SINCE_KEY = 'views:daily:since'
 
 export const raisedSnapshotKey = (board: string) => `stats:raised:${board.toLowerCase()}`
 export const boughtSnapshotKey = (wallet: string) => `stats:bought:${wallet.toLowerCase()}`
