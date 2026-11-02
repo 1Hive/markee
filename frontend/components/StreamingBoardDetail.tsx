@@ -259,7 +259,6 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               totalLabel="Total streamed"
               totalNode={totalStreamedNode}
               messagesLabel="Messages"
-              topMarkeeAddress={topMarkee.address}
               onAddToSite={() => setEmbedOpen(true)}
             />
           </section>

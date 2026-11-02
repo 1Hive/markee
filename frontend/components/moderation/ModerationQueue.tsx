@@ -2,47 +2,38 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
+import { ArrowUpRight, Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
+import { useAccount } from 'wagmi'
+import { MODERATION_API } from '@/lib/moderation/config'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
-import { MONO, PINK, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG, LAVENDER } from '@/lib/design-tokens'
-import { MAX_REVIEW_BATCH, type QueueAction, type ModerationItem, type QueueBoard } from '@/lib/moderation/queue'
-import { AttnGroup, PanelHead, WalletPending, fmtAddr, isUserRejection } from '@/components/account/primitives'
+import { MONO, PINK, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG } from '@/lib/design-tokens'
+import { type QueueAction, type ModerationItem, type QueueBoard, type VisibleMessage } from '@/lib/moderation/queue'
+import { AttnGroup, Pager, PanelHead, SegToggle, WalletPending, fmtAddr, isUserRejection } from '@/components/account/primitives'
 import { useToast } from '@/components/account/Toast'
 
 const itemId = (it: ModerationItem) => `${it.markee}:${it.blockNumber}`
 const ago = (it: ModerationItem) => it.at > 0 ? formatDistanceToNow(it.at * 1000, { addSuffix: true }) : null
 const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '0 12px', height: 32, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7 }
 
-// Where this viewer's flags on a board take effect: a board moderator's hide the message on every
-// site showing the board, a global admin's only on markee.xyz.
-function scopeText(board: QueueBoard | undefined): { text: string; title: string } | null {
-  if (!board) return null
-  return board.scopes.includes('board')
-    ? { text: 'Flags hide everywhere', title: 'You moderate this board, so a flag hides the message on every site showing it.' }
-    : { text: 'Flags hide on markee.xyz only', title: 'You review this board as a markee.xyz admin, so a flag hides the message on markee.xyz only.' }
-}
-
-function LiveTag({ live }: { live: boolean }) {
+// A link to the board's page, where the message shows on its Markee sign.
+function SignLink({ item, board }: { item: { board: string }; board: { name?: string } | undefined }) {
   return (
-    <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: live ? LAVENDER : MUTED, border: `1px solid ${live ? 'rgba(180,172,247,0.45)' : 'rgba(138,143,191,0.35)'}`, borderRadius: 99, padding: '1px 7px', whiteSpace: 'nowrap' }}>
-      {live ? 'Live on sign' : 'Not live'}
-    </span>
+    <a href={`/markee/${item.board}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11.5, color: TEXT2, textDecoration: 'none' }}>
+      {board?.name || fmtAddr(item.board)} <ArrowUpRight size={11} />
+    </a>
   )
 }
 
 // One message awaiting review, used by both the Activity Feed and the Creator Hub Moderation panel.
-// `live` is whether it's the board's current #1; undefined when the board's top isn't known here.
-export function ModerationItemRow({ item, board, live, onReview }: {
+export function ModerationItemRow({ item, board, onReview }: {
   item: ModerationItem
   board: QueueBoard | undefined
-  live?: boolean
   onReview: (action: QueueAction, ids: string[]) => Promise<void>
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
   const edited = item.kind === 'edited'
-  const scope = scopeText(board)
 
   const go = async (action: QueueAction) => {
     setBusy(true)
@@ -75,10 +66,7 @@ export function ModerationItemRow({ item, board, live, onReview }: {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
           {ago(item) && <span>{ago(item)}</span>}
-          {live !== undefined && <LiveTag live={live} />}
-          <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{board?.name || fmtAddr(item.board)}</span>
-          <span>by <a href={`https://basescan.org/address/${item.author}`} target="_blank" rel="noreferrer" style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2, textDecoration: 'none' }}>{fmtAddr(item.author)}</a></span>
-          {scope && <span title={scope.title}>{scope.text}</span>}
+          <SignLink item={item} board={board} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
@@ -104,7 +92,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
     setBusy(true)
     setError(null)
     try {
-      await onReview('approve', [item.markee])
+      await onReview('unflag', [item.markee])
       toast('Message unflagged')
     } catch (e) {
       if (!isUserRejection(e)) setError('That review did not go through. Try again.')
@@ -120,8 +108,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {ago(item) && <span>{ago(item)}</span>}
-          <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{board?.name || fmtAddr(item.board)}</span>
-          <span>by {fmtAddr(item.author)}</span>
+          <SignLink item={item} board={board} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
@@ -139,63 +126,128 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
   )
 }
 
-// Creator Hub Moderation panel: the review queue (same rows as the Activity Feed) and the messages
-// this wallet's flags are hiding, which can be revealed and unflagged.
-export function ModerationQueue({ liveMarkees }: { liveMarkees?: Set<string> }) {
-  const { review, items, flagged, boards, isLoading, error } = useModerationQueue()
-  const [approvingAll, setApprovingAll] = useState(false)
+// One unflagged message on a board this wallet moderates, which it can flag.
+function VisibleRow({ item, onReview }: { item: VisibleMessage; onReview: (action: QueueAction, ids: string[]) => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const toast = useToast()
-  const boardOf = (it: ModerationItem) => boards.find(b => b.address === it.board)
-  const liveOf = (it: ModerationItem) => liveMarkees && liveMarkees.size ? liveMarkees.has(it.markee.toLowerCase()) : undefined
-  const signatures = Math.ceil(items.length / MAX_REVIEW_BATCH)
 
-  const approveAll = async () => {
-    setApprovingAll(true)
+  const flag = async () => {
+    setBusy(true)
+    setError(null)
     try {
-      await review('approve', items.map(i => i.markee))
-      toast(`Approved ${items.length} messages`)
-    } catch { /* the queue refetches and shows what landed */ } finally {
-      setApprovingAll(false)
+      await onReview('flag', [item.markee])
+      toast('Message flagged')
+    } catch (e) {
+      if (!isUserRejection(e)) setError('That review did not go through. Try again.')
+      setBusy(false)
     }
   }
 
   return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {item.message || 'Empty message'}{item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
+          {item.rank === 1
+            ? <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: PINK }}>Winning</span>
+            : <span style={{ fontFamily: MONO, fontSize: 11 }}>#{item.rank}</span>}
+          <SignLink item={item} board={{ name: item.boardName }} />
+        </div>
+        {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
+      </div>
+      {busy ? <WalletPending /> : (
+        <button onClick={flag} style={{ ...ghost, color: DANGER, border: '1px solid rgba(255,138,155,0.45)' }}>Flag</button>
+      )}
+    </div>
+  )
+}
+
+const LIST_PAGE = 10
+
+// Creator Hub Moderation panel: the amber review queue, then every message on the wallet's boards,
+// toggled between the ones showing (winning first, flaggable) and the ones its flags hide (unflaggable).
+export function ModerationQueue() {
+  const { address } = useAccount()
+  const { review, items, flagged, boards, isLoading, error } = useModerationQueue()
+  const [view, setView] = useState<'visible' | 'flagged'>('visible')
+  const [flaggedPage, setFlaggedPage] = useState(0)
+  const [visiblePage, setVisiblePage] = useState(0)
+  const [visible, setVisible] = useState<{ total: number; items: VisibleMessage[] } | null>(null)
+  const [visibleKey, setVisibleKey] = useState(0)
+  const boardOf = (it: { board: string }) => boards.find(b => b.address === it.board)
+  const me = address?.toLowerCase()
+
+  useEffect(() => {
+    if (!me) return
+    let cancelled = false
+    fetch(`${MODERATION_API}/messages?moderator=${me}&page=${visiblePage}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() as Promise<{ total: number; items: VisibleMessage[] }> : null)
+      .then(d => { if (!cancelled) setVisible(d ?? { total: 0, items: [] }) })
+      .catch(() => { if (!cancelled) setVisible({ total: 0, items: [] }) })
+    return () => { cancelled = true }
+  }, [me, visiblePage, visibleKey, flagged.length])
+
+  // Flagging or unflagging moves a message between the two lists, so both refresh.
+  const reviewAndRefresh = async (action: QueueAction, ids: string[]) => {
+    await review(action, ids)
+    setVisibleKey(k => k + 1)
+  }
+
+  const flaggedShown = Math.min(flaggedPage, Math.max(0, Math.ceil(flagged.length / LIST_PAGE) - 1))
+
+  return (
     <section style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
-      <PanelHead label="Moderation" n={isLoading ? undefined : items.length + flagged.length} />
+      <PanelHead label="Moderation" n={isLoading ? undefined : items.length}>
+        <SegToggle
+          label="Show"
+          value={view}
+          onChange={setView}
+          options={[{ k: 'visible', l: 'Visible', n: visible?.total }, { k: 'flagged', l: 'Flagged', n: flagged.length }]}
+        />
+      </PanelHead>
       {isLoading ? (
         <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[1, 2].map(i => <div key={i} style={{ height: 64, background: 'rgba(138,143,191,0.08)', borderRadius: 14 }} />)}
         </div>
       ) : error ? (
         <div style={{ padding: '18px', fontSize: 13, color: DANGER }}>Could not load the moderation queue. It retries every minute.</div>
+      ) : boards.length === 0 ? (
+        <div style={{ padding: '18px', fontSize: 13, color: MUTED }}>You do not moderate any boards yet.</div>
       ) : (
         <>
-          <div style={{ padding: '18px 18px 20px', borderBottom: `1px solid ${BORDER}` }}>
-            {items.length > 0 ? (
+          {items.length > 0 && (
+            <div style={{ padding: '18px 18px 20px', borderBottom: `1px solid ${BORDER}` }}>
               <AttnGroup
                 title="Moderation Queue"
                 sub="Approve or flag new messages."
                 items={items}
                 noun={['message', 'messages']}
-                right={items.length > 1 && (approvingAll ? <WalletPending /> : (
-                  <button onClick={approveAll} style={{ ...ghost, color: TEXT2, border: `1px solid ${BORDER}` }}>
-                    Approve All{signatures > 1 ? ` (${signatures} signatures)` : ''}
-                  </button>
-                ))}
-                render={it => <ModerationItemRow key={itemId(it)} item={it} board={boardOf(it)} live={liveOf(it)} onReview={review} />}
+                pageSize={5}
+                render={it => <ModerationItemRow key={itemId(it)} item={it} board={boardOf(it)} onReview={reviewAndRefresh} />}
               />
+            </div>
+          )}
+          {view === 'visible' ? (
+            visible === null ? (
+              <div style={{ padding: '14px 18px' }}><WalletPending label="Loading messages…" /></div>
+            ) : visible.items.length === 0 ? (
+              <div style={{ padding: '14px 18px', fontSize: 13, color: MUTED }}>No messages on your boards yet.</div>
             ) : (
-              <div style={{ fontSize: 13, color: MUTED }}>
-                {boards.length === 0 ? 'You do not moderate any boards yet.' : 'Nothing waiting for review.'}
-              </div>
-            )}
+              visible.items.map(it => <VisibleRow key={it.markee} item={it} onReview={reviewAndRefresh} />)
+            )
+          ) : flagged.length === 0 ? (
+            <div style={{ padding: '14px 18px', fontSize: 13, color: MUTED }}>Nothing flagged. Flagged messages are hidden on every site showing your boards.</div>
+          ) : (
+            flagged.slice(flaggedShown * LIST_PAGE, (flaggedShown + 1) * LIST_PAGE).map(it => <FlaggedRow key={itemId(it)} item={it} board={boardOf(it)} onReview={reviewAndRefresh} />)
+          )}
+          <div style={{ padding: '10px 18px', borderTop: `1px solid ${BORDER}` }}>
+            {view === 'visible'
+              ? visible && <Pager page={visiblePage} total={visible.total} pageSize={LIST_PAGE} onPage={setVisiblePage} />
+              : <Pager page={flaggedShown} total={flagged.length} pageSize={LIST_PAGE} onPage={setFlaggedPage} />}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Flagged Messages</span>
-            <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, background: 'rgba(138,143,191,0.12)', borderRadius: 99, padding: '1px 8px' }}>{flagged.length}</span>
-            <span style={{ fontSize: 12.5, color: MUTED }}>Hidden on your sites until you unflag.</span>
-          </div>
-          {flagged.map(it => <FlaggedRow key={itemId(it)} item={it} board={boardOf(it)} onReview={review} />)}
         </>
       )}
     </section>

@@ -457,16 +457,18 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const winAmountFormatted = view === 'addFunds'
     ? (winForTarget ? Number(formatEther(winForTarget)).toFixed(3) : null)
     : (winForCreate ? Number(formatEther(winForCreate)).toFixed(3) : null)
-  const isAlreadyTop = view === 'addFunds' && !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
+  const targetIsTop = !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
+  const isAlreadyTop = view === 'addFunds' && targetIsTop
   // 2X replaces WIN for a message that's already #1: adding its current total again doubles it.
   const twoXAmountFormatted = isAlreadyTop && target ? Number(formatEther(target.totalFundsAdded)).toFixed(3) : null
 
   // Review-step prediction, reusing the win-target wei already derived above for whichever view is
   // active instead of re-deriving the ranking math.
-  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
-  const reviewWinTarget = view === 'addFunds' ? winForTarget : winForCreate
+  // An edit pays nothing, so its shortfall is the top-up this message needs to reach #1.
+  const reviewAmountWei = view === 'edit' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewWinTarget = view === 'addFunds' || view === 'edit' ? winForTarget : winForCreate
   const reviewWillWin = view === 'edit'
-    ? isAlreadyTop
+    ? targetIsTop
     : isAlreadyTop || !reviewWinTarget || reviewAmountWei >= reviewWinTarget
   const reviewShortfallWei = !reviewWillWin && reviewWinTarget && reviewWinTarget > reviewAmountWei
     ? reviewWinTarget - reviewAmountWei : 0n
@@ -576,8 +578,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const btnDisabled = busy || isSuccess || blocksOnBalance
   const btnDisabledReason = busy ? 'Transaction in progress' : blocksOnBalance ? "You don't have enough ETH for this" : null
 
+  const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
-    : fundedMarkees.length === 0 ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
+    : activating ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
 
   return (
     <div
@@ -672,6 +675,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
+                    activating={activating}
                     message={message}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
@@ -809,6 +813,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
+                    alreadyWinning={isAlreadyTop}
                     message={target.message || ''}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
@@ -851,6 +856,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 reviewOpen ? (
                   <PaymentReviewCard
                     kind="fixed"
+                    editing
                     message={message}
                     amountLabel="Free — message update only"
                     amountUsd={null}

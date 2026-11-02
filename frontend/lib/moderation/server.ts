@@ -40,8 +40,9 @@ export interface ModeratorNotifyState {
 export interface VerifyToken {
   wallet: string
   email: string
-  board: string
-  boardName: string
+  // Absent when the wallet set its own email from Settings rather than being added to a board.
+  board?: string
+  boardName?: string
   expiresAt: number
 }
 

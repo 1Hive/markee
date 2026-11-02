@@ -94,6 +94,16 @@ export async function notifyStatusChanges(byWallet: Map<string, ActivityEvent[]>
       catch (err) { console.error('[notifications/buyer] status send failed', err) }
     }
   }
+  // A stream whose balance ran out goes to Low Budget alerts. A cancelled one isn't emailed: the
+  // buyer did it themselves.
+  const ranOut = new Map([...byWallet].map(([w, events]) => [w, events.filter(e => e.side === 'buy' && e.kind === 'ran_out')]))
+  for (const r of await recipients([...ranOut].filter(([, events]) => events.length).map(([w]) => w), 'budget')) {
+    for (const e of ranOut.get(r.wallet) ?? []) {
+      const html = `Your stream balance ran out, so &ldquo;${escHtml(e.message || 'your message')}&rdquo; stopped streaming and lost the top spot. Deposit to bid again.`
+      try { sent += await deliver(r, 'Your stream balance ran out', { kind: 'budget', html, at: e.at }) }
+      catch (err) { console.error('[notifications/buyer] ran out send failed', err) }
+    }
+  }
   return sent
 }
 
@@ -137,7 +147,11 @@ export async function notifyLowBudgets(streamingBoards: string[]): Promise<numbe
     if (runway === null || runway >= LOW_BUDGET_SECONDS) { await kv.del(lowBudgetKey(r.wallet)); continue }
     if (!await kv.set(lowBudgetKey(r.wallet), Date.now(), { nx: true })) continue
     try { sent += await deliver(r, 'Your stream balance is running low', { kind: 'budget', html: lowBudgetLine(runway), at: Math.floor(Date.now() / 1000) }) }
-    catch (err) { console.error('[notifications/buyer] low budget send failed', err) }
+    catch (err) {
+      console.error('[notifications/buyer] low budget send failed', err)
+      // Clear the marker so the next check retries the alert.
+      await kv.del(lowBudgetKey(r.wallet)).catch(() => {})
+    }
   }
   return sent
 }
@@ -156,12 +170,17 @@ export async function sendBuyerDigests(): Promise<number> {
   for (const key of keys) {
     const wallet = key.slice(digestKey('').length)
     const entries = await kv.lrange<DigestEntry>(key, 0, -1)
-    await kv.del(key)
     const [r] = await recipients([wallet], 'status').then(async found => found.length ? found : recipients([wallet], 'budget'))
-    if (!r || entries.length === 0) continue
+    if (!r || entries.length === 0) {
+      await kv.del(key)
+      continue
+    }
     const subject = `Daily summary: ${entries.length} update${entries.length === 1 ? '' : 's'} on your messages`
     try {
       await sendEmail({ sender: FROM, to: [{ email: r.email }], subject, htmlContent: page(subject, entries.map(e => para(e.html)).join(''), 'Open your account') })
+      // Drop only what was sent, after it was sent: a failed send keeps the digest for tomorrow,
+      // and entries queued during the send stay for the next one.
+      await kv.ltrim(key, entries.length, -1)
       sent++
     } catch (err) { console.error('[notifications/buyer] digest send failed', err) }
   }

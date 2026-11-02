@@ -6,6 +6,8 @@ import { createPublicClient, http, isAddress, parseAbi, type Address } from 'vie
 import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { readBoardViews } from '@/lib/views/boards'
+import { normalizeHost, lastSiteViewKey } from '@/lib/views/host'
+import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/keys'
 
 // Counts change with every view: never let Next serve these KV reads from its data cache.
 export const dynamic = 'force-dynamic'
@@ -22,19 +24,6 @@ function corsHeaders(_origin: string | null): Record<string, string> {
 
 function hashMessage(message: string): string {
   return createHash('md5').update(message.trim().toLowerCase()).digest('hex').slice(0, 8)
-}
-
-// Bare hostname, lowercased, no protocol/path/www — the key both the POST increment and the GET
-// per-URL lookup normalize to, so "https://Example.com/blog" and "example.com" count together.
-function normalizeHost(raw: string): string | null {
-  const trimmed = raw.trim().slice(0, 253) // longest valid hostname
-  if (!trimmed) return null
-  try {
-    const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`
-    return new URL(withProtocol).hostname.replace(/^www\./, '').toLowerCase() || null
-  } catch {
-    return null
-  }
 }
 
 function getClientIp(req: NextRequest): string {
@@ -176,8 +165,6 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
-  // Optional: which verified site the view came from (used for per-URL counter below).
-  const host = typeof body.url === 'string' ? normalizeHost(body.url) : null
 
   // ── Referer / origin guard ──────────────────────────────────────────────────
   // Prefer the browser-set `Origin` header (cross-origin requests always send it and it
@@ -189,6 +176,10 @@ export async function POST(req: NextRequest) {
   // site owner can't manufacture traffic by calling the API directly from their server.
   const rawReferer = req.headers.get('origin') ?? req.headers.get('referer')
   const refHost    = rawReferer ? normalizeHost(rawReferer) : null
+  // Which site the view came from, for the per-site counters: the body's url when the embed sends
+  // it, otherwise the browser's Origin/Referer, so embeds that leave url out are still attributed.
+  // Views from markee.xyz itself belong to no site.
+  const host = (typeof body.url === 'string' ? normalizeHost(body.url) : null) ?? (isTrustedHost(refHost) ? null : refHost)
 
   if (!isTrustedHost(refHost)) {
     const meta = await kv.get<{ verifiedUrls?: string[]; verifiedUrl?: string }>(`oi:meta:${address}`).catch(() => null)
@@ -213,6 +204,10 @@ export async function POST(req: NextRequest) {
   }
   // ───────────────────────────────────────────────────────────────────────────
 
+  // The last time this site reported a view, counted or not, so the dashboard can tell a site whose
+  // embed isn't reporting views from one that just hasn't had visitors (lib/integrations/server.ts).
+  if (host) await kv.set(lastSiteViewKey(address, host), Math.floor(Date.now() / 1000)).catch(() => {})
+
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
   const dedupeKey = `dedup:${ip}:${address}`
@@ -235,6 +230,10 @@ export async function POST(req: NextRequest) {
   pipeline.set(dedupeKey, '1', { ex: 3600 })
   pipeline.incr('views:network:total')
   if (host) pipeline.incr(`views:url:${address}:${host}`)
+  // Day-by-day history for the dashboard charts (lib/stats/daily.ts).
+  const day = dayOf()
+  pipeline.hincrby(dailyViewsKey(address), day, 1)
+  pipeline.set(VIEWS_SINCE_KEY, day, { nx: true })
   const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number, number?]>()
 
   return NextResponse.json(

@@ -1,0 +1,603 @@
+import { recordAdminBroadcast } from '../operations';
+// Adapted from Gardens V2 apps/web/app/api/markee/authorize/route.ts at 078d17954ad38dba7a142eb3cee59002f44d303f.
+import { randomBytes } from "node:crypto";
+import { NextResponse } from "next/server";
+import {
+  Address,
+  createWalletClient,
+  encodePacked,
+  getAddress,
+  Hex,
+  http,
+  isAddress,
+  isHex,
+  keccak256,
+  parseAbi,
+  stringToHex,
+  zeroAddress,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  clearMarkeeChallengesForTests,
+  consumeMarkeeChallenge,
+  MarkeeChallengeRateLimitError,
+  MarkeeChallengeStoreUnavailableError,
+  reserveMarkeeChallengeIssue,
+  saveMarkeeChallenge,
+} from "./challenge-store";
+import {
+  readLimitedJsonBody,
+  RequestBodyTooLargeError,
+} from "./body";
+import { chainConfigMap } from "../chains";
+import { registryCommunityABI } from "../chains";
+import {
+  getEnvPublicClient,
+  getRpcUrlForChain,
+  resolveClientChain,
+} from "../chains";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const CHALLENGE_TTL_SECONDS = 5 * 60;
+const MAX_REQUEST_BYTES = 16 * 1024;
+const CHALLENGE_NAMESPACE = "opt-in";
+const LEADERBOARD_METADATA_HASH = keccak256(
+  stringToHex(
+    JSON.stringify({ strategy: "streaming-leaderboard", version: 1 }),
+  ),
+);
+const MARKEE_SEPOLIA_CHAIN_ID = 11155111;
+const MARKEE_BASE_CHAIN_ID = 8453;
+const LEADERBOARD_NAME = "Gardens Community";
+const PLATFORM_ID = "Gardens";
+
+const gardensMarkeeRouterABI = parseAbi([
+  "function createCommunityLeaderboard(uint256 communityChainId, address registryCommunity, string leaderboardName, string platformId) returns (address vault, address leaderboard, address seedMarkee)",
+  "function keepers(address keeper) view returns (bool)",
+]);
+
+const safeOwnerABI = parseAbi([
+  "function isOwner(address owner) view returns (bool)",
+]);
+
+const isCouncilOwner = (
+  chainId: number,
+  councilSafe: Address,
+  account: Address,
+) =>
+  getEnvPublicClient(chainId).readContract({
+    abi: safeOwnerABI,
+    address: councilSafe,
+    args: [account],
+    functionName: "isOwner",
+  });
+
+const authorizationTypes = {
+  OptInAuthorization: [
+    { name: "communityKey", type: "bytes32" },
+    { name: "communityChainId", type: "uint256" },
+    { name: "registryCommunity", type: "address" },
+    { name: "leaderboardFactory", type: "address" },
+    { name: "leaderboardMetadataHash", type: "bytes32" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+} as const;
+
+type AuthorizationMessage = {
+  communityKey: Hex;
+  communityChainId: bigint;
+  registryCommunity: Address;
+  leaderboardFactory: Address;
+  leaderboardMetadataHash: Hex;
+  nonce: bigint;
+  deadline: bigint;
+};
+
+type AuthorizationRole = "councilSafe" | "councilOwner" | "keeper";
+
+type Challenge = {
+  authorizer: Address;
+  authorizationRole: AuthorizationRole;
+  chainId: number;
+  community: Address;
+  councilSafe: Address;
+  deadline: number;
+  leaderboardFactory: Address;
+  message: AuthorizationMessage;
+  nonce: string;
+};
+
+type ChallengeRequest = {
+  action: "challenge";
+  chainId: number;
+  community: Address;
+  account: Address;
+};
+
+type VerifyRequest = {
+  action: "verify";
+  nonce: string;
+  signature: Hex;
+};
+
+type RequestBody = ChallengeRequest | VerifyRequest;
+
+const jsonError = (error: string, status: number) =>
+  NextResponse.json(
+    { error },
+    {
+      headers: { "Cache-Control": "no-store" },
+      status,
+    },
+  );
+
+const jsonSuccess = (body: Record<string, unknown>, status = 200) =>
+  NextResponse.json(body, {
+    headers: { "Cache-Control": "no-store" },
+    status,
+  });
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const parseRequest = (value: unknown): RequestBody | null => {
+  if (!isObject(value)) return null;
+
+  if (value.action === "challenge") {
+    if (
+      typeof value.chainId !== "number" ||
+      !Number.isSafeInteger(value.chainId) ||
+      typeof value.community !== "string" ||
+      !isAddress(value.community) ||
+      typeof value.account !== "string" ||
+      !isAddress(value.account)
+    ) {
+      return null;
+    }
+
+    return {
+      action: "challenge",
+      account: getAddress(value.account),
+      chainId: value.chainId,
+      community: getAddress(value.community),
+    };
+  }
+
+  if (value.action === "verify") {
+    if (
+      typeof value.nonce !== "string" ||
+      !/^[1-9][0-9]{0,77}$/u.test(value.nonce) ||
+      typeof value.signature !== "string" ||
+      !isHex(value.signature)
+    ) {
+      return null;
+    }
+
+    return {
+      action: "verify",
+      nonce: value.nonce,
+      signature: value.signature,
+    };
+  }
+
+  return null;
+};
+
+const getAuthorizationDomain = (chainId: number, community: Address) => ({
+  name: "Gardens Markee",
+  version: "1",
+  chainId,
+  verifyingContract: community,
+});
+
+const getMarkeeExecutionConfig = (communityChainId?: number) => {
+  const isProduction =
+    communityChainId == null ||
+    chainConfigMap[communityChainId]?.isTestnet !== true;
+  const factoryValue = (
+    isProduction ?
+      process.env.MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE
+    : process.env.MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_SEPOLIA)?.trim();
+  const fallbackFactory =
+    process.env.MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS?.trim();
+  const routerValue = (
+    isProduction ?
+      process.env.MARKEE_ROUTER_ADDRESS_BASE
+    : process.env.MARKEE_ROUTER_ADDRESS_SEPOLIA)?.trim();
+
+  return {
+    chainId: isProduction ? MARKEE_BASE_CHAIN_ID : MARKEE_SEPOLIA_CHAIN_ID,
+    factory:
+      factoryValue && isAddress(factoryValue) ? getAddress(factoryValue)
+      : fallbackFactory && isAddress(fallbackFactory) ?
+        getAddress(fallbackFactory)
+      : null,
+    router:
+      routerValue && isAddress(routerValue) ? getAddress(routerValue) : null,
+  };
+};
+
+const getStreamingLeaderboardFactoryAddress = (communityChainId?: number) => {
+  const value = getMarkeeExecutionConfig(communityChainId).factory;
+  return value && isAddress(value) ? getAddress(value) : null;
+};
+
+const getKeeperAccount = () => {
+  const privateKey = (process.env.MARKEE_GARDENS_KEEPER_PRIVATE_KEY || process.env.KEEPER_PRIVATE_KEY)?.trim();
+  if (!privateKey || !/^0x[0-9a-fA-F]{64}$/u.test(privateKey)) return null;
+
+  return privateKeyToAccount(privateKey as Hex);
+};
+
+const executeRouterCreation = async (challenge: Challenge) => {
+  const execution = getMarkeeExecutionConfig(challenge.chainId);
+  if (!execution.router) {
+    throw new Error("Markee router is not configured for this environment");
+  }
+
+  const account = getKeeperAccount();
+  if (account == null) {
+    throw new Error("Markee keeper wallet is not configured");
+  }
+
+  const client = getEnvPublicClient(execution.chainId);
+  const keeperIsAuthorized = await client.readContract({
+    abi: gardensMarkeeRouterABI,
+    address: execution.router,
+    args: [account.address],
+    functionName: "keepers",
+  });
+  if (!keeperIsAuthorized) {
+    throw new Error("Markee keeper is not authorized by the router");
+  }
+  const simulation = await client.simulateContract({
+    abi: gardensMarkeeRouterABI,
+    account,
+    address: execution.router,
+    args: [
+      BigInt(challenge.chainId),
+      challenge.community,
+      LEADERBOARD_NAME,
+      PLATFORM_ID,
+    ],
+    functionName: "createCommunityLeaderboard",
+  });
+  const estimatedGas = await client.estimateContractGas(simulation.request);
+  const gas = (estimatedGas * 125n + 99n) / 100n;
+  const gasPrice = await client.getGasPrice();
+  const requiredKeeperBalance = (gas * gasPrice * 125n + 99n) / 100n;
+  const keeperBalance = await client.getBalance({ address: account.address });
+  if (keeperBalance < requiredKeeperBalance) {
+    throw new Error("Markee keeper needs more ETH to create the leaderboard");
+  }
+
+  const walletClient = createWalletClient({
+    account,
+    chain: resolveClientChain(execution.chainId),
+    transport: http(getRpcUrlForChain(execution.chainId)),
+  });
+  const transactionHash = await walletClient.writeContract({
+    ...simulation.request,
+    gas,
+  });
+  await recordAdminBroadcast({ transactionHash, markeeChainId: execution.chainId, chainId: challenge.chainId, community: challenge.community, bridgeProtocol: "none", bridged: false });
+  const receipt = await client.waitForTransactionReceipt({
+    timeout: 30_000,
+    hash: transactionHash,
+  });
+  if (receipt.status !== "success") {
+    throw new Error("Markee leaderboard creation transaction reverted");
+  }
+
+  return {
+    chainId: execution.chainId,
+    from: account.address,
+    router: execution.router,
+    result: simulation.result,
+    transactionHash,
+  };
+};
+
+const readCouncilSafe = async (chainId: number, community: Address) => {
+  const client = getEnvPublicClient(chainId);
+  const councilSafe = await client.readContract({
+    abi: registryCommunityABI,
+    address: community,
+    functionName: "councilSafe",
+  });
+
+  if (typeof councilSafe !== "string" || !isAddress(councilSafe)) {
+    throw new Error("Invalid council Safe returned by community contract");
+  }
+
+  return getAddress(councilSafe);
+};
+
+const createAuthorizationMessage = ({
+  chainId,
+  community,
+  deadline,
+  leaderboardFactory,
+  nonce,
+}: {
+  chainId: number;
+  community: Address;
+  deadline: number;
+  leaderboardFactory: Address;
+  nonce: bigint;
+}): AuthorizationMessage => ({
+  communityKey: keccak256(
+    encodePacked(["uint256", "address"], [BigInt(chainId), community]),
+  ),
+  communityChainId: BigInt(chainId),
+  registryCommunity: community,
+  leaderboardFactory,
+  leaderboardMetadataHash: LEADERBOARD_METADATA_HASH,
+  nonce,
+  deadline: BigInt(deadline),
+});
+
+const issueChallenge = async (body: ChallengeRequest) => {
+  if (!Object.prototype.hasOwnProperty.call(chainConfigMap, body.chainId)) {
+    return jsonError("Unsupported community chain.", 400);
+  }
+
+  const leaderboardFactory = getStreamingLeaderboardFactoryAddress(
+    body.chainId,
+  );
+  if (!leaderboardFactory) {
+    return jsonError(
+      "Markee streaming leaderboard factory is not configured.",
+      503,
+    );
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+
+  try {
+    await reserveMarkeeChallengeIssue({
+      namespace: CHALLENGE_NAMESPACE,
+      subject: `${body.chainId}:${body.community.toLowerCase()}`,
+    });
+    const councilSafe = await readCouncilSafe(body.chainId, body.community);
+    if (councilSafe === zeroAddress) {
+      return jsonError("This community does not have a council Safe.", 409);
+    }
+    const keeperAccount = getKeeperAccount();
+    const isKeeper = keeperAccount?.address === body.account;
+    const isSafe = body.account === councilSafe;
+    const isOwner =
+      !isSafe &&
+      !isKeeper &&
+      (await isCouncilOwner(body.chainId, councilSafe, body.account));
+    if (!isSafe && !isKeeper && !isOwner) {
+      return jsonError(
+        "Connect with the community council Safe or one of its current owners to authorize Markee.",
+        403,
+      );
+    }
+
+    const authorizationRole: AuthorizationRole =
+      isKeeper ? "keeper"
+      : isSafe ? "councilSafe"
+      : "councilOwner";
+
+    const randomNonce = BigInt(`0x${randomBytes(32).toString("hex")}`);
+    const nonceValue = randomNonce === BigInt(0) ? BigInt(1) : randomNonce;
+    const nonce = nonceValue.toString();
+    const deadline = now + CHALLENGE_TTL_SECONDS;
+    const challenge: Challenge = {
+      authorizer: body.account,
+      authorizationRole,
+      chainId: body.chainId,
+      community: body.community,
+      councilSafe,
+      deadline,
+      leaderboardFactory,
+      message: createAuthorizationMessage({
+        chainId: body.chainId,
+        community: body.community,
+        deadline,
+        leaderboardFactory,
+        nonce: nonceValue,
+      }),
+      nonce,
+    };
+    await saveMarkeeChallenge({
+      namespace: CHALLENGE_NAMESPACE,
+      nonce,
+      ttlSeconds: CHALLENGE_TTL_SECONDS,
+      value: challenge,
+    });
+
+    return jsonSuccess(
+      {
+        chainId: challenge.chainId,
+        community: challenge.community,
+        councilSafe: challenge.councilSafe,
+        authorizationRole: challenge.authorizationRole,
+        deadline: challenge.deadline,
+        leaderboardFactory: challenge.leaderboardFactory,
+        nonce: challenge.nonce,
+        typedData: {
+          domain: getAuthorizationDomain(
+            challenge.chainId,
+            challenge.community,
+          ),
+          message: {
+            ...challenge.message,
+            communityChainId: challenge.message.communityChainId.toString(),
+            deadline: challenge.message.deadline.toString(),
+            nonce: challenge.message.nonce.toString(),
+          },
+          primaryType: "OptInAuthorization",
+          types: authorizationTypes,
+        },
+      },
+      201,
+    );
+  } catch (error) {
+    console.error("[Markee authorization] Failed to issue challenge", error);
+    if (error instanceof MarkeeChallengeRateLimitError) {
+      return jsonError(
+        "Too many Markee authorization requests. Please wait a minute and try again.",
+        429,
+      );
+    }
+    if (error instanceof MarkeeChallengeStoreUnavailableError) {
+      return jsonError(
+        "Markee authorization is temporarily unavailable. Please try again shortly.",
+        503,
+      );
+    }
+    return jsonError("Unable to read the community council Safe.", 502);
+  }
+};
+
+const verifyChallenge = async (body: VerifyRequest) => {
+  let challenge: Challenge | null;
+  try {
+    challenge = await consumeMarkeeChallenge<Challenge>({
+      namespace: CHALLENGE_NAMESPACE,
+      nonce: body.nonce,
+    });
+  } catch (error) {
+    console.error("[Markee authorization] Failed to consume challenge", error);
+    return jsonError(
+      "Markee authorization is temporarily unavailable. Please try again shortly.",
+      503,
+    );
+  }
+  if (!challenge) {
+    return jsonError(
+      "Authorization challenge is invalid, expired, or already used.",
+      401,
+    );
+  }
+
+  if (challenge.deadline <= Math.floor(Date.now() / 1000)) {
+    return jsonError("Authorization challenge has expired.", 401);
+  }
+
+  try {
+    const currentLeaderboardFactory = getStreamingLeaderboardFactoryAddress(
+      challenge.chainId,
+    );
+    if (!currentLeaderboardFactory) {
+      return jsonError(
+        "Markee streaming leaderboard factory is not configured.",
+        503,
+      );
+    }
+    if (currentLeaderboardFactory !== challenge.leaderboardFactory) {
+      return jsonError(
+        "The Markee leaderboard factory changed. Request a new challenge.",
+        409,
+      );
+    }
+
+    const currentCouncilSafe = await readCouncilSafe(
+      challenge.chainId,
+      challenge.community,
+    );
+    if (currentCouncilSafe !== challenge.councilSafe) {
+      return jsonError(
+        "The community council Safe changed. Request a new challenge.",
+        409,
+      );
+    }
+    if (
+      challenge.authorizationRole === "keeper" &&
+      getKeeperAccount()?.address !== challenge.authorizer
+    ) {
+      return jsonError(
+        "The configured Markee keeper changed. Request a new challenge.",
+        409,
+      );
+    }
+
+    if (
+      challenge.authorizationRole === "councilOwner" &&
+      !(await isCouncilOwner(
+        challenge.chainId,
+        currentCouncilSafe,
+        challenge.authorizer,
+      ))
+    ) {
+      return jsonError(
+        "The authorizer is no longer a council Safe owner.",
+        403,
+      );
+    }
+
+    const client = getEnvPublicClient(challenge.chainId);
+    const signatureIsValid = await client.verifyTypedData({
+      address: challenge.authorizer,
+      domain: getAuthorizationDomain(challenge.chainId, challenge.community),
+      message: challenge.message,
+      primaryType: "OptInAuthorization",
+      signature: body.signature,
+      types: authorizationTypes,
+    });
+    if (!signatureIsValid) {
+      return jsonError("Invalid Markee authorization signature.", 401);
+    }
+
+    const routerExecution = await executeRouterCreation(challenge);
+
+    return jsonSuccess({
+      authorized: true,
+      chainId: challenge.chainId,
+      community: challenge.community,
+      councilSafe: currentCouncilSafe,
+      authorizationRole: challenge.authorizationRole,
+      leaderboardFactory: challenge.leaderboardFactory,
+      markeeChainId: routerExecution.chainId,
+      router: routerExecution.router,
+      transactionHash: routerExecution.transactionHash,
+    });
+  } catch (error) {
+    console.error("[Markee authorization] Failed to verify challenge", error);
+    return jsonError("Unable to verify Markee authorization.", 502);
+  }
+};
+
+export async function POST(request: Request) {
+  let rawBody: unknown;
+  try {
+    rawBody = await readLimitedJsonBody(request, MAX_REQUEST_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return jsonError(error.message, 413);
+    }
+    return jsonError("Invalid JSON body.", 400);
+  }
+
+  const body = parseRequest(rawBody);
+  if (!body) {
+    return jsonError("Invalid Markee authorization request.", 400);
+  }
+
+  return body.action === "challenge" ?
+      issueChallenge(body)
+    : verifyChallenge(body);
+}
+
+export async function GET(request: Request) {
+  const accountValue = new URL(request.url).searchParams.get("account");
+  if (accountValue == null || !isAddress(accountValue)) {
+    return jsonError("Invalid keeper eligibility account.", 400);
+  }
+
+  const keeperAccount = getKeeperAccount();
+  return jsonSuccess({
+    isKeeper: keeperAccount?.address === getAddress(accountValue),
+  });
+}
+
+export const clearMarkeeAuthorizationChallengesForTests = () => {
+  clearMarkeeChallengesForTests(CHALLENGE_NAMESPACE);
+};

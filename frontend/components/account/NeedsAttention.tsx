@@ -18,13 +18,11 @@ function runsOutIn(seconds: bigint): string {
   return days > 0n ? `${days}d ${hours}h` : `${hours > 0n ? hours : 1n}h`
 }
 
-export function NeedsAttention({ modLoading, modItems, modBoards, liveMarkees, onReview, onOpenQueue, markeesLoading, inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite, lowRunway, onDeposit }: {
+export function NeedsAttention({ modLoading, modItems, modBoards, onReview, markeesLoading, inactive, awaiting, ethPrice, onActivate, onArchive, onAddToSite, lowRunway, onDeposit }: {
   modLoading: boolean
   modItems: ModerationItem[]
   modBoards: QueueBoard[]
-  liveMarkees: Set<string>
   onReview: (action: QueueAction, ids: string[]) => Promise<void>
-  onOpenQueue: () => void
   markeesLoading: boolean
   inactive: AnyLeaderboard[]
   awaiting: AnyLeaderboard[]
@@ -73,13 +71,12 @@ export function NeedsAttention({ modLoading, modItems, modBoards, liveMarkees, o
             sub="Approve or flag new messages."
             items={modItems}
             noun={['message', 'messages']}
-            right={<button onClick={onOpenQueue} style={{ background: 'transparent', border: 'none', color: PINK, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', padding: 0 }}>Open Full Queue →</button>}
+            pageSize={5}
             render={it => (
               <ModerationItemRow
                 key={`${it.markee}:${it.blockNumber}`}
                 item={it}
                 board={modBoards.find(b => b.address === it.board)}
-                live={liveMarkees.size ? liveMarkees.has(it.markee.toLowerCase()) : undefined}
                 onReview={onReview}
               />
             )}

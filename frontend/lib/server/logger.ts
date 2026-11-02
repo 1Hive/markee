@@ -1,4 +1,5 @@
 import 'server-only'
+import { discordEnvironment } from '../checkout-alerts'
 
 type LogContext = Record<string, unknown>
 
@@ -6,11 +7,6 @@ const DISCORD_DESCRIPTION_LIMIT = 4_000
 const DISCORD_FIELD_LIMIT = 1_000
 const REDACTED = '[REDACTED]'
 
-function isProductionDeployment(): boolean {
-  // NODE_ENV is also "production" during local/preview builds. VERCEL_ENV keeps
-  // Discord reporting exclusive to the production deployment.
-  return process.env.VERCEL_ENV === 'production'
-}
 
 function redactString(value: string): string {
   let redacted = value
@@ -67,7 +63,8 @@ function stringify(value: unknown, limit: number): string {
 }
 
 async function sendDiscordError(message: string, error: unknown, context: LogContext): Promise<void> {
-  if (!isProductionDeployment()) return
+  const environment = discordEnvironment(process.env.VERCEL_ENV)
+  if (!environment) return
 
   const webhookUrl = process.env.DISCORD_ERROR_WEBHOOK_URL?.trim()
   if (!webhookUrl) return
@@ -81,7 +78,7 @@ async function sendDiscordError(message: string, error: unknown, context: LogCon
       username: 'Markee server',
       allowed_mentions: { parse: [] },
       embeds: [{
-        title: redactString(message).slice(0, 256),
+        title: `[${environment.toUpperCase()}] ${redactString(message)}`.slice(0, 256),
         color: 0xed4245,
         description: `\`\`\`json\n${stringify(error, DISCORD_DESCRIPTION_LIMIT - 12).replace(/\`\`\`/g, '\u02cb\u02cb\u02cb')}\n\`\`\``,
         fields: [
@@ -91,7 +88,7 @@ async function sendDiscordError(message: string, error: unknown, context: LogCon
           },
           {
             name: 'Deployment',
-            value: redactString(process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL ?? 'unknown').slice(0, DISCORD_FIELD_LIMIT),
+            value: redactString(process.env.VERCEL_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL ?? 'unknown').slice(0, DISCORD_FIELD_LIMIT),
           },
         ],
         timestamp: new Date().toISOString(),

@@ -3,6 +3,7 @@ import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { observeMessage } from '../../../lib/moderation/queue'
 import { mnemonicToAccount } from 'viem/accounts'
 import { unlinkFileMessage } from '../../../lib/github/unlink'
+import { featuredIntegrationMessage } from '../../../lib/integrations/featured'
 import { E2E_MNEMONIC } from './env'
 import { E2E_ACCOUNT, E2E_OTHER as OTHER, TX_TIMEOUT, buySale, isolateChain, kv, rpc } from './support'
 
@@ -19,7 +20,7 @@ let board = ''
 
 async function openDrawer(page: Page) {
   await page.goto('/account?section=creator')
-  const row = page.locator('.acct-row', { hasText: 'example.com' })
+  const row = page.locator('.acct-row', { hasText: /example\.(com|org)/ })
   await expect(row).toBeVisible({ timeout: TX_TIMEOUT })
   await row.getByRole('button', { name: 'Manage' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -84,7 +85,7 @@ test('add a moderator (signed message)', async ({ page }) => {
 
 // The moderation-scan cron crawls every board on Base, which takes most of ten minutes against a
 // cold fork. Instead, queue the one new message the way the scan would: same observeMessage(), same
-// KV keys. The purchase and the signed Approve are real.
+// KV keys. The purchase and the Approve are real.
 async function queueForReview(markee: string, message: string) {
   const at = Math.floor(Date.now() / 1000)
   const item = observeMessage(null, {
@@ -96,7 +97,7 @@ async function queueForReview(markee: string, message: string) {
   await kv(['ZADD', 'moderation:pending:site', at, markee.toLowerCase()])
 }
 
-test('approve a new message from the moderation queue (signed message)', async ({ page }) => {
+test('approve a new message from the moderation queue (no signature)', async ({ page }) => {
   await buySale(page, board, 'e2e needs review')
   const top = await rpc<string>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, args: [1n] }) }, 'latest'])
   const [[markee]] = decodeFunctionResult({ abi: TOP_ABI, data: top as `0x${string}` })
@@ -106,6 +107,26 @@ test('approve a new message from the moderation queue (signed message)', async (
   const item = page.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Approve' }) }).last()
   await item.getByRole('button', { name: 'Approve' }).click({ timeout: TX_TIMEOUT })
   await expect(page.getByRole('status').filter({ hasText: 'Message approved' })).toBeVisible({ timeout: TX_TIMEOUT })
+})
+
+test('flag a visible message, then unflag it from Flagged (signed messages)', async ({ page }) => {
+  await page.goto('/account?section=creator')
+  const panel = page.locator('section', { has: page.getByText('Moderation', { exact: true }) })
+  const visible = panel.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Flag' }) }).last()
+  await expect(visible.getByText('Winning')).toBeVisible({ timeout: TX_TIMEOUT })
+  await visible.getByRole('button', { name: 'Flag' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Message flagged' })).toBeVisible({ timeout: TX_TIMEOUT })
+
+  // Approve needs no signature, so it must not be able to lift a flag.
+  const top = await rpc<string>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, args: [1n] }) }, 'latest'])
+  const [[markee]] = decodeFunctionResult({ abi: TOP_ABI, data: top as `0x${string}` })
+  await page.request.post('/api/moderation', { data: { markeeIds: [markee], chainId: 8453, action: 'approve', adminAddress: E2E_ACCOUNT } })
+  expect((await (await page.request.get('/api/moderation')).json()).flagged).toContain(`8453:${markee.toLowerCase()}`)
+
+  await panel.getByRole('radio', { name: /^Flagged/ }).click()
+  const flagged = panel.locator('div', { hasText: 'e2e needs review' }).filter({ has: page.getByRole('button', { name: 'Unflag' }) }).last()
+  await flagged.getByRole('button', { name: 'Unflag' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Message unflagged' })).toBeVisible({ timeout: TX_TIMEOUT })
 })
 
 test('only the board owner can unlink a GitHub file (signed message)', async ({ page }) => {
@@ -123,6 +144,47 @@ test('only the board owner can unlink a GitHub file (signed message)', async ({ 
   const res = await page.request.delete(url, { data: await signed(ME) })
   expect(res.status()).toBe(200)
   expect((await res.json()).linkedFiles).toEqual([])
+})
+
+test('the featured site is the most viewed until the owner picks one', async ({ page }) => {
+  const b = board.toLowerCase()
+  const meta = JSON.parse(await kv<string>(['GET', `oi:meta:${b}`]))
+  const first = meta.verifiedUrls?.[0] ?? meta.verifiedUrl
+  const second = 'https://second.example.org'
+  await kv(['SET', `oi:meta:${b}`, JSON.stringify({ ...meta, verifiedUrls: [first, second] })])
+  // The first site's views are split between the board and its top message; the second has more.
+  const top = decodeFunctionResult({ abi: TOP_ABI, functionName: 'getTopMarkees', data: await rpc<`0x${string}`>('eth_call', [{ to: board, data: encodeFunctionData({ abi: TOP_ABI, functionName: 'getTopMarkees', args: [1n] }) }, 'latest']) })[0][0].toLowerCase()
+  await kv(['MSET', `views:url:${b}:example.com`, '2', `views:url:${top}:example.com`, '3', `views:url:${b}:second.example.org`, '7'])
+
+  const read = async () => (await (await page.request.get(`/api/boards/integrations?boards=${b}`)).json())[b]
+  expect(await read()).toEqual({
+    featured: `u:${second}`, chosen: false,
+    views: { [`u:${first}`]: 5, [`u:${second}`]: 7 },
+    lastView: { [`u:${first}`]: null, [`u:${second}`]: null },
+  })
+
+  const signed = async (signer: typeof ME, key: string | null) => {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = await signer.signMessage({ message: featuredIntegrationMessage(8453, b, key, timestamp) })
+    return { board: b, key, owner: signer.address, signature, timestamp }
+  }
+  expect((await page.request.put('/api/boards/integrations', { data: await signed(SOMEONE_ELSE, `u:${first}`) })).status()).toBe(403)
+
+  // The owner picks the less viewed site from the Manage drawer.
+  const drawer = await openDrawer(page)
+  const row = drawer.locator('div', { hasText: 'example.com' }).filter({ has: page.getByRole('button', { name: 'Feature' }) }).last()
+  await row.getByRole('button', { name: 'Feature' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Featured site updated' })).toBeVisible({ timeout: TX_TIMEOUT })
+  expect(await read()).toMatchObject({ featured: `u:${first}`, chosen: true })
+
+  // And can go back to the most viewed one.
+  expect((await page.request.put('/api/boards/integrations', { data: await signed(ME, null) })).status()).toBe(200)
+  expect(await read()).toMatchObject({ featured: `u:${second}`, chosen: false })
+
+  // A view from the site's own page marks it as reporting, even without the url field.
+  await page.request.post('/api/views', { data: { address: top, message: 'e2e' }, headers: { Origin: second } })
+  expect((await read()).lastView[`u:${second}`]).toBeGreaterThan(0)
+  await kv(['SET', `oi:meta:${b}`, JSON.stringify(meta)])
 })
 
 test('transfer admin', async ({ page }) => {
