@@ -1,38 +1,30 @@
-# Markee × ConnectKit sample
+# Markee SDK × ConnectKit
 
-Use **Modal theme** to try Light, Dark, Match device, or Plum. Plum demonstrates custom colors, font, and corner radius. The typed presets in `src/App.tsx` are passed directly to the modal's `theme` prop; they can be replaced with your app's brand. See the [theme API](../../packages/sdk/README.md#theme) for all options and live updates.
+A standalone React/Vite example that embeds the Markee sign and payment modal. ConnectKit supplies the app wallet; Markee supplies the sign, moderation data, payment preparation, reward quote, and transaction verification through its hosted API. The SDK knows its API endpoint, so this app needs no Markee, RPC, or database key.
 
-This Vite/React app embeds `@markee_team/sdk/react` and lends it the wallet already selected by ConnectKit. Installed wallets work without a WalletConnect project ID. Setting the optional ID enables WalletConnect as well.
-
-From the repository root:
+## Run locally
 
 ```sh
-npm ci --prefix packages/sdk
-npm run build --prefix packages/sdk
-npm ci --prefix frontend
-npm ci --prefix examples/connectkit
+npm ci
+npm run dev
 ```
 
-Start Markee's backend in one terminal:
+Open <http://127.0.0.1:5173>. The sample uses the latest published `@markee_team/sdk` and two existing Base boards. The **For sale** board supports one-time payments and MARKEE rewards; **For rent** uses ETHx streaming. These are live contracts, so confirming in a wallet moves real funds.
+
+Use the theme selector to preview light, dark, system, and a custom brand palette. The app passes its selected ConnectKit wallet to the SDK. With no app wallet, supported For Sale payments can continue through Markee's hosted checkout.
+
+## Configuration
+
+Copy `.env.example` to `.env.local` only if you want to change the boards or enable WalletConnect. `VITE_WALLETCONNECT_PROJECT_ID` is optional; without it, installed browser wallets remain available. To target a local Markee API during development, set `VITE_MARKEE_API_URL=http://localhost:3000/api/sdk/v1`. The default is managed by the SDK.
+
+For a new integration, [create a Markee leaderboard](https://www.markee.xyz/create-a-markee), then use the board address from its `markee.xyz/markee/0x…` link. The SDK detects whether the board is For Sale or For Rent. No strategy setting is needed.
+
+## Deploy
+
+Deploy this repository as a Vite project on Vercel. The build command is `npm run build` and the output directory is `dist`. No environment variables are required for the default boards. If you enable WalletConnect, add `VITE_WALLETCONNECT_PROJECT_ID` to the Vercel project and redeploy.
 
 ```sh
-npm run dev --prefix frontend
+npm run build
 ```
 
-Start the example in another:
-
-```sh
-npm run dev --prefix examples/connectkit
-```
-
-Open `http://127.0.0.1:5173`. To point both the live sign and payment modal at your local Markee backend, put `VITE_MARKEE_API_URL=http://localhost:3000/api/sdk/v1` in `examples/connectkit/.env.local` and restart the sample. Without this override, the SDK uses its built-in endpoint. Copy `.env.example` to `.env.local` to supply other board or community settings. Public board addresses are configuration; no RPC or storage keys are needed in this app.
-
-The default For Sale and For Rent boards are the two real Base sample boards. The app never submits a transaction until the user reviews it and confirms in their own wallet. For local financial testing use the repository's isolated Anvil suites; do not put a production keeper key in a fork environment.
-
-Without Markee-side database credentials, the local backend serves chain reads but marks views/moderation unavailable and withholds unmoderated text. Community activation/claims additionally need Markee-side router, factory and keeper configuration. See the [backend guide](../../docs/sdk/implementation.md).
-
-```sh
-npm run build --prefix examples/connectkit
-```
-
-The package is linked by a `file:` dependency. Rebuild `packages/sdk` after editing it, then reload the sample. Production Gardens integration, card checkout, incoming bridges and npm publication are separate follow-up milestones.
+The SDK API target is currently Markee staging (`2staging.markee.xyz`).

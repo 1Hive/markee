@@ -1,6 +1,6 @@
 {
   "name": "@markee_team/sdk",
-  "version": "0.1.0-alpha.8",
+  "version": "0.1.0-alpha.9",
   "description": "Self-contained Markee modal and API client, with an optional React adapter.",
   "type": "module",
   "sideEffects": false,
@@ -55,7 +55,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "alpha",
+    "tag": "latest",
     "registry": "https://registry.npmjs.org/"
   },
   "main": "./dist/index.js",
