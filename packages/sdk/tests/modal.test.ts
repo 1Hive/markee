@@ -27,3 +27,37 @@ test('connected app wallet retains its balance and payment review', () => {
   assert.match(view(address).fundingHtml(), /tab:wallet/);
   assert.match(view(address).footerHtml(), /Review payment info/);
 });
+
+test('payment review follows the compact Gardens summary without hiding transaction facts', () => {
+  const modal = view(address) as { review: unknown; form: unknown; reviewHtml(): string; footerHtml(): string };
+  modal.form = { kind: 'fund', entry: { address, message: '<Fund this message>', moderated: false } };
+  modal.review = {
+    action: { kind: 'fund', markee: address, amount: '2000000000000000' },
+    transaction: { from: address, to: address, chainId: 8453, value: '0x71afd498d0000' },
+    review: { title: 'Fund this Markee', lines: ['Funding keeps the current message owner.', 'Native ETH sent: 0.002 ETH', 'Network: Base', `Recipient: ${address}`], estimatedGasCost: '11000000000000', reward: 'MARKEE reaches your wallet.' },
+  };
+  const html = modal.reviewHtml();
+  assert.match(html, /class="review-message"/);
+  assert.match(html, /&lt;Fund this message&gt;/);
+  assert.match(html, /<span>Paying<\/span><strong>0\.002 ETH<\/strong>/);
+  assert.match(html, /<span>Estimated network fee<\/span>/);
+  assert.match(html, /<span>You&#39;ll earn<\/span>/);
+  assert.match(html, /<details class="review-details"><summary>Transaction details<\/summary>/);
+  assert.doesNotMatch(html, /<ul>|<li>/);
+  assert.match(modal.footerHtml(), />Confirm payment<\/button>/);
+});
+
+test('rental payment review shows monthly rate and immediate ETH deposit', () => {
+  const modal = view(address) as { review: unknown; snapshot: { strategy: string; revnetEnabled: boolean }; reviewHtml(): string };
+  modal.snapshot.strategy = 'rent';
+  modal.review = {
+    action: { kind: 'stream', markee: address, monthlyAmount: '2000000000000000' },
+    transaction: { from: address, to: address, chainId: 8453, value: '0x38d7ea4c68000' },
+    review: { title: 'Start your rental stream', lines: ['Wrap 0.001 ETH into ETHx.'], estimatedGasCost: '11000000000000', reward: 'MARKEE is earned from rent actually spent.' },
+  };
+  const html = modal.reviewHtml();
+  assert.match(html, /<span>Paying<\/span><strong>0\.002 ETHx\/mo<\/strong>/);
+  assert.match(html, /<span>Depositing now<\/span><strong>0\.001 ETH<\/strong>/);
+  assert.match(html, /Your payment only streams while your message is winning/);
+  assert.match(html, /Wrap 0\.001 ETH into ETHx/);
+});
