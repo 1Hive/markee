@@ -10,6 +10,14 @@ function view(account: string | null, available = true) {
       strategy: 'sale', revnetEnabled: true, token: address, minimum: '1000000000000000', entries: [], wallet: account ? { eth: '1000000000000000000' } : null } });
   return modal as { footerHtml(): string; fundingHtml(): string };
 }
+test('moderation notices use distinct styling while approved messages keep the normal message style', () => {
+  const modal = view(null) as { entryMessageHtml(entry: { message: string; moderated: boolean | null }): string };
+  const flagged = modal.entryMessageHtml({ message: 'Private text', moderated: true });
+  assert.match(flagged, /class="message moderation-placeholder">This message is hidden by moderation\./);
+  assert.doesNotMatch(flagged, /Private text/);
+  assert.match(modal.entryMessageHtml({ message: 'Private text', moderated: null }), /class="message moderation-placeholder">Message unavailable while moderation loads\./);
+  assert.match(modal.entryMessageHtml({ message: '<Public text>', moderated: false }), /class="message">&lt;Public text&gt;<\/p>/);
+});
 test('wallet-free checkout has a single Pay action and no connected-wallet controls', () => {
   const modal = view(null);
   const footer = modal.footerHtml();
