@@ -295,3 +295,11 @@ checkout route is deployed there. Both deployments must use the same checkout KV
 signing secret, supported configuration and Privy app. Omit this setting to keep
 checkout on the API origin. Integrators do not configure an API or checkout URL.
 Existing pending checkout sessions retain their original destination.
+
+### Pay in Markee availability
+
+The SDK checks the Markee API before offering hosted payment. Markee controls this
+feature with the server-only `FLAG_SDK_PAY_IN_MARKEE` environment variable, which
+defaults to false. Only `true`, together with the required checkout configuration,
+enables it. Integrating apps do not need to provide a flag or API key. Connected
+wallet payments remain available independently.

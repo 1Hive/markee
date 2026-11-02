@@ -67,7 +67,7 @@ export class MarkeeModal {
     this.root.addEventListener('submit', this.onSubmit);
     this.root.addEventListener('keydown', this.onKey);
     this.root.addEventListener('input', () => { this.captureDraft(); this.updateFields(); });
-    void client.request<{ enabled: boolean }>('checkout/config').then(config => { this.cardAvailable = config.enabled; }).catch(() => {}).finally(() => { this.checkoutChecked = true; this.render(); });
+    void client.request<{ enabled: boolean }>('checkout/config').then(config => { this.cardAvailable = config.enabled === true; }).catch(() => {}).finally(() => { this.checkoutChecked = true; this.render(); });
     this.render(); this.root.querySelector<HTMLButtonElement>('[data-cmd="close"]')?.focus(); void this.reload(); void this.watchAccount();
   }
   close() {
