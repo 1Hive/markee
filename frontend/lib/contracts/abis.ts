@@ -910,6 +910,9 @@ export const StreamingLeaderboardABI = [
   { inputs: [], name: 'markeeCount', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'totalLeaderboardFunds', outputs: [{ name: 'total', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'topMarkee', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  // Owner edits go through the board (it checks owner and length); Markee.setMessage is board-only.
+  { inputs: [{ name: '_markee', type: 'address' }, { name: '_newMessage', type: 'string' }], name: 'updateMessage', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_markee', type: 'address' }, { name: '_newName', type: 'string' }], name: 'updateName', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [], name: 'topRate', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'percentToBeneficiary', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'percentToPlatformFeeReceiver', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
@@ -939,4 +942,6 @@ export const StreamingLeaderboardABI = [
   { inputs: [{ name: '_newRate', type: 'uint256' }], name: 'setMinimumMonthlyRate', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: '_newBeneficiary', type: 'address' }], name: 'setBeneficiaryAddress', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: '_newAdmin', type: 'address' }], name: 'setAdmin', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newMaxLength', type: 'uint256' }], name: 'setMaxMessageLength', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_newMaxLength', type: 'uint256' }], name: 'setMaxNameLength', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const

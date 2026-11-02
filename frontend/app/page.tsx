@@ -235,7 +235,7 @@ function PlatformGlyph({ icon, size = 26, color }: { icon: string; size?: number
 
 const PLATFORMS = [
   { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE', href: '/marketplace' },
-  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/ecosystem/platforms/github' },
+  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/marketplace' },
   { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/ecosystem/platforms/superfluid' },
 ] as const
 

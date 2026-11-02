@@ -5,6 +5,7 @@ import { useReadContracts } from 'wagmi'
 import type { Address } from 'viem'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
+import { BOARD_MESSAGE_LIMIT, isListedStreamingMarkee } from '@/lib/streaming/listing'
 
 // A Markee on a streaming board, ranked by its effective rate (wei/sec): the on-chain
 // max(live aggregate stream rate, decaying grandfather floor) that getTopMarkees sorts by.
@@ -47,7 +48,7 @@ const META_FUNCTIONS = [
 // getTopMarkees already returns (addresses, rates) in descending-rate order; we only zip in
 // each Markee's message/name/owner and drop zero-rate entries (the genesis seed Markee and any
 // natively-created Markee with no stream and no grandfather floor).
-export function useStreamingMarkees(board?: Address, limit = 100) {
+export function useStreamingMarkees(board?: Address, limit = BOARD_MESSAGE_LIMIT) {
   const enabled = !!board
 
   const metaContracts = useMemo(
@@ -131,10 +132,9 @@ export function useStreamingMarkees(board?: Address, limit = 100) {
         streamRate: (markeeData?.[i * CALLS_PER_MARKEE + 3]?.result as bigint) ?? 0n,
         legacyFloor: (markeeData?.[i * CALLS_PER_MARKEE + 4]?.result as bigint) ?? 0n,
       }))
-      // Drops the genesis seed Markee (empty message) and any dead-on-arrival Markee that was
-      // created but never actually funded -- both are indistinguishable from a real, currently-idle
-      // message by rate/message alone.
-      .filter(m => m.rate > 0n || (everFunded?.has(m.address.toLowerCase()) ?? false)),
+      // Same listing rule as the server-side lists (lib/streaming/listing.ts): drops the genesis seed
+      // Markee and any dead-on-arrival Markee that was created but never actually funded.
+      .filter(m => isListedStreamingMarkee(m.address, m.rate, everFunded ?? new Set())),
     [topAddresses, topRates, markeeData, everFunded]
   )
 

@@ -9,10 +9,14 @@
     "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
     "test:keeper": "tsx --test tests/keeper.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
+    "test:moderation": "tsx --test tests/moderationQueue.test.ts",
+    "test:email-notifications": "tsx --test tests/emailNotifications.test.ts",
+    "test:e2e": "playwright test",
     "start": "next start",
     "lint": "next lint",
     "test:sdk": "tsx --test tests/sdk.test.ts tests/sdk-cache.test.ts tests/sdk-sites.test.ts tests/sdk-checkout.test.ts tests/sdk-conversion.test.ts tests/checkout-alerts.test.ts",
-    "test:sdk:fork": "tsx --test --test-concurrency=1 tests/sdk-fork.test.ts tests/sdk-community-fork.test.ts"
+    "test:sdk:fork": "tsx --test --test-concurrency=1 tests/sdk-fork.test.ts tests/sdk-community-fork.test.ts",
+    "test:e2e:fork": "playwright test -c playwright.fork.config.ts"
   },
   "dependencies": {
     "@apollo/client": "^3.8.5",
@@ -40,6 +44,7 @@
     "wagmi": "^2.12.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

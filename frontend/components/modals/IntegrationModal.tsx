@@ -424,8 +424,10 @@ In MarkeeSign (and in MarkeeModal's boost tab), fetch this once on mount and bui
     return flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`)
   }
 
+The \`flagged\` list holds messages this board's own moderators hid (its owner, plus any wallets the owner added as moderators on markee.xyz). Their flags apply on every site showing the board. Ignore \`siteFlagged\` -- those flags only apply on markee.xyz.
+
 Flagging behavior:
-- MarkeeSign: if isFlagged(topMarkeeAddress), show "Content unavailable" instead of the message. Still allow the modal to open so users can buy a new top message.
+- MarkeeSign: if isFlagged(topMarkeeAddress), show "Content unavailable" instead of the message, and hide its author too (topMessageOwner / name). Still allow the modal to open so users can buy a new top message.
 - MarkeeModal Boost tab: omit flagged entries from the list. If all are flagged, show "No messages available."
 - MarkeeModal Buy tab: always show the current top message (users can replace it by outbidding), even if flagged.
 

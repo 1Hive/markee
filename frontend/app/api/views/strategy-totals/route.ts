@@ -1,10 +1,11 @@
 // GET /api/views/strategy-totals
-// Returns { fixed: number, streaming: number } — aggregate view counts across all markees
-// grouped by pricing strategy. Reads existing leaderboard KV caches for addresses, then
-// batch-fetches views:total:{address} for each. Result is cached 5 minutes.
+// Returns { fixed: number, streaming: number } — every board's views (lib/views/boards.ts), summed
+// by pricing strategy. Result is cached 5 minutes.
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
+import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
+import { readBoardViews } from '@/lib/views/boards'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,7 @@ const RESULT_TTL = 300
 const RATE_WINDOW = 60
 const RATE_MAX_MISSES = 10
 
-type LBCache = { leaderboards: { address: string; topMarkeeAddress?: string | null }[] }
+type LBList = { leaderboards: { address: string; topMarkeeAddress?: string | null; strategy?: string }[] }
 
 export async function GET(request: NextRequest) {
   const cached = await kv.get<{ fixed: number; streaming: number }>(RESULT_KEY)
@@ -31,41 +32,28 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const [oi, sf, gh, st] = await Promise.all([
-    kv.get<LBCache>('cache:openinternet:leaderboards'),
-    kv.get<LBCache>('cache:superfluid:leaderboards'),
-    kv.get<LBCache>('cache:github:leaderboards'),
-    kv.get<LBCache>('cache:streaming:leaderboards'),
-  ])
+  // Every board on every listing (each KV-cached for 60s), For Sale factory boards included, and
+  // each board's views by the shared rule in lib/views/boards.ts.
+  const origin = internalOrigin()
+  const headers = internalHeaders()
+  const lists = await Promise.all(
+    ['openinternet', 'superfluid', 'github', 'forsale', 'streaming'].map(route =>
+      fetch(`${origin}/api/${route}/leaderboards`, { cache: 'no-store', headers })
+        .then(r => r.ok ? r.json() as Promise<LBList> : null)
+        .catch(() => null)),
+  )
+  const seen = new Set<string>()
+  const boards = lists.flatMap((list, i) => (list?.leaderboards ?? []).map(lb => ({ ...lb, streaming: i === 4 || lb.strategy === 'streaming' })))
+    .filter(lb => !seen.has(lb.address.toLowerCase()) && !!seen.add(lb.address.toLowerCase()))
+  const views = await readBoardViews(boards)
 
-  const fixedAddrs = [
-    ...(oi?.leaderboards ?? []),
-    ...(sf?.leaderboards ?? []),
-    ...(gh?.leaderboards ?? []),
-  ].map(l => l.address.toLowerCase())
-
-  // Streaming views are tracked against the top markee slot address (not the board contract address),
-  // so look up topMarkeeAddress and fall back to address only if no markee exists yet.
-  const streamingAddrs = (st?.leaderboards ?? [])
-    .map(l => (l.topMarkeeAddress ?? l.address).toLowerCase())
-
-  // Deduplicate in case any address appears in multiple caches
-  const uniqueFixed = [...new Set(fixedAddrs)]
-  const uniqueStreaming = [...new Set(streamingAddrs)]
-  const allAddrs = [...new Set([...uniqueFixed, ...uniqueStreaming])]
-
-  if (allAddrs.length === 0) {
-    return NextResponse.json({ fixed: 0, streaming: 0 })
+  let fixed = 0
+  let streaming = 0
+  for (const lb of boards) {
+    const n = views.get(lb.address.toLowerCase()) ?? 0
+    if (lb.streaming) streaming += n
+    else fixed += n
   }
-
-  const keys = allAddrs.map(a => `views:total:${a}`)
-  const counts = await kv.mget<number[]>(...keys)
-
-  const viewsMap = new Map<string, number>()
-  allAddrs.forEach((addr, i) => viewsMap.set(addr, counts[i] ?? 0))
-
-  const fixed = uniqueFixed.reduce((sum, a) => sum + (viewsMap.get(a) ?? 0), 0)
-  const streaming = uniqueStreaming.reduce((sum, a) => sum + (viewsMap.get(a) ?? 0), 0)
 
   const result = { fixed, streaming }
   await kv.set(RESULT_KEY, result, { ex: RESULT_TTL })

@@ -11,3 +11,12 @@ export const TEXT   = '#EDEEFF'
 export const TEXT2  = '#B8B6D9'
 export const MUTED  = '#8A8FBF'
 export const BORDER = 'rgba(138,143,191,0.2)'
+export const SANS     = 'Manrope, system-ui, sans-serif'
+// Amber = needs action only. DANGER for destructive actions and errors.
+export const AMBER    = '#FFB547'
+export const DANGER   = '#FF8A9B'
+// Panel labels and counts.
+export const LAVENDER = '#B4ACF7'
+export const PURPLE   = '#7B6AF4'
+export const CARD_BG  = 'rgba(10,15,61,0.5)'
+export const HERO_BG  = '#080C33'

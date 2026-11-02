@@ -11,7 +11,7 @@ import { formatEther, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
@@ -38,7 +38,7 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
   const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const pending = usePendingMarkee(isOpen ? board : undefined, enabled ? address : undefined)
   const { refetch: refetchPending } = pending
@@ -60,6 +60,11 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
       return () => clearTimeout(t)
     }
   }, [isSuccess, isOpen, refetchPending])
+
+  // A reverted settle otherwise just drops back to the claim button with no error.
+  useEffect(() => {
+    if (txReverted && txHash && isOpen) setError(formatReceiptError(receiptError, 'ClaimModal.receipt'))
+  }, [txReverted, txHash, isOpen, receiptError])
 
   async function handleClaim() {
     setError(null)

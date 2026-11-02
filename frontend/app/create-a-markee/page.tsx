@@ -13,7 +13,7 @@ import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN, FACTORIES as V13
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { StrategyPreviewCard } from '@/components/StrategyPreviewCard'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -307,7 +307,7 @@ function CreateWizardInner() {
   const [setupTouched, setSetupTouched] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   // Restore activate step after clicking the Basescan tx link: normally that opens in a new tab and
   // leaves this one untouched, but some browsers/wallet in-app browsers don't honor target="_blank"
@@ -377,6 +377,11 @@ function CreateWizardInner() {
   useEffect(() => {
     if (writeError) logTransactionError(writeError, 'CreateMarkeeWizard')
   }, [writeError])
+
+  // A reverted deploy otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash) setTxError(formatReceiptError(receiptError, 'CreateMarkeeWizard.receipt'))
+  }, [txReverted, hash, receiptError])
 
   const clearDeployedStorage = () => { try { sessionStorage.removeItem(DEPLOYED_STORAGE_KEY) } catch { /* ignore */ } }
 

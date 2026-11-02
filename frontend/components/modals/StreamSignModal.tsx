@@ -25,10 +25,10 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, formatMarkeeAmount, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { useCreateStreamFlow, type CreateStreamCalc } from '@/hooks/useCreateStreamFlow'
 import { useOpenStreamFlow } from '@/hooks/useOpenStreamFlow'
 import { useMoveStreamFlow } from '@/hooks/useMoveStreamFlow'
@@ -282,7 +282,7 @@ function ReceiveCard({ monthly, compact = true }: { monthly: string; compact?: b
 
 // Views (left) / "- author" + YOU badge (right). Shared by the leaderboard row and the
 // current-message preview box in the Fund sub-view.
-function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: string }) {
+function MessageMeta({ views, isOwner, authorLabel }: { views: number; isOwner: boolean; authorLabel: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: MUTED, fontSize: 11.5, flexShrink: 0 }}>
@@ -340,7 +340,7 @@ function SignRow({
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={subtitle} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{monthlyEth} ETH/mo</span>
@@ -482,7 +482,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [cancelTxHash, setCancelTxHash] = useState<Hex | undefined>(undefined)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const { writeContractAsync: writeCancel, isPending: cancelPending } = useWriteContract()
-  const { isLoading: cancelConfirming, isSuccess: cancelSuccess } = useWaitForTransactionReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useWaitForTransactionReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
   async function handleCancel() {
     setCancelError(null)
     try {
@@ -505,6 +505,10 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelSuccess, isOpen])
+  // A reverted cancel/edit otherwise just re-enables its button with no error.
+  useEffect(() => {
+    if (cancelReverted && cancelTxHash) setCancelError(formatReceiptError(cancelReceiptError, 'StreamSignModal.cancelStream.receipt'))
+  }, [cancelReverted, cancelTxHash, cancelReceiptError])
 
   // Decimals derived from the actual accrual rate so the last digit visibly ticks about once a
   // second, instead of a fixed decimal count that looks frozen at typical low stream rates.
@@ -552,21 +556,21 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const manageNetStreamedWei = manageGrossStreamedWei > manageRefundedWei ? manageGrossStreamedWei - manageRefundedWei : 0n
   const manageStreamedDecimals = decimalsForWeiRate(manageLiveIsTop ? manageLiveRate : 0n)
 
-  // Inline message edit (pencil next to "Message You're Funding") — MarkeeABI.setMessage direct on
-  // the markee's own address, same call StreamingBoardDetail's StreamMessageEditModal makes.
+  // Inline message edit (pencil next to "Message You're Funding") — the board's updateMessage, same
+  // call StreamingBoardDetail's StreamMessageEditModal makes (Markee.setMessage is board-only).
   const [editingMessage, setEditingMessage] = useState(false)
   const [editMessageText, setEditMessageText] = useState('')
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
   const editMessageBusy = editMessagePending || editMessageConfirming
   async function handleSaveMessage() {
     if (!target || !editMessageText.trim()) return
     setEditMessageError(null)
     try {
       const hash = await writeEditMessage({
-        address: target.address as Address, abi: MarkeeABI, functionName: 'setMessage', args: [editMessageText], chainId: CANONICAL_CHAIN.id,
+        address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'updateMessage', args: [target.address as Address, editMessageText], chainId: CANONICAL_CHAIN.id,
       })
       setEditMessageTxHash(hash)
     } catch (e: unknown) {
@@ -580,6 +584,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
       return () => clearTimeout(t)
     }
   }, [editMessageSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (editMessageReverted && editMessageTxHash) setEditMessageError(formatReceiptError(editMessageReceiptError, 'StreamSignModal.editMessage.receipt'))
+  }, [editMessageReverted, editMessageTxHash, editMessageReceiptError])
 
   // ── Views (batched, per-markee + summed for the header) ────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -737,7 +744,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   useEffect(() => {
     if (!isOpen || !initialTargetAddress || !initialView || appliedInitialTargetRef.current) return
     const m = markees.find(x => x.address.toLowerCase() === initialTargetAddress.toLowerCase())
-    if (!m) return
+    // Rows arrive before their per-markee reads (message, owner); opening on one of those would
+    // keep a blank copy ("Loading message…", no owner-only controls) since target isn't refreshed.
+    if (!m || !m.owner) return
     appliedInitialTargetRef.current = true
     if (initialView === 'fund') openFund(m)
     else openManage(m)
@@ -1089,7 +1098,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                             <MessageMeta
                               views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                               isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                              authorLabel={target.name || fmtAddr(target.owner)}
+                              authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                             />
                           </div>
                         </>
@@ -1177,7 +1186,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           <MessageMeta
                             views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                             isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                            authorLabel={target.name || fmtAddr(target.owner)}
+                            authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                           />
                         </div>
                       </div>

@@ -18,6 +18,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # A Markee team member's token, so the push to dev passes Dev gate's bypass.
+          token: ${{ secrets.MERGEBACK_TOKEN || github.token }}
 
       - name: Configure Git
         run: |

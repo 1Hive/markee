@@ -1,10 +1,13 @@
 // GET /api/embed/[address]
 // Returns the current top message for a leaderboard. CORS-open so any site
-// can poll it. KV-cached for 60 s; bust with ?bust=1.
+// can poll it. KV-cached for 60 s; bust with ?bust=1. A message its board's
+// moderators flagged comes back with `flagged: true` and its text and author
+// blanked, since this feeds other sites (markee.xyz-only flags don't apply).
 import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
+import { FLAGGED_KEYS, flagKey } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,17 +83,20 @@ export async function GET(
   let message         = ''
   let name            = ''
   let totalFundsAdded = '0'
+  let flagged         = false
 
   const ZERO = '0x0000000000000000000000000000000000000000'
   if (topMarkeeAddress && topMarkeeAddress !== ZERO) {
     const mAddr = topMarkeeAddress as `0x${string}`
-    const [msg, nm, funds] = await Promise.all([
+    const [msg, nm, funds, isFlagged] = await Promise.all([
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'message'         }).catch(() => ''),
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'name'            }).catch(() => ''),
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'totalFundsAdded' }).catch(() => 0n),
+      kv.sismember(FLAGGED_KEYS.board, flagKey(topMarkeeAddress)).catch(() => 0),
     ])
-    message         = msg as string
-    name            = nm  as string
+    flagged         = isFlagged === 1
+    message         = flagged ? '' : msg as string
+    name            = flagged ? '' : nm  as string
     totalFundsAdded = (funds as bigint).toString()
   }
 
@@ -101,6 +107,7 @@ export async function GET(
     topFundsRaw,
     message,
     name,
+    flagged,
     totalFundsAdded,
     updatedAt: new Date().toISOString(),
   }

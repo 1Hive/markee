@@ -36,7 +36,7 @@ const PLATFORMS = [
     icon: 'github',
     color: C.text,
     summary: 'Drop a Markee sign into any markdown file in your repo. Perfect for READMEs, docs and skill.md files.',
-    seeUrl: '/ecosystem/platforms/github',
+    seeUrl: '/marketplace',
   },
   {
     key: 'superfluid' as PlatformKey,

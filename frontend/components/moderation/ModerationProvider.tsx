@@ -14,16 +14,25 @@ import {
   useContext,
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
 import { ADMIN_ADDRESSES, MODERATION_API } from '@/lib/moderation/config'
+import { reviewMessage } from '@/lib/moderation/queue'
 
 // ── Types ────────────────────────────────────────────────────────────
 
+export interface FlaggedLists {
+  /** Board flags: set by a board's owner or its moderators, hidden on every site */
+  flagged?: string[]
+  /** Site flags: set by markee.xyz global admins, hidden on markee.xyz only */
+  siteFlagged?: string[]
+}
+
 interface ModerationContextValue {
-  /** Set of flagged keys in "chainId:markeeId" format */
+  /** Flagged keys in "chainId:markeeId" format, board and site flags together (both hide here) */
   flaggedSet: Set<string>
   /** Whether the current wallet is a global admin (in lib/moderation/config.ts's ADMIN_ADDRESSES) */
   isAdmin: boolean
@@ -37,8 +46,14 @@ interface ModerationContextValue {
   canModerate: (boardAdmin?: string | null, boardCreator?: string | null) => boolean
   /** Check if a specific markee is flagged */
   isFlagged: (chainId: number | string, markeeId: string) => boolean
+  /** Whether the current wallet sees this markee's message and author hidden: flagged, and not one of its moderators */
+  isHidden: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => boolean
+  /** Whether the current wallet can lift this markee's flag. A board flag is only liftable by that board's moderators. */
+  canUnflag: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => boolean
   /** Toggle flag state (must pass canModerate for the same board info). Returns new flag state. */
   toggleFlag: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => Promise<boolean>
+  /** Replace the flagged sets with fresh lists from the moderation API */
+  replaceFlagged: (lists: FlaggedLists) => void
   /** Loading state for initial fetch */
   isLoading: boolean
 }
@@ -48,7 +63,10 @@ const ModerationContext = createContext<ModerationContextValue>({
   isAdmin: false,
   canModerate: () => false,
   isFlagged: () => false,
+  isHidden: () => false,
+  canUnflag: () => false,
   toggleFlag: async () => false,
+  replaceFlagged: () => {},
   isLoading: true,
 })
 
@@ -63,7 +81,8 @@ export function useModeration() {
 export function ModerationProvider({ children }: { children: ReactNode }) {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
-  const [flaggedSet, setFlaggedSet] = useState<Set<string>>(new Set())
+  const [boardFlagged, setBoardFlagged] = useState<Set<string>>(new Set())
+  const [siteFlagged, setSiteFlagged] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
 
   const isAdminUser = address
@@ -72,14 +91,20 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
       )
     : false
 
+  const replaceFlagged = useCallback((lists: FlaggedLists) => {
+    setBoardFlagged(new Set((lists.flagged ?? []).map(k => k.toLowerCase())))
+    setSiteFlagged(new Set((lists.siteFlagged ?? []).map(k => k.toLowerCase())))
+  }, [])
+
+  const flaggedSet = useMemo(() => new Set([...boardFlagged, ...siteFlagged]), [boardFlagged, siteFlagged])
+
   // Fetch flagged list on mount
   useEffect(() => {
     async function fetchFlagged() {
       try {
         const res = await fetch(MODERATION_API)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
-        setFlaggedSet(new Set(data.flagged ?? []))
+        replaceFlagged(await res.json())
       } catch (err) {
         console.error('[moderation] Failed to fetch flagged list:', err)
       } finally {
@@ -87,27 +112,46 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
       }
     }
     fetchFlagged()
-  }, [])
+  }, [replaceFlagged])
 
-  const toKey = (chainId: number | string, markeeId: string) =>
-    `${chainId}:${markeeId}`
+  const toKey = useCallback(
+    (chainId: number | string, markeeId: string) => `${chainId}:${markeeId.toLowerCase()}`,
+    []
+  )
 
   const isFlagged = useCallback(
     (chainId: number | string, markeeId: string) =>
       flaggedSet.has(toKey(chainId, markeeId)),
-    [flaggedSet]
+    [flaggedSet, toKey]
+  )
+
+  const ownsBoard = useCallback(
+    (boardAdmin?: string | null, boardCreator?: string | null): boolean => {
+      const wallet = address?.toLowerCase()
+      return !!wallet && (boardAdmin?.toLowerCase() === wallet || boardCreator?.toLowerCase() === wallet)
+    },
+    [address]
   )
 
   const canModerate = useCallback(
-    (boardAdmin?: string | null, boardCreator?: string | null): boolean => {
-      if (isAdminUser) return true
-      if (!address) return false
-      const wallet = address.toLowerCase()
-      if (boardAdmin && boardAdmin.toLowerCase() === wallet) return true
-      if (boardCreator && boardCreator.toLowerCase() === wallet) return true
-      return false
-    },
-    [isAdminUser, address]
+    (boardAdmin?: string | null, boardCreator?: string | null): boolean =>
+      isAdminUser || ownsBoard(boardAdmin, boardCreator),
+    [isAdminUser, ownsBoard]
+  )
+
+  const isHidden = useCallback(
+    (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) =>
+      isFlagged(chainId, markeeId) && !canModerate(boardAdmin, boardCreator),
+    [isFlagged, canModerate]
+  )
+
+  // Global admins flag in the site scope only, so a board flag stays up unless they also own the board.
+  // Added moderators can lift board flags too (see authorizedScopes), but this provider does not know
+  // them, so they work through the /account queue instead.
+  const canUnflag = useCallback(
+    (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): boolean =>
+      boardFlagged.has(toKey(chainId, markeeId)) ? ownsBoard(boardAdmin, boardCreator) : canModerate(boardAdmin, boardCreator),
+    [boardFlagged, ownsBoard, canModerate, toKey]
   )
 
   const toggleFlag = useCallback(
@@ -116,26 +160,35 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
 
       const key = toKey(chainId, markeeId)
       const currentlyFlagged = flaggedSet.has(key)
+      if (currentlyFlagged && !canUnflag(chainId, markeeId, boardAdmin, boardCreator)) return true
       const action = currentlyFlagged ? 'unflag' : 'flag'
-
-      // Optimistic update
-      setFlaggedSet((prev) => {
+      const owner = ownsBoard(boardAdmin, boardCreator)
+      const wasFlagged = { board: boardFlagged.has(key), site: siteFlagged.has(key) }
+      const withKey = (on: boolean) => (prev: Set<string>) => {
         const next = new Set(prev)
-        if (action === 'flag') next.add(key)
+        if (on) next.add(key)
         else next.delete(key)
         return next
-      })
+      }
 
       try {
         const timestamp = Math.floor(Date.now() / 1000)
-        const message = `markee-moderation:${action}:${chainId}:${markeeId}:${timestamp}`
-        const signature = await signMessageAsync({ message })
+        const signature = await signMessageAsync({ message: reviewMessage(action, chainId, [markeeId], timestamp) })
+
+        // Guess the scope the server will use (see authorizedScopes); its response replaces both sets.
+        if (action === 'flag') {
+          if (owner) setBoardFlagged(withKey(true))
+          if (isAdminUser) setSiteFlagged(withKey(true))
+        } else {
+          setSiteFlagged(withKey(false))
+          if (owner) setBoardFlagged(withKey(false))
+        }
 
         const res = await fetch(MODERATION_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            markeeId,
+            markeeIds: [markeeId],
             chainId,
             action,
             adminAddress: address,
@@ -148,27 +201,22 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
           throw new Error(`HTTP ${res.status}`)
         }
 
-        const data = await res.json()
-        setFlaggedSet(new Set(data.flagged ?? []))
+        replaceFlagged(await res.json())
         return action === 'flag'
       } catch (err) {
         console.error('[moderation] toggleFlag error:', err)
-        // Rollback optimistic update
-        setFlaggedSet((prev) => {
-          const rollback = new Set(prev)
-          if (action === 'flag') rollback.delete(key)
-          else rollback.add(key)
-          return rollback
-        })
+        // Only this markee is rolled back, so another toggle in flight keeps its own update.
+        setBoardFlagged(withKey(wasFlagged.board))
+        setSiteFlagged(withKey(wasFlagged.site))
         return currentlyFlagged
       }
     },
-    [address, canModerate, flaggedSet, signMessageAsync]
+    [address, isAdminUser, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged, toKey]
   )
 
   return (
     <ModerationContext.Provider
-      value={{ flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, toggleFlag, isLoading }}
+      value={{ flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, isHidden, canUnflag, toggleFlag, replaceFlagged, isLoading }}
     >
       {children}
     </ModerationContext.Provider>

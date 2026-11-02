@@ -17,10 +17,11 @@ import { StrategyBadge } from '@/components/StrategyBadge'
 import { SECONDS_IN_MONTH, STRATEGIES, type Strategy } from '@/lib/strategy'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
-import { ModeratedContent } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { logoDevUrl } from '@/lib/utils'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -77,8 +78,14 @@ function verifiedGithubOwner(lb: Leaderboard): string | null {
   return (lb.linkedFiles ?? []).find(f => f.verified)?.repoOwner ?? null
 }
 
-function servedOnLabel(lb: Leaderboard): string {
+// featured: the board's featured integration key (lib/integrations/featured.ts), which leads when known.
+function servedOnLabel(lb: Leaderboard, featured?: string | null): string {
   if (lb.platform === 'superfluid') return 'Superfluid'
+  const live = (lb.verifiedUrls?.length ?? (lb.verifiedUrl ? 1 : 0)) + (lb.linkedFiles ?? []).filter(f => f.verified).length
+  const more = live > 1 ? ` +${live - 1}` : ''
+  if (featured?.startsWith('u:')) return `${extractDomain(featured.slice(2))}${more}`
+  const featuredFile = featured?.startsWith('f:') ? (lb.linkedFiles ?? []).find(f => f.verified && !!f.repoFullName && featured!.startsWith(`f:${f.repoFullName}/`)) : undefined
+  if (featuredFile) return `${featuredFile.repoOwner || 'GitHub'}${more}`
   if (lb.verifiedUrl) {
     const domain = extractDomain(lb.verifiedUrl)
     const extra = (lb.verifiedUrls?.length ?? 1) - 1
@@ -204,14 +211,14 @@ function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: n
 }
 
 // ── Platform glyph for SERVED ON ──────────────────────────────────────────────
-function ServedLogo({ lb }: { lb: Leaderboard }) {
+function ServedLogo({ lb, featured }: { lb: Leaderboard; featured?: string | null }) {
   const [failed, setFailed] = useState(false)
   const box: React.CSSProperties = { width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${BORDER}`, overflow: 'hidden' }
   // GitHub-platform boards always render this way; other-platform boards (e.g. a "For Sale" factory
   // board, which carries no inherent platform tag) render it too once they have a verified linked
   // file -- Served On is derived from actual verification, not a rigid creation-time tag.
   const hasVerifiedGithubFile = (lb.linkedFiles ?? []).some(f => f.verified)
-  if (lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile)) {
+  if (!featured?.startsWith('u:') && (featured?.startsWith('f:') || lb.platform === 'github' || (lb.platform !== 'superfluid' && hasVerifiedGithubFile))) {
     return <span style={{ ...box, background: 'rgba(237,238,255,0.08)' }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill={TEXT2}><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
     </span>
@@ -221,7 +228,7 @@ function ServedLogo({ lb }: { lb: Leaderboard }) {
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
     </span>
   }
-  const primaryUrl = lb.verifiedUrl || lb.verifiedUrls?.[0] || null
+  const primaryUrl = featured?.startsWith('u:') ? featured.slice(2) : lb.verifiedUrl || lb.verifiedUrls?.[0] || null
   let hostname: string | null = null
   if (primaryUrl) { try { hostname = new URL(primaryUrl).hostname } catch { /* ignore */ } }
   if (hostname && !failed) {
@@ -431,12 +438,14 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
-            {lb.topMarkeeOwner && (
-              <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
-                {lb.topMarkeeOwner.slice(0, 6)}...{lb.topMarkeeOwner.slice(-4)}
-              </span>
-            )}
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
+              {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
+              {lb.topMarkeeOwner && (
+                <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
+                  {lb.topMarkeeOwner.slice(0, 6)}...{lb.topMarkeeOwner.slice(-4)}
+                </span>
+              )}
+            </ModeratedAuthor>
           </div>
 
           {/* hover pill -- brand watermark now lives as the large MarkeeWatermark behind the whole
@@ -498,8 +507,8 @@ function RankBadge({ rank }: { rank: number }) {
 // ── Dense table row ───────────────────────────────────────────────────────────
 interface RowPosition { rank: number; address: string; fundedRaw: bigint | null }
 
-function TableRow({ lb, views, viewsLoading, ethPrice, position, onBuy, onStream }: {
-  lb: Leaderboard; views: number; viewsLoading: boolean; ethPrice: number | null
+function TableRow({ lb, featured, views, viewsLoading, ethPrice, position, onBuy, onStream }: {
+  lb: Leaderboard; featured?: string | null; views: number; viewsLoading: boolean; ethPrice: number | null
   position: RowPosition | null
   onBuy: (opts?: RowOpenOpts) => void; onStream: (opts?: RowOpenOpts) => void
 }) {
@@ -562,9 +571,9 @@ function TableRow({ lb, views, viewsLoading, ethPrice, position, onBuy, onStream
       }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12, color: TEXT2, minWidth: 0 }}>
-        <ServedLogo lb={lb} />
+        <ServedLogo lb={lb} featured={featured} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: lb.platform === 'website' ? MONO : 'inherit' }}>
-          {servedOnLabel(lb)}
+          {servedOnLabel(lb, featured)}
         </span>
       </span>
 
@@ -771,6 +780,7 @@ export default function MarketplacePage() {
   }, [])
 
   const pageRows   = useMemo(() => sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [sorted, page])
+  const { data: integrationData } = useBoardIntegrations(pageRows.map(lb => lb.address))
   const pageCount  = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
 
   // Top leaderboard for featured hero (by totalFunds, must have a message)
@@ -909,6 +919,7 @@ export default function MarketplacePage() {
               <TableRow
                 key={lb.address}
                 lb={lb}
+                featured={integrationData?.[lb.address.toLowerCase()]?.featured}
                 views={viewsMap.get((lb.topMarkeeAddress || '').toLowerCase()) ?? 0}
                 viewsLoading={viewsLoading}
                 ethPrice={ethPrice}

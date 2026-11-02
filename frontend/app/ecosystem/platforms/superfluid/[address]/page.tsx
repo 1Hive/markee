@@ -16,7 +16,7 @@ import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useViews } from '@/hooks/useViews'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
 
@@ -486,7 +486,7 @@ export default function SuperfluidLeaderboardPage() {
                   </div>
                   <div className="flex items-center gap-4 mt-3">
                     {topMarkee.name && (
-                      <span className="text-[#8A8FBF] text-xs">by {topMarkee.name}</span>
+                      <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topMarkee.name}</ModeratedAuthor></span>
                     )}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
                     {!NETWORK_PAUSED && !isLegacyContract && (

@@ -2,7 +2,17 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
+import { createPublicClient, http, isAddress, parseAbi, type Address } from 'viem'
+import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
+import { readBoardViews } from '@/lib/views/boards'
+import { normalizeHost, lastSiteViewKey } from '@/lib/views/host'
+import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/daily'
+
+// Counts change with every view: never let Next serve these KV reads from its data cache.
+export const dynamic = 'force-dynamic'
+
+const TOP_ABI = parseAbi(['function getTopMarkees(uint256 limit) view returns (address[], uint256[])'])
 
 function corsHeaders(_origin: string | null): Record<string, string> {
   return {
@@ -14,19 +24,6 @@ function corsHeaders(_origin: string | null): Record<string, string> {
 
 function hashMessage(message: string): string {
   return createHash('md5').update(message.trim().toLowerCase()).digest('hex').slice(0, 8)
-}
-
-// Bare hostname, lowercased, no protocol/path/www — the key both the POST increment and the GET
-// per-URL lookup normalize to, so "https://Example.com/blog" and "example.com" count together.
-function normalizeHost(raw: string): string | null {
-  const trimmed = raw.trim().slice(0, 253) // longest valid hostname
-  if (!trimmed) return null
-  try {
-    const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`
-    return new URL(withProtocol).hostname.replace(/^www\./, '').toLowerCase() || null
-  } catch {
-    return null
-  }
 }
 
 function getClientIp(req: NextRequest): string {
@@ -46,9 +43,27 @@ export async function OPTIONS(req: NextRequest) {
 // GET /api/views?network=1  → { total: number }  (network-wide total across all markees)
 // GET /api/views?addresses=0x1,0x2,...
 // GET /api/views?address=0x1&messages=msg1||msg2||msg3  (pipe-delimited, per-message counts)
+// GET /api/views?boards=0x1,0x2,...  → { board: { totalViews } }, each board's views by the shared rule
+//   in lib/views/boards.ts (board key + its current top message's key, read live from the board)
 export async function GET(req: NextRequest) {
   const origin = req.headers.get('origin')
   const { searchParams } = new URL(req.url)
+
+  const boardsParam = searchParams.get('boards')
+  if (boardsParam !== null) {
+    const boards = [...new Set(boardsParam.split(',').map(a => a.toLowerCase().trim()).filter(a => isAddress(a)))].slice(0, VIEWS_ADDRESS_LIMIT)
+    if (boards.length === 0) return NextResponse.json({}, { headers: corsHeaders(origin) })
+    const client = createPublicClient({ chain: base, transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org', { fetchOptions: { cache: 'no-store' } }) })
+    // Legacy boards have no getTopMarkees; they count by board address alone.
+    const tops = await client.multicall({
+      contracts: boards.map(address => ({ address: address as Address, abi: TOP_ABI, functionName: 'getTopMarkees' as const, args: [1n] as const })),
+    }).catch(() => [])
+    const views = await readBoardViews(boards.map((address, i) => ({
+      address,
+      topMarkeeAddress: (tops[i]?.result as readonly [readonly string[], readonly bigint[]] | undefined)?.[0]?.[0] ?? null,
+    })))
+    return NextResponse.json(Object.fromEntries(boards.map(b => [b, { totalViews: views.get(b) ?? 0 }])), { headers: corsHeaders(origin) })
+  }
 
   if (searchParams.get('network') === '1') {
     const total = await kv.get<number>('views:network:total') ?? 0
@@ -124,8 +139,19 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result, { headers: corsHeaders(origin) })
 }
 
+// Hostnames that are always trusted as view sources regardless of a board's verifiedUrls.
+// Includes our own domains, Vercel preview URLs, and localhost for dev.
+const OWNED_HOSTS = new Set(['markee.xyz', 'www.markee.xyz'])
+function isTrustedHost(h: string | null): boolean {
+  if (!h) return true // no referer → allow (privacy browsers, curl, server-side)
+  if (OWNED_HOSTS.has(h)) return true
+  if (h === 'localhost' || h.startsWith('127.') || h.startsWith('[::1]')) return true
+  if (h.endsWith('.markee.xyz') || h.endsWith('.vercel.app')) return true
+  return false
+}
+
 // POST /api/views
-// Body: { address: string, message: string }
+// Body: { address: string, message: string, url?: string }
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
   const body = await req.json().catch(() => null)
@@ -139,14 +165,48 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
-  // Optional: which verified site the view came from, reported by that site's own view-tracking
-  // proxy (see lib/embedPrompt/fragments.ts). Same trust model as the rest of this endpoint --
-  // unauthenticated, self-reported -- so this is a "which of your own sites gets traffic" signal
-  // for the board owner, not a hardened analytics source.
-  const host = typeof body.url === 'string' ? normalizeHost(body.url) : null
 
-  // Deliberately unguarded by environment: previews and local dev increment the same shared
-  // counters as production, trading a little noise in the totals for staging that behaves real.
+  // ── Referer / origin guard ──────────────────────────────────────────────────
+  // Prefer the browser-set `Origin` header (cross-origin requests always send it and it
+  // can't be overridden by fetch() options); fall back to `Referer` for same-origin or
+  // server-sent requests. If the inferred host isn't one of our own domains, check it
+  // against the board's registered verifiedUrls. A board with NO verified integrations
+  // allows all origins (backward-compat; those boards only appear on markee.xyz anyway).
+  // A board that HAS verified integrations rejects views from unregistered domains — a
+  // site owner can't manufacture traffic by calling the API directly from their server.
+  const rawReferer = req.headers.get('origin') ?? req.headers.get('referer')
+  const refHost    = rawReferer ? normalizeHost(rawReferer) : null
+  // Which site the view came from, for the per-site counters: the body's url when the embed sends
+  // it, otherwise the browser's Origin/Referer, so embeds that leave url out are still attributed.
+  // Views from markee.xyz itself belong to no site.
+  const host = (typeof body.url === 'string' ? normalizeHost(body.url) : null) ?? (isTrustedHost(refHost) ? null : refHost)
+
+  if (!isTrustedHost(refHost)) {
+    const meta = await kv.get<{ verifiedUrls?: string[]; verifiedUrl?: string }>(`oi:meta:${address}`).catch(() => null)
+    const verifiedHosts = new Set(
+      (Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls
+        : meta?.verifiedUrl ? [meta.verifiedUrl] : [])
+        .map(u => normalizeHost(u))
+        .filter((h): h is string => h !== null),
+    )
+
+    if (verifiedHosts.size > 0 && !verifiedHosts.has(refHost!)) {
+      // Known board, unknown origin — return current counts but don't increment.
+      const [totalViews, messageViews] = await kv.mget<number[]>(
+        `views:total:${address}`,
+        `views:msg:${address}:${msgHash}`,
+      )
+      return NextResponse.json(
+        { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
+        { headers: corsHeaders(origin) },
+      )
+    }
+  }
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // The last time this site reported a view, counted or not, so the dashboard can tell a site whose
+  // embed isn't reporting views from one that just hasn't had visitors (lib/integrations/server.ts).
+  if (host) await kv.set(lastSiteViewKey(address, host), Math.floor(Date.now() / 1000)).catch(() => {})
 
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
@@ -170,6 +230,10 @@ export async function POST(req: NextRequest) {
   pipeline.set(dedupeKey, '1', { ex: 3600 })
   pipeline.incr('views:network:total')
   if (host) pipeline.incr(`views:url:${address}:${host}`)
+  // Day-by-day history for the dashboard charts (lib/stats/daily.ts).
+  const day = dayOf()
+  pipeline.hincrby(dailyViewsKey(address), day, 1)
+  pipeline.set(VIEWS_SINCE_KEY, day, { nx: true })
   const [totalViews, messageViews] = await pipeline.exec<[number, number, unknown, number, number?]>()
 
   return NextResponse.json(

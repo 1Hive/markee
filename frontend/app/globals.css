@@ -194,6 +194,7 @@ img.emoji {
 /* ── Design system animations ───────────────────────────────────────────────── */
 @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes drawerIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes scaleIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes rowHighlight { 0% { background: rgba(248,151,254,0.18); } 100% { background: transparent; } }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -207,3 +208,25 @@ img.emoji {
 }
 body.page-hidden .starfield-bg::before,
 body.page-hidden .starfield-bg::after { animation-play-state: paused; }
+
+/* /account dashboard (design handoff "My Dashboard.html" .d2-* rules) */
+.acct-layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:36px;align-items:start}
+.acct-side{position:sticky;top:88px;display:flex;flex-direction:column;gap:2px}
+.acct-side-item:hover{background:rgba(138,143,191,0.08)!important}
+.acct-row{transition:background 120ms}
+.acct-row-click{cursor:pointer}
+.acct-row-click:hover{background:rgba(138,143,191,0.09)!important;box-shadow:inset 2px 0 0 #F897FE!important}
+.acct-row .acct-hover{opacity:0;transition:opacity 120ms}
+.acct-row:hover .acct-hover,.acct-hover:focus,.acct-hover:focus-visible{opacity:1}
+.acct-more:hover{border-color:rgba(248,151,254,0.4)!important;color:#EDEEFF!important;background:rgba(138,143,191,0.05)!important}
+.acct-icon-btn:hover{border-color:rgba(248,151,254,0.45)!important}
+.acct-btn-lg{min-height:38px}
+@keyframes acctPulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,0.65)}70%{box-shadow:0 0 0 7px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+.acct-pulse{animation:acctPulse 1.8s ease-out infinite}
+@media (hover:none){.acct-row .acct-hover{opacity:1}}
+@media (max-width:900px){
+  .acct-layout{grid-template-columns:minmax(0,1fr);gap:20px}
+  .acct-side{position:static;flex-direction:row;overflow-x:auto;border-bottom:1px solid rgba(138,143,191,0.18);padding-bottom:8px}
+  .acct-side-item{width:auto!important}
+  .acct-side-sep{display:none}
+}

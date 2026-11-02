@@ -7,8 +7,8 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
 import { ratePerSecToMonthly } from '@/lib/superfluid/streaming'
-import { Eye, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User, Zap } from 'lucide-react'
-import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { Eye, EyeOff, ExternalLink, ChevronDown, ChevronRight, Coins, Loader2, MessageSquare, RefreshCw, User, Zap } from 'lucide-react'
+import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -17,6 +17,8 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
+import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
+import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, viewReporting, type BoardIntegrations } from '@/lib/integrations/featured'
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
@@ -284,12 +286,23 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
   )
 }
 
-export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
+// A site's view count. On this public page a site that has never reported a view gets a quiet
+// eye-off icon explaining why it reads 0; the creator-facing warnings live in the Creator Hub.
+const NO_VIEWS_TIP = 'No views recorded from this site. It might not have view tracking turned on.'
+function SiteViews({ info, itemKey, views, loaded }: { info?: BoardIntegrations; itemKey: string; views: number; loaded: boolean }) {
+  const none = viewReporting(info, itemKey) === 'none'
+  return (
+    <span title={none ? NO_VIEWS_TIP : undefined} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
+      {none ? <EyeOff size={10} style={{ opacity: 0.7 }} aria-label={NO_VIEWS_TIP} /> : <Eye size={10} style={{ opacity: 0.7 }} />} {loaded ? formatViews(views) : <ViewsSpinner size={9} />}
+    </span>
+  )
+}
+
+export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
   entry: EcoEntry | null
   /** Still resolving useServedOn -- distinguishes "not verified yet" from "genuinely nothing linked". */
   loading?: boolean
-  /** Top markee's address -- view counts are tracked per-markee, not per-leaderboard. */
-  markeeAddress?: string
+  boardAddress?: string
   onAddToSite?: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -329,36 +342,11 @@ export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
   const files = (entry?.linkedFiles ?? []).filter(f => f.verified)
   const urls = entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []
 
-  const [repoTraffic, setRepoTraffic] = useState<Record<string, number>>({})
-  const [repoTrafficLoaded, setRepoTrafficLoaded] = useState(false)
-  useEffect(() => {
-    if (!entry?.address || files.length === 0) { setRepoTrafficLoaded(true); return }
-    setRepoTrafficLoaded(false)
-    fetch(`/api/github/traffic-multi?address=${entry.address}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((d: { repos?: Record<string, { count: number }> }) => {
-        if (!d?.repos) return
-        const m: Record<string, number> = {}
-        for (const [repo, t] of Object.entries(d.repos)) m[repo] = t.count
-        setRepoTraffic(m)
-      })
-      .catch(() => {})
-      .finally(() => setRepoTrafficLoaded(true))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.address, files.length])
-
-  const [urlViews, setUrlViews] = useState<Record<string, number>>({})
-  const [urlViewsLoaded, setUrlViewsLoaded] = useState(false)
-  useEffect(() => {
-    if (urls.length === 0 || !markeeAddress) { setUrlViewsLoaded(true); return }
-    setUrlViewsLoaded(false)
-    fetch(`/api/views?address=${markeeAddress}&urls=${urls.map(encodeURIComponent).join('||')}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((d: Record<string, number> | null) => { if (d) setUrlViews(d) })
-      .catch(() => {})
-      .finally(() => setUrlViewsLoaded(true))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urls.join('||'), markeeAddress])
+  // Views and the featured pick come from one place, so this agrees with the Marketplace and the
+  // dashboard (lib/integrations/featured.ts).
+  const { data: integrationData } = useBoardIntegrations(boardAddress ? [boardAddress] : [])
+  const info = boardAddress ? integrationData?.[boardAddress.toLowerCase()] : undefined
+  const viewsLoaded = integrationData !== null
 
   if (!entry) {
     if (loading) return <ViewsSpinner size={14} color={MUTED} />
@@ -374,11 +362,11 @@ export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
   const href = (u: string) => u.startsWith('http') ? u : `https://${u}`
   const host = (u: string) => getLogoDomain(u) ?? clean(u)
 
-  type Item = { kind: 'file'; file: LinkedFile; views: number; viewsLoaded: boolean } | { kind: 'url'; url: string; views: number; viewsLoaded: boolean }
-  const items: Item[] = [
-    ...files.map(file => ({ kind: 'file' as const, file, views: repoTraffic[file.repoFullName] ?? 0, viewsLoaded: repoTrafficLoaded })),
-    ...urls.map(url => ({ kind: 'url' as const, url, views: urlViews[url] ?? 0, viewsLoaded: urlViewsLoaded })),
-  ].sort((a, b) => b.views - a.views)
+  type Item = { kind: 'file'; file: LinkedFile; key: string; views: number; viewsLoaded: boolean } | { kind: 'url'; url: string; key: string; views: number; viewsLoaded: boolean }
+  const items: Item[] = orderIntegrations<Item>([
+    ...files.map(file => ({ kind: 'file' as const, file, key: fileIntegrationKey(file), views: info?.views[fileIntegrationKey(file)] ?? 0, viewsLoaded })),
+    ...urls.map(url => ({ kind: 'url' as const, url, key: urlIntegrationKey(url), views: info?.views[urlIntegrationKey(url)] ?? 0, viewsLoaded })),
+  ], i => i.key, info)
 
   const hasAny = items.length > 0
   const extra = items.length - 1
@@ -466,9 +454,7 @@ export function ServedOnCell({ entry, loading, markeeAddress, onAddToSite }: {
                 <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(item.url)}</span>
                 <ExternalLink size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
               </span>
-              <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {item.viewsLoaded ? formatViews(item.views) : <ViewsSpinner size={9} />}
-              </span>
+              <SiteViews info={info} itemKey={item.key} views={item.views} loaded={item.viewsLoaded} />
             </a>
           ))}
         </div>,
@@ -485,11 +471,10 @@ export function MetricValue({ text, color = TEXT, title }: { text: string; color
   )
 }
 
-export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onAddToSite, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, entryLoading, onAddToSite, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
   entryLoading?: boolean
-  topMarkeeAddress?: string
   onAddToSite?: () => void
   // Sum of views across every message on this board, not just the current top one.
   totalViews: number
@@ -509,7 +494,7 @@ export function MetricsBar({ address, entry, entryLoading, topMarkeeAddress, onA
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0 6px', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} markeeAddress={topMarkeeAddress} onAddToSite={onAddToSite} />)}
+      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} boardAddress={address} onAddToSite={onAddToSite} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(totalViews)} color={BLUE} />)}
       {cell(messagesLabel, messagesLoading ? <ViewsSpinner size={16} color={TEXT} /> : <MetricValue text={markeeCount.toLocaleString()} />)}
@@ -1324,26 +1309,62 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
   return (
     <div style={{ borderTop: `1px solid ${BORDER}`, background: BG, padding: '12px 16px 14px', borderLeft: featured ? `3px solid ${PINK}` : '3px solid transparent' }}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Left: current bids */}
+        {/* Left: funded-by (fixed) or current bids (streaming) */}
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bids</p>
-          {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
-              <Loader2 size={14} className="animate-spin" /> Loading bids...
-            </div>
-          ) : bidders.length > 0 ? (
-            <div className="space-y-2">
-              {bidders.map(b => (
-                <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
-                  <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
-                    {fmtAddr(b.address)} <ExternalLink size={10} />
-                  </a>
-                  <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatRate(BigInt(b.flowRateRaw))}</span>
+          {strategy === 'fixed' ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Funded By</p>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+                  <Loader2 size={14} className="animate-spin" /> Loading contributors...
                 </div>
-              ))}
-            </div>
+              ) : (() => {
+                const totals = new Map<string, bigint>()
+                for (const e of history) {
+                  if (e.kind === 'funds') {
+                    totals.set(e.actor, (totals.get(e.actor) ?? 0n) + e.amount)
+                  }
+                }
+                const contributors = [...totals.entries()]
+                  .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
+                return contributors.length > 0 ? (
+                  <div className="space-y-2">
+                    {contributors.map(([addr, total]) => (
+                      <div key={addr} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                        <a href={getAddressUrl(CANONICAL_CHAIN_ID, addr)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
+                          {fmtAddr(addr)} <ExternalLink size={10} />
+                        </a>
+                        <span className="text-sm font-semibold text-[#7C9CFF] font-mono">{Number(formatEther(total)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ETH</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#8A8FBF] py-3">No contributions found.</p>
+                )
+              })()}
+            </>
           ) : (
-            <p className="text-sm text-[#8A8FBF] py-3">No active bids on this message yet.</p>
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#8A8FBF] mb-3">Current Bids</p>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-[#8A8FBF] py-3">
+                  <Loader2 size={14} className="animate-spin" /> Loading bids...
+                </div>
+              ) : bidders.length > 0 ? (
+                <div className="space-y-2">
+                  {bidders.map(b => (
+                    <div key={b.address} className="flex items-center justify-between gap-3 rounded-lg border border-[#8A8FBF]/15 bg-[#0A0F3D] px-3 py-2.5">
+                      <a href={getAddressUrl(CANONICAL_CHAIN_ID, b.address)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-[#EDEEFF] hover:text-[#F897FE] transition-colors font-mono">
+                        {fmtAddr(b.address)} <ExternalLink size={10} />
+                      </a>
+                      <span className="text-sm font-semibold text-[#1DB227] font-mono">{formatRate(BigInt(b.flowRateRaw))}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#8A8FBF] py-3">No active bids on this message yet.</p>
+              )}
+            </>
           )}
         </div>
 
@@ -1433,7 +1454,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   </div>
                 ) : (
                   <p className="text-sm text-[#EDEEFF]">
-                    <span className="font-semibold">Updated Name</span> to <span className="font-medium">{event.name || '(cleared)'}</span>
+                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator}>{event.name || '(cleared)'}</ModeratedAuthor></span>
                   </p>
                 )}
                 {event.actor && (

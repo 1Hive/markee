@@ -8,7 +8,7 @@ import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
@@ -72,7 +72,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
   const priceEth = formatEther(priceWei)
@@ -95,6 +95,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   useEffect(() => {
     if (writeError) logTransactionError(writeError, 'FixedPriceModal')
   }, [writeError])
+
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash && isOpen) setError(formatReceiptError(receiptError, 'FixedPriceModal.receipt'))
+  }, [txReverted, hash, isOpen, receiptError])
 
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep

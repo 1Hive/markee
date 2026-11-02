@@ -4,6 +4,9 @@ import { optimism, base, arbitrum, mainnet } from 'viem/chains'
 import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
 import { kv } from '@vercel/kv'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 const MARKEE_THRESHOLD = 100n * 10n**18n
 
 const ERC20_ABI = [

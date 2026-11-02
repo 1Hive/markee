@@ -110,3 +110,31 @@ export function ModeratedContent({
     </div>
   )
 }
+
+/**
+ * ModeratedAuthor
+ *
+ * Wraps a message's author (name, or wallet when there is no name). A flagged message hides its
+ * author too, since names are free text written by the same person. Same visibility rules as
+ * ModeratedContent: the board's moderators and global admins still see it.
+ *
+ * Usage:
+ *   <ModeratedAuthor chainId={8453} markeeId={markee.address}>{markee.name}</ModeratedAuthor>
+ */
+export function ModeratedAuthor({
+  chainId,
+  markeeId,
+  boardAdmin,
+  boardCreator,
+  children,
+}: {
+  chainId: number | string
+  markeeId: string
+  boardAdmin?: string | null
+  boardCreator?: string | null
+  children: ReactNode
+}) {
+  const { isHidden } = useModeration()
+  if (!isHidden(chainId, markeeId, boardAdmin, boardCreator)) return <>{children}</>
+  return <span style={{ fontStyle: 'italic', opacity: 0.6 }}>{MODERATION_DEFAULTS.hiddenAuthorText}</span>
+}
