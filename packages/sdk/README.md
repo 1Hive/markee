@@ -154,6 +154,8 @@ Theme changes update styles in place: drafts, focus, scroll, wallet sessions, an
 
 Color tokens: `background`, `surface`, `text`, `muted`, `border`, `inputBackground`, `inputText`, `primary`, `primaryText`, `accent`, `accentText`, `accentSurface`, `accentSurfaceText`, `accentBorder`, `selected`, `selectedText`, `info`, `infoText`, `error`, `errorText`, `success`, `successText`, `link`, `focusRing`, and `overlay`. Set foreground/background pairs together and check your brand's contrast in both modes. Overrides apply over either selected palette; omitted values use that palette's defaults. Invalid CSS color/font values fall back to defaults.
 
+To match an app completely, override `link`, `focusRing`, `border`, `selected`/`selectedText`, and the accent colors as well as the primary button colors. Otherwise those elements retain the SDK palette. Use the typed theme options; arbitrary custom CSS is not currently supported. The sign’s price badge appears on hover or keyboard focus, and stays visible on touch devices.
+
 Styles are scoped to the modal's Shadow DOM and do not change the host app or its wallet picker. The ConnectKit sample includes light, dark, device, and custom Plum presets.
 
 ## Headless API
@@ -173,6 +175,14 @@ For Sale supports create/fund/edit. New message ownership belongs to the caller.
 
 For Rent supports message creation, starting/updating/switching/stopping a stream, wrap/unwrap, pool connection/refunds, board-buffer recovery, ranking refresh and settlement. The server builds the complete Superfluid batch, including exact ETHx approval and pool connection. Wallet runway uses the combined CFA and GDA net flow across the wallet, not only the current board. Rental MARKEE comes from actual settled rent, never merely from wrapping or depositing ETH.
 
+Payment reviews remain visible while the wallet requests confirmation, including network switches. If a review expires when confirming, the modal shows **Refreshing payment details…**, prepares an updated review, and requires another confirmation click. It never automatically sends the refreshed transaction.
+
+For Sale reviews are disabled when the entered payment exceeds the loaded ETH balance; the balance uses the error color and the button explains the shortfall. The API also checks network fees before wallet confirmation.
+
+For Rent reviews show estimated **MARKEE/month while winning**, using the selected monthly stream rate and current on-chain reward settings. The estimate is not based on the ETH deposit and is not guaranteed; if quoting is unavailable, the modal shows a qualitative reward description. Rental transaction details contain only Network, Recipient, and Wallet; fees stay in the payment summary.
+
+Refunds flow automatically when connected to the message’s refund pool. **Collect refund** appears only when the loaded wallet snapshot reports a positive claimable balance for that message’s pool. Board-buffer recovery is separate. Community revenue actions are accessed through **Community accumulated revenue**.
+
 Community activation supports the current council Safe, a current Safe owner, or the configured authorized keeper. Revenue claims support the current Safe or its current owners and always pay the council treasury. Existing outbound Across, Squid and LI.FI routing lives on Markee's server.
 
 ## Integration boundaries
@@ -187,7 +197,13 @@ Backend configuration and API reference: [`docs/sdk/implementation.md`](https://
 
 ## API endpoint
 
-No API URL or Markee API key is required. The SDK connects to the Markee-hosted API and centralizes on-chain reads, metadata, and transaction preparation. For local development or testing, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The endpoint used by your installed release is exported as `DEFAULT_MARKEE_API_URL`.
+No API URL or Markee API key is required. The SDK default is:
+
+```text
+https://staging.markee.xyz/api/sdk/v1
+```
+
+Markee hosts this API and centralizes on-chain reads, metadata, and transaction preparation. Staging does not imply test funds: Base placements use real funds. For local development or testing, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The endpoint used by your installed release is exported as `DEFAULT_MARKEE_API_URL`.
 
 ## LLM implementation prompt
 
@@ -220,8 +236,9 @@ Ask only the remaining unanswered requirements in one concise group:
   Markee-hosted card checkout without an app wallet (For Sale on Base only)? Inspect
   existing connectors first; do not add a second wallet context or install a new
   connector without agreement.
-- Should the modal match the app theme or use specific colors, font, radius, and
-  light/dark/system mode?
+- Should the modal match the app theme or use specific colors, font, panel/card/
+  control radii, and light/dark/system mode? Include links, focus rings, borders,
+  and selected states when matching the host palette.
 - What public domain/page will host this integration? Use it as siteUrl for
   automatic verification. For Vite/client rendering, add the board marker to the
   static HTML as documented; do not claim localhost is verified.
@@ -244,7 +261,8 @@ Then implement the agreed scope:
    Otherwise omit wallet. Without a connected app account, the modal shows only
    Pay, opening Markee-hosted checkout for supported boards. Do not install
    Privy or collect card details in the host app.
-5. Apply theme options while preserving the built-in modal layout. Handle onEvent
+5. Apply theme options (including radius, cardRadius, and controlRadius) while
+   preserving the built-in modal layout. Handle onEvent
    if needed; show success only for a confirmed event. Let the SDK manage review,
    network switching, submission, and verification.
 6. Verify build/types, loading of the supplied board, automatic strategy selection,
