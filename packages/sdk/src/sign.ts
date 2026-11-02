@@ -1,13 +1,16 @@
-import { escapeHtml, shortAddress } from './amount.js';
+import { escapeHtml, formatEth } from './amount.js';
 import { MarkeeClient } from './client.js';
 import { createMarkee } from './modal.js';
+import { fundingPresets } from './presentation.js';
 import { createThemeController } from './theme.js';
 import type { Entry, Placement, SDKOptions, Snapshot } from './types.js';
 
 export interface MarkeeSignOptions extends SDKOptions {
   placement: Placement;
-  /** Show a button that opens the SDK payment modal. Defaults to true. */
+  /** Make the sign a button that opens the payment modal. Defaults to true. */
   showAction?: boolean;
+  /** Open a host-controlled modal instead of the sign's built-in SDK modal. */
+  onOpen?: () => void;
   /** Refresh board and moderation state while mounted. Minimum 10 seconds; default 30 seconds. */
   refreshIntervalMs?: number;
 }
@@ -21,30 +24,35 @@ export function signContent(snapshot: Snapshot): { entry: Entry | null; visibili
 const css = `
 :host{display:block;color:var(--markee-text);font-family:var(--markee-font-family);color-scheme:var(--markee-color-scheme)}
 *,*::before,*::after{box-sizing:border-box}
-.sign{position:relative;overflow:hidden;border:1px solid var(--markee-border);border-radius:var(--markee-card-radius);background:var(--markee-surface);padding:22px;min-height:190px}
-.eyebrow{color:var(--markee-muted);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.board{margin:5px 0 20px;color:var(--markee-muted);font-size:13px}
-.message{font-size:clamp(20px,4vw,30px);line-height:1.3;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 16px}
-.author{color:var(--markee-muted);font-size:13px;margin:0 0 16px}
+.sign{appearance:none;position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;padding:28px 20px;border:1px solid var(--markee-border);border-radius:var(--markee-card-radius);background:var(--markee-surface);color:var(--markee-text);font:inherit;text-align:center;overflow:visible}
+button.sign{cursor:pointer}
+button.sign:hover{border-color:var(--markee-accent-border);box-shadow:0 6px 22px color-mix(in srgb,var(--markee-accent) 16%,transparent)}
+button.sign:focus-visible{outline:3px solid var(--markee-focus-ring);outline-offset:3px}
+.sign.has-rate{margin-bottom:12px}
+.views{position:absolute;top:9px;right:12px;display:inline-flex;align-items:center;gap:4px;color:var(--markee-muted);font-size:11px;line-height:1}
+.views svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4}
+.message{font-family:ui-monospace,monospace;font-size:17px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;max-width:100%}
 .obscured{filter:blur(8px);user-select:none;pointer-events:none}
-.veil{position:absolute;inset:55px 12px 62px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--markee-surface) 75%,transparent);color:var(--markee-muted);font-size:14px;text-align:center;padding:15px}
-.notice{color:var(--markee-muted);font-size:14px;min-height:54px}
-.action{appearance:none;border:0;border-radius:var(--markee-control-radius);background:var(--markee-primary);color:var(--markee-primary-text);font:inherit;font-weight:700;padding:11px 16px;cursor:pointer}
-.action:focus-visible{outline:2px solid var(--markee-focus-ring);outline-offset:3px}
+.veil{position:absolute;inset:25px 12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--markee-surface) 75%,transparent);color:var(--markee-muted);font-size:13px;text-align:center;padding:12px}
+.notice{color:var(--markee-muted);font-size:13px;margin:0}
+.rate{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:8px;background:var(--markee-accent);color:var(--markee-accent-text);box-shadow:0 7px 20px color-mix(in srgb,var(--markee-accent) 35%,transparent);padding:4px 13px;font-family:ui-monospace,monospace;font-size:11px;font-weight:700;line-height:1.2}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 `;
 
 /** @internal Pure renderer kept separate so hidden-content behavior can be verified. */
 export function signHtml(snapshot: Snapshot | null, showAction: boolean, unavailable = false): string {
   const board = snapshot?.name || 'Markee';
-  const kind = snapshot ? snapshot.strategy === 'rent' ? 'For rent' : 'For sale' : '';
   const { entry, visibility } = snapshot ? signContent(snapshot) : { entry: null, visibility: 'unavailable' as const };
-  const body = unavailable ? '<p class="notice" role="status">Markee sign is temporarily unavailable.</p>'
-    : !snapshot ? '<p class="notice" role="status">Loading the Markee sign…</p>'
-      : !entry ? '<p class="notice">The sign is waiting for its first message.</p>'
-        : visibility === 'unavailable' ? '<p class="notice" role="status">Message unavailable while moderation loads.</p>'
-          : `<div class="${visibility === 'flagged' ? 'obscured' : ''}" ${visibility === 'flagged' ? 'aria-hidden="true"' : ''}><p class="message">${escapeHtml(entry.message)}</p><p class="author">${escapeHtml(entry.name || shortAddress(entry.owner))}</p></div>${visibility === 'flagged' ? '<div class="veil" role="status">This message has been flagged.</div>' : ''}`;
-  return `<style>${css}</style><section class="sign" aria-label="${escapeHtml(board)} Markee sign"><div class="eyebrow">Current Markee sign</div><p class="board">${escapeHtml(board)}${kind ? ` · ${kind}` : ''}</p>${body}${showAction && snapshot?.board ? '<button class="action" type="button" data-markee-open>Open Markee</button>' : ''}</section>`;
+  const body = unavailable ? '<span class="notice" role="status">Markee sign is temporarily unavailable.</span>'
+    : !snapshot ? '<span class="notice" role="status">Loading the Markee sign…</span>'
+      : !entry ? '<span class="notice">The sign is waiting for its first message.</span>'
+        : visibility === 'unavailable' ? '<span class="notice" role="status">Message unavailable while moderation loads.</span>'
+          : `<span class="message ${visibility === 'flagged' ? 'obscured' : ''}" ${visibility === 'flagged' ? 'aria-hidden="true"' : ''}>${escapeHtml(entry.message)}</span>${visibility === 'flagged' ? '<span class="veil" role="status">This message has been flagged.</span>' : ''}`;
+  const views = entry?.views === null || entry?.views === undefined ? '' : `<span class="views" aria-label="${entry.views.toLocaleString()} views"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M1.3 8s2.4-4 6.7-4 6.7 4 6.7 4-2.4 4-6.7 4S1.3 8 1.3 8Z"/><circle cx="8" cy="8" r="2"/></svg>${entry.views.toLocaleString()}</span>`;
+  const rate = snapshot?.strategy === 'rent' && entry ? `<span class="rate">${formatEth(fundingPresets(snapshot).boost.toString())} ETH/mo to change</span>` : '';
+  const tag = showAction ? 'button' : 'div';
+  const attributes = showAction ? `type="button" data-markee-open title="Open ${escapeHtml(board)} Markee"` : `aria-label="${escapeHtml(board)} Markee sign"`;
+  return `<style>${css}</style><${tag} class="sign${rate ? ' has-rate' : ''}" ${attributes}>${views}${body}${rate}</${tag}>`;
 }
 
 /** Mount a live, isolated sign in any app. The Markee API supplies its content and moderation status. */
@@ -97,6 +105,7 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
   };
   root.addEventListener('click', event => {
     if ((event.target as HTMLElement).closest('[data-markee-open]')) {
+      if (options.onOpen) { options.onOpen(); return; }
       modal ??= createMarkee(options);
       modal.open({ placement: options.placement });
     }

@@ -84,7 +84,7 @@ export interface WalletAdapter {
   getProvider(): Promise<EIP1193Provider | null>;
   connect?(): Promise<EIP1193Provider>;
 }
-/** Semantic color pairs used throughout the modal, including forms and notices. */
+/** Semantic color pairs used by the modal and sign, including forms and notices. */
 export interface MarkeeThemeColors {
   background: string; surface: string; text: string; muted: string; border: string;
   inputBackground: string; inputText: string;

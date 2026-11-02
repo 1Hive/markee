@@ -54,11 +54,12 @@ export function MarkeeSign(props: MarkeeSignProps) {
       connect: () => current.current.wallet?.connect?.() ?? Promise.reject(new Error('Connect the app wallet first.')),
     } : undefined,
     onEvent: event => current.current.onEvent?.(event),
+    onOpen: current.current.onOpen ? () => current.current.onOpen?.() : undefined,
     onSiteVerification: result => current.current.onSiteVerification?.(result),
     });
     instance.current = sign;
     return () => { sign.destroy(); instance.current = undefined; };
-  }, [placementKey, props.apiUrl, props.fetch, props.showAction, props.refreshIntervalMs, props.siteUrl, !!props.wallet]);
+  }, [placementKey, props.apiUrl, props.fetch, props.showAction, props.refreshIntervalMs, props.siteUrl, !!props.wallet, !!props.onOpen]);
   useEffect(() => { instance.current?.setTheme(props.theme); }, [props.theme]);
   return createElement('div', { ref: container, className: props.className },
     props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null);

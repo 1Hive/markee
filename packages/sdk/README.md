@@ -4,7 +4,7 @@ An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional Re
 
 Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent flows, automatic strategy detection, and a configurable theme. Eligible Base For Sale boards can also offer Markee-hosted card checkout when enabled by Markee. Incoming cross-chain funding is not included.
 
-The package also includes a standalone **Markee sign**. It shows the board's current winner and follows Markee's moderation decisions, with an optional button to open the payment modal.
+The package also includes a standalone **Markee sign button**. It shows the board's current winner, follows Markee's moderation decisions, and opens the payment modal when clicked.
 
 ## Installation
 
@@ -97,9 +97,9 @@ const placement = { kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD
 <MarkeeSign placement={placement} theme={{ mode: 'dark' }} />;
 ```
 
-`MarkeeSign` shows the current on-chain winner, its message and author, and an **Open Markee** button that launches the SDK modal. It uses the same optional wallet adapter and theme as `MarkeeModal`. No app-side moderation database, RPC key, or moderation provider is needed. To render from plain JavaScript, call `createMarkeeSign(containerElement, { placement })`; its return value has `refresh()`, `setTheme()`, and `destroy()`.
+`MarkeeSign` is a compact, clickable sign with the winner's message, view count, and a suggested monthly rate on For Rent boards. By default, clicking it opens the SDK modal. Pass `onOpen={() => setOpen(true)}` to open your own controlled `MarkeeModal` instead, or `showAction={false}` to render a non-clickable sign. The sign and modal accept separate `theme` values. No app-side moderation database, RPC key, or moderation provider is needed. To render from plain JavaScript, call `createMarkeeSign(containerElement, { placement })`; its return value has `refresh()`, `setTheme()`, and `destroy()`.
 
-The SDK snapshot API reads **board moderation flags** from Markee's database. A flagged winner is blurred with a notice; the author's name is blurred too. The sign does not offer a reveal action or count a view for flagged content. If moderation data cannot be loaded, it withholds the message until the status is known. Visible, unflagged signs record one view per message. The sign refreshes every 30 seconds while mounted and can be refreshed on demand. Markee-only site flags intentionally apply only on markee.xyz; they do not censor a partner's embedded sign. Moderators still manage flags on Markee; moderation writes invalidate SDK snapshots so embedded signs can pick up changes on their next refresh.
+The SDK snapshot API reads **board moderation flags** from Markee's database. A flagged winner is blurred with a notice. The sign does not offer a reveal action or count a view for flagged content. If moderation data cannot be loaded, it withholds the message until the status is known. Visible, unflagged signs record one view per message. The sign refreshes every 30 seconds while mounted and can be refreshed on demand. Markee-only site flags intentionally apply only on markee.xyz; they do not censor a partner's embedded sign. Moderators still manage flags on Markee; moderation writes invalidate SDK snapshots so embedded signs can pick up changes on their next refresh.
 
 ## Modal layout
 
