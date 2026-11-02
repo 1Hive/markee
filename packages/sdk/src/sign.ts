@@ -56,7 +56,7 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
   container.appendChild(host);
   const theme = createThemeController(host, options.theme);
   const client = new MarkeeClient(options);
-  const modal = createMarkee(options);
+  let modal: ReturnType<typeof createMarkee> | undefined;
   const interval = Number.isFinite(options.refreshIntervalMs) ? Math.max(10_000, options.refreshIntervalMs!) : 30_000;
   let active = true;
   let request: AbortController | undefined;
@@ -96,7 +96,10 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
     }
   };
   root.addEventListener('click', event => {
-    if ((event.target as HTMLElement).closest('[data-markee-open]')) modal.open({ placement: options.placement });
+    if ((event.target as HTMLElement).closest('[data-markee-open]')) {
+      modal ??= createMarkee(options);
+      modal.open({ placement: options.placement });
+    }
   });
   render();
   if (options.siteUrl) client.registerSite(options.placement);
@@ -104,6 +107,6 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
   return {
     refresh,
     setTheme: theme.set,
-    destroy() { active = false; request?.abort(); clearTimeout(timer); observer?.disconnect(); modal.close(); theme.destroy(); host.remove(); },
+    destroy() { active = false; request?.abort(); clearTimeout(timer); observer?.disconnect(); modal?.close(); theme.destroy(); host.remove(); },
   };
 }

@@ -2,6 +2,14 @@
 
 A standalone React/Vite example that embeds the Markee sign and payment modal. ConnectKit supplies the app wallet; Markee supplies the sign, moderation data, payment preparation, reward quote, and transaction verification through its hosted API. The SDK knows its API endpoint, so this app needs no Markee, RPC, or database key.
 
+The sign and modal are independent. `MarkeeSign` fetches the current winner and moderation state on its own, and hides or blurs the message according to Markee's API. With `showAction={false}`, it does not open a modal. The sample's separate button controls `MarkeeModal`; the ConnectKit wallet is passed only to that modal.
+
+```tsx
+<MarkeeSign placement={placement} showAction={false} theme={themes[theme]} />
+<button onClick={() => setOpen(true)}>Open Markee</button>
+<MarkeeModal placement={placement} open={open} onClose={() => setOpen(false)} wallet={wallet} theme={themes[theme]} />
+```
+
 ## Run locally
 
 ```sh
