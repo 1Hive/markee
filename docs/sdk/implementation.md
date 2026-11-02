@@ -238,26 +238,3 @@ diagnostics fall back to server logs without changing the payment response.
 Expected disabled checkout and pending
 transactions are not API alerts. Errors rendered only inside a provider's separate
 window cannot be observed unless its SDK returns a failure to Markee.
-
-## In-app card payment preview
-
-For Sale modals now offer Wallet / Pay by card. Card mode hides the wallet balance
-and MAX shortcut, permits composing without a connected external wallet, and shows
-an explicit review before creating a checkout. The shared Checkout component is
-used by both the hosted page and the in-app modal. Funding, conversion, receipt
-verification and recovery use the same server endpoints. The existing
-`MARKEE_HOSTED_CHECKOUT_ENABLED` gate still applies to sale card checkout.
-
-The payment and MARKEE recipient is the embedded Markee wallet shown before
-funding, which may differ from the app's connected external wallet. Checkout
-capabilities remain in same-origin session storage, not the page URL. Reopening
-an identical intent resumes its existing checkout rather than creating another
-purchase. Closing a modal does not cancel a pending provider purchase.
-
-For Rent's Deposit Manager offers a native Base ETH card top-up for the currently
-selected rental wallet, followed by the existing explicit ETHx Deposit action.
-This first rental integration prefers MoonPay through Privy; it does not reuse the
-sale-only USDC conversion endpoint or implement a recurring card subscription.
-It does not automatically create a rental stream. The existing runway estimate
-updates after the user confirms the deposit. Provider availability and a real
-card purchase still require live validation.

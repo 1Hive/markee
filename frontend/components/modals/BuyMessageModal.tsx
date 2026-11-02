@@ -1,6 +1,5 @@
 'use client'
 
-import { CardPayment, PaymentMethodChoice, type PaymentMethod } from '@/components/checkout/CardPayment'
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
@@ -145,10 +144,7 @@ export function BuyMessageModal({
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wallet')
-
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
-  const card = paymentMethod === 'card' && activeTab !== 'updateMessage'
   const [message, setMessage] = useState('')
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
@@ -402,11 +398,11 @@ export function BuyMessageModal({
 
   const btnDisabled =
     isPending || isConfirming || isSuccess ||
-    (!card && activeTab !== 'updateMessage' && insufficientBalance) ||
+    (activeTab !== 'updateMessage' && insufficientBalance) ||
     ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())
   const btnDisabledReason = !btnDisabled || isSuccess ? null
     : (isPending || isConfirming) ? 'Transaction in progress'
-    : (!card && activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
+    : (activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
   const maxLen = Number(maxMessageLength || 223)
@@ -500,7 +496,6 @@ export function BuyMessageModal({
         </div>
 
         {/* ── Tx state panel ── */}
-        {!txStep && !reviewOpen && activeTab !== 'updateMessage' && <PaymentMethodChoice value={paymentMethod} onChange={setPaymentMethod} />}
         {txStep ? (
           <TxProgress
             isSuccess={txStep === 'success'}
@@ -525,22 +520,20 @@ export function BuyMessageModal({
             }
           />
 
-        ) : card && reviewOpen ? (
-          <div style={{ padding: 22, overflowY: 'auto', flex: 1 }}><CardPayment board={strategyAddress} amount={amount} message={activeTab === 'addFunds' ? userMarkee?.message || '' : message} name={name} markee={activeTab === 'addFunds' ? userMarkee?.address : undefined} onComplete={onSuccess} onBack={() => setReviewOpen(false)} /></div>
-        ) : !card && isWalletConnectionPending ? (
+        ) : isWalletConnectionPending ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !card && (!hasWallet || !hasActiveWalletConnection) ? (
+        ) : !hasWallet || !hasActiveWalletConnection ? (
           /* ── Connect wallet ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !card && isWrongChain ? (
+        ) : isWrongChain ? (
           /* ── Wrong chain ── */
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
@@ -717,7 +710,7 @@ export function BuyMessageModal({
                             MIN
                           </button>
                         )}
-{!card && (                        <button
+                        <button
                           type="button"
                           onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted); setLastPreset('max') }}
                           disabled={spendableBalance <= 0n || isPending || isConfirming}
@@ -732,7 +725,7 @@ export function BuyMessageModal({
                           }}
                         >
                           MAX
-                        </button>)}
+                        </button>
                         {hasCompetition && takeFirstAmountFormatted && !userIsTopDawg && (
                           <button
                             type="button"
@@ -781,7 +774,7 @@ export function BuyMessageModal({
                         {ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}` : ' '}
                       </span>
                       <span>
-                        {!card && balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
+                        {balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}
                       </span>
                     </div>
                   </div>

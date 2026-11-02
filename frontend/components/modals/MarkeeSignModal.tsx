@@ -1,6 +1,5 @@
 'use client'
 
-import { CardPayment, PaymentMethodChoice, type PaymentMethod } from '@/components/checkout/CardPayment'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
@@ -96,7 +95,7 @@ function AmountCard({
   amount, setAmount, lastPreset, setLastPreset, setHasUserEdited,
   minimumAmountFormatted, maxSpendableFormatted, spendableBalance,
   winAmountFormatted, twoXAmountFormatted, isAlreadyTop, ethPrice, balanceData, busy,
-  showMin = true, card = false,
+  showMin = true,
 }: {
   amount: string
   setAmount: (v: string) => void
@@ -113,7 +112,6 @@ function AmountCard({
   balanceData: { value: bigint } | undefined
   busy: boolean
   showMin?: boolean
-  card?: boolean
 }) {
   const bidNum = parseFloat(amount || '0')
   const presetBtnStyle = (active: boolean, activeColor: string, disabled: boolean) => ({
@@ -157,14 +155,14 @@ function AmountCard({
               MIN
             </button>
           )}
-{!card && (          <button
+          <button
             type="button"
             onClick={() => { setHasUserEdited(true); setAmount(maxSpendableFormatted); setLastPreset('max') }}
             disabled={spendableBalance <= 0n || busy}
             style={presetBtnStyle(lastPreset === 'max', PINK, spendableBalance <= 0n || busy)}
           >
             MAX
-          </button>)}
+          </button>
           {isAlreadyTop ? (
             twoXAmountFormatted && (
               <button
@@ -194,7 +192,7 @@ function AmountCard({
       {/* Line 2: USD equiv (left) / balance (right) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
         <span>{ethPrice && bidNum > 0 ? `≈ ${formatUsd(bidNum * ethPrice)}` : ' '}</span>
-        <span>{!card && balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}</span>
+        <span>{balanceData ? `Balance ${parseFloat(formatEther(balanceData.value)).toFixed(3)} ETH` : ''}</span>
       </div>
     </div>
   )
@@ -332,13 +330,10 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wallet')
-
 
   const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
 
   const [view, setView] = useState<View>('list')
-  const card = paymentMethod === 'card' && view !== 'edit'
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
   const [message, setMessage] = useState('')
   const [name, setName] = useState('')
@@ -579,7 +574,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // keeping the button clickable rather than disabling ahead of time. Insufficient balance is the
   // one condition that actually blocks submission, so it disables the button proactively instead.
   // Editing a message is free -- a leftover `amount` from a previous view shouldn't block it.
-  const blocksOnBalance = !card && insufficientBalance && view !== 'edit'
+  const blocksOnBalance = insufficientBalance && view !== 'edit'
   const btnDisabled = busy || isSuccess || blocksOnBalance
   const btnDisabledReason = busy ? 'Transaction in progress' : blocksOnBalance ? "You don't have enough ETH for this" : null
 
@@ -624,7 +619,6 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
         </div>
 
         {/* ── Tx state panel ── */}
-        {!txStep && !reviewOpen && view !== 'edit' && <PaymentMethodChoice value={paymentMethod} onChange={setPaymentMethod} />}
         {txStep ? (
           <TxProgress
             isSuccess={txStep === 'success'}
@@ -642,21 +636,19 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
             }
           />
 
-        ) : card && reviewOpen ? (
-          <div style={{ padding: 22, overflowY: 'auto', flex: 1 }}><CardPayment board={leaderboardAddress} amount={amount} message={view === 'addFunds' ? target?.message || '' : message} name={name} markee={view === 'addFunds' ? target?.address : undefined} onComplete={() => { void refetchLeaderboard(); onSuccess?.() }} onBack={() => setReviewOpen(false)} /></div>
-        ) : !card && isWalletConnectionPending ? (
+        ) : isWalletConnectionPending ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Preparing your wallet connection...</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !card && (!hasWallet || !hasActiveWalletConnection) ? (
+        ) : !hasWallet || !hasActiveWalletConnection ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Connect your wallet to continue.</p>
             <div style={{ display: 'flex', justifyContent: 'center' }}><ConnectButton /></div>
           </div>
 
-        ) : !card && isWrongChain ? (
+        ) : isWrongChain ? (
           <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
             <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>Switch to {CANONICAL_CHAIN.name} to use Markee.</p>
             <button
@@ -774,7 +766,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                         setHasUserEdited={setHasUserEdited} minimumAmountFormatted={minimumAmountFormatted}
                         maxSpendableFormatted={maxSpendableFormatted} spendableBalance={spendableBalance}
                         winAmountFormatted={winAmountFormatted} twoXAmountFormatted={null} isAlreadyTop={false} ethPrice={ethPrice}
-                        balanceData={balanceData} busy={busy} card={card}
+                        balanceData={balanceData} busy={busy}
                       />
                     </div>
 
@@ -852,7 +844,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       setHasUserEdited={setHasUserEdited} minimumAmountFormatted={minimumAmountFormatted}
                       maxSpendableFormatted={maxSpendableFormatted} spendableBalance={spendableBalance}
                       winAmountFormatted={winAmountFormatted} twoXAmountFormatted={twoXAmountFormatted} isAlreadyTop={isAlreadyTop} ethPrice={ethPrice}
-                      balanceData={balanceData} busy={busy} card={card} showMin={false}
+                      balanceData={balanceData} busy={busy} showMin={false}
                     />
                     <ReceiveCard amount={amount} compact={false} />
                   </div>
