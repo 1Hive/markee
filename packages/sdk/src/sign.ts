@@ -26,7 +26,7 @@ const css = `
 *,*::before,*::after{box-sizing:border-box}
 .sign{appearance:none;position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;padding:28px 20px;border:1px solid var(--markee-border);border-radius:var(--markee-card-radius);background:var(--markee-surface);color:var(--markee-text);font:inherit;text-align:center;overflow:visible}
 button.sign{cursor:pointer}
-button.sign:hover{border-color:var(--markee-accent-border);box-shadow:0 6px 22px color-mix(in srgb,var(--markee-accent) 16%,transparent)}
+button.sign:hover{background:var(--markee-sign-hover-background);border-color:var(--markee-accent-border);box-shadow:0 6px 22px color-mix(in srgb,var(--markee-accent) 16%,transparent)}
 button.sign:focus-visible{outline:3px solid var(--markee-focus-ring);outline-offset:3px}
 .sign.has-rate{margin-bottom:12px}
 .views{position:absolute;top:9px;right:12px;display:inline-flex;align-items:center;gap:4px;color:var(--markee-muted);font-size:11px;line-height:1}

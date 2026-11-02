@@ -5,7 +5,7 @@ A standalone React/Vite example that embeds the Markee sign and payment modal. C
 The sign is a themed button. `MarkeeSign` fetches the current winner and moderation state on its own, blurs flagged messages, and opens the modal when clicked. The sample controls that modal through `onOpen`, so its separate Open Markee button still works and the sign and modal can have different themes. The ConnectKit wallet is passed only to the modal.
 
 ```tsx
-<MarkeeSign placement={placement} theme={themes[signTheme]} onOpen={() => setOpen(true)} />
+<MarkeeSign placement={placement} theme={signThemeConfig} onOpen={() => setOpen(true)} />
 <button onClick={() => setOpen(true)}>Open Markee</button>
 <MarkeeModal placement={placement} open={open} onClose={() => setOpen(false)} wallet={wallet} theme={themes[modalTheme]} />
 ```
@@ -19,7 +19,7 @@ npm run dev
 
 Open <http://127.0.0.1:5173>. The sample uses the latest published `@markee_team/sdk` and two existing Base boards. The **For sale** board supports one-time payments and MARKEE rewards; **For rent** uses ETHx streaming. These are live contracts, so confirming in a wallet moves real funds.
 
-Use the separate sign and modal theme selectors to preview charcoal, light, dark, system, and a custom brand palette. The app passes its selected ConnectKit wallet to the modal. With no app wallet, supported For Sale payments can continue through Markee's hosted checkout.
+Use the separate sign and modal theme selectors to preview charcoal, light, dark, system, and a custom brand palette. The sign hover background is on by default; use the Hover background control to disable it or choose a custom color (`theme.sign.hoverBackground`). The app passes its selected ConnectKit wallet to the modal. With no app wallet, supported For Sale payments can continue through Markee's hosted checkout.
 
 ## Configuration
 

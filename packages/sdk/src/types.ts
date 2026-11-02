@@ -103,6 +103,8 @@ export interface MarkeeTheme {
   fontFamily?: string;
   /** Panel corner radius in pixels, clamped to 0–48. Controls scale with it. Default: 22. */
   radius?: number;
+  /** Sign-only hover surface. Defaults to a theme color; set false to disable the hover background. */
+  sign?: { hoverBackground?: string | false };
 }
 export interface SDKOptions {
   /** Optional development override; defaults to the Markee-hosted API. */

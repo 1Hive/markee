@@ -38,6 +38,10 @@ export function createThemeController(host: HTMLElement, initial?: MarkeeTheme) 
         const value = theme.colors?.[key];
         host.style.setProperty(variable(key), value && CSS.supports('color', value) ? value : palette[key]);
       }
+      const hover = theme.sign?.hoverBackground;
+      const surface = theme.colors?.surface && CSS.supports('color', theme.colors.surface) ? theme.colors.surface : palette.surface;
+      const accentSurface = theme.colors?.accentSurface && CSS.supports('color', theme.colors.accentSurface) ? theme.colors.accentSurface : palette.accentSurface;
+      host.style.setProperty('--markee-sign-hover-background', hover === false ? surface : typeof hover === 'string' && CSS.supports('color', hover) ? hover : accentSurface);
       host.style.setProperty('--markee-font-family', theme.fontFamily && CSS.supports('font-family', theme.fontFamily) ? theme.fontFamily : defaultFont);
       const radius = typeof theme.radius === 'number' && Number.isFinite(theme.radius) ? Math.max(0, Math.min(48, theme.radius)) : 22;
       host.style.setProperty('--markee-radius', `${radius}px`);
