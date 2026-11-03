@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Read [../AGENTS.md](../AGENTS.md) first. Its SDK/API compatibility and release
+policy applies to all frontend API routes and integration prompts.
+
 ## Commands
 
 ```bash
@@ -11,12 +14,12 @@ npm run start     # Start production server
 npm run lint      # Run ESLint
 ```
 
-No test runner is configured.
+Targeted tests are configured in package.json. Run the relevant suites and TypeScript checks before delivery.
 
 ## Deployment
 
 - All deploys happen via GitHub push to Vercel — there is no local dev environment in active use
-- No test suite configured — verify changes by deploying and checking Vercel logs
+- Run relevant tests before deploying; verify the resulting deployment and logs as well.
 - `vercel.json` lives inside `frontend/` (matches Vercel's configured Root Directory)
 
 ## Key Principles
