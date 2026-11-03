@@ -40,9 +40,9 @@ export function useModerationQueue() {
     try {
       for (let i = 0; i < markeeIds.length; i += MAX_REVIEW_BATCH) {
         const ids = markeeIds.slice(i, i + MAX_REVIEW_BATCH)
-        // Approving only clears messages from the queue, so it needs no signature (see /api/moderation).
+        // Every review action proves control of the moderator wallet.
         const timestamp = Math.floor(Date.now() / 1000)
-        const signature = action === 'approve' ? undefined : await signMessageAsync({ message: reviewMessage(action, CANONICAL_CHAIN_ID, ids, timestamp) })
+        const signature = await signMessageAsync({ message: reviewMessage(action, CANONICAL_CHAIN_ID, ids, timestamp) })
         const res = await fetch(MODERATION_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

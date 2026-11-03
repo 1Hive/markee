@@ -15,10 +15,13 @@ export const routerABI = parseAbi([
 const quoterABI = parseAbi(['function quoteExactOutputSingle((address tokenIn,address tokenOut,uint256 amount,uint24 fee,uint160 sqrtPriceLimitX96) params) returns (uint256 amountIn,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed,uint256 gasEstimate)']);
 export interface ConversionQuote { eth: string; usdcMaximum: string; usdcBalance: string; fee: number; expiresAt: number }
 export interface ConversionStep { id: string; kind: 'approval' | 'swap'; status: 'ready' | 'signing' | 'submitted' | 'confirmed' | 'reverted'; quote: ConversionQuote; transaction: { from: Address; to: Address; data: Hex; value: '0x0'; chainId: 8453 }; armedBlock?: string; ethBalanceBefore?: string; hash?: Hex }
+export interface ConversionTrace { type?: string; from?: string; to?: string; input?: string; value?: string; error?: string; calls?: ConversionTrace[] }
 export const conversionDeps = {
   balance: (account: Address) => getEnvPublicClient(8453).readContract({ address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
   allowance: (account: Address) => getEnvPublicClient(8453).readContract({ address: USDC, abi: erc20Abi, functionName: 'allowance', args: [account, ROUTER] }),
   quote: async (amount: bigint, fee: number) => (await getEnvPublicClient(8453).simulateContract({ address: QUOTER, abi: quoterABI, functionName: 'quoteExactOutputSingle', args: [{ tokenIn: USDC, tokenOut: WETH, amount, fee, sqrtPriceLimitX96: 0n }] })).result[0],
+  transaction: (hash: Hex) => getEnvPublicClient(8453).getTransaction({ hash }),
+  trace: (hash: Hex) => (getEnvPublicClient(8453).request as unknown as (args: { method: string; params: unknown[] }) => Promise<ConversionTrace>)({ method: 'debug_traceTransaction', params: [hash, { tracer: 'callTracer' }] }),
   receipt: (hash: Hex) => getEnvPublicClient(8453).getTransactionReceipt({ hash }),
   ethBalance: (account: Address, blockNumber?: bigint) => getEnvPublicClient(8453).getBalance({ address: account, blockNumber }),
   simulate: (transaction: ConversionStep['transaction']) => getEnvPublicClient(8453).call({ account: transaction.from, to: transaction.to, data: transaction.data, value: 0n, gasPrice: 0n }),
@@ -48,8 +51,26 @@ export async function conversionStep(account: Address, quote: ConversionQuote, i
   return { id, kind: approval ? 'approval' : 'swap', status: 'ready', quote, transaction };
 }
 
-// Sponsored EIP-7702/4337 transactions have a bundler as the outer sender. Verify
-// canonical token effects and ETH received instead of trusting that outer calldata.
+// Bind the receipt to the actual prepared execution, including the unwrap recipient.
+// A successful outer bundler transaction alone does not prove inner-call success.
+async function verifyPreparedExecution(step: ConversionStep, hash: Hex) {
+  const expected = step.transaction;
+  const matches = (from?: string, to?: string, input?: string, value?: string | bigint) =>
+    from?.toLowerCase() === expected.from.toLowerCase() && to?.toLowerCase() === expected.to.toLowerCase()
+    && input?.toLowerCase() === expected.data.toLowerCase() && value !== undefined && BigInt(value) === BigInt(expected.value);
+  const tx = await conversionDeps.transaction(hash);
+  if (matches(tx.from, tx.to ?? undefined, tx.input, tx.value)) return;
+  let trace: ConversionTrace;
+  try { trace = await conversionDeps.trace(hash); }
+  catch { throw new SDKError('CONVERSION_UNVERIFIABLE', 'Unable to verify sponsored conversion execution. Retry verification; do not repeat the conversion.', 503); }
+  let remaining = 4096;
+  const successfulCall = (call: ConversionTrace): boolean => {
+    if (--remaining < 0 || call.error) return false;
+    if (call.type === 'CALL' && matches(call.from, call.to, call.input, call.value)) return true;
+    return (call.calls ?? []).some(successfulCall);
+  };
+  if (!successfulCall(trace)) throw new SDKError('TRANSACTION_MISMATCH', 'Receipt does not execute the prepared conversion.', 409);
+}
 // Conversion success never constitutes a Markee payment or rewards receipt.
 export async function verifyConversionReceipt(step: ConversionStep, hash: Hex): Promise<ConversionStep['status']> {
   let receipt;
@@ -59,6 +80,7 @@ export async function verifyConversionReceipt(step: ConversionStep, hash: Hex): 
   if ((await conversionDeps.block()) - receipt.blockNumber < 1n) return 'submitted';
   // Failed bundled operations must be investigated rather than automatically retried.
   if (receipt.status !== 'success') throw new SDKError('CONVERSION_FAILED', 'Transaction failed. Check your wallet activity before starting a new checkout.', 409);
+  await verifyPreparedExecution(step, hash);
   const account = step.transaction.from.toLowerCase();
   let approved = false, spent = 0n;
   for (const log of receipt.logs) {

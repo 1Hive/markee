@@ -8,9 +8,7 @@
  *                                    siteFlagged -- markee.xyz-only flags, set by global admins.
  * POST /api/moderation          → Flag, unflag, or approve markees. Applies in every scope the
  *                                  moderator holds for each markee (see authorizedScopes).
- *                                  Flag and unflag change what's hidden, so they need a signature.
- *                                  Approve only clears a pending message from the queue and never
- *                                  touches a flag, so it doesn't.
+ *                                  Every action requires a wallet signature, including approval.
  *
  * Markee keys use the format: `{chainId}:{lowercase markeeId}` to support multi-chain.
  *
@@ -19,13 +17,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { moderationWriteDeps } from '@/lib/moderation/write-deps'
 import { verifyMessage } from 'viem'
 import { randomUUID } from 'node:crypto'
-import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, SCOPES, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
-import { underRateLimit, clientIp } from '@/lib/rate-limit'
+import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
+import { clientIp } from '@/lib/rate-limit'
 import {
-  FLAGGED_KEYS, authorizedScopes, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged, readItems,
+  FLAGGED_KEYS, flagKey, flagKeyVariants, itemKey, pendingKey, readAllFlagged,
 } from '@/lib/moderation/server'
 
 // @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
@@ -73,8 +71,7 @@ export async function POST(req: NextRequest) {
     }
     const ids = markeeIds ?? (markeeId ? [markeeId] : [])
 
-    const signed = action !== 'approve'
-    if (ids.length === 0 || !chainId || !action || !adminAddress || (signed && (!signature || !timestamp))) {
+    if (ids.length === 0 || !chainId || !action || !adminAddress || (!signature || !timestamp)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: CORS })
     }
     if (!ACTIONS.includes(action)) {
@@ -87,31 +84,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid admin address' }, { status: 400, headers: CORS })
     }
 
-    if (signed) {
-      // Reject signatures older than 5 minutes
-      const now = Math.floor(Date.now() / 1000)
-      if (Math.abs(now - timestamp) > 300) {
-        return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
-      }
+    // Reject signatures older than 5 minutes
+    const now = Math.floor(Date.now() / 1000)
+    if (typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > 300) {
+      return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
+    }
 
-      // Verify the caller actually controls the wallet they claim
-      const message = reviewMessage(action, chainId, ids, timestamp)
-      const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
-      if (!valid) {
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
-      }
-    } else if (!await underRateLimit('moderation:approve', clientIp(req), APPROVE_RATE_MAX, 60)) {
+    // Verify the caller actually controls the wallet they claim
+    const message = reviewMessage(action, chainId, ids, timestamp)
+    const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
+    if (!valid) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
+    }
+    if (action === 'approve' && !await moderationWriteDeps.underRateLimit('moderation:approve', clientIp(req), APPROVE_RATE_MAX, 60)) {
       return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...CORS, 'Retry-After': '60' } })
     }
 
-    const { scopes, boardMap } = await authorizedScopes(adminAddress, ids)
+    const { scopes, boardMap } = await moderationWriteDeps.authorizedScopes(adminAddress, ids)
     if (ids.some(id => !scopes.has(id.toLowerCase()))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403, headers: CORS })
     }
 
-    const items = await readItems(ids)
+    const items = await moderationWriteDeps.readItems(ids)
     const reviewedAt = Math.floor(Date.now() / 1000)
-    const pipeline = kv.pipeline()
+    const pipeline = moderationWriteDeps.pipeline()
     ids.forEach((id, i) => {
       // Approve only settles scopes where the message is still pending: never a flag, never a stub.
       const held = action === 'approve'
@@ -160,7 +156,7 @@ export async function POST(req: NextRequest) {
     if (action !== 'approve') pipeline.set('sdk:snapshots:generation', randomUUID())
     await pipeline.exec()
 
-    const { board, site } = await readAllFlagged()
+    const { board, site } = await moderationWriteDeps.readAllFlagged()
     return NextResponse.json({
       success: true,
       action,
