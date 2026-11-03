@@ -85,7 +85,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
             return fetch('/api/openinternet/meta', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url, owner: address, signature, timestamp }),
+              body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url, signatureVersion: 2, owner: address, signature, timestamp }),
             })
           })()
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)

@@ -1,12 +1,22 @@
-// Signed by a board owner (on-chain admin or creator) to change its oi:meta record. Every field is
-// in the message -- empty meaning "unchanged" -- so a signature can't be reused for another change.
+// v2 distinguishes omitted fields (unchanged) from empty strings (clear), and
+// encodes delimiters unambiguously. v1 remains available for safe older clients.
 export interface MetaUpdate {
   logoUrl?: string
   siteUrl?: string
   removeVerifiedUrl?: string
 }
 
-export function metaUpdateMessage(chainId: number | string, board: string, update: MetaUpdate, timestamp: number): string {
-  const fields = [update.logoUrl ?? '', update.siteUrl ?? '', update.removeVerifiedUrl ?? ''].join('|')
-  return `markee-meta:update:${chainId}:${board.toLowerCase()}:${fields}:${timestamp}`
+export function metaUpdateMessage(chainId: number | string, board: string, update: MetaUpdate, timestamp: number, version: 1 | 2 = 2): string {
+  const values = [update.logoUrl, update.siteUrl, update.removeVerifiedUrl]
+  if (version === 1) {
+    return `markee-meta:update:${chainId}:${board.toLowerCase()}:${values.map(v => v ?? '').join('|')}:${timestamp}`
+  }
+  return `markee-meta:update:v2:${JSON.stringify([String(chainId), board.toLowerCase(), ...values.map(v => v ?? null), timestamp])}`
+}
+
+export function metaFields(update: MetaUpdate, version: 1 | 2): MetaUpdate {
+  return {
+    ...(update.logoUrl !== undefined && (version === 2 || update.logoUrl !== '') ? { logoUrl: update.logoUrl } : {}),
+    ...(update.siteUrl !== undefined && (version === 2 || update.siteUrl !== '') ? { siteUrl: update.siteUrl } : {}),
+  }
 }

@@ -36,7 +36,10 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
       if (path === 'checkout/config') return cors(NextResponse.json({ enabled: checkoutEnabled() }), request);
       if (path.startsWith('operations/')) return cors(NextResponse.json(await operationStatus(path.slice(11))), request);
       if (path === 'snapshot') {
-        const p = placement(JSON.parse(search.get('placement') || '{}'));
+        let input: unknown;
+        try { input = JSON.parse(search.get('placement') || '{}'); }
+        catch { throw new SDKError('REQUEST_FAILED', 'Invalid placement JSON in query parameter.'); }
+        const p = placement(input);
         const account = search.has('account') ? address(search.get('account')) : undefined;
         const offset = search.has('offset') ? Number(search.get('offset')) : undefined;
         if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000)) throw new SDKError('INVALID_OFFSET', 'Invalid page offset.');

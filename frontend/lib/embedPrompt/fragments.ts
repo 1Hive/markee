@@ -1,3 +1,5 @@
+// Legacy manual-integration fragments below are retained for compatibility.
+// New integrations use buildEmbedPrompt, which detects framework/wallet/strategy.
 // Composable fragments for the Website embed AI-prompt wizard (EmbedModal -> WebsiteEmbedWizard).
 //
 // Each fragment is a small, independently-editable string builder instead of one giant static
@@ -18,9 +20,13 @@ export type EmbedStrategy = 'fixed' | 'streaming'
 export interface BuildEmbedPromptInput {
   address: string
   name?: string
+  /** @deprecated Retained for callers; the SDK detects the board strategy. */
   strategy: EmbedStrategy
+  /** @deprecated Retained for callers; the coding assistant detects the framework. */
   framework?: EmbedFramework
+  /** @deprecated Retained for callers; the coding assistant detects existing wallets. */
   wallet?: EmbedWallet
+  /** @deprecated The prompt works with any coding assistant. */
   agent?: EmbedAgent
 }
 
@@ -29,6 +35,7 @@ export interface BuildEmbedPromptInput {
 // comes from. The buy-flow fragments interpolate these rather than hardcoding strings, and
 // tests/embedPrompt.test.ts fails if any of them stops appearing in its source file -- so renaming a
 // button in a modal breaks CI here instead of leaving the prompt describing a UI that no longer exists.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export const UI_COPY = {
   fixedModal: {
     file: 'components/modals/MarkeeSignModal.tsx',
@@ -151,6 +158,7 @@ const FRAMEWORK_LABEL: Record<EmbedFramework, string> = {
 }
 
 // ── Core identity ─────────────────────────────────────────────────────────────
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function coreIdentityFragment(
   { address, name, buyUrl, strategy }: { address: string; name?: string; buyUrl: string; strategy: EmbedStrategy },
 ): string {
@@ -191,6 +199,7 @@ needs to change or redeploy.`
 // instead of something that reads as Markee. Mirrors markee.xyz's own hero card
 // (components/board-detail/shared.tsx's FeaturedCard + MarkeeWatermark), restyled in the host
 // site's own colors -- not Markee's pink, just Markee's shape.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function triggerCardFragment(): string {
   return `## Trigger card: match Markee's own hero-card pattern
 
@@ -267,6 +276,7 @@ This card is also the click target that opens the buy modal below.`
 // wagmi + viem is the one non-negotiable base under every option -- every contract-call fragment
 // below assumes it. Don't pre-detect whether it's already installed; let the agent figure that out
 // from the target repo.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function walletFragment(wallet: EmbedWallet): string {
   if (wallet === 'none') {
     return `## Wallet connection: none set up yet
@@ -498,6 +508,7 @@ Your existing \`backerDeposit\` survives the delete (deposits are tracked per-ba
 - **Buffer:** \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise). markee.xyz doesn't expose this as a button, so it's optional here too.`
 }
 
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function strategyFragment(strategy: EmbedStrategy, address: string): string {
   return strategy === 'streaming' ? streamingStrategyFragment(address) : fixedStrategyFragment(address)
 }
@@ -650,6 +661,7 @@ Rates are entered in ETHx per month everywhere. Read \`backerMarkee(connectedWal
 **Success headlines:** "${s.successLive}" (new message), "${s.successFunded}" (new stream to an existing message), "${s.successMoved}" (switch), "${s.successRate}" (rate change).`
 }
 
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function buyFlowFragment(strategy: EmbedStrategy): string {
   return `${buyModalShellFragment()}\n\n---\n\n${strategy === 'streaming' ? streamingBuyFlowFragment() : fixedBuyFlowFragment()}`
 }
@@ -657,6 +669,7 @@ export function buyFlowFragment(strategy: EmbedStrategy): string {
 // ── Data fetching / proxy route ─────────────────────────────────────────────────
 const PUBLIC_API_URL = 'https://markee.xyz/api/ecosystem/leaderboards'
 
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function proxyRouteFragment(framework: EmbedFramework, address: string): string {
   const commonNote = `Browser fetches to markee.xyz are blocked by CORS on most setups, so this needs a server-side hop. Find your leaderboard by matching \`address\` (case-insensitive) against "${address}" in the response. Useful fields: \`topMessage\`, \`topMessageOwner\`, \`topMarkeeAddress\`, and, only as a fallback for the trigger card's price pill until your on-chain reads land, \`topFundsAddedRaw\` (fixed: add 0.001 ETH to get the price to take #1) or \`effectiveRateRaw\` (streaming: the top message's own wei/sec rate) -- format either exactly as the trigger-card section describes. (\`minimumPrice\` is the floor for a brand-new message, not the price to take #1.) **Don't use \`streamedRateRaw\` as the price** -- that field is the board's total combined inflow across every backed message, not what it costs to take #1. A brand-new, not-yet-verified leaderboard won't appear in this response at all (verification gates the entire board out of this public listing, not just its top message -- see the note near the top of this prompt), so a live, paid message can legitimately render as "no data yet" here for a while. Have the trigger component fall back to a "be first!" empty state in that case, not an error -- it's expected, not a sign anything is broken.`
 
@@ -695,6 +708,7 @@ Cache the non-\`bust\` response for ~60s (in-memory or your platform's edge cach
 // ── View tracking ────────────────────────────────────────────────────────────
 // Anti-spoofing hardening on the markee.xyz side is a separate, explicitly out-of-scope follow-up --
 // this fragment documents today's real (simple) mechanism, not an aspirational one.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function viewTrackingFragment(): string {
   return `## View tracking
 
@@ -717,6 +731,7 @@ Safe to call on every page load -- the server-side dedup (keyed by the real visi
 }
 
 // ── Moderation ───────────────────────────────────────────────────────────────
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function moderationFragment(): string {
   return `## Moderation
 
@@ -748,6 +763,7 @@ To show who moderates the board (e.g. a "Report to moderators" link), \`GET http
 // Backs the "Check View Tracking" / "Check Moderation" steps in the embed modal's verify flow
 // (WebsiteEmbedWizard -> /api/openinternet/check-health). Optional by design -- those steps soft-pass
 // if this endpoint is missing -- but without it they're not verifying anything real for this integrator.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function healthEndpointFragment(): string {
   return `## Health endpoint (optional, powers Markee's embed verification)
 
