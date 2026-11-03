@@ -58,7 +58,7 @@ export function signHtml(snapshot: Snapshot | null, showAction: boolean, unavail
         : visibility === 'unavailable' ? '<span class="notice" role="status">Message unavailable while moderation loads.</span>'
           : `<span class="message ${visibility === 'flagged' ? 'obscured' : ''}" ${visibility === 'flagged' ? 'aria-hidden="true"' : ''}>${escapeHtml(entry.message)}</span>${visibility === 'flagged' ? '<span class="veil" role="status">This message has been flagged.</span>' : ''}`;
   const views = entry?.views === null || entry?.views === undefined ? '' : `<span class="views" aria-label="${entry.views.toLocaleString()} views"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M1.3 8s2.4-4 6.7-4 6.7 4 6.7 4-2.4 4-6.7 4S1.3 8 1.3 8Z"/><circle cx="8" cy="8" r="2"/></svg>${entry.views.toLocaleString()}</span>`;
-  const rate = snapshot?.strategy === 'rent' && entry ? `<span class="rate">${formatEth(fundingPresets(snapshot).boost.toString())} ETH/mo to change</span>` : '';
+  const rate = showAction && snapshot && entry ? `<span class="rate">${formatEth(fundingPresets(snapshot).boost.toString())} ${snapshot.strategy === 'rent' ? 'ETH/mo' : 'ETH'} to change</span>` : '';
   const tag = showAction ? 'button' : 'div';
   const attributes = showAction ? `type="button" data-markee-open title="Open ${escapeHtml(board)} Markee"` : `aria-label="${escapeHtml(board)} Markee sign"`;
   const watermark = showAction ? `<span class="watermark" aria-hidden="true"><img class="logo-dark" src="${darkLogo}" alt=""><img class="logo-light" src="${lightLogo}" alt=""></span>` : '';

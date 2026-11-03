@@ -5,6 +5,7 @@ export const boardABI = parseAbi([
   'function minimumMonthlyRate() view returns (uint256)', 'function maxMessageLength() view returns (uint256)',
   'function maxNameLength() view returns (uint256)', 'function revNetEnabled() view returns (bool)',
   'function revNetTerminal() view returns (address)', 'function revNetProjectId() view returns (uint256)',
+  'function beneficiaryAddress() view returns (address)',
   'function percentToBeneficiary() view returns (uint256)',
   'function platformFeeReceiver() view returns (address)', 'function percentToPlatformFeeReceiver() view returns (uint256)',
   'function markeeCount() view returns (uint256)', 'function getMarkees(uint256 offset,uint256 limit) view returns (address[])',

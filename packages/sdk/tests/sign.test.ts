@@ -23,9 +23,12 @@ test('unknown moderation withholds message; flagged content is blurred and exclu
   assert.match(flagged, /This message has been flagged/);
 });
 
-test('the sign is one themed button with views and a rental rate; action can be disabled', () => {
+test('the sign shows the change amount for sale and monthly rate for rent; action can be disabled', () => {
   const sale = signHtml(snapshot, true);
-  assert.match(sale, /<button class="sign" type="button" data-markee-open/);
+  assert.match(sale, /<button class="sign has-rate" type="button" data-markee-open/);
+  const fundedSale = signHtml({ ...snapshot, entries: [{ ...entry, score: '500000000000000000', totalFunds: '500000000000000000' }] }, true);
+  assert.match(fundedSale, /class="rate">0\.501 ETH to change<\/span>/);
+  assert.doesNotMatch(fundedSale, /ETH\/mo to change/);
   assert.match(sale, /aria-label="0 views"/);
   assert.match(sale, />Current message<\/span>/);
   assert.match(sale, /class="logo-dark" src="data:image\/png;base64,/);
@@ -35,4 +38,5 @@ test('the sign is one themed button with views and a rental rate; action can be 
   assert.match(rent, /class="rate">0\.001 ETH\/mo to change<\/span>/);
   assert.match(signHtml(snapshot, false), /<div class="sign" aria-label="Sample Markee sign"/);
   assert.doesNotMatch(signHtml(snapshot, false), /class="watermark"/);
+  assert.doesNotMatch(signHtml(snapshot, false), /class="rate"/);
 });

@@ -6,7 +6,7 @@ const address = '0x1111111111111111111111111111111111111111';
 function view(account: string | null, available = true) {
   const modal = Object.create(MarkeeModal.prototype);
   Object.assign(modal, { account, tab: 'main', cardAvailable: available, checkoutChecked: true,
-    snapshot: { board: address, placement: { kind: 'board', chainId: 8453, address }, chainId: 8453,
+    snapshot: { beneficiary: '0x2222222222222222222222222222222222222222', board: address, placement: { kind: 'board', chainId: 8453, address }, chainId: 8453,
       strategy: 'sale', revnetEnabled: true, token: address, minimum: '1000000000000000', entries: [], wallet: account ? { eth: '1000000000000000000' } : null } });
   return modal as { footerHtml(): string; fundingHtml(): string };
 }
@@ -52,9 +52,11 @@ test('payment review follows the compact Gardens summary without hiding transact
   assert.match(html, /<span>You&#39;ll earn<\/span>/);
   assert.match(html, /65\.74 MARKEE \(estimated\)/);
   assert.match(html, /<details class="review-details"><summary>Transaction details<\/summary>/);
-  assert.match(html, /data-cmd="copy-recipient" aria-label="Copy recipient address"/);
-  assert.match(html, /data-cmd="copy-wallet" aria-label="Copy wallet address"/);
-  assert.equal((html.match(/title="0x1111111111111111111111111111111111111111"/g) || []).length, 2);
+  assert.match(html, /Community split beneficiary/);
+  assert.match(html, /Leaderboard contract/);
+  assert.match(html, /Connected wallet/);
+  assert.match(html, /href="https:\/\/basescan.org\/address\/0x2222222222222222222222222222222222222222"/);
+  assert.doesNotMatch(html, /copy-recipient|copy-wallet/);
   assert.doesNotMatch(html, /<ul>|<li>/);
   assert.match(modal.footerHtml(), />Confirm payment<\/button>/);
 });
@@ -73,10 +75,10 @@ test('rental payment review shows monthly rate and immediate ETH deposit', () =>
   assert.match(html, /Your payment only streams while your message is winning/);
   assert.doesNotMatch(html, /Wrap 0\.001 ETH into ETHx/);
   const details = html.split('<summary>Transaction details</summary>')[1].split('</details>')[0];
-  assert.equal((details.match(/class="review-row"/g) || []).length, 3);
+  assert.equal((details.match(/class="review-row"/g) || []).length, 4);
   assert.doesNotMatch(details, /<p>/);
   assert.match(html, /<span>Estimated network fee<\/span>/);
-  assert.match(html, /16\.43 MARKEE\/month \(estimated while winning\)/);
+  assert.match(html, /16\.43 MARKEE\/month \(estimated\)/);
 });
 
 
