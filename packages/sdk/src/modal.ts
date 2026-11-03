@@ -197,16 +197,6 @@ export class MarkeeModal {
     if (!button) return;
     const cmd = button.dataset.cmd!;
     if (cmd === 'close') { this.close(); return; }
-    if ((cmd === 'copy-recipient' || cmd === 'copy-wallet') && this.review) {
-      const address = cmd === 'copy-recipient' ? this.review.transaction.to : this.review.transaction.from;
-      const copying = navigator.clipboard?.writeText(address);
-      if (!copying) { button.textContent = 'Copy unavailable'; return; }
-      void copying.then(() => {
-        button.textContent = 'Copied';
-        setTimeout(() => { if (button.isConnected) button.textContent = 'Copy'; }, 2000);
-      }).catch(() => { button.textContent = 'Copy failed'; });
-      return;
-    }
     if (this.busy) return;
     this.captureDraft();
     if (cmd === 'leaderboard') { this.leaderboardOpen = !this.leaderboardOpen; this.render(); return; }
@@ -349,7 +339,7 @@ export class MarkeeModal {
       ['Paying', paying],
       ...(action.kind === 'stream' && value > 0n ? [['Depositing now', `${formatEth(value.toString())} ETH`]] : []),
       ['Estimated network fee', `${formatEth(review.review.estimatedGasCost)} ETH`],
-      ["You'll earn", review.review.estimatedTokens !== undefined ? `${formatEth(review.review.estimatedTokens, 4)} ${action.kind === 'stream' ? 'MARKEE/month (estimated while winning)' : 'MARKEE (estimated)'}` : this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
+      ["You'll earn", review.review.estimatedTokens !== undefined ? `${formatEth(review.review.estimatedTokens, 4)} ${action.kind === 'stream' ? 'MARKEE/month (estimated)' : 'MARKEE (estimated)'}` : this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
     ] : [
       ['Action', review.review.title],
       ['Native ETH sent', `${formatEth(value.toString())} ETH`],
@@ -362,7 +352,9 @@ export class MarkeeModal {
       : action.kind === 'create' && payment ? 'Your payment gives you this Markee message'
       : 'Review this wallet action';
     const calloutText = action.kind === 'stream' ? 'Anyone can overtake your message. The refund pool offsets rent while you are not winning; you can stop the stream at any time.' : review.review.reward;
-    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div><div class="review-row"><span>Recipient</span><div class="review-address"><strong class="mono" title="${e(review.transaction.to)}">${e(shortAddress(review.transaction.to))}</strong>${btn('copy-recipient', 'Copy', 'review-copy', 'aria-label="Copy recipient address"')}</div></div><div class="review-row"><span>Wallet</span><div class="review-address"><strong class="mono" title="${e(review.transaction.from)}">${e(shortAddress(review.transaction.from))}</strong>${btn('copy-wallet', 'Copy', 'review-copy', 'aria-label="Copy wallet address"')}</div></div>${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
+    const explorer = review.transaction.chainId === 8453 ? 'https://basescan.org' : review.transaction.chainId === 11155111 ? 'https://sepolia.etherscan.io' : null;
+    const addressRow = (label: string, address?: string | null) => `<div class="review-row"><span>${e(label)}</span>${address ? explorer ? `<a class="review-address mono" href="${explorer}/address/${e(address)}" target="_blank" rel="noopener noreferrer" title="${e(address)}" aria-label="${e(label)}: ${e(address)} (opens in new tab)">${e(shortAddress(address))}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3 10 14M10 3H3v18h18v-7"/></svg></a>` : `<strong class="mono">${e(shortAddress(address))}</strong>` : '<strong>Unavailable</strong>'}</div>`;
+    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${addressRow('Community split beneficiary', this.snapshot?.beneficiary)}${addressRow('Leaderboard contract', this.snapshot?.board)}${addressRow('Connected wallet', review.transaction.from)}${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;

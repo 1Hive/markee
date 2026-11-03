@@ -54,14 +54,14 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
     if (!factories.some(a => same(a.trim(), factory))) throw new SDKError('UNTRUSTED_FACTORY', 'This board factory has not been enabled by Markee.', 422);
     if (!await read<boolean>(client, factory, parseAbi(['function isFactoryLeaderboard(address) view returns (bool)']), 'isFactoryLeaderboard', [board], blockNumber)) throw new SDKError('INVALID_BOARD', 'The factory does not recognize this board.', 422);
   }
-  const [name, minimum, maxMessage, maxName, revnetEnabled, count, ranked] = await Promise.all([
+  const [name, minimum, maxMessage, maxName, revnetEnabled, count, ranked, beneficiary] = await Promise.all([
     r<string>('leaderboardName'), r<bigint>(strategy === 'rent' ? 'minimumMonthlyRate' : 'minimumPrice'),
     r<bigint>('maxMessageLength'), r<bigint>('maxNameLength'), r<boolean>('revNetEnabled'),
-    r<bigint>('markeeCount'), r<[Address[], bigint[]]>('getTopMarkees', [20n]),
+    r<bigint>('markeeCount'), r<[Address[], bigint[]]>('getTopMarkees', [20n]), r<Address>('beneficiaryAddress'),
   ]);
   const top = strategy === 'rent' ? await r<Address>('topMarkee') : ranked[0][0] || zeroAddress;
   const token = chainId === 8453 ? MARKEE_TOKEN : process.env.MARKEE_SDK_TOKEN_SEPOLIA as Address | undefined;
-  return { client, blockNumber, r, chainId, board, strategy, name, minimum, maxMessageBytes: Number(maxMessage), maxNameBytes: Number(maxName), revnetEnabled, count: Number(count), ranked, top, token: token || null };
+  return { client, blockNumber, r, chainId, board, strategy, beneficiary, name, minimum, maxMessageBytes: Number(maxMessage), maxNameBytes: Number(maxName), revnetEnabled, count: Number(count), ranked, top, token: token || null };
 }
 export type BoardContext = Awaited<ReturnType<typeof boardContext>>;
 
@@ -134,7 +134,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
     ]);
     return { address: addr, owner, message, name, score: (c.strategy === 'rent' ? score : totalFunds).toString(), totalFunds: totalFunds.toString(), aggregateRate: aggregateRate.toString(), legacyFloor: legacyFloor.toString(), moderated: flags === null ? null : flags.some(k => k.toLowerCase() === `${c.chainId}:${addr.toLowerCase()}`), views: flags === null ? null : views[i] ?? 0 };
   }));
-  return { apiVersion: 1, placement: p, board: c.board, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? (c.count > 20 ? 0 : null) : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
+  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? (c.count > 20 ? 0 : null) : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
 }
 
 export async function snapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {

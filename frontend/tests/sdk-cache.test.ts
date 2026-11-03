@@ -132,7 +132,7 @@ test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads'
   t.mock.method(client, 'getBlockNumber', async () => 100n)
   t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
     reads++
-    const results: Record<string, unknown> = { VERSION: version, factory: zeroAddress, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
+    const results: Record<string, unknown> = { VERSION: version, factory: zeroAddress, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
       ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council }
     if (!(functionName in results)) throw new Error(`Unexpected read ${functionName}`)
     return results[functionName]
@@ -145,6 +145,7 @@ test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads'
       const count = reads
       assert.equal(first.strategy, strategy)
       assert.equal(first.minimum, minimum)
+      assert.equal(first.beneficiary, account)
       assert.equal(first.freshness?.stale, false)
       assert.deepEqual(JSON.parse(JSON.stringify(await snapshot(p))), JSON.parse(JSON.stringify(first)))
       assert.equal(reads, count)

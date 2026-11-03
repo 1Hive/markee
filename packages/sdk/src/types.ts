@@ -23,6 +23,7 @@ export interface CommunityState {
 export interface Snapshot {
   freshness?: { updatedAt: number; freshUntil: number; staleUntil: number; stale: boolean; refreshing: boolean };
   apiVersion: 1; placement: Placement; board: Address | null; chainId: number;
+  beneficiary?: Address | null;
   strategy: 'sale' | 'rent'; name: string; minimum: string;
   maxMessageBytes: number; maxNameBytes: number; revnetEnabled: boolean;
   token: Address | null; entries: Entry[]; nextOffset: number | null; count: number;
