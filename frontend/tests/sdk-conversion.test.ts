@@ -57,6 +57,8 @@ const event = (kind: 'Approval' | 'Transfer', amount: bigint, from: Address = ac
 function mockReceipt(logs: ReturnType<typeof event>[], blockNumber = 101n) {
   conversionDeps.receipt = async () => ({ status: 'success', blockNumber, logs }) as unknown as Awaited<ReturnType<typeof original.receipt>>;
   conversionDeps.block = async () => 102n;
+  conversionDeps.transaction = async () => ({ from: other, to: other, input: '0x', value: 0n }) as unknown as Awaited<ReturnType<typeof original.transaction>>;
+  conversionDeps.trace = async () => ({ type: 'CALL', from: other, to: account, calls: ['approval', 'swap'].map(kind => { const tx = conversionTransaction(account, quote, kind === 'approval'); return { type: 'CALL', from: tx.from, to: tx.to, input: tx.data, value: tx.value }; }) });
 }
 function step(kind: 'approval' | 'swap'): ConversionStep {
   return { id: 'id', kind, status: 'signing', quote, armedBlock: '100', ethBalanceBefore: '0', transaction: conversionTransaction(account, quote, kind === 'approval') };
@@ -86,4 +88,28 @@ test('sponsored swap needs bounded canonical USDC outflow and ETH increase in th
   mockReceipt([event('Transfer', 3000000n)]);
   conversionDeps.block = async () => 101n;
   assert.equal(await verifyConversionReceipt(s, hash), 'submitted');
+});
+
+test('unrelated payments, wrong unwrap recipient and failed inner calls cannot confirm conversion', async () => {
+  const s = step('swap');
+  mockReceipt([event('Transfer', 3000000n)]);
+  conversionDeps.ethBalance = async () => BigInt(quote.eth);
+  const tx = s.transaction;
+  const validCall = { type: 'CALL', from: account, to: tx.to, input: tx.data, value: tx.value };
+  for (const trace of [
+    { type: 'CALL', from: account, to: other, input: '0x', value: '0x0' },
+    { ...validCall, input: conversionTransaction(other, quote, false).data },
+    { ...validCall, from: other },
+    { ...validCall, type: 'DELEGATECALL' },
+    { ...validCall, value: '0x1' },
+    { ...validCall, error: 'execution reverted' },
+    { type: 'CALL', error: 'execution reverted', calls: [validCall] },
+  ]) {
+    conversionDeps.trace = async () => ({ type: 'CALL', calls: [trace] });
+    await assert.rejects(verifyConversionReceipt(s, hash), /prepared conversion/);
+  }
+  conversionDeps.trace = async () => { throw new Error('Unsupported tracer'); };
+  await assert.rejects(verifyConversionReceipt(s, hash), /Unable to verify sponsored/);
+  conversionDeps.transaction = async () => ({ from: account, to: tx.to, input: tx.data, value: 0n }) as unknown as Awaited<ReturnType<typeof original.transaction>>;
+  assert.equal(await verifyConversionReceipt(s, hash), 'confirmed');
 });
