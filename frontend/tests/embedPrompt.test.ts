@@ -20,3 +20,14 @@ for (const strategy of ['fixed', 'streaming'] as EmbedStrategy[]) {
     })
   }
 }
+
+test('wizard prompt needs no framework, wallet, or agent selection and follows deployment flow', () => {
+  const prompt = buildEmbedPrompt({ address, name: 'Existing board', strategy: 'fixed' })
+  assert.ok(prompt.includes('Detect React/Next.js versus vanilla JavaScript'))
+  assert.ok(prompt.includes('Detect the existing wallet library'))
+  assert.ok(prompt.includes('createMarkeeSign and createMarkee'))
+  assert.ok(prompt.includes('click Verify Site'))
+  assert.ok(prompt.includes('Site verification confirms the public HTML marker'))
+  assert.ok(!prompt.includes('undefined'))
+  assert.equal(prompt, buildEmbedPrompt({ address, name: 'Existing board', strategy: 'fixed', framework: 'nextjs', wallet: 'none', agent: 'codex' }))
+})
