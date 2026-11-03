@@ -64,13 +64,13 @@ export function EditWebsiteMetaModal({
     setError(null)
     setIsSaving(true)
     try {
-      const update = { siteUrl: siteUrl.trim() || undefined, logoUrl: logoUrl.trim() || undefined }
+      const update = { siteUrl: siteUrl.trim(), logoUrl: logoUrl.trim() }
       const timestamp = Math.floor(Date.now() / 1000)
       const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, leaderboardAddress, update, timestamp) })
       const res = await fetch('/api/openinternet/meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress, ...update, owner: address, signature, timestamp }),
+        body: JSON.stringify({ leaderboardAddress, ...update, signatureVersion: 2, owner: address, signature, timestamp }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Failed to save')
       setSaved(true)
@@ -144,7 +144,7 @@ export function EditWebsiteMetaModal({
 
           <button
             onClick={handleSave}
-            disabled={isSaving || saved || (!siteUrl.trim() && !logoUrl.trim())}
+            disabled={!isDirty}
             className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {saved ? (

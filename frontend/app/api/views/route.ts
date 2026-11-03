@@ -1,12 +1,13 @@
 // app/api/views/route.ts
 import { kv } from '@vercel/kv'
+import { viewsWriteDeps } from '@/lib/views/write-deps'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { createPublicClient, http, isAddress, parseAbi, type Address } from 'viem'
 import { base } from 'viem/chains'
 import { VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { readBoardViews } from '@/lib/views/boards'
-import { normalizeHost, lastSiteViewKey } from '@/lib/views/host'
+import { isTrustedHost, normalizeHost, lastSiteViewKey } from '@/lib/views/host'
 import { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from '@/lib/stats/keys'
 
 // Counts change with every view: never let Next serve these KV reads from its data cache.
@@ -139,17 +140,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result, { headers: corsHeaders(origin) })
 }
 
-// Hostnames that are always trusted as view sources regardless of a board's verifiedUrls.
-// Includes our own domains, Vercel preview URLs, and localhost for dev.
-const OWNED_HOSTS = new Set(['markee.xyz', 'www.markee.xyz'])
-function isTrustedHost(h: string | null): boolean {
-  if (!h) return true // no referer → allow (privacy browsers, curl, server-side)
-  if (OWNED_HOSTS.has(h)) return true
-  if (h === 'localhost' || h.startsWith('127.') || h.startsWith('[::1]')) return true
-  if (h.endsWith('.markee.xyz') || h.endsWith('.vercel.app')) return true
-  return false
-}
-
 // POST /api/views
 // Body: { address: string, message: string, url?: string }
 export async function POST(req: NextRequest) {
@@ -173,7 +163,7 @@ export async function POST(req: NextRequest) {
   // against the board's registered verifiedUrls. A board with NO verified integrations
   // allows all origins (backward-compat; those boards only appear on markee.xyz anyway).
   // A board that HAS verified integrations rejects views from unregistered domains — a
-  // site owner can't manufacture traffic by calling the API directly from their server.
+  // browser source is filtered; absent/spoofed headers are not proof of legitimate traffic.
   const rawReferer = req.headers.get('origin') ?? req.headers.get('referer')
   const refHost    = rawReferer ? normalizeHost(rawReferer) : null
   // Which site the view came from, for the per-site counters: the body's url when the embed sends
@@ -182,7 +172,7 @@ export async function POST(req: NextRequest) {
   const host = (typeof body.url === 'string' ? normalizeHost(body.url) : null) ?? (isTrustedHost(refHost) ? null : refHost)
 
   if (!isTrustedHost(refHost)) {
-    const meta = await kv.get<{ verifiedUrls?: string[]; verifiedUrl?: string }>(`oi:meta:${address}`).catch(() => null)
+    const meta = await viewsWriteDeps.get<{ verifiedUrls?: string[]; verifiedUrl?: string }>(`oi:meta:${address}`).catch(() => null)
     const verifiedHosts = new Set(
       (Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls
         : meta?.verifiedUrl ? [meta.verifiedUrl] : [])
@@ -192,7 +182,7 @@ export async function POST(req: NextRequest) {
 
     if (verifiedHosts.size > 0 && !verifiedHosts.has(refHost!)) {
       // Known board, unknown origin — return current counts but don't increment.
-      const [totalViews, messageViews] = await kv.mget<number[]>(
+      const [totalViews, messageViews] = await viewsWriteDeps.mget<number[]>(
         `views:total:${address}`,
         `views:msg:${address}:${msgHash}`,
       )
@@ -206,15 +196,15 @@ export async function POST(req: NextRequest) {
 
   // The last time this site reported a view, counted or not, so the dashboard can tell a site whose
   // embed isn't reporting views from one that just hasn't had visitors (lib/integrations/server.ts).
-  if (host) await kv.set(lastSiteViewKey(address, host), Math.floor(Date.now() / 1000)).catch(() => {})
+  if (host) await viewsWriteDeps.set(lastSiteViewKey(address, host), Math.floor(Date.now() / 1000)).catch(() => {})
 
   // Rate limit: 1 view per IP per markee per hour
   const ip = getClientIp(req)
   const dedupeKey = `dedup:${ip}:${address}`
-  const alreadyCounted = await kv.get(dedupeKey)
+  const alreadyCounted = await viewsWriteDeps.get(dedupeKey)
 
   if (alreadyCounted) {
-    const [totalViews, messageViews] = await kv.mget<number[]>(
+    const [totalViews, messageViews] = await viewsWriteDeps.mget<number[]>(
       `views:total:${address}`,
       `views:msg:${address}:${msgHash}`,
     )
@@ -224,7 +214,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const pipeline = kv.pipeline()
+  const pipeline = viewsWriteDeps.pipeline()
   pipeline.incr(`views:total:${address}`)
   pipeline.incr(`views:msg:${address}:${msgHash}`)
   pipeline.set(dedupeKey, '1', { ex: 3600 })

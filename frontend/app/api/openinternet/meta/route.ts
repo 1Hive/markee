@@ -2,9 +2,10 @@
 //
 // GET  /api/openinternet/meta?address=0x...  → fetch metadata for one leaderboard
 // POST /api/openinternet/meta                → set logoUrl/siteUrl or remove a verified URL
-//   { leaderboardAddress, logoUrl?, siteUrl?, removeVerifiedUrl?, owner, signature, timestamp }
+//   { leaderboardAddress, logoUrl?, siteUrl?, removeVerifiedUrl?, owner, signature, timestamp, signatureVersion? }
 //   Only a board owner (on-chain admin or creator) can sign it; the signature covers
-//   metaUpdateMessage(8453, leaderboardAddress, { logoUrl, siteUrl, removeVerifiedUrl }, timestamp).
+//   metaUpdateMessage(8453, leaderboardAddress, update, timestamp, signatureVersion).
+//   v2 binds explicit empty strings to clearing; legacy v1 keeps empty fields unchanged.
 //
 // KV key: oi:meta:{address}
 // { logoUrl?: string; siteUrl?: string; verifiedUrl?: string; status: 'pending' | 'verified' }
@@ -13,8 +14,8 @@ import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
-import { readBoardOwners } from '@/lib/moderation/server'
-import { metaUpdateMessage } from '@/lib/openinternet/meta'
+import { metaWriteDeps } from '@/lib/openinternet/meta-deps'
+import { metaFields, metaUpdateMessage } from '@/lib/openinternet/meta'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { leaderboardAddress: rawBoard, logoUrl, siteUrl, removeVerifiedUrl, owner: rawOwner, signature, timestamp } = body as {
+    const { leaderboardAddress: rawBoard, logoUrl, siteUrl, removeVerifiedUrl, owner: rawOwner, signature, timestamp, signatureVersion = 1 } = body as {
       leaderboardAddress?: string
       logoUrl?: string
       siteUrl?: string
@@ -42,9 +43,16 @@ export async function POST(request: Request) {
       owner?: string
       signature?: `0x${string}`
       timestamp?: number
+      signatureVersion?: number
     }
-    const board = rawBoard?.toLowerCase()
-    const owner = rawOwner?.toLowerCase()
+    if (![1, 2].includes(signatureVersion) || [logoUrl, siteUrl, removeVerifiedUrl].some(v => v !== undefined && typeof v !== 'string')) {
+      return NextResponse.json({ error: 'Invalid metadata or signature version' }, { status: 400 })
+    }
+    if (signatureVersion === 1 && [logoUrl, siteUrl, removeVerifiedUrl].some(v => v?.includes('|'))) {
+      return NextResponse.json({ error: 'Refresh Markee and sign again to update these fields safely' }, { status: 400 })
+    }
+    const board = typeof rawBoard === 'string' ? rawBoard.toLowerCase() : undefined
+    const owner = typeof rawOwner === 'string' ? rawOwner.toLowerCase() : undefined
 
     if (!board || !ADDRESS_PATTERN.test(board)) {
       return NextResponse.json({ error: 'Missing or invalid leaderboardAddress' }, { status: 400 })
@@ -52,7 +60,7 @@ export async function POST(request: Request) {
     if (!owner || !ADDRESS_PATTERN.test(owner)) {
       return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
     }
-    if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+    if (!signature || typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp)) {
       return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
     }
     if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) {
@@ -61,24 +69,23 @@ export async function POST(request: Request) {
 
     const valid = await verifyMessage({
       address: owner as `0x${string}`,
-      message: metaUpdateMessage(base.id, board, { logoUrl, siteUrl, removeVerifiedUrl }, timestamp),
+      message: metaUpdateMessage(base.id, board, { logoUrl, siteUrl, removeVerifiedUrl }, timestamp, signatureVersion as 1 | 2),
       signature,
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
 
-    const [owners] = await readBoardOwners([board])
+    const [owners] = await metaWriteDeps.readBoardOwners([board])
     if (!owners.includes(owner)) {
       return NextResponse.json({ error: "Only this board's owner can change its site details" }, { status: 403 })
     }
 
     const key = `oi:meta:${board}`
-    const existing = await kv.get<Record<string, unknown>>(key) ?? {}
+    const existing = await metaWriteDeps.get(key) ?? {}
 
     // Only update provided fields; preserve verifiedUrl and status set by admin
     const updated: Record<string, unknown> = {
       ...existing,
-      ...(logoUrl && { logoUrl }),
-      ...(siteUrl && { siteUrl }),
+      ...metaFields({ logoUrl, siteUrl }, signatureVersion as 1 | 2),
       status: existing.status ?? 'pending',
     }
 
@@ -92,10 +99,10 @@ export async function POST(request: Request) {
       if (newUrls.length === 0) updated.status = 'pending'
     }
 
-    await kv.set(key, updated)
+    await metaWriteDeps.set(key, updated)
 
     // Bust openinternet leaderboards cache so new metadata is visible
-    await kv.del('cache:openinternet:leaderboards')
+    await metaWriteDeps.del('cache:openinternet:leaderboards')
 
     return NextResponse.json({ success: true, meta: updated })
   } catch (err) {

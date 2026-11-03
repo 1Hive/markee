@@ -101,6 +101,9 @@ test('HTTP boundary returns CORS errors and rejects oversized bodies before RPC 
   assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), '*');
   const invalid = await GET(new NextRequest('http://localhost/api/sdk/v1/snapshot?placement=%7B%7D'), { params: { path: ['snapshot'] } });
   assert.equal(invalid.status, 400); assert.equal(invalid.headers.get('Cache-Control'), 'no-store');
+  const malformed = await GET(new NextRequest('http://localhost/api/sdk/v1/snapshot?placement=%7B'), { params: { path: ['snapshot'] } });
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { code: 'REQUEST_FAILED', error: 'Invalid placement JSON in query parameter.' });
   const large = await POST(new NextRequest('http://localhost/api/sdk/v1/prepare', { method: 'POST', body: JSON.stringify({ message: 'a'.repeat(50000) }) }), { params: { path: ['prepare'] } });
   assert.equal(large.status, 413);
   const tampered = await POST(new NextRequest('http://localhost/api/sdk/v1/verify', { method: 'POST', body: JSON.stringify({ id: 'invalid.signature', hash: `0x${'a'.repeat(64)}` }) }), { params: { path: ['verify'] } });
