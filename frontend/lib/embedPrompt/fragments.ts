@@ -19,9 +19,9 @@ export interface BuildEmbedPromptInput {
   address: string
   name?: string
   strategy: EmbedStrategy
-  framework: EmbedFramework
-  wallet: EmbedWallet
-  agent: EmbedAgent
+  framework?: EmbedFramework
+  wallet?: EmbedWallet
+  agent?: EmbedAgent
 }
 
 // ── Reference UI copy ─────────────────────────────────────────────────────────
@@ -776,9 +776,10 @@ Don't import Markee's own color palette. Before building the modal, read this si
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
-export function buildEmbedPrompt({ address, name, framework, wallet, agent }: BuildEmbedPromptInput): string {
-  const intro = agent === 'other' ? '' : `Paste into ${AGENT_LABEL[agent]} alongside this repository.\n\n`
-  return intro + `Integrate @markee_team/sdk@latest into this ${framework} app. Inspect the repository first and follow its framework, wallet, and design patterns.
+export function buildEmbedPrompt({ address, name }: BuildEmbedPromptInput): string {
+  return `Integrate @markee_team/sdk@latest into this app using the existing leaderboard below. Follow this flow: inspect the codebase, resolve missing requirements, implement the SDK, test, deploy, and verify the public page.
+
+First inspect package.json, entry points, existing components, wallet providers, and design tokens. Detect React/Next.js versus vanilla JavaScript or another framework yourself. Detect the existing wallet library and reuse it. Do not ask me to choose a framework, wallet library, or coding agent.
 
 The leaderboard is already created${name ? ` (${JSON.stringify(name)})` : ''}:
 https://www.markee.xyz/markee/${address}
@@ -790,18 +791,17 @@ Ask only unanswered requirements:
 - Which colors, font, light/dark mode, and panel/card/control radii should match the app?
 - What public HTTPS page/domain should be registered as siteUrl?
 - What should happen after a confirmed payment?
-${wallet === 'none'
-    ? '- There is no existing wallet integration. Ask whether to add a host wallet or use Markee-hosted checkout. Hosted checkout is only available for eligible For Sale boards when enabled by the API; For Rent requires a wallet. Do not promise card checkout if disabled.'
-    : `- The selected wallet setup is ${wallet}. Reuse its active EIP-1193 provider; inspect the connector and ask only if its integration is unclear. Do not install a second wallet context.`}
+- If no wallet integration exists, ask whether to add a host wallet or use Markee-hosted checkout. Hosted checkout is only available for eligible For Sale boards when enabled by the API; For Rent requires a wallet. Do not promise card checkout if disabled. If a wallet already exists, reuse its active EIP-1193 provider without installing a second wallet context.
 
 Implementation:
 1. Install @markee_team/sdk@latest and read its current README/types. The SDK knows its API endpoint. Do not request API keys or create RPC, database, moderation, or view-tracking proxies.
-2. For React/Next.js, use MarkeeSign and MarkeeModal from @markee_team/sdk/react in a client component. Use static imports, placement, open, and onClose. For other frameworks, use createMarkee from @markee_team/sdk and close it on teardown. Follow the installed README for the sign API.
+2. For React/Next.js, use MarkeeSign and MarkeeModal from @markee_team/sdk/react in a client component. Use static imports, placement, open, and onClose. For vanilla JavaScript or other frameworks, use createMarkeeSign and createMarkee from @markee_team/sdk; destroy both on teardown as documented in the installed README.
 3. Pass the host wallet adapter when available. Resolve connect only after selection, handle cancellation, and never silently use a different provider. Do not collect card details or install Privy in the host app for hosted checkout.
 4. Pass theme with mode, colors, fontFamily, radius, cardRadius, and controlRadius. Include link, focusRing, border, selected, and accent colors. Preserve the SDK layout and transaction logic; do not rebuild the modal.
 5. Pass the agreed public URL as siteUrl. Include data-markee-address="${address.toLowerCase()}" in server-rendered or static HTML so Markee can verify the site. For client-only apps, put a hidden marker in the static HTML. Use onSiteVerification or client.verifySite after deployment; localhost is not a verified public integration.
 6. Let the SDK handle strategy detection, balances, moderation, views, reward estimates, refunds, review refresh, network switching, and confirmation. Show success only after the confirmed event, then refresh the sign if needed.
 7. Check build/types, board loading, theme, open/close, and wallet reuse. Do not sign transactions or spend funds during automated verification. Report changed files and any limitations.
+8. Deploy through the app’s existing deployment workflow when authorized. Give me the public page URL and ask me to return to Markee’s Add Markee To Your Site modal, paste that URL, and click Verify Site. Site verification confirms the public HTML marker; do not claim it tested wallet transactions or payments.
 
 Use the latest package, not a pinned prerelease in these instructions. Base payments use real funds.
 `
