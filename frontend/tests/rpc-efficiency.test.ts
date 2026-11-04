@@ -55,7 +55,7 @@ function scanner(t: any) {
   t.mock.method(scanDeps, 'notifyLowBudgets', async () => 0)
   t.mock.method(scanDeps, 'notifyStatusChanges', async () => 0)
   t.mock.method(scanDeps, 'updateTopHistories', async () => {})
-  const old = process.env.FLAG_AUTO_MODERATION; delete process.env.FLAG_AUTO_MODERATION
+  const old = process.env.FLAG_AUTO_MODERATION; process.env.FLAG_AUTO_MODERATION = 'false'
   t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)
   return { records, client, reads: () => textReads, edit: () => { edits = [{ address: ids[0] }] }, fail: () => { fail = true }, reconcile: () => { at = 5000 } }
 }

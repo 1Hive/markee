@@ -110,6 +110,10 @@ test('verified invalidation fences in-flight loads and replay cannot evict rebui
 })
 
 test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads', async t => {
+  // This fixture isolates financial caching; moderation overlays have their own default-on tests.
+  const flag = process.env.FLAG_AUTO_MODERATION
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  t.after(() => flag === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = flag)
   const { snapshot, snapshotReaders, communityPermissions } = await import('../lib/sdk/snapshot')
   const { getEnvPublicClient } = await import('../lib/sdk/chains')
   const { signEnvelope, verifyTransaction, prepare } = await import('../lib/sdk/transactions')

@@ -1,6 +1,8 @@
 # Automatic message moderation
 
-`FLAG_AUTO_MODERATION=true` enables the shared server-side checker. It is **off by default**.
+The shared server-side checker is **enabled by default** when `FLAG_AUTO_MODERATION` is unset.
+Set `FLAG_AUTO_MODERATION=false` explicitly to disable it (case and surrounding spaces are ignored).
+Empty or unrecognized values keep moderation enabled.
 No AI credentials, model server, or SDK integrator configuration is needed. Set this on the Markee
 backend, never in a host app. Preview and production can be enabled independently.
 
@@ -12,14 +14,15 @@ rewritten. Names are still subject to manual moderation. This detects dictionary
 general contextual threats or hate. The additional rules detect specific solicitation patterns, not
 every scam. An engine interface allows a future OpenAI Moderation adapter.
 
-## Package quality and rollout gate
+## Package quality and limitations
 
-Do not enable this in production until the dictionaries have been reviewed with native-language
-fixtures. Tests found neutral translated words in the Japanese and Korean lists (including
+Dictionary quality should be assessed with native-language fixtures. Tests found neutral translated
+words in the Japanese and Korean lists (including
 “login” and “shopping cart”) and missing common Japanese/Korean profanity. Whole-word matching
 also has limitations in unsegmented scripts. All twelve lists are loaded as requested, but that
 is not evidence of reliable coverage in twelve languages. Tests preserve these known limitations
-rather than claiming they are successfully detected. No automatic rollout is configured.
+rather than claiming they are successfully detected. Use the explicit opt-out if these limitations
+are unsuitable for an environment.
 
 ## Website rules
 
@@ -53,7 +56,7 @@ Exact-text site-only false-positive overrides survive policy updates. Changing t
 a fresh verdict and never removes manual flags. Existing draft warnings retain Continue anyway.
 
 GitHub README synchronization, model classification, approval-required mode and per-board policy
-configuration are outside this release. Keep the rollout flag disabled until staging acceptance.
+configuration are outside this release. Validate policy changes on staging before deploying them.
 
 ## Public interfaces
 

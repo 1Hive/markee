@@ -343,4 +343,5 @@ No API key or moderation configuration is required in the host app.
 Snapshots retain `entry.moderated` (`false`, `true`, or `null`) and can additionally include
 `entry.moderation` with the state, reason, and optional `reasonCodes`. Hide unavailable and flagged content and do not
 record views for it. A moderator's false-positive exception on Markee applies only on Markee;
-it does not change SDK visibility. This optional backend feature is disabled by default.
+it does not change SDK visibility. Automatic moderation is enabled by default on Markee.
+Markee operators can explicitly disable it with `FLAG_AUTO_MODERATION=false`; host apps need no configuration.

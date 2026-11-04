@@ -11,7 +11,7 @@ import { getModerationClient, readAllFlagged, flagKey, authorizedScopes } from '
 export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-v1'
 export const AUTO_LANGUAGES = ['ar', 'zh', 'en', 'fr', 'de', 'hi', 'it', 'ja', 'ko', 'pt', 'ru', 'es']
 export const AUTO_REASON = 'This message matched the profanity filter.'
-export const autoEnabled = () => process.env.FLAG_AUTO_MODERATION === 'true'
+export const autoEnabled = () => process.env.FLAG_AUTO_MODERATION?.trim().toLowerCase() !== 'false'
 export const contentHash = (message: string) => createHash('sha256').update(message, 'utf8').digest('hex')
 export type AutoVerdict = { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string; reasonCodes?: string[] }
 export type Visibility = 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'

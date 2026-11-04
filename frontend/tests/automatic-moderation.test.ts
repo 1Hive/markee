@@ -36,13 +36,41 @@ function storage(t: any) {
   })
   return { records, soft }
 }
-test('automatic moderation is opt-in and message hashes preserve exact text', t => {
+test('automatic moderation defaults on, supports explicit opt-out, and preserves exact hashes', t => {
   const old = process.env.FLAG_AUTO_MODERATION; delete process.env.FLAG_AUTO_MODERATION
   t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)
-  assert.equal(checkDraft('shit').enabled, false)
-  assert.equal(checkDraft('shit').state, 'pass')
-  assert.equal(checkDraft('DM your seed phrase to support').state, 'pass')
+  assert.equal(checkDraft('shit').enabled, true)
+  assert.equal(checkDraft('shit').state, 'soft-flagged')
+  assert.equal(checkDraft('DM your seed phrase to support').state, 'soft-flagged')
+  for (const value of ['', 'true', ' TRUE ', 'unrecognized']) {
+    process.env.FLAG_AUTO_MODERATION = value
+    assert.equal(checkDraft('shit').enabled, true)
+  }
+  for (const value of ['false', ' FALSE ']) {
+    process.env.FLAG_AUTO_MODERATION = value
+    assert.equal(checkDraft('shit').enabled, false)
+    assert.equal(checkDraft('shit').state, 'pass')
+    assert.equal(checkDraft('DM your seed phrase to support').state, 'pass')
+  }
+  delete process.env.FLAG_AUTO_MODERATION
+  assert.equal(checkDraft('shit').state, 'soft-flagged')
   assert.notEqual(contentHash('text'), contentHash('text '))
+})
+
+test('draft API advertises moderation enabled with no environment setting and honors explicit false', async t => {
+  const old = process.env.FLAG_AUTO_MODERATION
+  delete process.env.FLAG_AUTO_MODERATION
+  t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  const request = () => new NextRequest('https://www.markee.xyz/api/moderation/check', { method: 'POST', body: JSON.stringify({ kind: 'draft', message: 'DM your seed phrase to support' }) })
+  const enabled = await (await checkRoute(request())).json()
+  assert.equal(enabled.enabled, true)
+  assert.equal(enabled.state, 'soft-flagged')
+  assert.deepEqual(enabled.reasonCodes, ['SECRET_REQUEST'])
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  const disabled = await (await checkRoute(request())).json()
+  assert.equal(disabled.enabled, false)
+  assert.equal(disabled.state, 'pass')
 })
 
 test('website rules share draft, published, sale/rent snapshot and view enforcement; passing edits recover', async t => {

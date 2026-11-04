@@ -20,6 +20,7 @@ test('registered boards reject unrelated Vercel and loopback-lookalike hosts', a
     dedupeReads++
     return true // already counted; legitimate request reaches rate limiter
   })
+  t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(viewsWriteDeps, 'mget', async () => [3, 2])
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
   for (const origin of ['https://attacker.vercel.app', 'https://markee-attacker.vercel.app', 'https://127.attacker.example']) {
@@ -80,6 +81,7 @@ test('published SDK view requests remain compatible with the changed API', async
   if (!modulePath) { t.skip('Set MARKEE_PUBLISHED_SDK_MODULE to the installed published dist/index.js'); return }
   const { MarkeeClient } = await import(pathToFileURL(modulePath).href)
   t.mock.method(viewsWriteDeps, 'get', async (key: string) => key.startsWith('oi:meta:') ? { verifiedUrls: ['https://registered.vercel.app'] } : true)
+  t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(viewsWriteDeps, 'mget', async () => [3, 2])
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
   for (const origin of ['https://registered.vercel.app', 'https://unregistered.vercel.app']) {
