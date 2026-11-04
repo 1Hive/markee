@@ -86,7 +86,7 @@ import { MarkeeModal } from '@markee_team/sdk/react';
 />;
 ```
 
-See [`examples/connectkit`](https://github.com/1Hive/markee/tree/feature/markee-sdk/examples/connectkit) for a complete adapter. Its connection promise resolves only once ConnectKit has selected a provider and rejects when the picker is dismissed. The SDK does not install a second wallet context.
+See [`examples/connectkit`](https://github.com/1Hive/markee/tree/main/examples/connectkit) for a complete adapter. Its connection promise resolves only once ConnectKit has selected a provider and rejects when the picker is dismissed. The SDK does not install a second wallet context.
 
 ## Embed the current Markee sign
 
@@ -193,17 +193,19 @@ Community activation supports the current council Safe, a current Safe owner, or
 - The modal renders escaped text, uses isolated CSS, and supports keyboard focus, Escape, mobile sizing and reduced motion. A host CSP must permit the SDK's inline styles and connections to its configured Markee API. No external font or image is needed by the modal.
 - API failures are explicit. Without moderation data, message text is withheld. No mock balances or fabricated rewards are returned by production handlers.
 
-Backend configuration and API reference: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/feature/markee-sdk/docs/sdk/implementation.md).
+Backend configuration and API reference: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/main/docs/sdk/implementation.md).
 
 ## API endpoint
 
 No API URL or Markee API key is required. The SDK default is:
 
 ```text
-https://staging.markee.xyz/api/sdk/v1
+https://www.markee.xyz/api/sdk/v1
 ```
 
-Markee hosts this API and centralizes on-chain reads, metadata, and transaction preparation. Staging does not imply test funds: Base placements use real funds. For local development or testing, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The endpoint used by your installed release is exported as `DEFAULT_MARKEE_API_URL`.
+Markee hosts this API and centralizes on-chain reads, metadata, and transaction preparation. Base placements use real funds. For local development or testing, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The endpoint used by your installed release is exported as `DEFAULT_MARKEE_API_URL`. Staging is an explicit override: `apiUrl: "https://staging.markee.xyz/api/sdk/v1"`.
+
+When upgrading from the former staging default, pending transactions, community authorizations, and hosted checkouts remain bound to the staging API that created them. Keep that API available until those operations finish. New operations use production; the SDK never automatically resubmits a payment. A missing saved checkout requires recovery rather than silently creating another checkout.
 
 ## LLM implementation prompt
 

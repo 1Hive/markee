@@ -1,6 +1,6 @@
 {
   "name": "@markee_team/sdk",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Self-contained Markee modal and API client, with an optional React adapter.",
   "type": "module",
   "sideEffects": false,
@@ -23,7 +23,7 @@
     "build": "node scripts/embed-logos.mjs && tsc && esbuild src/index.ts src/react.ts --bundle --format=esm --outdir=dist --external:react --minify",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "prepack": "npm run build",
+    "prepack": "npm run build && node scripts/check-release.mjs",
     "test:declarations": "tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext dist/index.d.ts dist/react.d.ts"
   },
   "peerDependencies": {
@@ -49,7 +49,7 @@
     "url": "git+https://github.com/1Hive/markee.git",
     "directory": "packages/sdk"
   },
-  "homepage": "https://github.com/1Hive/markee/tree/feature/markee-sdk/packages/sdk#readme",
+  "homepage": "https://github.com/1Hive/markee/tree/main/packages/sdk#readme",
   "bugs": {
     "url": "https://github.com/1Hive/markee/issues"
   },

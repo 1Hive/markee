@@ -1,7 +1,8 @@
+import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
 import type { MessageCheck, Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 /** Markee-hosted API used by integrations unless overridden for local development. */
-export const DEFAULT_MARKEE_API_URL = 'https://staging.markee.xyz/api/sdk/v1';
+export const DEFAULT_MARKEE_API_URL = PRODUCTION_API_URL;
 
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }
@@ -32,6 +33,8 @@ export class MarkeeClient {
   private readonly fetcher: typeof fetch;
   private injected: EIP1193Provider | null = null;
   private sending = false;
+  private pendingOrigins = new Map<string, string>();
+  private adminOrigin?: string;
   private inMemoryPending: PendingTransaction[] = [];
   private adminMemory: PendingAuthorization | null = null;
   private communityReceipts: Record<string, AdminResult> = {};
@@ -131,7 +134,8 @@ export class MarkeeClient {
     } finally { this.sending = false; }
   }
   async verify(pending: PendingTransaction): Promise<TransactionResult> {
-    const result = await this.request<TransactionResult>('verify', { id: pending.preparation.id, hash: pending.hash });
+    this.records();
+    const result = await this.recoveryClient(this.pendingOrigins.get(pending.hash)).request<TransactionResult>('verify', { id: pending.preparation.id, hash: pending.hash });
     if (result.status !== 'pending') {
       this.persist(this.records().filter(r => r.hash !== pending.hash));
       if (result.status === 'confirmed') this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
@@ -142,21 +146,37 @@ export class MarkeeClient {
    * retiring the old hash. Unknown/replaced transactions never authorize a retry. */
   async reconcile(pending: PendingTransaction, replacementHash: Hex): Promise<TransactionResult> {
     if (!isHash(replacementHash)) throw new MarkeeError('Enter a valid replacement transaction hash.');
-    const result = await this.request<TransactionResult>('verify', { id: pending.preparation.id, hash: replacementHash });
+    this.records();
+    const result = await this.recoveryClient(this.pendingOrigins.get(pending.hash)).request<TransactionResult>('verify', { id: pending.preparation.id, hash: replacementHash });
     if (result.status !== 'pending') this.persist(this.records().filter(r => r.hash !== pending.hash));
     return result;
   }
-  private storageKey() { return `markee:sdk:v1:pending:${this.apiUrl}`; }
+  private storageKey(apiUrl = this.apiUrl) { return `markee:sdk:v1:pending:${apiUrl}`; }
+  private recoveryClient(apiUrl?: string): MarkeeClient {
+    return apiUrl && apiUrl !== this.apiUrl ? new MarkeeClient({ ...this.options, apiUrl }) : this;
+  }
   private records(): PendingTransaction[] {
-    try {
-      if (typeof localStorage === 'undefined') return this.inMemoryPending;
-      const saved = JSON.parse(localStorage.getItem(this.storageKey()) || '[]');
-      return Array.isArray(saved) ? saved.filter(r => isHash(r?.hash) && typeof r.preparation?.id === 'string' && isAddress(r.preparation?.transaction?.from) && r.preparation?.placement) : [];
-    } catch { return this.inMemoryPending; }
+    if (typeof localStorage === 'undefined') return this.inMemoryPending;
+    const records: PendingTransaction[] = [];
+    for (const origin of storageOrigins(this.apiUrl)) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(this.storageKey(origin)) || '[]');
+        if (!Array.isArray(saved)) continue;
+        for (const record of saved) {
+          if (!isHash(record?.hash) || typeof record.preparation?.id !== 'string' || !isAddress(record.preparation?.transaction?.from) || !record.preparation?.placement || records.some(r => r.hash === record.hash)) continue;
+          records.push(record); this.pendingOrigins.set(record.hash, origin);
+        }
+      } catch { /* A corrupt/unavailable store must not hide other recoverable records. */ }
+    }
+    return records.length ? records : this.inMemoryPending;
   }
   private persist(records: PendingTransaction[]) {
     this.inMemoryPending = records;
-    try { if (typeof localStorage !== 'undefined') localStorage.setItem(this.storageKey(), JSON.stringify(records)); } catch { /* Private mode can disable storage; keep this session's records. */ }
+    for (const origin of storageOrigins(this.apiUrl)) {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(this.storageKey(origin), JSON.stringify(records.filter(r => (this.pendingOrigins.get(r.hash) || this.apiUrl) === origin)));
+      } catch { /* Keep the in-memory records; never automatically retry a payment. */ }
+    }
   }
   pending(placement: Placement, account: Address): PendingTransaction | undefined {
     return this.records().find(r => JSON.stringify(r.preparation.placement).toLowerCase() === JSON.stringify(placement).toLowerCase() && r.preparation.transaction.from.toLowerCase() === account.toLowerCase());
@@ -179,19 +199,26 @@ export class MarkeeClient {
     return this.resumeAuthorization();
   }
   pendingAuthorization(): PendingAuthorization | null {
-    try {
-      const saved = typeof localStorage === 'undefined' ? this.adminMemory : JSON.parse(localStorage.getItem(`${this.storageKey()}:admin`) || 'null');
-      return saved && ['activate', 'claim'].includes(saved.kind) && isAddress(saved.account) && isAddress(saved.community) && typeof saved.nonce === 'string' && typeof saved.signature === 'string' ? saved : null;
-    } catch { return this.adminMemory; }
+    if (typeof localStorage === 'undefined') return this.adminMemory;
+    for (const origin of storageOrigins(this.apiUrl)) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`${this.storageKey(origin)}:admin`) || 'null');
+        if (saved && ['activate', 'claim'].includes(saved.kind) && isAddress(saved.account) && isAddress(saved.community) && typeof saved.nonce === 'string' && typeof saved.signature === 'string') {
+          this.adminOrigin = origin; return saved;
+        }
+      } catch { /* Continue searching the known prior API. */ }
+    }
+    this.adminOrigin = this.apiUrl;
+    return this.adminMemory;
   }
   private saveAuthorization(value: PendingAuthorization | null) {
     this.adminMemory = value;
-    try { if (typeof localStorage !== 'undefined') localStorage.setItem(`${this.storageKey()}:admin`, JSON.stringify(value)); } catch { /* Keep the in-memory authorization for recovery. */ }
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(`${this.storageKey(this.adminOrigin)}:admin`, JSON.stringify(value)); } catch { /* Keep the in-memory authorization for recovery. */ }
   }
   async resumeAuthorization(): Promise<AdminOperation> {
     const pending = this.pendingAuthorization();
     if (!pending) throw new MarkeeError('There is no pending community authorization.');
-    const op = await this.request<AdminOperation>(`community/${pending.kind}`, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
+    const op = await this.recoveryClient(this.adminOrigin).request<AdminOperation>(`community/${pending.kind}`, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
     if (op.status === 'complete' && op.result) {
       const key = `${pending.chainId}:${pending.community.toLowerCase()}`;
       this.communityReceipts[key] = op.result;
@@ -202,11 +229,15 @@ export class MarkeeClient {
   }
   communityReceipt(placement: Extract<Placement, { kind: 'gardens-community' }>): AdminResult | null {
     const key = `${placement.chainId}:${placement.community.toLowerCase()}`;
-    try {
-      const value = typeof localStorage === 'undefined' ? this.communityReceipts[key] : JSON.parse(localStorage.getItem(`${this.storageKey()}:community:${key}`) || 'null');
-      return value && isHash(value.transactionHash) ? value : null;
-    } catch { return this.communityReceipts[key] || null; }
+    for (const origin of storageOrigins(this.apiUrl)) {
+      try {
+        const value = typeof localStorage === 'undefined' ? this.communityReceipts[key] : JSON.parse(localStorage.getItem(`${this.storageKey(origin)}:community:${key}`) || 'null');
+        if (value && isHash(value.transactionHash)) return value;
+      } catch { /* Continue searching the known prior API. */ }
+    }
+    return this.communityReceipts[key] || null;
   }
+
   bridgeStatus(protocol: ClaimQuote['bridgeProtocol'], hash: Hex, fromChainId: number, toChainId: number): Promise<BridgeStatus> {
     return this.request(`community/status?${new URLSearchParams({ protocol, transactionHash: hash, fromChainId: String(fromChainId), toChainId: String(toChainId) })}`);
   }

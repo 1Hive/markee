@@ -37,4 +37,4 @@ The published sample registers `https://markee-sdk-connectkit-example.vercel.app
 npm run build
 ```
 
-The SDK API target is currently Markee staging (`2staging.markee.xyz`).
+The SDK uses the production Markee API (`https://www.markee.xyz/api/sdk/v1`) by default.

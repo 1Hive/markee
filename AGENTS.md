@@ -44,9 +44,10 @@ older clients. Treat these as independently deployed products.
   README/types. Consumer apps must commit their lockfile for reproducible deploys;
   do not make production installations float on every build.
 - Before broader public adoption or 1.0, use a stable production API endpoint.
-  Staging must be an explicit override. The present staging default is transitional;
-  do not switch origins casually, since authentication and active sessions depend
-  on them.
+  Staging must be an explicit override. The SDK defaults to
+  `https://www.markee.xyz/api/sdk/v1`; preserve origin-bound recovery for operations
+  created with its former staging default. Do not switch origins casually, since
+  authentication and active sessions depend on them.
 
 ### Checkout and transaction lifecycle
 
