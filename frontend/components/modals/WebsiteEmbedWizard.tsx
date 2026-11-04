@@ -39,6 +39,7 @@ type Step = 'questions' | 'prompt' | 'verifying' | 'verified'
 
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
   const [step, setStep] = useState<Step>('questions')
+  const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [siteUrl, setSiteUrl] = useState('')
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -141,6 +142,36 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   // ── Prompt ─────────────────────────────────────────────────────────────────
   if (step === 'prompt') {
     const prompt = buildEmbedPrompt({ address, name, strategy })
+    const marker = `<span hidden data-markee-address="${address}"></span>`
+    const reactCode = `'use client';
+import { MarkeeSign } from '@markee_team/sdk/react';
+
+export default function SiteMarkee() {
+  return <MarkeeSign
+    placement={{ kind: 'board', chainId: 8453, address: '${address}' }}
+    theme={{ mode: 'system' }}
+    siteUrl="https://your-site.com"
+  />;
+}`
+    const vanillaCode = `import { createMarkeeSign } from '@markee_team/sdk';
+
+const sign = createMarkeeSign(document.querySelector('#markee'), {
+  placement: { kind: 'board', chainId: 8453, address: '${address}' },
+  theme: { mode: 'system' },
+  siteUrl: 'https://your-site.com',
+});
+
+// On page teardown:
+// sign.destroy();`
+    const codeStyle: React.CSSProperties = { margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.65 }
+    const snippet = (label: string, code: string) => (
+      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: '#030714', overflow: 'hidden', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: `1px solid ${BORDER}` }}>
+          <span style={{ color: TEXT2, fontSize: 12 }}>{label}</span><CopyButton text={code} />
+        </div>
+        <pre style={{ ...codeStyle, padding: 14 }}>{code}</pre>
+      </div>
+    )
     return (
       <>
         <button
@@ -154,7 +185,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
           ← Integration steps
         </button>
 
-        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: '#030714', overflow: 'hidden' }}>
+        {integration === 'ai' ? <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: '#030714', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 14px', borderBottom: `1px solid ${BORDER}` }}>
             <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>Paste into your coding assistant alongside your codebase</span>
             <CopyButton text={prompt} />
@@ -165,6 +196,27 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
             </pre>
           </div>
         </div>
+
+        : <div style={{ color: TEXT2, fontSize: 13, lineHeight: 1.65 }}>
+          <p>1. Install the latest SDK in your app and commit the updated lockfile.</p>
+          {snippet('Install', 'npm install @markee_team/sdk@latest')}
+          <p>2. Add the sign using your app’s framework. Clicking the sign opens the payment modal. This placement connects to your existing leaderboard; For Sale or For Rent is detected automatically.</p>
+          <details open>
+            <summary style={{ cursor: 'pointer', color: PINK, marginBottom: 10 }}>React 18 / 19 (including Next.js)</summary>
+            {snippet('React component', reactCode)}
+          </details>
+          <details>
+            <summary style={{ cursor: 'pointer', color: PINK, marginBottom: 10 }}>Vanilla JavaScript (with an npm bundler)</summary>
+            {snippet('Add to your HTML', '<div id="markee"></div>')}
+            {snippet('JavaScript', vanillaCode)}
+          </details>
+          <p>Replace the example site URL with your public HTTPS page. Match your app’s colors, font, and border radii through the SDK’s theme options. If your app already has a wallet, pass a wallet adapter to reuse its selected provider.</p>
+          <p>No API URL, RPC provider key, or database credentials are required. Card checkout is available only when enabled by Markee.</p>
+          <p>3. For client-rendered apps, add this marker to the HTML returned by your server (for example, Vite’s index.html). React server rendering already includes it.</p>
+          {snippet('Site verification marker', marker)}
+          <p>4. Deploy your app, test the sign and modal, then verify the public page below.</p>
+          <a href="https://www.npmjs.com/package/@markee_team/sdk" target="_blank" rel="noopener noreferrer" style={{ color: PINK }}>SDK documentation ↗</a>
+        </div>}
 
         <div style={{ marginTop: 20 }}>
           <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
@@ -193,18 +245,38 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   // ── Questions ──────────────────────────────────────────────────────────────
   return (
     <>
-      <p style={{ margin: '0 0 22px', color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-        Add this existing leaderboard with the Markee SDK. Your coding assistant will inspect your app,
-        choose the React or vanilla JavaScript integration, and reuse your existing wallet setup.
-      </p>
-      <ol style={{ margin: '0 0 24px', paddingLeft: 22, color: TEXT2, fontSize: 14, lineHeight: 1.8 }}>
-        <li>Copy the SDK prompt into your coding assistant with access to your codebase.</li>
-        <li>Confirm sign placement, theme, and any missing requirements. Let it implement and test the SDK.</li>
-        <li>Deploy your app, then return here with the public page URL to verify your Markee.</li>
-      </ol>
-      <p style={{ color: MUTED, fontSize: 12, marginBottom: 20 }}>Works with ChatGPT, Codex, Claude Code, Cursor, or any coding assistant.</p>
+      <fieldset style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
+        <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>How would you like to integrate Markee?</legend>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {([{ value: 'ai', label: 'Use AI', description: 'Generate a prompt for your coding assistant.' },
+            { value: 'sdk', label: 'Install the SDK', description: 'Follow the installation and code examples.' }] as const).map(option => (
+            <label key={option.value} style={{ flex: '1 1 220px', cursor: 'pointer', padding: 14, border: `1px solid ${integration === option.value ? PINK : BORDER}`, borderRadius: 8, background: integration === option.value ? 'rgba(244,159,255,0.08)' : BG }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: TEXT, fontWeight: 700, fontSize: 14 }}>
+                <input type="radio" name="markee-integration" value={option.value} checked={integration === option.value} onChange={() => setIntegration(option.value)} style={{ accentColor: PINK }} />
+                {option.label}
+              </span>
+              <span style={{ display: 'block', color: TEXT2, fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{option.description}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {integration === 'ai' ? <>
+        <p style={{ margin: '0 0 16px', color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+          Your coding assistant will inspect your app, choose the React or vanilla JavaScript integration,
+          reuse your existing wallet setup, and match your app’s theme.
+        </p>
+        <ol style={{ margin: '0 0 20px', paddingLeft: 22, color: TEXT2, fontSize: 14, lineHeight: 1.8 }}>
+          <li>Copy the SDK prompt into your coding assistant with access to your codebase.</li>
+          <li>Confirm sign placement and any missing requirements. Let it implement and test the SDK.</li>
+          <li>Deploy your app, then return here with the public page URL to verify your Markee.</li>
+        </ol>
+        <p style={{ color: MUTED, fontSize: 12, marginBottom: 20 }}>Works with ChatGPT, Codex, Claude Code, Cursor, or any coding assistant.</p>
+      </> : <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
+        Install the npm package, add this leaderboard with React or vanilla JavaScript, then deploy and verify your site.
+        The SDK handles the modal and automatically detects your leaderboard’s strategy.
+      </p>}
       <button onClick={() => setStep('prompt')} style={primaryBtnStyle(true)}>
-        Generate prompt
+        {integration === 'ai' ? 'Generate prompt' : 'View SDK instructions'}
       </button>
     </>
   )
