@@ -1,3 +1,4 @@
+import { viewsWriteDeps } from '../lib/views/write-deps'
 import { pathToFileURL } from 'node:url'
 import { applySnapshotModeration } from '../lib/sdk/snapshot'
 import { POST as checkRoute } from '../app/api/moderation/check/route'
@@ -118,8 +119,9 @@ test('draft and published HTTP boundaries reject invalid inputs and ignore calle
   assert.equal(draft.state, 'soft-flagged')
   const published = await (await checkRoute(req({ kind: 'published', chainId: 8453, markeeIds: [id], message: 'fake safe message' }))).json()
   assert.equal(published.items[0].state, 'soft-flagged')
+  t.mock.method(viewsWriteDeps, 'mget', async () => [12, 4])
   const view = await recordView(new NextRequest('https://markee.xyz/api/views', { method: 'POST', body: JSON.stringify({ address: id, message: 'shit' }) }))
-  assert.equal((await view.json()).counted, false)
+  assert.deepEqual(await view.json(), { totalViews: 12, messageViews: 4, counted: false })
 })
 test('moderation overlays cached sale/rent snapshots without mutating financial data or trusting a cached pass', async t => {
   enable(t); storage(t)

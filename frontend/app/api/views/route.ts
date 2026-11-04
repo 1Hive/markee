@@ -162,7 +162,10 @@ export async function POST(req: NextRequest) {
       const [moderation] = await checkPublished([address])
       const source = normalizeHost(req.headers.get('origin') ?? req.headers.get('referer') ?? '')
       const site = !!source && (source === 'markee.xyz' || source.endsWith('.markee.xyz') || source === 'localhost' || source === '127.0.0.1')
-      if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) return NextResponse.json({ totalViews: 0, messageViews: 0, counted: false }, { headers: corsHeaders(origin) })
+      if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) {
+        const [totalViews, messageViews] = await viewsWriteDeps.mget<number[]>(`views:total:${address}`, `views:msg:${address}:${msgHash}`)
+        return NextResponse.json({ totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false }, { headers: corsHeaders(origin) })
+      }
     } catch { return NextResponse.json({ error: 'Moderation check unavailable' }, { status: 503, headers: corsHeaders(origin) }) }
   }
 
