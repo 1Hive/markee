@@ -57,7 +57,7 @@ test('create a For Sale board and activate it', async ({ page }) => {
 test('the board shows in Your Markees once it is on a site', async ({ page }) => {
   // Verifying a real site needs the public internet; seed the verified integration in local KV.
   await kv(['SET', `oi:meta:${board.toLowerCase()}`, JSON.stringify({ verifiedUrls: ['https://example.com'], verifiedUrl: 'https://example.com', status: 'verified' })])
-  await kv(['DEL', 'cache:forsale:leaderboards'])
+  await kv(['DEL', 'cache:forsale:leaderboards', 'sdk:snapshots:v1:listings:cache:forsale:leaderboards'])
   const drawer = await openDrawer(page)
   await expect(drawer.getByText('Integrated Sites')).toBeVisible()
 })

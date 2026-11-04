@@ -28,12 +28,13 @@
 // tick forward live (useFlowingAmount, anchored on `since` below) rather than flushed here on a
 // timer -- that would reintroduce exactly the polling-drift problem this exists to avoid.
 
+import { createSnapshotCache } from '@/lib/sdk/snapshot-cache'
+import { snapshotStorage } from '@/lib/sdk/cached-display'
 import { NextResponse } from 'next/server'
-import { createPublicClient, http, isAddress, parseAbiItem, type Address } from 'viem'
-import { base } from 'viem/chains'
-import { kv } from '@vercel/kv'
+import { isAddress, parseAbiItem, type Address } from 'viem'
+import { lifetimeDeps } from '@/lib/streaming/lifetime-deps'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
-import { underRateLimit, clientIp } from '@/lib/rate-limit'
+import { clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -71,12 +72,6 @@ type ReplayLog =
   | { eventName: 'BackerUpdated'; blockNumber: bigint; logIndex: number; blockTimestamp: number; args: { flowRate: bigint } }
   | { eventName: 'TopChanged'; blockNumber: bigint; logIndex: number; blockTimestamp: number; args: { oldTop: Address; newTop: Address } }
 
-function getClient() {
-  return createPublicClient({
-    chain: base,
-    transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org', { fetchOptions: { cache: 'no-store' } }),
-  })
-}
 
 function replay(state: ReplayState, logs: ReplayLog[], markee: string): ReplayState {
   let { streamed, refunded, rate, isTop, since } = state
@@ -109,72 +104,75 @@ export async function GET(request: Request) {
   }
 
   try {
-    if (!await underRateLimit('streaming:lifetime-streamed', clientIp(request), RATE_MAX, RATE_WINDOW)) {
+    if (!await lifetimeDeps.underRateLimit('streaming:lifetime-streamed', clientIp(request), RATE_MAX, RATE_WINDOW)) {
       return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
     }
 
-    const client = getClient()
-    const key = `streaming:lifetime:${board}:${markee}:${backer}`
-    const checkpoint = await kv.get<Checkpoint>(key)
+    const result = await createSnapshotCache(snapshotStorage.get())(`rental-lifetime:${board}:${markee}:${backer}`, async () => {
+      const client = lifetimeDeps.client()
+      const key = `streaming:lifetime:${board}:${markee}:${backer}`
+      const checkpoint = await lifetimeDeps.get<Checkpoint>(key)
 
-    const fromBlock = checkpoint ? BigInt(checkpoint.lastBlock) + 1n : BASE_MARKEE_EVENTS_FROM_BLOCK
-    const currentBlock = await client.getBlockNumber()
-    const safeToBlock = currentBlock > REORG_SAFETY_BLOCKS ? currentBlock - REORG_SAFETY_BLOCKS : 0n
+      const fromBlock = checkpoint ? BigInt(checkpoint.lastBlock) + 1n : BASE_MARKEE_EVENTS_FROM_BLOCK
+      const currentBlock = await client.getBlockNumber()
+      const safeToBlock = currentBlock > REORG_SAFETY_BLOCKS ? currentBlock - REORG_SAFETY_BLOCKS : 0n
 
-    let persisted: ReplayState = checkpoint
-      ? { streamed: BigInt(checkpoint.streamed), refunded: BigInt(checkpoint.refunded), rate: BigInt(checkpoint.rate), isTop: checkpoint.isTop, since: checkpoint.since }
-      : { streamed: 0n, refunded: 0n, rate: 0n, isTop: false, since: Math.floor(Date.now() / 1000) }
-    let display = persisted
+      let persisted: ReplayState = checkpoint
+        ? { streamed: BigInt(checkpoint.streamed), refunded: BigInt(checkpoint.refunded), rate: BigInt(checkpoint.rate), isTop: checkpoint.isTop, since: checkpoint.since }
+        : { streamed: 0n, refunded: 0n, rate: 0n, isTop: false, since: Math.floor(Date.now() / 1000) }
+      let display = persisted
 
-    if (fromBlock <= currentBlock) {
-      const [backerLogs, promotedLogs, demotedLogs] = await Promise.all([
-        client.getLogs({
-          address: board as Address, event: BACKER_UPDATED, args: { backer: backer as Address, markee: markee as Address },
-          fromBlock, toBlock: currentBlock,
-        }),
-        client.getLogs({
-          address: board as Address, event: TOP_CHANGED, args: { newTop: markee as Address },
-          fromBlock, toBlock: currentBlock,
-        }),
-        client.getLogs({
-          address: board as Address, event: TOP_CHANGED, args: { oldTop: markee as Address },
-          fromBlock, toBlock: currentBlock,
-        }),
-      ])
+      if (fromBlock <= currentBlock) {
+        const [backerLogs, promotedLogs, demotedLogs] = await Promise.all([
+          client.getLogs({
+            address: board as Address, event: BACKER_UPDATED, args: { backer: backer as Address, markee: markee as Address },
+            fromBlock, toBlock: currentBlock,
+          }),
+          client.getLogs({
+            address: board as Address, event: TOP_CHANGED, args: { newTop: markee as Address },
+            fromBlock, toBlock: currentBlock,
+          }),
+          client.getLogs({
+            address: board as Address, event: TOP_CHANGED, args: { oldTop: markee as Address },
+            fromBlock, toBlock: currentBlock,
+          }),
+        ])
 
-      const merged = [...backerLogs, ...promotedLogs, ...demotedLogs].sort((a, b) => {
-        if (a.blockNumber !== b.blockNumber) return a.blockNumber < b.blockNumber ? -1 : 1
-        return a.logIndex < b.logIndex ? -1 : a.logIndex > b.logIndex ? 1 : 0
-      })
+        const merged = [...backerLogs, ...promotedLogs, ...demotedLogs].sort((a, b) => {
+          if (a.blockNumber !== b.blockNumber) return a.blockNumber < b.blockNumber ? -1 : 1
+          return a.logIndex < b.logIndex ? -1 : a.logIndex > b.logIndex ? 1 : 0
+        })
 
-      if (merged.length > 0) {
-        const uniqueBlocks = Array.from(new Set(merged.map(l => l.blockNumber)))
-        const blocks = await Promise.all(uniqueBlocks.map(bn => client.getBlock({ blockNumber: bn })))
-        const tsByBlock = new Map(blocks.map(b => [b.number, Number(b.timestamp)]))
-        const withTimestamps: ReplayLog[] = merged.map(log => ({
-          ...log, blockTimestamp: tsByBlock.get(log.blockNumber)!,
-        }) as ReplayLog)
+        if (merged.length > 0) {
+          const uniqueBlocks = Array.from(new Set(merged.map(l => l.blockNumber)))
+          const blocks = await Promise.all(uniqueBlocks.map(bn => client.getBlock({ blockNumber: bn })))
+          const tsByBlock = new Map(blocks.map(b => [b.number, Number(b.timestamp)]))
+          const withTimestamps: ReplayLog[] = merged.map(log => ({
+            ...log, blockTimestamp: tsByBlock.get(log.blockNumber)!,
+          }) as ReplayLog)
 
-        const safeLogs = withTimestamps.filter(l => l.blockNumber <= safeToBlock)
-        const tailLogs = withTimestamps.filter(l => l.blockNumber > safeToBlock)
+          const safeLogs = withTimestamps.filter(l => l.blockNumber <= safeToBlock)
+          const tailLogs = withTimestamps.filter(l => l.blockNumber > safeToBlock)
 
-        persisted = replay(persisted, safeLogs, markee)
-        if (safeLogs.length > 0) {
-          await kv.set(key, {
-            streamed: persisted.streamed.toString(), refunded: persisted.refunded.toString(),
-            lastBlock: safeToBlock.toString(), rate: persisted.rate.toString(),
-            isTop: persisted.isTop, since: persisted.since,
-          } satisfies Checkpoint)
+          persisted = replay(persisted, safeLogs, markee)
+
+          display = replay(persisted, tailLogs, markee)
         }
-
-        display = replay(persisted, tailLogs, markee)
       }
-    }
 
-    return NextResponse.json({
-      streamedWei: display.streamed.toString(), refundedWei: display.refunded.toString(),
-      currentRateWei: display.rate.toString(), isTop: display.isTop, since: display.since,
-    }, { headers: NO_CACHE })
+      if (safeToBlock >= fromBlock) {
+        await lifetimeDeps.set(key, {
+          streamed: persisted.streamed.toString(), refunded: persisted.refunded.toString(),
+          lastBlock: safeToBlock.toString(), rate: persisted.rate.toString(),
+          isTop: persisted.isTop, since: persisted.since,
+        } satisfies Checkpoint)
+      }
+      return {
+        streamedWei: display.streamed.toString(), refundedWei: display.refunded.toString(),
+        currentRateWei: display.rate.toString(), isTop: display.isTop, since: display.since,
+      }
+    }, 30, 0)
+    return NextResponse.json(result.data, { headers: NO_CACHE })
   } catch (err) {
     console.error('[streaming/lifetime-streamed] error:', err)
     return NextResponse.json({ error: 'Failed to compute lifetime streamed' }, { status: 500, headers: NO_CACHE })

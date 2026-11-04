@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { encodeFunctionData, parseAbi, parseEther } from 'viem'
-import { ANVIL, APP_PORT, E2E_ACCOUNT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from './env'
+import { ANVIL, APP_PORT, E2E_ACCOUNT, FORK_BLOCK, KV, KV_TOKEN } from './env'
 
 // Every run starts from the same chain state and an empty KV, even when Playwright reuses an Anvil
 // and Redis left running by an earlier run (reuseExistingServer outside CI).
@@ -10,6 +10,7 @@ import { ANVIL, APP_PORT, E2E_ACCOUNT, FORK_BLOCK, FORK_RPC, KV, KV_TOKEN } from
 // every storage slot Anvil has already pulled from the upstream RPC, so the next run's first
 // transaction re-fetches hundreds of slots and can take minutes. A revert keeps that cache warm.
 const SNAPSHOT_FILE = join(__dirname, '.anvil-snapshot')
+const INSTANCE_FILE = join(__dirname, '.anvil-instance')
 const FOR_SALE_BOARD = '0xa52EB22029677029D4e609aD5e54ca6552c0B31F'
 
 async function rpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
@@ -24,13 +25,18 @@ export default async function globalSetup() {
   if (!accounts.map(a => a.toLowerCase()).includes(E2E_ACCOUNT.toLowerCase())) {
     throw new Error(`Anvil on ${ANVIL} doesn't have the E2E account unlocked: it was started without the E2E mnemonic. Stop it and let Playwright start it (see playwright.fork.config.ts).`)
   }
-  const saved = existsSync(SNAPSHOT_FILE) ? readFileSync(SNAPSHOT_FILE, 'utf8').trim() : null
-  // evm_revert returns false (or errors) when this Anvil never took that snapshot, e.g. it restarted.
-  const reverted = saved ? await rpc('evm_revert', [saved]).catch(() => false) : false
+  const instance = existsSync(INSTANCE_FILE) ? readFileSync(INSTANCE_FILE, 'utf8').trim() : null
+  if (!instance) throw new Error('Start the E2E fork with tests/e2e/fork/server.mjs so RPC counts and cache flushing are enabled.')
+  let saved: { instance: string; snapshot: string } | null = null
+  try { saved = JSON.parse(readFileSync(SNAPSHOT_FILE, 'utf8')) } catch { /* new fork or legacy snapshot */ }
+  const reused = saved?.instance === instance
+  const reverted = reused ? await rpc('evm_revert', [saved!.snapshot]).catch(() => false) : false
   if (!reverted) {
-    await rpc('anvil_reset', [{ forking: { jsonRpcUrl: FORK_RPC, blockNumber: FORK_BLOCK } }])
-    // Cold fork: run the purchase path once without sending it, so the slow upstream fetches happen
-    // here instead of inside a test's transaction timeout.
+    // A new wrapper instance started Anvil at the pinned block already. Resetting
+    // it here would throw away the storage it just restored from disk.
+    if (reused || Number(await rpc<string>('eth_blockNumber', [])) !== FORK_BLOCK) {
+      throw new Error('The E2E fork cannot restore its clean snapshot. Restart the local fork server before retrying.')
+    }
     await rpc('eth_call', [{
       from: E2E_ACCOUNT,
       to: FOR_SALE_BOARD,
@@ -38,7 +44,7 @@ export default async function globalSetup() {
       data: encodeFunctionData({ abi: parseAbi(['function createMarkee(string,string) payable returns (address)']), functionName: 'createMarkee', args: ['warm-up', ''] }),
     }, 'latest']).catch(() => {})
   }
-  writeFileSync(SNAPSHOT_FILE, await rpc('evm_snapshot', []))
+  writeFileSync(SNAPSHOT_FILE, JSON.stringify({ instance, snapshot: await rpc('evm_snapshot', []) }))
 
   const res = await fetch(KV, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['FLUSHALL']) })
   if (!res.ok) throw new Error(`KV flush failed: HTTP ${res.status}`)
@@ -52,7 +58,7 @@ export default async function globalSetup() {
 async function warmUp() {
   const app = `http://localhost:${APP_PORT}`
   const get = (path: string) => fetch(app + path, { signal: AbortSignal.timeout(300_000) }).catch(() => {})
-  await Promise.all(['superfluid', 'github', 'openinternet', 'streaming', 'forsale'].map(p => get(`/api/${p}/leaderboards`)))
+  for (const platform of ['superfluid', 'github', 'openinternet', 'streaming', 'forsale']) await get(`/api/${platform}/leaderboards`)
   await Promise.all([
     get(`/api/account/messages?owner=${E2E_ACCOUNT}`),
     get(`/api/account/funded?owner=${E2E_ACCOUNT}`),

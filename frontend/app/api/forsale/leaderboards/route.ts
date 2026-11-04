@@ -1,3 +1,4 @@
+import { cachedListing } from '@/lib/leaderboards/cached'
 // app/api/forsale/leaderboards/route.ts
 //
 // Enumerates the shared "For Sale" LeaderboardFactory -- the vertical-agnostic factory all future
@@ -23,9 +24,9 @@ import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const CACHE_KEY = 'cache:forsale:leaderboards'
-const CACHE_TTL = 60 // seconds
 
 const FOR_SALE_FACTORY_ADDRESS = FACTORIES.FOR_SALE
 
@@ -52,13 +53,8 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: NO_CACHE })
 }
 
-export async function GET(request: Request) {
+async function loadListing(request: Request) {
   try {
-    const bust = new URL(request.url).searchParams.get('bust') === '1'
-    if (!bust) {
-      const cached = await kv.get<object>(CACHE_KEY)
-      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
-    }
 
     const client = getClient()
 
@@ -197,10 +193,13 @@ export async function GET(request: Request) {
       leaderboards,
       totalPlatformFunds: formatEther(totalFundsRaw),
     }
-    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[forsale/leaderboards] error:', err)
-    return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
+    return NextResponse.json({ error: 'Failed to fetch leaderboards' }, { status: 503, headers: NO_CACHE })
   }
+}
+
+export async function GET(request: Request) {
+  return cachedListing(request, CACHE_KEY, loadListing, NO_CACHE)
 }

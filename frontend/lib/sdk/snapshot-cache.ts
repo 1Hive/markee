@@ -42,13 +42,15 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
     load: () => Promise<T>,
     freshSeconds = 30,
     staleSeconds = 300,
+    forceRefresh = false,
   ): Promise<Snapshot<T>> {
     const snapshotKey = `sdk:snapshots:v1:${key}`
     const lockKey = `${snapshotKey}:lock`
     const retryKey = `${snapshotKey}:retry`
     const cached = await store.get<Omit<Snapshot<T>, 'stale' | 'refreshing'>>(snapshotKey)
     const lastGood = cached && cached.staleUntil > now() ? cached : null
-    if (lastGood && lastGood.freshUntil > now()) {
+    const fresh = (value: { freshUntil: number }) => !forceRefresh && value.freshUntil > now()
+    if (lastGood && fresh(lastGood)) {
       return { ...lastGood, stale: false, refreshing: false }
     }
     if (await store.get(retryKey)) {
@@ -66,7 +68,7 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
     try {
       // Another invocation may publish between the first read and SET NX.
       const latest = await store.get<typeof cached>(snapshotKey)
-      if (latest && latest.freshUntil > now()) {
+      if (latest && fresh(latest)) {
         return { ...latest, stale: false, refreshing: false }
       }
       const data = await load()

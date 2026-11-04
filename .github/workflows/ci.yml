@@ -56,6 +56,9 @@ jobs:
       - name: Moderation queue state machine
         run: npm run test:moderation
 
+      - name: RPC efficiency regressions
+        run: npm run test:rpc
+
       - name: Email notification message format
         run: npm run test:email-notifications
 
@@ -127,20 +130,49 @@ jobs:
           version: v1.1.0
 
       # Anvil's per-block fork cache: without it every run re-fetches all touched state from the RPC.
-      - name: Cache Anvil fork state
+      - name: Restore Anvil fork state
         if: steps.rpc.outputs.available == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.foundry/cache/rpc
-          key: anvil-fork-base-${{ env.E2E_FORK_BLOCK }}
+          key: anvil-v2-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: anvil-v2-base-${{ env.E2E_FORK_BLOCK }}-
 
       - name: Install Playwright browsers
         if: steps.rpc.outputs.available == 'true'
         run: npx playwright install chromium --with-deps
 
+      - name: Verify fork cache lifecycle without external RPC
+        if: steps.rpc.outputs.available == 'true'
+        run: node --test tests/fork-cache.test.mjs
+
       - name: Fork E2E tests
         if: steps.rpc.outputs.available == 'true'
         run: npm run test:e2e:fork
+
+      # Save warmed state even after test failures. Rotating keys allow later runs
+      # to improve the cache; the old fixed key permanently retained a tiny archive.
+      - name: Inspect fork cache
+        id: fork-cache
+        if: always() && steps.rpc.outputs.available == 'true'
+        run: |
+          bytes=$(find ~/.foundry/cache/rpc -name storage.json -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum+0}')
+          echo "Fork cache bytes: ${bytes:-0}"
+          if [ "${bytes:-0}" -gt 4096 ]; then echo "useful=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Save Anvil fork state
+        if: always() && steps.fork-cache.outputs.useful == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.foundry/cache/rpc
+          key: anvil-v2-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload upstream RPC counts
+        if: always() && steps.rpc.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-rpc-counts
+          path: frontend/test-results/fork-rpc-counts.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Playwright report
         if: failure() && steps.rpc.outputs.available == 'true'

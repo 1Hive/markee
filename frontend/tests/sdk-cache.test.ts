@@ -339,3 +339,45 @@ test('storage failing during refresh preserves the previously loaded balance', a
   assert.equal(result.data, '42')
   assert.equal(result.stale, true)
 })
+
+test('forced listing refresh bypasses a fresh snapshot and concurrent refreshes share one lease', async () => {
+  const db = database(), read = createSnapshotCache(db.store, db.now)
+  let calls = 0
+  await read('listing', async () => ++calls, 60, 300)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const owner = read('listing', async () => { calls++; await gate; return calls }, 60, 300, true)
+  // Let the owner acquire its distributed lease and enter the loader.
+  for (let i = 0; i < 10 && calls < 2; i++) await new Promise(resolve => setImmediate(resolve))
+  const contender = await read('listing', async () => ++calls, 60, 300, true)
+  assert.equal(contender.data, 1); assert.equal(contender.refreshing, true)
+  release(); assert.equal((await owner).data, 2)
+  assert.equal((await read('listing', async () => ++calls, 60, 300)).data, 2)
+  assert.equal(calls, 2)
+})
+
+test('listing cache shares one full payload across address filters and rejects failed refreshes', async t => {
+  const { cachedListing } = await import('../lib/leaderboards/cached')
+  const { NextResponse } = await import('next/server')
+  const db = database(); t.mock.method(snapshotStorage, 'get', () => db.store)
+  let calls = 0
+  const load = async (request: Request) => {
+    assert.equal(new URL(request.url).searchParams.has('address'), false)
+    calls++; return NextResponse.json({ leaderboards: [{ address: '0xabc' }, { address: '0xdef' }] })
+  }
+  const get = (address: string) => cachedListing(new Request(`https://markee.example/api/streaming/leaderboards?address=${address}`), 'cache:streaming:leaderboards', load, {})
+  assert.deepEqual((await (await get('0xABC')).json()).leaderboards, [{ address: '0xabc' }])
+  assert.deepEqual((await (await get('0xdef')).json()).leaderboards, [{ address: '0xdef' }]); assert.equal(calls, 1)
+  const unavailable = await cachedListing(new Request('https://markee.example/api'), 'other', async () => NextResponse.json({ error: 'RPC failed' }, { status: 500 }), {})
+  assert.equal(unavailable.status, 503)
+})
+
+test('simultaneous cold listing requests wait for one loader instead of returning an empty account', async t => {
+  const { cachedListing } = await import('../lib/leaderboards/cached')
+  const { NextResponse } = await import('next/server')
+  const db = database(); t.mock.method(snapshotStorage, 'get', () => db.store)
+  let calls = 0
+  const load = async () => { calls++; await new Promise(resolve => setTimeout(resolve, 10)); return NextResponse.json({ leaderboards: [{ address: '0xabc' }] }) }
+  const results = await Promise.all(Array.from({ length: 3 }, () => cachedListing(new Request('https://markee.example/api'), 'cold', load, {})))
+  assert.equal(calls, 1); assert.deepEqual(results.map(result => result.status), [200, 200, 200])
+})

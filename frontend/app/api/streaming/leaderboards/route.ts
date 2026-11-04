@@ -1,3 +1,4 @@
+import { cachedListing } from '@/lib/leaderboards/cached'
 // app/api/streaming/leaderboards/route.ts
 //
 // Enumerates streaming-priced boards (one vertical-agnostic StreamingLeaderboardFactory) and returns
@@ -19,15 +20,15 @@ import { StreamingLeaderboardFactoryABI, StreamingLeaderboardABI, MarkeeABI } fr
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const CACHE_KEY = 'cache:streaming:leaderboards'
-const CACHE_TTL = 60 // seconds
 // Served when the totals source fails: stale beats wrong for the headline number.
 const LAST_GOOD_KEY = 'cache:streaming:leaderboards:lastgood'
 const LAST_GOOD_TTL = 7 * 24 * 60 * 60
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
-export async function GET(request: Request) {
+async function loadListing(request: Request) {
   if (!STREAMING_ENABLED) {
     return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
   }
@@ -46,11 +47,6 @@ export async function GET(request: Request) {
     )
 
   try {
-    const bust = params.get('bust') === '1'
-    if (!bust) {
-      const cached = await kv.get<{ leaderboards: unknown[] }>(CACHE_KEY)
-      if (cached) return respond(cached)
-    }
 
     const client = createStreamingClient()
     const factory = STREAMING_FACTORY as `0x${string}`
@@ -64,7 +60,6 @@ export async function GET(request: Request) {
 
     if (addresses.length === 0) {
       const empty = { leaderboards: [] }
-      await kv.set(CACHE_KEY, empty, { ex: CACHE_TTL })
       return respond(empty)
     }
 
@@ -211,7 +206,6 @@ export async function GET(request: Request) {
 
     const payload = { leaderboards }
     await Promise.all([
-      kv.set(CACHE_KEY, payload, { ex: CACHE_TTL }),
       kv.set(LAST_GOOD_KEY, payload, { ex: LAST_GOOD_TTL }),
     ])
     return respond(payload)
@@ -219,6 +213,10 @@ export async function GET(request: Request) {
     console.error('[streaming/leaderboards] error:', err)
     const lastGood = await kv.get<{ leaderboards: unknown[] }>(LAST_GOOD_KEY).catch(() => null)
     if (lastGood) return respond({ ...lastGood, stale: true })
-    return NextResponse.json({ leaderboards: [] }, { headers: NO_CACHE })
+    return NextResponse.json({ error: 'Failed to fetch leaderboards' }, { status: 503, headers: NO_CACHE })
   }
+}
+
+export async function GET(request: Request) {
+  return cachedListing(request, CACHE_KEY, loadListing, NO_CACHE)
 }

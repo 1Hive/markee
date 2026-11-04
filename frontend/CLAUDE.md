@@ -110,7 +110,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 
 ## Pages
 
-- `/account` — "My Markees": shows all leaderboards the connected wallet created across Superfluid and GitHub. Always fetches with `?bust=1` to skip cache. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
+- `/account` — "My Markees": shows all leaderboards the connected wallet created across Superfluid and GitHub. Uses shared listing snapshots on normal loads; explicit post-mutation refreshes use `?bust=1`. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
 
 ## Patterns
 
@@ -118,7 +118,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 The `admin` field on Superfluid leaderboard contracts is the beneficiary address, not the creator. To determine the creator, the API calls `eth_getLogs` on the factory to find creation events, then `eth_getTransaction` to read the `from` address. Results are cached permanently in KV as `creator:sf:{address}`. Always filter "My Markees" by `creator`, falling back to `admin` if not yet resolved.
 
 ### Cache bust
-Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation and on the `/account` page. Never pass `bust=1` on regular listing page loads.
+Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation or a successful mutation. Normal `/account` hydration and regular listing page loads must use cached responses. Distributed refresh leases coalesce simultaneous refresh requests.
 
 ### Wallet hydration flash
 Client components that show different UI based on `isConnected` must use a `mounted` state to prevent a flash of the disconnected state on load:

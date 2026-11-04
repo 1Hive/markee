@@ -57,6 +57,6 @@ export async function verifySite(p: Placement, value: unknown, origin: string | 
   if (!hasSiteMarker(html, p.address)) return { verified: false, url: url.href, message: 'Publish a data-markee-address attribute containing this board address in the page HTML, then retry.' };
   const result = await kv.eval(MERGE, [`oi:meta:${p.address.toLowerCase()}`], [url.href]);
   await kv.set('sdk:snapshots:generation', randomUUID());
-  await Promise.all(['cache:openinternet:leaderboards', 'cache:ecosystem:leaderboards'].map(key => kv.del(key)));
+  await Promise.all(['cache:openinternet:leaderboards', 'cache:forsale:leaderboards', 'cache:streaming:leaderboards', 'cache:ecosystem:leaderboards', ...['openinternet', 'forsale', 'streaming'].map(platform => `sdk:snapshots:v1:listings:cache:${platform}:leaderboards`)].map(key => kv.del(key)));
   return { verified: true, url: url.href, verifiedUrls: (typeof result === 'string' ? JSON.parse(result) : result) as string[] };
 }

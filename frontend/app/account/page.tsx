@@ -1017,15 +1017,16 @@ function AccountDashboard() {
     isLegacy?: boolean
   } | null>(null)
 
-  const fetchAll = useCallback(async (addr: string) => {
+  const fetchAll = useCallback(async (addr: string, refresh = false) => {
+    const suffix = refresh ? '?bust=1' : ''
     setIsLoading(true)
     try {
       const [sfRes, ghRes, oiRes, strRes, fsRes] = await Promise.all([
-        fetch('/api/superfluid/leaderboards?bust=1',   { cache: 'no-store' }),
-        fetch('/api/github/leaderboards?bust=1',       { cache: 'no-store' }),
-        fetch('/api/openinternet/leaderboards?bust=1', { cache: 'no-store' }),
-        fetch('/api/streaming/leaderboards?bust=1',    { cache: 'no-store' }),
-        fetch('/api/forsale/leaderboards?bust=1',      { cache: 'no-store' }),
+        fetch(`/api/superfluid/leaderboards${suffix}`,   { cache: 'no-store' }),
+        fetch(`/api/github/leaderboards${suffix}`,       { cache: 'no-store' }),
+        fetch(`/api/openinternet/leaderboards${suffix}`, { cache: 'no-store' }),
+        fetch(`/api/streaming/leaderboards${suffix}`,    { cache: 'no-store' }),
+        fetch(`/api/forsale/leaderboards${suffix}`,      { cache: 'no-store' }),
       ])
       if (sfRes.ok) {
         const data = await sfRes.json()
@@ -1621,7 +1622,7 @@ function AccountDashboard() {
           isOpen
           board={priceButtonTarget.address}
           onClose={() => setPriceButtonTarget(null)}
-          onSuccess={() => { if (activeAddress) { fetchAll(activeAddress); fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={() => { if (activeAddress) { fetchAll(activeAddress, true); fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy && (
@@ -1629,7 +1630,7 @@ function AccountDashboard() {
           isOpen
           onClose={() => setPriceButtonTarget(null)}
           strategyAddress={priceButtonTarget.address as `0x${string}`}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+          onSuccess={() => { if (activeAddress) fetchAll(activeAddress, true) }}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && !(priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy) && (
@@ -1637,7 +1638,7 @@ function AccountDashboard() {
           isOpen
           onClose={() => setPriceButtonTarget(null)}
           leaderboardAddress={priceButtonTarget.address}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress) }}
+          onSuccess={() => { if (activeAddress) fetchAll(activeAddress, true) }}
         />
       )}
 
@@ -1649,13 +1650,13 @@ function AccountDashboard() {
           activeAddress={activeAddress}
           onClose={() => setManageTarget(null)}
           onAddToSite={() => handleOpenAddToSite(manageBoard)}
-          onSuccess={() => activeAddress && fetchAll(activeAddress)}
+          onSuccess={() => activeAddress && fetchAll(activeAddress, true)}
         />
       )}
 
       <EmbedModal
         isOpen={!!embedTarget}
-        onClose={() => { setEmbedTarget(null); if (activeAddress) fetchAll(activeAddress) }}
+        onClose={() => { setEmbedTarget(null); if (activeAddress) fetchAll(activeAddress, true) }}
         leaderboard={embedTarget ? { address: embedTarget.address, name: embedTarget.name, strategy: embedTarget.strategy ?? 'fixed' } : null}
         initialPlatform={embedInitialPlatform}
       />

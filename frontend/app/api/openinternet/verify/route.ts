@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
     // Bust openinternet and ecosystem leaderboards caches
     await Promise.all([
-      kv.del('cache:openinternet:leaderboards'),
+      ...['openinternet', 'forsale', 'streaming'].flatMap(platform => [kv.del(`cache:${platform}:leaderboards`), kv.del(`sdk:snapshots:v1:listings:cache:${platform}:leaderboards`)]),
       kv.del('cache:ecosystem:leaderboards'),
     ])
 

@@ -35,7 +35,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `anvil --fork-url ${FORK_RPC} --fork-block-number ${FORK_BLOCK} --mnemonic "${E2E_MNEMONIC}" --port 8545 --silent`,
+      command: 'node tests/e2e/fork/server.mjs',
+      env: { E2E_FORK_RPC_URL: FORK_RPC, E2E_FORK_BLOCK: String(FORK_BLOCK), E2E_MNEMONIC },
       port: 8545,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -61,6 +62,7 @@ export default defineConfig({
         PORT: String(APP_PORT),
         NEXT_PUBLIC_BASE_RPC_URL: ANVIL,
         ALCHEMY_BASE_URL: ANVIL,
+        MARKEE_RPC_8453: ANVIL,
         KV_REST_API_URL: KV,
         KV_REST_API_TOKEN: KV_TOKEN,
         NEXT_PUBLIC_SITE_URL: `http://localhost:${APP_PORT}`,

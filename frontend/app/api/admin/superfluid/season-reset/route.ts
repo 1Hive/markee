@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
     kv.set(KV_RPC_LAST_BLOCK, latestBlock.toString()),
     kv.set(KV_SF_MIG_LAST_BLOCK, latestBlock.toString()),
     kv.del(CACHE_KEY),
+    kv.del(`sdk:snapshots:v1:listings:${CACHE_KEY}`),
   ])
 
   return NextResponse.json({

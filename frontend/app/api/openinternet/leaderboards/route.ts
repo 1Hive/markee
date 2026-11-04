@@ -1,3 +1,4 @@
+import { cachedListing } from '@/lib/leaderboards/cached'
 // app/api/openinternet/leaderboards/route.ts
 //
 // Returns a unified list of "website" leaderboards:
@@ -18,9 +19,9 @@ import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const CACHE_KEY = 'cache:openinternet:leaderboards'
-const CACHE_TTL = 60 // seconds
 
 const OI_FACTORY_ADDRESSES = [
   '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c', // v1.3 — all OI leaderboards
@@ -91,13 +92,8 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: NO_CACHE })
 }
 
-export async function GET(request: Request) {
+async function loadListing(request: Request) {
   try {
-    const bust = new URL(request.url).searchParams.get('bust') === '1'
-    if (!bust) {
-      const cached = await kv.get<object>(CACHE_KEY)
-      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
-    }
 
     const client = getClient()
 
@@ -242,10 +238,13 @@ export async function GET(request: Request) {
       leaderboards,
       totalPlatformFunds: formatEther(totalFundsRaw),
     }
-    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[openinternet/leaderboards] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+export async function GET(request: Request) {
+  return cachedListing(request, CACHE_KEY, loadListing, NO_CACHE)
 }

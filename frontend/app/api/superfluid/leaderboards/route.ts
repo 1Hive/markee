@@ -1,3 +1,4 @@
+import { cachedListing } from '@/lib/leaderboards/cached'
 // app/api/superfluid/leaderboards/route.ts
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
@@ -12,9 +13,9 @@ const BOOSTED_KEY = 'superfluid:s6:boosted'
 const BASELINE_PREFIX = 'superfluid:s6:baseline:'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const CACHE_KEY = 'cache:superfluid:leaderboards'
-const CACHE_TTL = 60 // seconds
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -62,13 +63,8 @@ function getClient() {
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-export async function GET(request: Request) {
+async function loadListing(request: Request) {
   try {
-    const bust = new URL(request.url).searchParams.get('bust') === '1'
-    if (!bust) {
-      const cached = await kv.get<object>(CACHE_KEY)
-      if (cached) return NextResponse.json(cached, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
-    }
 
     const client = getClient()
 
@@ -248,10 +244,13 @@ export async function GET(request: Request) {
       totalPlatformFunds: formatEther(totalFundsRaw),
       featuredMessage,
     }
-    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
   } catch (err) {
     console.error('[superfluid/leaderboards] Error:', err)
     return NextResponse.json({ error: 'Failed to fetch leaderboards' }, { status: 500 })
   }
+}
+
+export async function GET(request: Request) {
+  return cachedListing(request, CACHE_KEY, loadListing, { 'Cache-Control': 'no-store, no-cache, must-revalidate' })
 }

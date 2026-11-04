@@ -102,7 +102,10 @@ export async function POST(request: Request) {
     await metaWriteDeps.set(key, updated)
 
     // Bust openinternet leaderboards cache so new metadata is visible
-    await metaWriteDeps.del('cache:openinternet:leaderboards')
+    await Promise.all(['openinternet', 'forsale', 'streaming'].flatMap(platform => [
+      metaWriteDeps.del(`cache:${platform}:leaderboards`),
+      metaWriteDeps.del(`sdk:snapshots:v1:listings:cache:${platform}:leaderboards`),
+    ]))
 
     return NextResponse.json({ success: true, meta: updated })
   } catch (err) {

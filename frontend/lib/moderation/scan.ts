@@ -57,7 +57,17 @@ const MARKEE_CHUNK = 500
 const WRITE_CHUNK = 500
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
+export const scanDeps = {
+  client: getModerationClient, recordActivity, notifyLowBudgets, notifyStatusChanges, updateTopHistories,
+  get: <T>(key: string) => kv.get<T>(key),
+  set: (key: string, value: unknown) => kv.set(key, value),
+  mget: <T extends unknown[]>(...keys: string[]) => kv.mget<T>(...keys),
+  pipeline: () => kv.pipeline(), readItems, readAllFlagged,
+}
 type Client = ReturnType<typeof getModerationClient>
+interface BoardScanState { count: string; ids: string[]; reconciledAt: number }
+const boardStateKey = (board: string) => `moderation:scan:v2:${board}`
+const RECONCILE_SECONDS = 3600
 type CallResult = { status: 'success' | 'failure'; result?: unknown }
 
 export interface ScanReport {
@@ -82,11 +92,11 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 async function multicallChunked(client: Client, contracts: unknown[], size: number, blockNumber: bigint): Promise<CallResult[]> {
   if (contracts.length === 0) return []
-  const results = await Promise.all(
-    chunk(contracts, size).map(slice =>
-      client.multicall({ contracts: slice as Parameters<Client['multicall']>[0]['contracts'], blockNumber, batchSize: 0 }),
-    ),
-  )
+  const results: CallResult[][] = []
+  // Bound concurrency: a large network must not launch every multicall at once.
+  for (const slice of chunk(contracts, size)) {
+    results.push(await client.multicall({ contracts: slice as Parameters<Client['multicall']>[0]['contracts'], blockNumber, batchSize: 0 }) as CallResult[])
+  }
   return results.flat() as CallResult[]
 }
 
@@ -123,23 +133,31 @@ async function listBoards(client: Client, blockNumber: bigint): Promise<{ boards
   return { boards: [...new Set(boards)], streaming }
 }
 
-async function listMarkees(client: Client, boards: string[], blockNumber: bigint): Promise<{ pairs: { board: string; markee: string }[]; tops: Map<string, BoardTop> }> {
+export async function listMarkees(client: Client, boards: string[], blockNumber: bigint, at: number) {
+  const stored = boards.length ? await scanDeps.mget<(BoardScanState | null)[]>(...boards.map(boardStateKey)) : []
+  const reconcile = new Set(boards.filter((_, i) => !stored[i] || at - stored[i]!.reconciledAt >= RECONCILE_SECONDS))
   const [counts, tops] = await Promise.all([
     multicallChunked(client, boards.map(b => call(b, 'markeeCount')), BOARD_CHUNK, blockNumber),
     multicallChunked(client, boards.map(b => call(b, 'getTopMarkees', [TOP_MARKEES])), BOARD_CHUNK, blockNumber),
   ])
-  const recent = await multicallChunked(
-    client,
-    boards.map((b, i) => {
-      const total = count(counts[i]) ?? 0n
-      return call(b, 'getMarkees', [total > RECENT_MARKEES ? total - RECENT_MARKEES : 0n, RECENT_MARKEES])
-    }),
-    BOARD_CHUNK,
-    blockNumber,
-  )
+  const offsets = boards.map((board, i) => {
+    const total = count(counts[i])
+    if (total === null) throw new Error('Moderation count read failed; retaining checkpoints')
+    const previous = stored[i] ? BigInt(stored[i]!.count) : null
+    if (previous !== null && total < previous) reconcile.add(board)
+    return reconcile.has(board) ? (total > RECENT_MARKEES ? total - RECENT_MARKEES : 0n) : previous!
+  })
+  const changed = boards.map((board, i) => ({ board, i })).filter(({ i }) => offsets[i] < count(counts[i])!)
+  const recentReads = await multicallChunked(client, changed.map(({ board, i }) => call(board, 'getMarkees', [offsets[i], RECENT_MARKEES])), BOARD_CHUNK, blockNumber)
+  const recent = new Map(changed.map(({ board }, i) => {
+    if (recentReads[i]?.status !== 'success') throw new Error('Moderation page read failed; retaining checkpoints')
+    return [board, addresses(recentReads[i])]
+  }))
+  const states = new Map<string, BoardScanState>()
   const boardTops = new Map<string, BoardTop>()
   const pairs = boards.flatMap((board, i) => {
     const top = tops[i]
+    if (top?.status !== 'success') throw new Error('Moderation top read failed; retaining checkpoints')
     const [topList, values] = top?.status === 'success' ? (top.result as [string[], bigint[]]) : [[], []]
     const topAddresses = addresses({ status: 'success', result: topList })
     if (topList[0] && topList[0] !== ZERO_ADDRESS) {
@@ -149,9 +167,15 @@ async function listMarkees(client: Client, boards: string[], blockNumber: bigint
         values: new Map(topList.map((m, j) => [m.toLowerCase(), values[j] ?? 0n])),
       })
     }
-    return [...new Set([...addresses(recent[i]), ...topAddresses])].map(markee => ({ board, markee }))
+    const ids = (reconcile.has(board) ? recent.get(board) ?? [] : [...(stored[i]?.ids ?? []), ...(recent.get(board) ?? [])]).slice(-Number(RECENT_MARKEES))
+    // Advance only through successfully fetched pages, never past a backlog.
+    const total = count(counts[i])!
+    const scanned = offsets[i] + BigInt(recent.get(board)?.length ?? 0)
+    const state = { count: (scanned < total ? scanned : total).toString(), ids, reconciledAt: reconcile.has(board) ? at : stored[i]!.reconciledAt }
+    if (JSON.stringify(state) !== JSON.stringify(stored[i])) states.set(board, state)
+    return [...new Set([...ids, ...topAddresses])].map(markee => ({ board, markee }))
   })
-  return { pairs, tops: boardTops }
+  return { pairs, tops: boardTops, states, reconcile }
 }
 
 // The recent/top window misses an older markee edited deep in a busy board; its edit event doesn't.
@@ -159,9 +183,9 @@ async function listMarkees(client: Client, boards: string[], blockNumber: bigint
 // keeps only markees whose board is one it lists. Returns null when the logs couldn't be read, so
 // the cursor stays put and the next run retries the same range.
 async function editedMarkees(client: Client, toBlock: bigint): Promise<string[] | null> {
-  const cursor = await kv.get<string>(LOG_CURSOR_KEY)
+  const cursor = await scanDeps.get<string>(LOG_CURSOR_KEY)
   if (!cursor) return []
-  let from = BigInt(cursor) + 1n
+  let from = BigInt(cursor) > 100n ? BigInt(cursor) - 100n : 0n
   if (toBlock - from > MAX_LOG_CATCHUP) {
     console.warn(`[moderation/scan] edit log scan is ${toBlock - from} blocks behind, scanning only the last ${MAX_LOG_CATCHUP}`)
     from = toBlock - MAX_LOG_CATCHUP
@@ -171,7 +195,8 @@ async function editedMarkees(client: Client, toBlock: bigint): Promise<string[] 
     ranges.push([start, start + LOG_RANGE - 1n < toBlock ? start + LOG_RANGE - 1n : toBlock])
   }
   try {
-    const logs = await Promise.all(ranges.map(([fromBlock, to]) => client.getLogs({ events: EDIT_EVENTS, fromBlock, toBlock: to })))
+    const logs = []
+    for (const [fromBlock, to] of ranges) logs.push(await client.getLogs({ events: EDIT_EVENTS, fromBlock, toBlock: to }))
     return [...new Set(logs.flat().map(l => l.address.toLowerCase()))]
   } catch (e) {
     console.warn('[moderation/scan] edit log scan failed, will retry next run', e)
@@ -184,12 +209,12 @@ async function editedMarkees(client: Client, toBlock: bigint): Promise<string[] 
 // last run (see editedMarkees). A markee seen for the first time is a new message, changed text
 // is an edit. The first run records the baseline, so everything already live then starts approved.
 export async function runModerationScan(): Promise<ScanReport> {
-  const client = getModerationClient()
-  const [block, baseline] = await Promise.all([client.getBlock({ blockTag: 'latest' }), kv.get(BASELINE_KEY)])
+  const client = scanDeps.client()
+  const [block, baseline] = await Promise.all([client.getBlock({ blockTag: 'latest' }), scanDeps.get(BASELINE_KEY)])
   const isBaseline = !baseline
 
   const { boards, streaming } = await listBoards(client, block.number)
-  const [{ pairs, tops }, logged] = await Promise.all([listMarkees(client, boards, block.number), editedMarkees(client, block.number)])
+  const [{ pairs, tops, states, reconcile }, logged] = await Promise.all([listMarkees(client, boards, block.number, Number(block.timestamp)), editedMarkees(client, block.number)])
 
   const known = new Set(pairs.map(p => p.markee))
   const extra = (logged ?? []).filter(m => !known.has(m))
@@ -208,36 +233,45 @@ export async function runModerationScan(): Promise<ScanReport> {
     })
   }
 
+  const previous = pairs.length ? await scanDeps.readItems(pairs.map(p => p.markee)) : []
+  const editSet = new Set(logged ?? [])
+  const needsRead = pairs.map((p, i) => ({ ...p, i })).filter(p => !previous[p.i] || isBaseline || logged === null || reconcile.has(p.board) || editSet.has(p.markee))
   const reads = await multicallChunked(
     client,
-    pairs.flatMap(p => MARKEE_ABI.map(fn => ({ address: p.markee as `0x${string}`, abi: MARKEE_ABI, functionName: fn.name }))),
+    needsRead.flatMap(p => MARKEE_ABI.map(fn => ({ address: p.markee as `0x${string}`, abi: MARKEE_ABI, functionName: fn.name }))),
     MARKEE_CHUNK * MARKEE_ABI.length,
     block.number,
   )
-
-  // A failed name read keeps the stored name, so it never reads as a rename.
-  const observations: (Omit<MessageObservation, 'name'> & { name: string | null })[] = []
-  pairs.forEach((p, i) => {
-    const [message, name, owner] = reads.slice(i * 3, i * 3 + 3)
-    if (message?.status !== 'success') return
-    observations.push({
-      markee: p.markee,
-      board: p.board,
-      message: message.result as string,
-      name: name?.status === 'success' ? (name.result as string) : null,
-      author: owner?.status === 'success' ? (owner.result as string).toLowerCase() : '',
-      blockNumber: block.number.toString(),
-      at: Number(block.timestamp),
-    })
+  // Any incomplete read retains the old cursor and board counts for a safe retry.
+  if (reads.some(r => r.status !== 'success')) throw new Error('Moderation message read failed; retaining checkpoints')
+  // Keep authors of ranked messages current for activity notifications without
+  // rereading all message text or scanning Base-wide OwnershipTransferred logs.
+  const ranked = new Set([...tops.values()].flatMap(top => [...top.values.keys()]))
+  const fullIds = new Set(needsRead.map(p => p.markee))
+  const ownerIds = [...ranked].filter(id => !fullIds.has(id))
+  const ownerReads = await multicallChunked(client, ownerIds.map(address => ({ address: address as `0x${string}`, abi: MARKEE_ABI, functionName: 'owner' })), MARKEE_CHUNK, block.number)
+  if (ownerReads.some(r => r.status !== 'success')) throw new Error('Moderation owner read failed; retaining checkpoints')
+  const owners = new Map(ownerIds.map((id, i) => [id, String(ownerReads[i].result).toLowerCase()]))
+  const fresh = new Map(needsRead.map((p, i) => [p.markee, reads.slice(i * 3, i * 3 + 3)]))
+  const observations: (Omit<MessageObservation, 'name'> & { name: string | null })[] = pairs.map((p, i) => {
+    const read = fresh.get(p.markee)
+    const prior = previous[i]!
+    return {
+      markee: p.markee, board: p.board,
+      message: read ? read[0].result as string : prior.message,
+      name: read ? read[1].result as string : prior.name,
+      author: read ? String(read[2].result).toLowerCase() : owners.get(p.markee) ?? prior.author,
+      blockNumber: block.number.toString(), at: Number(block.timestamp),
+    }
   })
 
   const unnamed = observations.filter(o => o.name === null).length
   if (unnamed > 0) console.warn(`[moderation/scan] name read failed for ${unnamed} markees, kept their stored names`)
 
   const report: ScanReport = { boards: boards.length, markees: observations.length, queued: 0, baseline: isBaseline, pendingByBoard: {}, fromLogs, activity: 0 }
-  if (observations.length === 0) return report
 
-  const [prevs, flagged] = await Promise.all([readItems(observations.map(o => o.markee)), readAllFlagged()])
+  const prevs = previous
+  const flagged = await scanDeps.readAllFlagged()
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
   if (autoEnabled()) {
     for (const batch of chunk(observations, 25)) await Promise.all(batch.map(obs => evaluateObserved(obs.markee, obs.message, obs.board, { board: flaggedSets.board.has(flagKey(obs.markee)), site: flaggedSets.site.has(flagKey(obs.markee)) })))
@@ -253,7 +287,7 @@ export async function runModerationScan(): Promise<ScanReport> {
   })
   // Upstash caps a request body, and a baseline run writes every markee at once.
   for (const batch of chunk(changed, WRITE_CHUNK)) {
-    const pipeline = kv.pipeline()
+    const pipeline = scanDeps.pipeline()
     batch.forEach(next => {
       pipeline.set(itemKey(next.markee), next)
       SCOPES.forEach(scope => {
@@ -270,28 +304,29 @@ export async function runModerationScan(): Promise<ScanReport> {
       report.pendingByBoard[item.board] = (report.pendingByBoard[item.board] ?? 0) + 1
     }
   }
-  if (isBaseline) await kv.set(BASELINE_KEY, block.number.toString())
-  if (logged !== null) await kv.set(LOG_CURSOR_KEY, block.number.toString())
+  if (isBaseline) await scanDeps.set(BASELINE_KEY, block.number.toString())
+  for (const [board, state] of states) await scanDeps.set(boardStateKey(board), state)
+  if (logged !== null) await scanDeps.set(LOG_CURSOR_KEY, block.number.toString())
 
   // The feed is secondary to the queue: a failure here never fails the scan.
   try {
     const seen = new Map(observations.map(o => [o.markee, { author: o.author, message: o.message, name: o.name ?? '' }]))
     const edited = isBaseline ? [] : changed.filter(next => next.kind === 'edited')
-    const { events, byWallet } = await recordActivity({ tops, streamingBoards: streaming, seen, edited, blockNumber: block.number, at: Number(block.timestamp) })
+    const { events, byWallet } = await scanDeps.recordActivity({ tops, streamingBoards: streaming, seen, edited, blockNumber: block.number, at: Number(block.timestamp) })
     report.activity = events
-    if (!isBaseline) report.buyerEmails = await notifyStatusChanges(byWallet)
+    if (!isBaseline) report.buyerEmails = await scanDeps.notifyStatusChanges(byWallet)
   } catch (e) {
     console.warn('[moderation/scan] activity recording failed', e)
   }
   // Also secondary, and each guarded on its own: Low Budget alerts (throttled to every 30 min inside)
   // and the per-board history of who held #1 that account rows and top-since read.
   try {
-    report.buyerEmails = (report.buyerEmails ?? 0) + await notifyLowBudgets([...streaming])
+    report.buyerEmails = (report.buyerEmails ?? 0) + await scanDeps.notifyLowBudgets([...streaming])
   } catch (e) {
     console.warn('[moderation/scan] low budget check failed', e)
   }
   try {
-    await updateTopHistories(client, boards.map(address => ({ address, kind: streaming.has(address) ? 'streaming' : 'sale' })), block.number)
+    await scanDeps.updateTopHistories(client, boards.map(address => ({ address, kind: streaming.has(address) ? 'streaming' : 'sale' })), block.number)
   } catch (e) {
     console.warn('[moderation/scan] top history update failed', e)
   }
