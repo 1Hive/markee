@@ -127,7 +127,7 @@ jobs:
         if: steps.rpc.outputs.available == 'true'
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: v1.1.0
+          version: v1.5.0
 
       # Anvil's per-block fork cache: without it every run re-fetches all touched state from the RPC.
       - name: Restore Anvil fork state
@@ -135,8 +135,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.foundry/cache/rpc
-          key: anvil-v2-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: anvil-v2-base-${{ env.E2E_FORK_BLOCK }}-
+          key: anvil-v1.5.0-v3-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: anvil-v1.5.0-v3-base-${{ env.E2E_FORK_BLOCK }}-
 
       - name: Install Playwright browsers
         if: steps.rpc.outputs.available == 'true'
@@ -164,7 +164,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.foundry/cache/rpc
-          key: anvil-v2-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: anvil-v1.5.0-v3-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload upstream RPC counts
         if: always() && steps.rpc.outputs.available == 'true'
         uses: actions/upload-artifact@v4
