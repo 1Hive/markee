@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
@@ -66,6 +68,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
+  const messageModeration = useMessageModeration(newMessage, isOpen)
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
@@ -127,6 +130,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const balanceWarning = insufficientBalance ? `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.` : null
 
   const handleChangeMessage = async () => {
+    if (!await messageModeration.guard(newMessage)) { setReviewOpen(false); return }
     if (!fixedMarkee || !hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
@@ -274,7 +278,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   {fixedMarkee.message && (
                     <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
                       <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                      <ModeratedContent chainId={fixedMarkee.chainId} markeeId={fixedMarkee.markeeAddress}>
+                      <ModeratedContent chainId={fixedMarkee.chainId} message={fixedMarkee.message ?? ''} markeeId={fixedMarkee.markeeAddress}>
                         <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
                       </ModeratedContent>
                     </div>
@@ -292,7 +296,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
                       disabled={isPending || isConfirming}
-                    />
+                    />{messageModeration.ui}
                     <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
                       {newMessage.length}/{maxLen}
                     </div>

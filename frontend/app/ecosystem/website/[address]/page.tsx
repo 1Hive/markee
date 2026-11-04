@@ -320,13 +320,13 @@ export default function WebsiteLeaderboardPage() {
                 <div className="flex-1 min-w-0">
                   <div className="text-[#8A8FBF] text-xs uppercase tracking-wider mb-2">Top Message</div>
                   <div className="flex items-start gap-2">
-                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
                       <p className="text-[#EDEEFF] font-mono text-base leading-relaxed">{topMarkee.message}</p>
                     </ModeratedContent>
                     <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} compact />
                   </div>
                   <div className="flex items-center gap-4 mt-3">
-                    {topMarkee.name && <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topMarkee.name}</ModeratedAuthor></span>}
+                    {topMarkee.name && <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topMarkee.name}</ModeratedAuthor></span>}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
                     {!NETWORK_PAUSED && (
                       <button

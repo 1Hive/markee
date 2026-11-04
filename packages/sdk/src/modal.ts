@@ -4,7 +4,7 @@ import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount.js'
 import { styles } from './styles.js';
 import { createThemeController } from './theme.js';
 import { fundingPresets, MONTH } from './presentation.js';
-import type { MarkeeTheme } from './types.js';
+import type { MessageCheck, MarkeeTheme } from './types.js';
 import type { Action, Address, AdminOperation, AdminResult, Authorization, EIP1193Provider, Entry, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
 
 export interface ModalOptions { placement: Placement; onClose?: () => void; theme?: MarkeeTheme }
@@ -34,6 +34,12 @@ export class MarkeeModal {
   private result?: TransactionResult;
   private pending?: PendingTransaction;
   private wallets?: DiscoveredWallet[];
+  private messageCheck?: MessageCheck;
+  private checkedMessage = '';
+  private messageTimer?: ReturnType<typeof setTimeout>;
+  private messageEpoch = 0;
+  private pendingMessage?: { action: Action; card: boolean };
+  private approvedMessage?: string;
   private busy = false;
   private busyMessage = 'Working…';
   private error = '';
@@ -74,7 +80,7 @@ export class MarkeeModal {
     this.root.addEventListener('click', this.onClick);
     this.root.addEventListener('submit', this.onSubmit);
     this.root.addEventListener('keydown', this.onKey);
-    this.root.addEventListener('input', () => { this.captureDraft(); this.updateFields(); });
+    this.root.addEventListener('input', () => { this.captureDraft(); this.updateFields(); this.scheduleMessageCheck(); });
     void client.request<{ enabled: boolean }>('checkout/config').then(config => { this.cardAvailable = config.enabled === true; }).catch(() => {}).finally(() => { this.checkoutChecked = true; this.render(); });
     this.render(); this.root.querySelector<HTMLButtonElement>('[data-cmd="close"]')?.focus(); void this.reload(); void this.watchAccount();
   }
@@ -151,7 +157,32 @@ export class MarkeeModal {
     try { await this.client.connect(); } finally { this.host.style.visibility = ''; }
     await this.reload();
   }
-  private async prepare(action: Action) {
+  private async checkMessage(message: string): Promise<MessageCheck> {
+    try { return await this.client.checkMessage(message); }
+    catch { return { enabled: true, state: 'unavailable', reason: 'Moderation check unavailable', contentHash: '', engine: '', policyVersion: '' }; }
+  }
+  private scheduleMessageCheck() {
+    clearTimeout(this.messageTimer);
+    const input = this.root.querySelector<HTMLTextAreaElement>('[name="message"]');
+    const token = ++this.messageEpoch;
+    this.pendingMessage = undefined; this.approvedMessage = undefined;
+    if (!input) return;
+    const message = input.value;
+    const box = this.root.querySelector<HTMLElement>('[data-message-check]');
+    if (box) box.textContent = '';
+    this.messageTimer = setTimeout(async () => {
+      const result = await this.checkMessage(message);
+      if (this.closed || token !== this.messageEpoch || input.value !== message) return;
+      this.checkedMessage = message; this.messageCheck = result;
+      if (box) box.textContent = result.enabled && result.state !== 'pass' ? `${result.reason || 'Moderation check unavailable'} Your published message may be hidden.` : '';
+    }, 400);
+  }
+  private async prepare(action: Action, accepted = false) {
+    if (!accepted && (action.kind === 'create' || action.kind === 'edit-message')) {
+      const result = await this.checkMessage(action.message);
+      this.checkedMessage = action.message; this.messageCheck = result;
+      if (result.enabled && result.state !== 'pass') { this.pendingMessage = { action, card: false }; return; }
+    }
     if (this.pending) throw new Error('Check your pending transaction before preparing another action.');
     if (!this.account) { await this.connect(); return; }
     const nativeAmount = action.kind === 'wrap' || (this.snapshot?.strategy === 'sale' && (action.kind === 'fund' || action.kind === 'create')) ? action.amount : undefined;
@@ -224,6 +255,19 @@ export class MarkeeModal {
       if (entry) { this.form = { kind: kind as FormState['kind'], entry }; this.tab = 'main'; }
       this.render(); return;
     }
+    if (cmd === 'edit-message-warning') { this.pendingMessage = undefined; this.render(); this.root.querySelector<HTMLTextAreaElement>('[name="message"]')?.focus(); return; }
+    if (cmd === 'retry-message' && this.pendingMessage) {
+      const pending = this.pendingMessage;
+      if (pending.action.kind === 'create' || pending.action.kind === 'edit-message') { const message = pending.action.message; void this.task(async () => { this.messageCheck = await this.checkMessage(message); }); }
+      return;
+    }
+    if (cmd === 'continue-message' && this.pendingMessage) {
+      const pending = this.pendingMessage; this.pendingMessage = undefined;
+      if (pending.card && pending.action.kind === 'create') {
+        this.approvedMessage = pending.action.message; this.render(); this.root.querySelector<HTMLButtonElement>('[data-cmd="card"]')?.click();
+      } else void this.task(async () => { await this.prepare(pending.action, true); });
+      return;
+    }
     if (cmd === 'card' && this.hostedEligible() && this.cardAvailable) {
       this.captureDraft();
       const form = this.root.querySelector<HTMLFormElement>('#markee-action');
@@ -234,6 +278,15 @@ export class MarkeeModal {
         const amount = parseEth(String(fields.get('amount') || ''));
         action = this.form?.kind === 'fund' ? { kind: 'fund', markee: this.form.entry.address, amount } : { kind: 'create', message: String(fields.get('message') || ''), name: String(fields.get('name') || ''), amount };
       } catch (error) { this.error = (error as Error).message; this.render(); return; }
+      if (action.kind === 'create' && this.approvedMessage !== action.message) {
+        if (this.checkedMessage !== action.message || !this.messageCheck) {
+          const candidate = action;
+          void this.task(async () => { this.messageCheck = await this.checkMessage(candidate.message); this.checkedMessage = candidate.message; this.pendingMessage = { action: candidate, card: true }; });
+          return;
+        }
+        if (this.messageCheck.enabled && this.messageCheck.state !== 'pass') { this.pendingMessage = { action, card: true }; this.render(); return; }
+      }
+      this.approvedMessage = undefined;
       // Start synchronously from the gesture so mobile browsers can open the popup.
       const payment = openHostedCheckout(this.client, this.options.placement, action);
       void this.task(async () => {
@@ -324,7 +377,7 @@ export class MarkeeModal {
   private field(name: string, label: string, initial = '', hint = '', textarea = false) {
     const limit = name === 'message' ? this.snapshot?.maxMessageBytes : name === 'name' ? this.snapshot?.maxNameBytes : undefined;
     const attrs = `${name === 'name' ? '' : 'required'} ${limit === undefined ? '' : `data-byte-limit="${limit}"`} aria-describedby="${name}-hint"`;
-    return `<div class="field"><label for="${name}">${label}${limit === undefined ? '' : `<span class="field-count" aria-hidden="true" data-count-for="${name}"></span>`}</label>${textarea ? `<textarea id="${name}" name="${name}" ${attrs} placeholder="Your message on the sign">${e(initial)}</textarea>` : `<input id="${name}" name="${name}" ${name === 'amount' ? 'inputmode="decimal"' : ''} value="${e(initial)}" ${attrs}>`}${hint ? `<small id="${name}-hint">${hint}</small>` : ''}</div>`;
+    return `<div class="field"><label for="${name}">${label}${limit === undefined ? '' : `<span class="field-count" aria-hidden="true" data-count-for="${name}"></span>`}</label>${textarea ? `<textarea id="${name}" name="${name}" ${attrs} placeholder="Your message on the sign">${e(initial)}</textarea>` : `<input id="${name}" name="${name}" ${name === 'amount' ? 'inputmode="decimal"' : ''} value="${e(initial)}" ${attrs}>`}${name === 'message' ? '<p class="note" data-message-check role="status"></p>' : ''}${hint ? `<small id="${name}-hint">${hint}</small>` : ''}</div>`;
   }
   private reviewHtml() {
     const review = this.review!, action = review.action;
@@ -354,14 +407,14 @@ export class MarkeeModal {
     const calloutText = action.kind === 'stream' ? 'Anyone can overtake your message. The refund pool offsets rent while you are not winning; you can stop the stream at any time.' : review.review.reward;
     const explorer = review.transaction.chainId === 8453 ? 'https://basescan.org' : review.transaction.chainId === 11155111 ? 'https://sepolia.etherscan.io' : null;
     const addressRow = (label: string, address?: string | null) => `<div class="review-row"><span>${e(label)}</span>${address ? explorer ? `<a class="review-address mono" href="${explorer}/address/${e(address)}" target="_blank" rel="noopener noreferrer" title="${e(address)}" aria-label="${e(label)}: ${e(address)} (opens in new tab)">${e(shortAddress(address))}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3 10 14M10 3H3v18h18v-7"/></svg></a>` : `<strong class="mono">${e(shortAddress(address))}</strong>` : '<strong>Unavailable</strong>'}</div>`;
-    return `<div class="payment-review">${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${addressRow('Community split beneficiary', this.snapshot?.beneficiary)}${addressRow('Leaderboard contract', this.snapshot?.board)}${addressRow('Connected wallet', review.transaction.from)}${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
+    return `<div class="payment-review">${review.review.moderation?.enabled && review.review.moderation.state !== 'pass' ? `<p class="note" role="alert">${e(review.review.moderation.reason || 'Moderation check unavailable')} Your published message may be hidden.</p>` : ''}${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${addressRow('Community split beneficiary', this.snapshot?.beneficiary)}${addressRow('Leaderboard contract', this.snapshot?.board)}${addressRow('Connected wallet', review.transaction.from)}${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
     return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'activate' ? 'Activate this community’s Markee' : 'Claim community revenue'}</h2><p>A signed authorization lets Markee’s keeper execute this action. The server rechecks your current council role before submitting it.</p><div class="card stack">${['registryCommunity', 'recipient', 'leaderboardFactory'].filter(k => message[k]).map(k => `<div class="meta">${e(k)}<br><strong class="mono">${e(message[k])}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community council treasury. Bridged claims remain pending until destination delivery is confirmed.' : 'This creates the community board and its revenue vault on the Markee chain.'}</p>`;
   }
   private entryMessage(entry: Entry) {
-    return entry.moderated === false ? entry.message : entry.moderated ? 'This message is hidden by moderation.' : 'Message unavailable while moderation loads.';
+    return entry.moderated === false ? entry.message : entry.moderated ? entry.moderation?.state === 'soft-flagged' ? 'This message is hidden by the automatic profanity filter.' : 'This message is hidden by moderation.' : 'Message unavailable while moderation loads.';
   }
   private entryMessageHtml(entry: Entry) {
     return `<p class="message${entry.moderated === false ? '' : ' moderation-placeholder'}">${e(this.entryMessage(entry))}</p>`;
@@ -478,7 +531,8 @@ export class MarkeeModal {
     const s = this.snapshot;
     let actions = '';
     let alignPaymentActions = false;
-    if (this.wallets) actions = btn('back', 'Back');
+    if (this.pendingMessage) actions = '';
+    else if (this.wallets) actions = btn('back', 'Back');
     else if (this.review) actions = btn('back', 'Back') + btn('send', this.review.action.kind === 'fund' || this.review.action.kind === 'stream' || this.review.action.kind === 'create' && BigInt(this.review.transaction.value) > 0n ? 'Confirm payment' : 'Confirm in wallet', 'primary');
     else if (this.authorization) actions = btn('back', 'Back') + btn('sign', 'Sign authorization', 'primary');
     else if (this.pending) actions = btn('check', 'Check transaction', 'primary');
@@ -504,7 +558,8 @@ export class MarkeeModal {
     const shouldFocus = !document.activeElement || document.activeElement === document.body || document.activeElement === this.host;
     const s = this.snapshot;
     let body = '';
-    if (this.wallets) body = `<h2>Choose your wallet</h2><div class="wallets">${this.wallets.map((w, i) => btn(`wallet:${i}`, e(w.name))).join('')}</div>`;
+    if (this.pendingMessage) body = `<section role="alert"><h2>${e(this.messageCheck?.state === 'pass' ? 'Message checked' : this.messageCheck?.reason || 'Moderation check unavailable')}</h2><p>${this.messageCheck?.state === 'pass' ? 'Continue to Markee to complete your payment.' : 'Your published message may be hidden. Edit it or continue anyway.'}</p><div class="row">${btn('edit-message-warning', 'Edit message')}${btn('retry-message', 'Retry')}${btn('continue-message', this.messageCheck?.state === 'pass' ? 'Continue to Markee' : 'Continue anyway', 'primary')}</div></section>`;
+    else if (this.wallets) body = `<h2>Choose your wallet</h2><div class="wallets">${this.wallets.map((w, i) => btn(`wallet:${i}`, e(w.name))).join('')}</div>`;
     else if (this.review) body = this.reviewHtml();
     else if (this.authorization) body = this.authorizationHtml();
     else if (!s) body = this.error ? btn('refresh', 'Retry', 'primary') : '<div class="loading" role="status" aria-live="polite"><span class="spinner"></span>Loading Markee…</div>';

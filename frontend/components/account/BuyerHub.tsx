@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 // Buyer Hub: the Stream Balance card (ETHx that pays for Rent bids, with inline Deposit/Withdraw)
 // and the Your Messages table (every message the wallet owns or has funded).
 
@@ -267,6 +269,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
+  const messageModeration = useMessageModeration(draft.trim())
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
   const wrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
@@ -284,6 +287,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   }, [reverted, hash, receiptError])
 
   const save = async () => {
+    if (!await messageModeration.guard(draft.trim())) return
     if (!ready) return
     if (wrongChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
     setError(null)
@@ -300,6 +304,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const busy = isPending || confirming
   return (
     <span style={{ display: 'block' }} onClick={e => e.stopPropagation()}>
+      {messageModeration.ui}
       <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
           autoFocus
@@ -447,7 +452,7 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
                     <InlineEdit m={m as MyMessage} onCancel={() => setEditing(null)} onDone={() => { setEditing(null); onEdited() }} />
                   ) : (
                     <span style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
-                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
+                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={m.message ?? ''} markeeId={m.address} boardAdmin={m.admin} className="min-w-0 flex-1">
                         <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 14, fontWeight: 600, color: !m.message ? MUTED : m.isTop ? TEXT : TEXT2, lineHeight: 1.4, wordBreak: 'break-word' }}>
                           {m.message || 'No message'}
                         </span>

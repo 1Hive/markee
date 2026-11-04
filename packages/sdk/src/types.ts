@@ -1,3 +1,5 @@
+export interface MessageCheck { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string }
+export interface EntryModeration { state: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'; contentHash: string; reason?: string; policyVersion: string }
 export type Address = `0x${string}`;
 export type Hex = `0x${string}`;
 export type Placement =
@@ -6,7 +8,7 @@ export type Placement =
 export interface Entry {
   address: Address; owner: Address; message: string; name: string;
   score: string; totalFunds: string; aggregateRate: string; legacyFloor: string;
-  moderated: boolean | null; views: number | null;
+  moderation?: EntryModeration; moderated: boolean | null; views: number | null;
 }
 export interface WalletState {
   address: Address; eth: string; markee: string | null; ethx: string;
@@ -21,6 +23,7 @@ export interface CommunityState {
   permissions?: { canActivate: boolean; canClaim: boolean; councilSafe: Address | null };
 }
 export interface Snapshot {
+  autoModerationEnabled?: boolean;
   freshness?: { updatedAt: number; freshUntil: number; staleUntil: number; stale: boolean; refreshing: boolean };
   apiVersion: 1; placement: Placement; board: Address | null; chainId: number;
   beneficiary?: Address | null;
@@ -44,7 +47,7 @@ export type Action =
 export interface PreparedAction {
   id: string; expiresAt: number; placement: Placement; action: Action;
   transaction: { from: Address; to: Address; chainId: number; data: Hex; value: Hex; gas: Hex };
-  review: { title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string };
+  review: { moderation?: MessageCheck; title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string };
 }
 export interface TransactionResult {
   status: 'pending' | 'confirmed' | 'reverted'; hash: Hex; explorerUrl: string;

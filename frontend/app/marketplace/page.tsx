@@ -423,7 +423,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           </div>
 
           {/* message text */}
-          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address}>
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address}>
             <div style={{
               fontFamily: MONO, fontWeight: 700,
               fontSize: 'clamp(19px, 2.6vw, 30px)', lineHeight: 1.12, letterSpacing: '-0.02em',
@@ -438,7 +438,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
               {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
               {lb.topMarkeeOwner && (
                 <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
@@ -586,7 +586,7 @@ function TableRow({ lb, featured, views, viewsLoading, ethPrice, position, onBuy
           FlagButton's handler only stopPropagation()s, not preventDefault()s, so nesting it here
           would still navigate on click. The target page already has a working FlagButton. */}
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>

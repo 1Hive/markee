@@ -1,3 +1,4 @@
+import { POST as moderationCheck } from '@/app/api/moderation/check/route';
 import { underRateLimit } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import { isHex, type Hex } from 'viem';
@@ -56,6 +57,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
       }
     }
     if (request.method === 'POST') {
+      if (path === 'moderation/check') return cors(await moderationCheck(request), request);
       if (path === 'community/activate' || path === 'community/claim') {
         const body = object(await readLimitedJsonBody(request, 16 * 1024));
         const handler = path === 'community/activate' ? activate.POST : claim.POST;

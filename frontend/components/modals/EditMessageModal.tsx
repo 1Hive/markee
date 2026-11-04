@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect } from 'react'
 import { useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { useAccount } from 'wagmi'
@@ -34,6 +36,7 @@ export function EditMessageModal({
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const [message, setMessage] = useState('')
+  const messageModeration = useMessageModeration(message, isOpen)
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
@@ -77,7 +80,8 @@ export function EditMessageModal({
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const canSubmit = message.trim().length > 0 && !isPending && !isConfirming && !isSuccess && hasActiveWalletConnection && !isWrongChain
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!await messageModeration.guard(message)) return
     if (!canSubmit) return
     setError(null)
     writeContract({
@@ -130,7 +134,7 @@ export function EditMessageModal({
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current Message</div>
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress}>
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={currentMessage ?? ''} markeeId={markeeAddress}>
                     {currentMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message set</span>}
                   </ModeratedContent>
                 </div>
@@ -148,7 +152,7 @@ export function EditMessageModal({
                   onFocus={e => { e.target.style.borderColor = PINK }}
                   onBlur={e => { e.target.style.borderColor = BORDER }}
                   disabled={isPending || isConfirming}
-                />
+                />{messageModeration.ui}
                 <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{message.length}/{MAX_LEN}</div>
               </div>
 

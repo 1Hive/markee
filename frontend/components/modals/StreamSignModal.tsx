@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 // Streaming ("For Rent") analog of MarkeeSignModal.tsx — same "Change the Markee Sign" list+fund
 // UI, but backed by the working Superfluid write flows (useCreateStreamFlow/useOpenStreamFlow/
 // useUpdateStreamRateFlow), not a re-implementation of them. Keeps only the genuinely
@@ -334,13 +336,13 @@ function SignRow({
         {rank}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
           <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {markee.message || '—'}
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{monthlyEth} ETH/mo</span>
@@ -395,6 +397,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<StreamingMarkee | null>(null)
   const [message, setMessage] = useState('')
+  const messageModeration = useMessageModeration(message, isOpen)
   const [name, setName] = useState('')
   const [monthly, setMonthly] = useState('')
   const [newMonthly, setNewMonthly] = useState('')
@@ -560,12 +563,14 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // call StreamingBoardDetail's StreamMessageEditModal makes (Markee.setMessage is board-only).
   const [editingMessage, setEditingMessage] = useState(false)
   const [editMessageText, setEditMessageText] = useState('')
+  const editModeration = useMessageModeration(editMessageText, isOpen)
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
   const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
   const editMessageBusy = editMessagePending || editMessageConfirming
   async function handleSaveMessage() {
+    if (!await editModeration.guard(editMessageText)) return
     if (!target || !editMessageText.trim()) return
     setEditMessageError(null)
     try {
@@ -721,7 +726,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   }, [isOpen, onClose])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleBuyNew = () => createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
+  const handleBuyNew = async () => { if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim()) }
   const handleFund = () => backsOther
     ? moveFlow.moveStream(calc, { belowMin, minMonthlyEth })
     : openFlow.openStream(calc, { belowMin, minMonthlyEth })
@@ -961,7 +966,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                         rows={2}
                         style={{ ...messageBoxStyle, resize: 'vertical' }}
                         disabled={busy}
-                      />
+                      />{messageModeration.ui}
                     </div>
 
                     <div>
@@ -1062,7 +1067,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                             rows={2}
                             style={{ ...inputStyle, resize: 'vertical' as const }}
                             disabled={editMessageBusy}
-                          />
+                          />{editModeration.ui}
                           {editMessageError && <p style={{ fontSize: 11, color: '#FF8E8E', margin: '6px 0 0' }}>{editMessageError}</p>}
                           {editMessageSuccess ? (
                             <p style={{ fontSize: 11, color: '#7EE787', margin: '6px 0 0' }}>✓ Message updated</p>
@@ -1090,7 +1095,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                                 <Pencil size={11} />
                               </button>
                             )}
-                            <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                            <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>
                               <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
                             </ModeratedContent>
                           </div>
@@ -1098,7 +1103,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                             <MessageMeta
                               views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                               isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                              authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
+                              authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                             />
                           </div>
                         </>
@@ -1162,7 +1167,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           rows={2}
                           style={{ ...inputStyle, resize: 'vertical' as const }}
                           disabled={editMessageBusy}
-                        />
+                        />{editModeration.ui}
                         {editMessageError && <p style={{ fontSize: 11, color: '#FF8E8E', margin: '6px 0 0' }}>{editMessageError}</p>}
                         {editMessageSuccess ? (
                           <p style={{ fontSize: 11, color: '#7EE787', margin: '6px 0 0' }}>✓ Message updated</p>
@@ -1179,14 +1184,14 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </div>
                     ) : (
                       <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>
-                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>
                           {target.message || <MessageLoading />}
                         </ModeratedContent>
                         <div style={{ marginTop: 6 }}>
                           <MessageMeta
                             views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                             isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                            authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
+                            authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                           />
                         </div>
                       </div>

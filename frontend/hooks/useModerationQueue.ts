@@ -1,5 +1,6 @@
 'use client'
 
+import { falsePositiveMessage } from '@/lib/moderation/automatic-message'
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAccount, useSignMessage } from 'wagmi'
@@ -38,6 +39,19 @@ export function useModerationQueue() {
   const review = useCallback(async (action: QueueAction, markeeIds: string[]) => {
     if (!addr || markeeIds.length === 0) return
     try {
+      if (action === 'false-positive') {
+        for (const id of markeeIds) {
+          const item = queueQuery.data?.flagged.find(it => it.markee === id.toLowerCase())
+          if (!item?.automatic) throw new Error('Refresh the moderation queue and try again.')
+          const timestamp = Math.floor(Date.now() / 1000)
+          const hash = item.automatic.contentHash
+          const signature = await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp) })
+          const response = await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, moderator: addr, signature, timestamp }) })
+          if (!response.ok) throw new Error((await response.json()).error || 'Unable to approve false positive')
+        }
+        await queryClient.invalidateQueries({ queryKey: ['message-moderation'] })
+        return
+      }
       for (let i = 0; i < markeeIds.length; i += MAX_REVIEW_BATCH) {
         const ids = markeeIds.slice(i, i + MAX_REVIEW_BATCH)
         // Every review action proves control of the moderator wallet.
@@ -61,7 +75,7 @@ export function useModerationQueue() {
       // A failed batch leaves the earlier ones committed, so refetch either way to show what landed.
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(addr) })
     }
-  }, [addr, signMessageAsync, replaceFlagged, queryClient])
+  }, [addr, signMessageAsync, replaceFlagged, queryClient, queueQuery.data])
 
   return {
     review,

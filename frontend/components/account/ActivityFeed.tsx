@@ -114,7 +114,7 @@ export function LatestActivity({ events, state, onRetry, boardName, ethPrice, pr
                   <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>on {boardName(e.board)}</span>
                 </span>
                 {e.message && (
-                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={e.markee} className="min-w-0">
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={e.message ?? ''} markeeId={e.markee} className="min-w-0">
                     <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 3, paddingLeft: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>&ldquo;{e.message}&rdquo;</span>
                   </ModeratedContent>
                 )}

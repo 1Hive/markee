@@ -80,7 +80,7 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
           {formatViews(views.totalViews)}
         </span>
       )}
-      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={fixedMarkee.strategyAddress}>
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={fixedMarkee.message ?? ''} markeeId={fixedMarkee.strategyAddress}>
         <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
       </ModeratedContent>
       {hasPrice && (
@@ -599,7 +599,7 @@ export default function Home() {
                             FlagButton's handler only stopPropagation()s, not preventDefault()s, so
                             nesting it here would still navigate on click. The target page has a
                             working FlagButton already. */}
-                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
                           <div style={{
                             fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

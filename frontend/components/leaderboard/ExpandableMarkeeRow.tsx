@@ -95,7 +95,7 @@ export function ExpandableMarkeeRow({
 
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
           </span>
           {isOwner && (
             <span style={{ background: `${PURP}33`, color: PURP, fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, borderRadius: 99, padding: '1px 7px', flexShrink: 0 }}>
@@ -121,7 +121,7 @@ export function ExpandableMarkeeRow({
               <Pencil size={11} />
             </button>
           )}
-          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {markee.message || <span className="opacity-40 italic">No message</span>}
             </p>

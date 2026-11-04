@@ -1,3 +1,4 @@
+import { checkDraft, autoEnabled } from '../moderation/automatic';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { decodeEventLog, encodeAbiParameters, encodeFunctionData, formatEther, toHex, zeroAddress, type Address, type Hex } from 'viem';
 import type { Action, Placement, PreparedAction, TransactionResult } from '../../../packages/sdk/src/types';
@@ -151,7 +152,7 @@ export async function prepare(p: Placement, account: Address, action: Action): P
   const expiresAt = Date.now() + 5 * 60_000;
   const id = signEnvelope({ transaction, placement: p, action, expiresAt, token: c.token, board: c.board, issuedAt: Date.now() });
   lines.push(`Native ETH sent: ${formatEther(value)} ETH`, `Network: ${resolveClientChain(c.chainId).name}`, `Recipient: ${to}`);
-  return { id, expiresAt, placement: p, action, transaction, review: { title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}) } };
+  return { id, expiresAt, placement: p, action, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {

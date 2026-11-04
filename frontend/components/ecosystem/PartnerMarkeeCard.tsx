@@ -88,7 +88,7 @@ export function PartnerMarkeeCard({
 
       {/* Winning Message Section */}
       {winningMarkee ? (
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={winningMarkee.address}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={winningMarkee.message ?? ''} markeeId={winningMarkee.address}>
           <Link 
             href={`/markee/${winningMarkee.address}`} 
             onClick={(e) => e.stopPropagation()}

@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
@@ -281,13 +283,13 @@ function SignRow({
         {rank}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
           <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {markee.message || '—'}
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{eth} ETH</span>
@@ -336,6 +338,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
   const [message, setMessage] = useState('')
+  const messageModeration = useMessageModeration(message, isOpen)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -486,7 +489,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   }, [isOpen, view, hasUserEdited, minimumAmountFormatted, winForCreate])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleBuyNew = () => {
+  const handleBuyNew = async () => {
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
@@ -519,7 +523,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     }
   }
 
-  const handleUpdateMessage = () => {
+  const handleUpdateMessage = async () => {
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!target) return
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
@@ -738,7 +743,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                         rows={2}
                         style={{ ...messageBoxStyle, resize: 'vertical' }}
                         disabled={busy}
-                      />
+                      />{messageModeration.ui}
                       {isMessageFieldError(error) && (
                         <p style={{ fontSize: 12, color: '#FF8E8E', margin: 0 }}>{error}</p>
                       )}
@@ -827,14 +832,14 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 ) : (
                 <div style={{ marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>
                       <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>{target.message || <MessageLoading />}</div>
                     </ModeratedContent>
                     <div style={{ marginTop: 6 }}>
                       <MessageMeta
                         views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                         isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                        authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
+                        authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                       />
                     </div>
                   </div>
@@ -872,14 +877,14 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                   <div>
                     <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
                     <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>
-                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>
+                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>
                         {target.message}
                       </ModeratedContent>
                       <div style={{ marginTop: 6 }}>
                         <MessageMeta
                           views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                           isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                          authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
+                          authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
                         />
                       </div>
                     </div>
@@ -900,7 +905,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       rows={3}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={busy}
-                    />
+                    />{messageModeration.ui}
                     {isMessageFieldError(error) && (
                       <p style={{ fontSize: 12, color: '#FF8E8E', margin: '6px 0 0' }}>{error}</p>
                     )}

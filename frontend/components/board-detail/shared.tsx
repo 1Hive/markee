@@ -530,7 +530,7 @@ export function FeaturedCard({ markeeAddress, message, displayName, ownerAddress
         <span style={{ flex: 1, height: 1, background: BORDER, marginLeft: 8 }} />
       </div>
 
-      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress}>
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={message ?? ''} markeeId={markeeAddress}>
         <button
           onClick={onClick}
           onMouseEnter={() => setHover(true)}
@@ -1420,7 +1420,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   <div>
                     <span className="text-sm font-semibold text-[#EDEEFF]">Changed Message</span>
                     <div className="flex items-center gap-2">
-                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
+                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={event.message ?? ''} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
                         <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
                       </ModeratedContent>
                       <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} compact />
@@ -1436,7 +1436,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                     </div>
                     {event.message && (
                       <div className="flex items-center gap-2">
-                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={event.message ?? ''} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
                           <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message}</p>
                         </ModeratedContent>
                         <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} compact />

@@ -1,7 +1,7 @@
 export type ModerationStatus = 'pending' | 'approved' | 'flagged'
 export type ModerationAction = 'flag' | 'unflag' | 'approve'
 // Approve clears a pending message from the queue; unflag reveals a flagged one. Both settle the review.
-export type QueueAction = ModerationAction
+export type QueueAction = ModerationAction | 'false-positive'
 
 export const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
@@ -19,6 +19,7 @@ export interface ScopeReview {
 }
 
 export interface ModerationItem {
+  automatic?: { contentHash: string; reason?: string }
   markee: string
   board: string
   kind: 'created' | 'edited'

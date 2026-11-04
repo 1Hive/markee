@@ -1,0 +1,141 @@
+import { pathToFileURL } from 'node:url'
+import { applySnapshotModeration } from '../lib/sdk/snapshot'
+import { POST as checkRoute } from '../app/api/moderation/check/route'
+import { POST as recordView } from '../app/api/views/route'
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { NextRequest } from 'next/server'
+import { privateKeyToAccount } from 'viem/accounts'
+import { checkDraft, checkPublished, evaluateObserved, automaticDeps, automaticAuthDeps, contentHash, overrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
+import { falsePositiveMessage } from '../lib/moderation/automatic-message'
+import { POST } from '../app/api/moderation/false-positive/route'
+
+const id = '0x1111111111111111111111111111111111111111'
+const board = '0x2222222222222222222222222222222222222222'
+function enable(t: any) {
+  const previous = process.env.FLAG_AUTO_MODERATION
+  process.env.FLAG_AUTO_MODERATION = 'true'
+  t.after(() => previous === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = previous)
+}
+function storage(t: any) {
+  const records = new Map<string, any>()
+  const soft = new Set<string>()
+  t.mock.method(automaticDeps, 'get', async (key: string) => records.get(key) ?? null)
+  t.mock.method(automaticDeps, 'flags', async () => ({ board: [], site: [] }))
+  t.mock.method(automaticDeps, 'pipeline', () => {
+    const pipeline = { set(key: string, value: unknown) { records.set(key, value); return pipeline }, sadd(_key: string, value: string) { soft.add(value); return pipeline }, srem(_key: string, value: string) { soft.delete(value); return pipeline }, async exec() { return [] } }
+    return pipeline
+  })
+  return { records, soft }
+}
+test('automatic moderation is opt-in and message hashes preserve exact text', t => {
+  const old = process.env.FLAG_AUTO_MODERATION; delete process.env.FLAG_AUTO_MODERATION
+  t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)
+  assert.equal(checkDraft('shit').enabled, false)
+  assert.equal(checkDraft('shit').state, 'pass')
+  assert.notEqual(contentHash('text'), contentHash('text '))
+})
+test('all twelve dictionaries are enabled; native language fixtures, Unicode, boundaries and known dictionary limitations', t => {
+  enable(t)
+  assert.deepEqual([...AUTO_LANGUAGES].sort(), ['ar','de','en','es','fr','hi','it','ja','ko','pt','ru','zh'])
+  for (const message of ['shit', 'merde', 'mierda', 'scheiße', 'cazzo', 'porra', 'блядь', 'الوغد', 'बिच', '他妈的', 'ファック', 'SHIT', 'ｓｈｉｔ', 'hello merde mierda']) assert.equal(checkDraft(message).state, 'soft-flagged', message)
+  for (const message of ['classical music', 'Scunthorpe', 'assistance', 'Hello gardens']) assert.equal(checkDraft(message).state, 'pass', message)
+  // Upstream Korean/Japanese dictionaries include mistranslated neutral terms and miss native profanity.
+  // These are rollout limitations, not evidence of reliable contextual safety coverage.
+  assert.equal(checkDraft('장바구니').state, 'soft-flagged')
+  assert.equal(checkDraft('ログイン').state, 'soft-flagged')
+  assert.equal(checkDraft('씨발').state, 'pass')
+  assert.equal(checkDraft('くそ').state, 'pass')
+})
+test('soft flags recover on edit; manual flags win; site exceptions never reveal SDK content', async t => {
+  enable(t); const { records, soft } = storage(t)
+  const manual = { board: false, site: false }
+  assert.equal((await evaluateObserved(id, 'shit', board, manual)).state, 'soft-flagged')
+  assert.equal(soft.has(id), true)
+  const approvedHash = contentHash('shit')
+  records.set(overrideKey(id, approvedHash), { scope: 'site' })
+  const approved = await evaluateObserved(id, 'shit', board, manual)
+  assert.equal(approved.state, 'soft-flagged'); assert.equal(approved.siteState, 'visible')
+  assert.equal((await evaluateObserved(id, 'merde', board, manual)).siteState, 'soft-flagged')
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, manual)).state, 'visible')
+  assert.equal(soft.has(id), false)
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, { board: true, site: false })).state, 'manual-flagged')
+  assert.equal((await evaluateObserved(id, 'shit', board, { board: false, site: true })).siteState, 'manual-flagged')
+})
+test('engine and storage outages are unavailable, never passing; manual flags skip the engine', async t => {
+  enable(t); storage(t)
+  t.mock.method(automaticDeps.engine, 'check', () => { throw Error('checker down') })
+  assert.equal(checkDraft('unique engine outage input').state, 'unavailable')
+  assert.equal((await evaluateObserved(id, 'unique second engine outage', board, { board: false, site: false })).state, 'unavailable')
+  assert.equal((await evaluateObserved(id, 'unique third engine outage', board, { board: true, site: false })).state, 'manual-flagged')
+  t.mock.method(automaticDeps, 'get', async () => { throw Error('storage down') })
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, { board: false, site: false })).state, 'unavailable')
+})
+test('published checks read authoritative server text and honor manual flags', async t => {
+  enable(t); storage(t)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'merde' }])
+  assert.equal((await checkPublished([id]))[0].state, 'soft-flagged')
+  t.mock.method(automaticDeps, 'flags', async () => ({ board: [`8453:${id}`], site: [] }))
+  assert.equal((await checkPublished([id]))[0].state, 'manual-flagged')
+})
+test('false-positive approval rejects unsigned, unauthorized, stale, altered and raced revisions', async t => {
+  enable(t); const { records } = storage(t)
+  const moderator = privateKeyToAccount(`0x${'33'.repeat(32)}`)
+  const attacker = privateKeyToAccount(`0x${'44'.repeat(32)}`)
+  const hash = contentHash('shit'), timestamp = Math.floor(Date.now() / 1000)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit' }])
+  const signature = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp) })
+  const body = { chainId: 8453, markee: id, moderator: moderator.address, contentHash: hash, timestamp, signature }
+  const req = (extra: object) => new NextRequest('https://markee.xyz/api/moderation/false-positive', { method: 'POST', body: JSON.stringify({ ...body, ...extra }) })
+  assert.equal((await POST(req({ signature: undefined }))).status, 400)
+  assert.equal((await POST(req({ signature: await attacker.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp) }) }))).status, 401)
+  assert.equal((await POST(req({ timestamp: timestamp - 1000 }))).status, 401)
+  assert.equal((await POST(req({ contentHash: contentHash('changed') }))).status, 401)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map(), boardMap: new Map() }))
+  assert.equal((await POST(req({}))).status, 403)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'changed during signing' }])
+  assert.equal((await POST(req({}))).status, 409)
+  assert.equal(records.has(overrideKey(id, hash)), false)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit' }])
+  assert.equal((await POST(req({}))).status, 200)
+  assert.equal(records.has(overrideKey(id, hash)), true)
+  const result = (await checkPublished([id]))[0]
+  assert.equal(result.siteState, 'visible'); assert.equal(result.state, 'soft-flagged')
+})
+
+test('draft and published HTTP boundaries reject invalid inputs and ignore caller-supplied published text', async t => {
+  enable(t); storage(t)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit' }])
+  const req = (body: unknown) => new NextRequest('https://markee.xyz/api/moderation/check', { method: 'POST', body: JSON.stringify(body) })
+  assert.equal((await checkRoute(req({ kind: 'draft', message: 'x'.repeat(4097) }))).status, 400)
+  assert.equal((await checkRoute(req({ kind: 'published', chainId: 1, markeeIds: [id] }))).status, 400)
+  assert.equal((await checkRoute(req({ kind: 'published', chainId: 8453, markeeIds: Array(51).fill(id) }))).status, 400)
+  const draft = await (await checkRoute(req({ kind: 'draft', message: 'shit' }))).json()
+  assert.equal(draft.state, 'soft-flagged')
+  const published = await (await checkRoute(req({ kind: 'published', chainId: 8453, markeeIds: [id], message: 'fake safe message' }))).json()
+  assert.equal(published.items[0].state, 'soft-flagged')
+  const view = await recordView(new NextRequest('https://markee.xyz/api/views', { method: 'POST', body: JSON.stringify({ address: id, message: 'shit' }) }))
+  assert.equal((await view.json()).counted, false)
+})
+test('moderation overlays cached sale/rent snapshots without mutating financial data or trusting a cached pass', async t => {
+  enable(t); storage(t)
+  for (const strategy of ['sale', 'rent'] as const) {
+    const snapshot = { apiVersion: 1, placement: { kind: 'board', chainId: 8453, address: board }, board, chainId: 8453, strategy, warnings: [], top: id, entries: [{ address: id, message: 'shit', moderated: false, totalFunds: '123', score: '456', views: 12 }], wallet: { eth: '789' } } as any
+    const result = await applySnapshotModeration(snapshot)
+    assert.equal(result.entries[0].moderated, true)
+    assert.equal(result.entries[0].moderation?.state, 'soft-flagged')
+    assert.equal(snapshot.entries[0].moderated, false)
+    assert.equal(result.wallet, snapshot.wallet)
+    assert.equal(result.entries[0].totalFunds, '123')
+    for (const artifact of (process.env.MARKEE_PUBLISHED_SDK_MODULES || '').split(',').filter(Boolean)) {
+      const { signContent } = await import(pathToFileURL(artifact).href)
+      assert.equal(signContent(result).visibility, 'flagged')
+      const unavailable = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })) }
+      assert.equal(signContent(unavailable).visibility, 'unavailable')
+    }
+  }
+})

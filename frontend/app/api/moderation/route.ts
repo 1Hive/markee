@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { moderationWriteDeps } from '@/lib/moderation/write-deps'
 import { verifyMessage } from 'viem'
+import { softRecords, autoEnabled } from '@/lib/moderation/automatic'
 import { randomUUID } from 'node:crypto'
 import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
 import { clientIp } from '@/lib/rate-limit'
@@ -47,7 +48,8 @@ export async function OPTIONS() {
 export async function GET() {
   try {
     const { board, site } = await readAllFlagged()
-    return NextResponse.json({ flagged: board, siteFlagged: site }, { headers: CORS })
+    const soft = await softRecords()
+    return NextResponse.json({ flagged: [...new Set([...board, ...soft.map(r => flagKey(r.markee))])], manualFlagged: board, siteFlagged: site, autoModerationEnabled: autoEnabled() }, { headers: CORS })
   } catch (error) {
     console.error('[moderation] GET error:', error)
     // Never turn a storage outage into an apparently unmoderated board.

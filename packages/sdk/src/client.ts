@@ -1,4 +1,4 @@
-import type { Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
+import type { MessageCheck, Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 /** Markee-hosted API used by integrations unless overridden for local development. */
 export const DEFAULT_MARKEE_API_URL = 'https://staging.markee.xyz/api/sdk/v1';
@@ -209,6 +209,10 @@ export class MarkeeClient {
   }
   bridgeStatus(protocol: ClaimQuote['bridgeProtocol'], hash: Hex, fromChainId: number, toChainId: number): Promise<BridgeStatus> {
     return this.request(`community/status?${new URLSearchParams({ protocol, transactionHash: hash, fromChainId: String(fromChainId), toChainId: String(toChainId) })}`);
+  }
+  async checkMessage(message: string): Promise<MessageCheck> {
+    try { return await this.request('moderation/check', { kind: 'draft', message }); }
+    catch (error) { if (error instanceof MarkeeError && error.status === 404) return { enabled: false, state: 'pass', contentHash: '', engine: '', policyVersion: '' }; throw error; }
   }
   recordView(address: Address, message: string, url?: string): Promise<{ counted: boolean; totalViews: number }> {
     return this.request('views', { address, message, url });

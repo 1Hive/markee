@@ -25,6 +25,8 @@ import { reviewMessage } from '@/lib/moderation/queue'
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface FlaggedLists {
+  manualFlagged?: string[]
+  autoModerationEnabled?: boolean
   /** Board flags: set by a board's owner or its moderators, hidden on every site */
   flagged?: string[]
   /** Site flags: set by markee.xyz global admins, hidden on markee.xyz only */
@@ -32,6 +34,7 @@ export interface FlaggedLists {
 }
 
 interface ModerationContextValue {
+  autoModerationEnabled: boolean | null
   /** Flagged keys in "chainId:markeeId" format, board and site flags together (both hide here) */
   flaggedSet: Set<string>
   /** Whether the current wallet is a global admin (in lib/moderation/config.ts's ADMIN_ADDRESSES) */
@@ -59,6 +62,7 @@ interface ModerationContextValue {
 }
 
 const ModerationContext = createContext<ModerationContextValue>({
+  autoModerationEnabled: null,
   flaggedSet: new Set(),
   isAdmin: false,
   canModerate: () => false,
@@ -84,6 +88,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
   const [boardFlagged, setBoardFlagged] = useState<Set<string>>(new Set())
   const [siteFlagged, setSiteFlagged] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
+  const [autoModerationEnabled, setAutoModerationEnabled] = useState<boolean | null>(null)
 
   const isAdminUser = address
     ? ADMIN_ADDRESSES.some(
@@ -92,7 +97,8 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
     : false
 
   const replaceFlagged = useCallback((lists: FlaggedLists) => {
-    setBoardFlagged(new Set((lists.flagged ?? []).map(k => k.toLowerCase())))
+    setAutoModerationEnabled(previous => typeof lists.autoModerationEnabled === 'boolean' ? lists.autoModerationEnabled : previous ?? false)
+    setBoardFlagged(new Set((lists.manualFlagged ?? lists.flagged ?? []).map(k => k.toLowerCase())))
     setSiteFlagged(new Set((lists.siteFlagged ?? []).map(k => k.toLowerCase())))
   }, [])
 
@@ -216,7 +222,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
 
   return (
     <ModerationContext.Provider
-      value={{ flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, isHidden, canUnflag, toggleFlag, replaceFlagged, isLoading }}
+      value={{ autoModerationEnabled, flaggedSet, isAdmin: isAdminUser, canModerate, isFlagged, isHidden, canUnflag, toggleFlag, replaceFlagged, isLoading }}
     >
       {children}
     </ModerationContext.Provider>

@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
@@ -425,6 +427,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   onSuccess?: () => void
 }) {
   const [message, setMessage] = useState('')
+  const messageModeration = useMessageModeration(message)
   const [error, setError] = useState<string | null>(null)
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
@@ -457,6 +460,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const canSubmit = message.trim().length > 0 && !busy && !isSuccess
 
   async function handleSubmit() {
+    if (!await messageModeration.guard(message)) return
     if (!canSubmit || !markeeAddress) return
     setError(null)
     try {
@@ -505,7 +509,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
                   rows={3}
                   style={{ width: '100%', boxSizing: 'border-box', background: BG, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', fontFamily: MONO, fontSize: 13, outline: 'none', resize: 'vertical' }}
                   disabled={busy}
-                />
+                />{messageModeration.ui}
                 <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{message.length}/{MAX_LEN}</div>
               </div>
               {error && <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{error}</p>}
@@ -583,7 +587,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
         <TxHistoryToggle expanded={historyOpen} onClick={() => setHistoryOpen(v => !v)} rank={rank} />
 
         <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
+          <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
           {isOwner && <span style={{ color: PINK }}> · yours</span>}
         </span>
 
@@ -620,7 +624,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
               <Pencil size={11} />
             </button>
           )}
-          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+          <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {markee.message || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>No message</span>}
             </p>

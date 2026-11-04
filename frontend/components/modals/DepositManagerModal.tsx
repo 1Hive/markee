@@ -455,7 +455,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                         <span style={{ width: 7, height: 7, borderRadius: 99, background: s.isTop ? GREEN : MUTED, flexShrink: 0 }} />
                         <div style={{ minWidth: 0 }}>
-                          <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={s.markeeAddress}>
+                          <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={s.message ?? ''} markeeId={s.markeeAddress}>
                             <div style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
                               {s.message || s.name || fmtAddr(s.markeeAddress)}
                             </div>

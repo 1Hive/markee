@@ -325,3 +325,20 @@ feature with the server-only `FLAG_SDK_PAY_IN_MARKEE` environment variable, whic
 defaults to false. Only `true`, together with the required checkout configuration,
 enables it. Integrating apps do not need to provide a flag or API key. Connected
 wallet payments remain available independently.
+
+### Automatic message moderation
+
+When enabled by Markee, create/edit forms warn if a message matches the automatic profanity
+filter. Authors can edit or explicitly continue; publication may still be hidden. A passing
+message edit clears an automatic flag, while manual flags require moderator action.
+
+`await client.checkMessage(message)` exposes the same draft check for custom interfaces. It
+returns `enabled`, `state`, `contentHash`, `engine`, `policyVersion`, and optional `reason`.
+Treat `unavailable` as unknown, never as a pass. Names are not automatically checked.
+The standard modal handles these warnings for React and vanilla JavaScript integrations.
+No API key or moderation configuration is required in the host app.
+
+Snapshots retain `entry.moderated` (`false`, `true`, or `null`) and can additionally include
+`entry.moderation` with the state and reason. Hide unavailable and flagged content and do not
+record views for it. A moderator's false-positive exception on Markee applies only on Markee;
+it does not change SDK visibility. This optional backend feature is disabled by default.

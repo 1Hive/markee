@@ -322,7 +322,7 @@ export function MarkeeCard({
   if (size === 'list') {
     return (
       <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address}>
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
               {markee.message}
@@ -358,7 +358,7 @@ export function MarkeeCard({
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address}>
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address}>
           <div className="border-4 border-[#F897FE] rounded-lg p-6 mb-4 flex flex-col">
             <div className="font-jetbrains text-3xl font-bold text-[#EDEEFF] mb-4 message-text select-none">
               {markee.message}
@@ -425,7 +425,7 @@ export function MarkeeCard({
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} className="flex-grow">
           <div className="border-2 border-[#8A8FBF]/30 rounded-lg p-4 mb-3 h-full flex flex-col">
             <div className="font-jetbrains text-xl font-bold text-[#EDEEFF] mb-3 line-clamp-3 message-text select-none">
               {markee.message}
@@ -502,7 +502,7 @@ export function MarkeeCard({
         onMouseEnter={() => setIsCardHovering(true)}
         onMouseLeave={() => setIsCardHovering(false)}
       >
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={markee.address} className="flex-grow">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} className="flex-grow">
           <div className="border border-[#8A8FBF]/30 rounded-lg p-3 mb-2 h-full flex flex-col">
             <div className="font-jetbrains text-sm font-semibold text-[#EDEEFF] mb-2 line-clamp-2 message-text select-none">
               {markee.message}

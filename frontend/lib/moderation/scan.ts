@@ -1,4 +1,5 @@
 import 'server-only'
+import { autoEnabled, evaluateObserved } from './automatic'
 import { kv } from '@vercel/kv'
 import { parseAbi } from 'viem'
 import { FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
@@ -238,6 +239,9 @@ export async function runModerationScan(): Promise<ScanReport> {
 
   const [prevs, flagged] = await Promise.all([readItems(observations.map(o => o.markee)), readAllFlagged()])
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
+  if (autoEnabled()) {
+    for (const batch of chunk(observations, 25)) await Promise.all(batch.map(obs => evaluateObserved(obs.markee, obs.message, obs.board, { board: flaggedSets.board.has(flagKey(obs.markee)), site: flaggedSets.site.has(flagKey(obs.markee)) })))
+  }
   const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)
     const prev = prevs[i] ?? null

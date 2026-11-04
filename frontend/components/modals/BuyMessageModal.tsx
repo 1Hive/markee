@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
@@ -146,6 +148,7 @@ export function BuyMessageModal({
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
+  const messageModeration = useMessageModeration(message, isOpen)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -345,6 +348,7 @@ export function BuyMessageModal({
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreateMarkee = async () => {
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
@@ -378,6 +382,7 @@ export function BuyMessageModal({
   }
 
   const handleUpdateMessage = async () => {
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!message.trim()) { setError('Please enter a message'); return }
@@ -598,7 +603,7 @@ export function BuyMessageModal({
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
-                    />
+                    />{messageModeration.ui}
                     <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
                       {message.length}/{maxLen}
                     </div>
@@ -619,13 +624,13 @@ export function BuyMessageModal({
               {/* Funded message read-only (addFunds) */}
               {activeTab === 'addFunds' && (
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee?.address ?? ''}>
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={userMarkee?.message ?? ''} markeeId={userMarkee?.address ?? ''}>
                     <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
                       {userMarkee?.message || <MessageLoading />}
                     </div>
                   </ModeratedContent>
                   {userMarkee?.name && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee.address}>{userMarkee.name}</ModeratedAuthor></div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userMarkee.name}</ModeratedAuthor></div>
                   )}
                 </div>
               )}
@@ -635,7 +640,7 @@ export function BuyMessageModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px' }}>
                     <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee.address}>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>
                       <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
                     </ModeratedContent>
                   </div>
@@ -647,7 +652,7 @@ export function BuyMessageModal({
                       rows={3}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
-                    />
+                    />{messageModeration.ui}
                   </ModalField>
                 </div>
               )}

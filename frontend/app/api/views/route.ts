@@ -1,3 +1,4 @@
+import { autoEnabled, checkPublished, contentHash } from '@/lib/moderation/automatic'
 // app/api/views/route.ts
 import { kv } from '@vercel/kv'
 import { viewsWriteDeps } from '@/lib/views/write-deps'
@@ -155,6 +156,15 @@ export async function POST(req: NextRequest) {
 
   const address = body.address.toLowerCase().trim()
   const msgHash = hashMessage(body.message)
+
+  if (autoEnabled()) {
+    try {
+      const [moderation] = await checkPublished([address])
+      const source = normalizeHost(req.headers.get('origin') ?? req.headers.get('referer') ?? '')
+      const site = !!source && (source === 'markee.xyz' || source.endsWith('.markee.xyz') || source === 'localhost' || source === '127.0.0.1')
+      if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) return NextResponse.json({ totalViews: 0, messageViews: 0, counted: false }, { headers: corsHeaders(origin) })
+    } catch { return NextResponse.json({ error: 'Moderation check unavailable' }, { status: 503, headers: corsHeaders(origin) }) }
+  }
 
   // ── Referer / origin guard ──────────────────────────────────────────────────
   // Prefer the browser-set `Origin` header (cross-origin requests always send it and it

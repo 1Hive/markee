@@ -197,7 +197,7 @@ export function PaymentReviewCard({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 6 }}>
       {chainId !== undefined && markeeId ? (
-        <ModeratedContent chainId={chainId} markeeId={markeeId} boardAdmin={boardAdmin} boardCreator={boardCreator}>
+        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin} boardCreator={boardCreator}>
           {messageBox}
         </ModeratedContent>
       ) : messageBox}

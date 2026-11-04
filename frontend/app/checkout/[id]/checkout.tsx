@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useMessageModeration } from '@/hooks/useMessageModeration';
 import { checkoutAlert, type CheckoutStage } from '../../../lib/checkout-alerts';
 import { useEffect, useRef, useState } from 'react';
 import { usePrivy, useWallets, useFundWallet, useSendTransaction, useCreateWallet, useDepositFunds } from '@privy-io/react-auth';
@@ -23,6 +25,7 @@ export default function Checkout({ id }: { id: string }) {
   const { fundWallet } = useFundWallet();
   const { sendTransaction } = useSendTransaction();
   const [session, setSession] = useState<Session | null>(null);
+  const messageModeration = useMessageModeration(session?.action.kind === 'create' ? session.action.message : '')
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('Loading checkout…');
   const [busy, setBusy] = useState(false);
@@ -101,6 +104,7 @@ export default function Checkout({ id }: { id: string }) {
   }
   async function pay() {
     if (!wallet || !session) return;
+    if (session.action.kind === 'create' && !await messageModeration.guard(session.action.message)) return;
     const current = await refresh();
     if (!['created', 'ready'].includes(current.status)) throw new Error('Check the existing payment below before continuing.');
     const account = wallet.address;
@@ -211,6 +215,7 @@ export default function Checkout({ id }: { id: string }) {
   const expired = session && Date.now() >= session.expiresAt && !pending && !conversionPending && !confirmed && !reverted;
   const button = 'w-full rounded-xl bg-purple-500 px-5 py-3 font-semibold text-white disabled:opacity-50';
   return <main className="mx-auto min-h-[75vh] max-w-xl px-5 py-12">
+    {messageModeration.ui}
     <div className="rounded-2xl border border-white/15 bg-white/5 p-6 space-y-6">
       <div><p className="text-sm text-purple-300">Secure checkout · Base</p><h1 className="mt-2 text-2xl font-bold">{confirmed ? 'Payment complete' : 'Pay with Markee'}</h1><p className="mt-1 text-gray-400">{session?.name}</p></div>
       {session && <section className="rounded-xl bg-black/20 p-4 space-y-3">

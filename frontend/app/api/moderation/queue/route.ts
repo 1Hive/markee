@@ -1,3 +1,4 @@
+import { softRecords, contentHash, automaticDeps } from '@/lib/moderation/automatic'
 // GET /api/moderation/queue?moderator=0x...
 //
 // Moderation items for every board the moderator reviews: boards they own or were added to (board
@@ -39,8 +40,20 @@ export async function GET(req: NextRequest) {
 
     // Flagged markees are only known by key, so read them all and keep the viewer's boards below.
     const flaggedMarkees = [...new Set([...flags.board, ...(global ? flags.site : [])])].map(markeeOfFlagKey)
-    const markees = [...new Set([...pending.flat(), ...flaggedMarkees])]
-    const all = (await readItems(markees)).filter((it): it is ModerationItem => !!it && scopesOf.has(it.board))
+    const soft = (await softRecords()).filter(r => r.state === 'soft-flagged' && r.siteState !== 'visible' && scopesOf.has(r.board!))
+    const softMap = new Map(soft.map(r => [r.markee, r]))
+    const markees = [...new Set([...pending.flat(), ...flaggedMarkees, ...soft.map(r => r.markee)])]
+    const stored = (await readItems(markees)).filter((it): it is ModerationItem => !!it && scopesOf.has(it.board))
+    const fresh = soft.length ? await automaticDeps.read(soft.map(r => r.markee)) : []
+    const freshById = new Map(fresh.map(o => [o.markee, o]))
+    const all = [...stored]
+    for (const record of soft) {
+      const observation = freshById.get(record.markee)
+      if (!observation || contentHash(observation.message) !== record.contentHash) { softMap.delete(record.markee); continue }
+      const existing = all.find(it => it.markee === record.markee)
+      if (existing) existing.message = observation.message
+      else all.push({ markee: record.markee, board: observation.board, message: observation.message, name: '', author: '', kind: 'created', previousMessage: null, blockNumber: '0', at: 0, reviews: { board: { status: 'approved', reviewedBy: null, reviewedAt: null }, site: { status: 'approved', reviewedBy: null, reviewedAt: null } } })
+    }
 
     const boardFlagged = new Set(flags.board)
     // A board flag already hides the message on markee.xyz, so a site review would change nothing.
@@ -51,6 +64,7 @@ export async function GET(req: NextRequest) {
     all.forEach(it => {
       const scopes = scopesOf.get(it.board)!
       if (isFlaggedIn(it, scopes)) flagged.push(it)
+      else if (softMap.has(it.markee)) flagged.push({ ...it, automatic: softMap.get(it.markee)! })
       else if (isPendingIn(it, scopes) && !siteReviewIsMoot(it, scopes)) items.push(it)
     })
     items.sort((a, b) => b.at - a.at)
