@@ -1,3 +1,4 @@
+import { autoEnabled } from '@/lib/moderation/automatic';
 import { POST as moderationCheck } from '@/app/api/moderation/check/route';
 import { underRateLimit } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
@@ -84,7 +85,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
       if (path === 'views') {
         const markee = address(body.address);
         if (typeof body.message !== 'string' || Buffer.byteLength(body.message) > 4096 || (body.url !== undefined && (typeof body.url !== 'string' || body.url.length > 2048))) throw new SDKError('INVALID_VIEW', 'Invalid view event.');
-        if (publicDataProxyEnabled()) return cors(NextResponse.json(await recordPublicView({ address: markee, message: body.message, url: body.url as string | undefined })), request);
+        if (publicDataProxyEnabled() && !autoEnabled()) return cors(NextResponse.json(await recordPublicView({ address: markee, message: body.message, url: body.url as string | undefined })), request);
         return cors(await views.POST(new NextRequest(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify({ address: markee, message: body.message, url: body.url }) })), request);
       }
     }

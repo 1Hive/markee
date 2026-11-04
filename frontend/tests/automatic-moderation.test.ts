@@ -1,3 +1,4 @@
+import { POST as sdkPost } from '../app/api/sdk/v1/[...path]/route'
 import { viewsWriteDeps } from '../lib/views/write-deps'
 import { pathToFileURL } from 'node:url'
 import { applySnapshotModeration } from '../lib/sdk/snapshot'
@@ -140,4 +141,18 @@ test('moderation overlays cached sale/rent snapshots without mutating financial 
       assert.equal(signContent(unavailable).visibility, 'unavailable')
     }
   }
+})
+
+test('development public-data proxy cannot forward an automatically hidden impression', async t => {
+  enable(t); storage(t)
+  const previous = { NODE_ENV: process.env.NODE_ENV, MARKEE_SDK_PUBLIC_DATA_PROXY: process.env.MARKEE_SDK_PUBLIC_DATA_PROXY }
+  Object.assign(process.env, { NODE_ENV: 'development', MARKEE_SDK_PUBLIC_DATA_PROXY: 'true' })
+  t.after(() => { for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value })
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit' }])
+  t.mock.method(viewsWriteDeps, 'mget', async () => [12, 4])
+  t.mock.method(globalThis, 'fetch', async () => { throw Error('Must not forward hidden views to the public API') })
+  const request = new NextRequest('http://localhost/api/sdk/v1/views', { method: 'POST', body: JSON.stringify({ address: id, message: 'shit' }) })
+  const response = await sdkPost(request, { params: { path: ['views'] } })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { totalViews: 12, messageViews: 4, counted: false })
 })
