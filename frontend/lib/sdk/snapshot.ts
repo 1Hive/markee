@@ -1,5 +1,4 @@
-import { automaticDeps, autoEnabled, evaluateObserved } from '../moderation/automatic';
-import { flagKey } from '../moderation/server';
+import { automaticDeps, autoEnabled, evaluateObservedBatch } from '../moderation/automatic';
 import { getAddress, parseAbi, zeroAddress, type Abi, type Address, type PublicClient } from 'viem';
 import type { CommunityState, Entry, Placement, Snapshot, WalletState } from '../../../packages/sdk/src/types';
 import { MARKEE_TOKEN } from '../contracts/addresses';
@@ -162,11 +161,11 @@ export async function applySnapshotModeration(result: Snapshot): Promise<Snapsho
   if (autoEnabled() && result.chainId === 8453 && result.board) {
     try {
       const flags = await automaticDeps.flags();
-      const boardFlags = new Set(flags.board), siteFlags = new Set(flags.site);
-      result = { ...result, entries: await Promise.all(result.entries.map(async entry => {
-        const moderation = await evaluateObserved(entry.address, entry.message, result.board!, { board: boardFlags.has(flagKey(entry.address)), site: siteFlags.has(flagKey(entry.address)) });
-        return { ...entry, moderation, moderated: moderation.state === 'unavailable' ? null : moderation.state !== 'visible' };
-      })) };
+      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, board: result.board! })), flags);
+      result = { ...result, entries: result.entries.map((entry, i) => {
+        const verdict = moderation[i];
+        return { ...entry, moderation: verdict, moderated: verdict.state === 'unavailable' ? null : verdict.state !== 'visible' };
+      }) };
     } catch { result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })), warnings: [...result.warnings, 'Moderation check unavailable'] }; }
   }
   return result;

@@ -1,5 +1,6 @@
 import 'server-only'
-import { autoEnabled, evaluateObserved } from './automatic'
+import { autoEnabled, evaluateObservedBatch } from './automatic'
+import { trustedMembership } from './membership'
 import { kv } from '@vercel/kv'
 import { parseAbi } from 'viem'
 import { FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
@@ -58,7 +59,7 @@ const WRITE_CHUNK = 500
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export const scanDeps = {
-  client: getModerationClient, recordActivity, notifyLowBudgets, notifyStatusChanges, updateTopHistories,
+  client: getModerationClient, membership: trustedMembership, recordActivity, notifyLowBudgets, notifyStatusChanges, updateTopHistories,
   get: <T>(key: string) => kv.get<T>(key),
   set: (key: string, value: unknown) => kv.set(key, value),
   mget: <T extends unknown[]>(...keys: string[]) => kv.mget<T>(...keys),
@@ -227,10 +228,14 @@ export async function runModerationScan(): Promise<ScanReport> {
       MARKEE_CHUNK,
       block.number,
     )
+    const candidates: { markee: string; board: string }[] = []
     extra.forEach((markee, i) => {
       const board = strategies[i]?.status === 'success' ? String(strategies[i].result).toLowerCase() : null
-      if (board && boardSet.has(board)) { pairs.push({ board, markee }); fromLogs++ }
+      if (board && boardSet.has(board)) candidates.push({ board, markee })
     })
+    const trusted = await scanDeps.membership(candidates, client, block.number)
+    if (trusted.some(value => value === null)) throw new Error('Moderation membership read failed; retaining checkpoints')
+    candidates.forEach((pair, i) => { if (trusted[i]) { pairs.push(pair); fromLogs++ } })
   }
 
   const previous = pairs.length ? await scanDeps.readItems(pairs.map(p => p.markee)) : []
@@ -274,7 +279,7 @@ export async function runModerationScan(): Promise<ScanReport> {
   const flagged = await scanDeps.readAllFlagged()
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
   if (autoEnabled()) {
-    for (const batch of chunk(observations, 25)) await Promise.all(batch.map(obs => evaluateObserved(obs.markee, obs.message, obs.board, { board: flaggedSets.board.has(flagKey(obs.markee)), site: flaggedSets.site.has(flagKey(obs.markee)) })))
+    for (const batch of chunk(observations, 25)) await evaluateObservedBatch(batch, flagged)
   }
   const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)

@@ -22,6 +22,10 @@ function enable(t: any) {
 function storage(t: any) {
   const records = new Map<string, any>()
   const soft = new Set<string>()
+  t.mock.method(automaticDeps, 'membership', async (pairs: unknown[]) => pairs.map(() => true))
+  t.mock.method(viewsWriteDeps, 'get', async () => null)
+  t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
+  t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(automaticDeps, 'get', async (key: string) => records.get(key) ?? null)
   t.mock.method(automaticDeps, 'flags', async () => ({ board: [], site: [] }))
   t.mock.method(automaticDeps, 'pipeline', () => {

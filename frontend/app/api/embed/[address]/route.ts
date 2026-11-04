@@ -3,11 +3,12 @@
 // can poll it. KV-cached for 60 s; bust with ?bust=1. A message its board's
 // moderators flagged comes back with `flagged: true` and its text and author
 // blanked, since this feeds other sites (markee.xyz-only flags don't apply).
+// Moderation is evaluated on every response, separately from cached financial/display data.
 import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { FLAGGED_KEYS, flagKey } from '@/lib/moderation/server'
+import { moderateEmbed } from '@/lib/moderation/embed'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +31,8 @@ const MARKEE_ABI = [
   { inputs: [], name: 'name',            outputs: [{ name: '', type: 'string'  }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
 ] as const
+
+type EmbedPayload = { topMarkeeAddress: string | null; message: string; name: string; flagged: boolean; [key: string]: unknown }
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -63,9 +66,9 @@ export async function GET(
   const CACHE_KEY = `cache:embed:${address}`
 
   if (!bust) {
-    const cached = await kv.get<object>(CACHE_KEY).catch(() => null)
+    const cached = await kv.get<EmbedPayload>(CACHE_KEY).catch(() => null)
     if (cached) {
-      return NextResponse.json(cached, { headers: { ...CORS, 'X-Cache': 'HIT' } })
+      return NextResponse.json(await moderateEmbed(cached), { headers: { ...CORS, 'X-Cache': 'HIT' } })
     }
   }
 
@@ -88,13 +91,11 @@ export async function GET(
   const ZERO = '0x0000000000000000000000000000000000000000'
   if (topMarkeeAddress && topMarkeeAddress !== ZERO) {
     const mAddr = topMarkeeAddress as `0x${string}`
-    const [msg, nm, funds, isFlagged] = await Promise.all([
+    const [msg, nm, funds] = await Promise.all([
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'message'         }).catch(() => ''),
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'name'            }).catch(() => ''),
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'totalFundsAdded' }).catch(() => 0n),
-      kv.sismember(FLAGGED_KEYS.board, flagKey(topMarkeeAddress)).catch(() => 0),
     ])
-    flagged         = isFlagged === 1
     message         = flagged ? '' : msg as string
     name            = flagged ? '' : nm  as string
     totalFundsAdded = (funds as bigint).toString()
@@ -114,5 +115,5 @@ export async function GET(
 
   await kv.set(CACHE_KEY, payload, { ex: 60 }).catch(() => {})
 
-  return NextResponse.json(payload, { headers: { ...CORS, 'X-Cache': 'MISS' } })
+  return NextResponse.json(await moderateEmbed(payload), { headers: { ...CORS, 'X-Cache': 'MISS' } })
 }

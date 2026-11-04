@@ -50,6 +50,7 @@ function scanner(t: any) {
     },
   }
   t.mock.method(scanDeps, 'client', () => client as any)
+  t.mock.method(scanDeps, 'membership', async (pairs: unknown[]) => pairs.map(() => true))
   t.mock.method(scanDeps, 'recordActivity', async () => ({ events: 0, byWallet: new Map() }))
   t.mock.method(scanDeps, 'notifyLowBudgets', async () => 0)
   t.mock.method(scanDeps, 'notifyStatusChanges', async () => 0)
@@ -85,6 +86,21 @@ test('new board moderation enumeration is bounded and checkpoints only fetched p
   assert.equal(first.reconcile.has(board), true)
   assert.equal(first.states.get(board)?.count, '2')
   assert.equal(first.pairs.length, 2)
+})
+
+test('spoofed edit logs cannot add non-members to either moderation queue', async t => {
+  const s = scanner(t)
+  const attacker = '0x9999999999999999999999999999999999999999'
+  t.mock.method(s.client, 'getLogs', async () => [{ address: attacker }])
+  t.mock.method(scanDeps, 'membership', async (pairs: { markee: string; board: string }[], _client: unknown, block: bigint) => {
+    assert.equal(block, 50000n)
+    assert.deepEqual(pairs, [{ markee: attacker, board }])
+    return [false]
+  })
+  const report = await runModerationScan()
+  assert.equal(report.fromLogs, 0)
+  assert.equal(s.records.has(itemKey(attacker)), false)
+  assert.equal(s.reads(), 0)
 })
 
 function snapshots(t: any) {

@@ -1,6 +1,8 @@
 import { autoEnabled, checkPublished, contentHash } from '@/lib/moderation/automatic'
 // app/api/views/route.ts
 import { kv } from '@vercel/kv'
+import { clientIp } from '@/lib/rate-limit'
+import { readLimitedJsonBody, RequestBodyTooLargeError } from '@/lib/sdk/gardens/body'
 import { viewsWriteDeps } from '@/lib/views/write-deps'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
@@ -145,28 +147,22 @@ export async function GET(req: NextRequest) {
 // Body: { address: string, message: string, url?: string }
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
-  const body = await req.json().catch(() => null)
-
-  if (!body?.address || !body?.message) {
-    return NextResponse.json(
-      { error: 'Missing address or message' },
-      { status: 400, headers: corsHeaders(origin) },
-    )
+  let body: { address: string; message: string; url?: string }
+  try {
+    const parsed = await readLimitedJsonBody(req, 16 * 1024) as Record<string, unknown> | null
+    const validAddress = typeof parsed?.address === 'string' && /^0x[0-9a-f]{40}$/i.test(parsed.address)
+    const validMessage = typeof parsed?.message === 'string' && parsed.message.length > 0 && Buffer.byteLength(parsed.message) <= 4096
+    const validUrl = parsed?.url === undefined || (typeof parsed.url === 'string' && parsed.url.length <= 2048)
+    if (!validAddress || !validMessage || !validUrl) return NextResponse.json({ error: 'Invalid address or message' }, { status: 400, headers: corsHeaders(origin) })
+    body = parsed as typeof body
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof RequestBodyTooLargeError ? 'Request body is too large.' : 'Invalid JSON request.' }, { status: error instanceof RequestBodyTooLargeError ? 413 : 400, headers: corsHeaders(origin) })
   }
-
-  const address = body.address.toLowerCase().trim()
+  const address = body.address.toLowerCase()
   const msgHash = hashMessage(body.message)
-
-  if (autoEnabled()) {
-    try {
-      const [moderation] = await checkPublished([address])
-      const source = normalizeHost(req.headers.get('origin') ?? req.headers.get('referer') ?? '')
-      const site = !!source && (source === 'markee.xyz' || source.endsWith('.markee.xyz') || source === 'localhost' || source === '127.0.0.1')
-      if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) {
-        const [totalViews, messageViews] = await viewsWriteDeps.mget<number[]>(`views:total:${address}`, `views:msg:${address}:${msgHash}`)
-        return NextResponse.json({ totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false }, { headers: corsHeaders(origin) })
-      }
-    } catch { return NextResponse.json({ error: 'Moderation check unavailable' }, { status: 503, headers: corsHeaders(origin) }) }
+  // Gate automatic-moderation work even when a request would not count a view.
+  if (autoEnabled() && !await viewsWriteDeps.underRateLimit('views:moderation', clientIp(req), 120, 60)) {
+    return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...corsHeaders(origin), 'Retry-After': '60' } })
   }
 
   // ── Referer / origin guard ──────────────────────────────────────────────────
@@ -225,6 +221,18 @@ export async function POST(req: NextRequest) {
       { totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false },
       { headers: corsHeaders(origin) },
     )
+  }
+
+  if (autoEnabled()) {
+    try {
+      const [moderation] = await checkPublished([address])
+      const source = normalizeHost(req.headers.get('origin') ?? req.headers.get('referer') ?? '')
+      const site = !!source && (source === 'markee.xyz' || source.endsWith('.markee.xyz') || source === 'localhost' || source === '127.0.0.1')
+      if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) {
+        const [totalViews, messageViews] = await viewsWriteDeps.mget<number[]>(`views:total:${address}`, `views:msg:${address}:${msgHash}`)
+        return NextResponse.json({ totalViews: totalViews ?? 0, messageViews: messageViews ?? 0, counted: false }, { headers: corsHeaders(origin) })
+      }
+    } catch { return NextResponse.json({ error: 'Moderation check unavailable' }, { status: 503, headers: corsHeaders(origin) }) }
   }
 
   const pipeline = viewsWriteDeps.pipeline()

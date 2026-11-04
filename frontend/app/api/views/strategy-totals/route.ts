@@ -4,7 +4,7 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
-import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
+import { LISTING_ROUTES, readListing } from '@/lib/leaderboards/listing-reader'
 import { readBoardViews } from '@/lib/views/boards'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +14,6 @@ const RESULT_TTL = 300
 const RATE_WINDOW = 60
 const RATE_MAX_MISSES = 10
 
-type LBList = { leaderboards: { address: string; topMarkeeAddress?: string | null; strategy?: string }[] }
 
 export async function GET(request: NextRequest) {
   const cached = await kv.get<{ fixed: number; streaming: number }>(RESULT_KEY)
@@ -32,16 +31,11 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Every board on every listing (each KV-cached for 60s), For Sale factory boards included, and
-  // each board's views by the shared rule in lib/views/boards.ts.
-  const origin = internalOrigin()
-  const headers = internalHeaders()
-  const lists = await Promise.all(
-    ['openinternet', 'superfluid', 'github', 'forsale', 'streaming'].map(route =>
-      fetch(`${origin}/api/${route}/leaderboards`, { cache: 'no-store', headers })
-        .then(r => r.ok ? r.json() as Promise<LBList> : null)
-        .catch(() => null)),
-  )
+  // Read the shared listing snapshots directly; cold lists use the same in-process loaders.
+  // Never cache incomplete totals when a listing is unavailable.
+  let lists
+  try { lists = await Promise.all(LISTING_ROUTES.map(readListing)) }
+  catch { return NextResponse.json({ error: 'Leaderboards temporarily unavailable' }, { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '15' } }) }
   const seen = new Set<string>()
   const boards = lists.flatMap((list, i) => (list?.leaderboards ?? []).map(lb => ({ ...lb, streaming: i === 4 || lb.strategy === 'streaming' })))
     .filter(lb => !seen.has(lb.address.toLowerCase()) && !!seen.add(lb.address.toLowerCase()))

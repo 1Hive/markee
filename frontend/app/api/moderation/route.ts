@@ -33,6 +33,9 @@ export const dynamic = 'force-dynamic'
 const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
 const APPROVE_RATE_MAX = 60
 
+// Public flag reads are consumed by third-party embeds; browser credentials are never used.
+// CORS is not authorization: every mutation verifies a signed, timestamped wallet action
+// and server-derived moderator permissions. Keep those checks when adding POST actions.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',

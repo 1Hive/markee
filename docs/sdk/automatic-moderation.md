@@ -30,6 +30,11 @@ rather than claiming they are successfully detected. No automatic rollout is con
 - Published mode: `{kind:'published',chainId:8453,markeeIds:[...]}` accepts up to 50 identifiers,
   reads their messages and boards on-chain server-side, and returns `items` with effective
   `state` for integrations and `siteState` for Markee. Client-supplied published text is not trusted.
+  At one pinned block, the board must be a canonical root or belong to a configured trusted
+  factory, and the board must recognize the Markee through `isMarkeeOnLeaderboard`. A contract's
+  claimed `pricingStrategy` or `factory` alone is never sufficient. Rejected identifiers return
+  unavailable without creating soft flags. SDK overlays and edit-log scanner ingestion use the
+  same membership boundary.
 - SDK snapshots add optional `autoModerationEnabled` and `Entry.moderation`. Existing
   `Entry.moderated` remains false/true/null for visible/hidden/unavailable. Financial snapshots
   do not cache the moderation overlay. Prepared create/edit reviews can include advisory
@@ -54,3 +59,16 @@ edits, including transactions outside the UI. Unfiltered legacy flag lists inclu
 may lag edits until scanning; updated clients use content-aware checks. The flagged queue labels
 automatic entries and shows the dedicated false-positive action. Views are rejected when the
 published content is hidden or cannot be verified.
+
+Queue reads revalidate persisted rows, including rows created before membership validation was
+introduced. Definitively rejected soft-index records are removed; uncertain RPC results preserve
+the records and make flag-list reads unavailable rather than return a partial passing list.
+Legacy embed responses recheck moderation independently of their display cache and blank both
+message and author when verification fails. Existing external embeds must also hide content on
+non-200 or invalid flag-list responses; updating Markee cannot rewrite already-deployed embeds.
+
+View POST bodies are bounded to 16 KiB with validated addresses, messages (4096 UTF-8 bytes), and
+optional URLs (2048 characters). When automatic moderation is enabled, a dedicated per-IP limit
+allows 120 requests per minute. Origin checks and the existing hourly view dedupe run before
+moderation RPC or persistence. Rejected origins and duplicates retain the existing
+`{totalViews, messageViews, counted:false}` response.

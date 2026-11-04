@@ -4,6 +4,7 @@ import { kv } from '@vercel/kv'
 import { Profanity } from '@2toad/profanity'
 import { parseAbi, type Address } from 'viem'
 import { underRateLimit } from '../rate-limit'
+import { trustedMembership } from './membership'
 import { getModerationClient, readAllFlagged, flagKey, authorizedScopes } from './server'
 
 export const AUTO_POLICY = 'profanity-3.3.0-v1'
@@ -23,19 +24,25 @@ export const automaticDeps = {
   set: (key: string, value: unknown) => kv.set(key, value),
   pipeline: () => kv.pipeline(),
   flags: readAllFlagged,
+  membership: trustedMembership,
+  client: getModerationClient,
+  members: () => kv.smembers<string[]>(SOFT_INDEX),
+  mget: (...keys: string[]) => kv.mget<(PublishedModeration | null)[]>(...keys),
   read: async (ids: string[]) => {
-    const client = getModerationClient()
+    const client = automaticDeps.client()
     const abi = parseAbi(['function message() view returns (string)', 'function pricingStrategy() view returns (address)'])
     const blockNumber = await client.getBlockNumber({ cacheTime: 0 })
     const reads = await client.multicall({ blockNumber, contracts: ids.flatMap(id => [
       { address: id as Address, abi, functionName: 'message' as const },
       { address: id as Address, abi, functionName: 'pricingStrategy' as const },
     ]) })
-    return ids.map((markee, i) => {
+    const observations = ids.flatMap((markee, i) => {
       const message = reads[i * 2], board = reads[i * 2 + 1]
-      if (message.status !== 'success' || board.status !== 'success' || typeof message.result !== 'string' || typeof board.result !== 'string') throw new Error('Unable to read message')
-      return { markee: markee.toLowerCase(), message: message.result, board: board.result.toLowerCase() }
+      if (message.status !== 'success' || board.status !== 'success' || typeof message.result !== 'string' || typeof board.result !== 'string') return []
+      return [{ markee: markee.toLowerCase(), message: message.result, board: board.result.toLowerCase() }]
     })
+    const members = await automaticDeps.membership(observations, client, blockNumber)
+    return observations.filter((_, i) => members[i] === true)
   },
 }
 const verdictCache = new Map<string, AutoVerdict>()
@@ -59,7 +66,18 @@ export const overrideKey = (id: string, hash: string) => `moderation:auto:site-o
 export const SOFT_INDEX = 'moderation:auto:soft:8453'
 
 // Call only with text read by our server (never a browser-provided published message).
+type Observation = { markee: string; message: string; board: string }
+const unavailable = (markee: string): PublishedModeration => ({ markee: markee.toLowerCase(), contentHash: '', state: 'unavailable', siteState: 'unavailable', reason: 'Moderation check unavailable', policyVersion: AUTO_POLICY })
+
 export async function evaluateObserved(id: string, message: string, board: string, manual: { board: boolean; site: boolean }): Promise<PublishedModeration> {
+  const [trusted] = await automaticDeps.membership([{ markee: id, board }])
+  return trusted === true ? evaluateTrusted(id, message, board, manual) : unavailable(id)
+}
+export async function evaluateObservedBatch(observations: Observation[], flags: { board: string[]; site: string[] }): Promise<PublishedModeration[]> {
+  const trusted = await automaticDeps.membership(observations)
+  return Promise.all(observations.map((o, i) => trusted[i] === true ? evaluateTrusted(o.markee, o.message, o.board, { board: flags.board.includes(flagKey(o.markee)), site: flags.site.includes(flagKey(o.markee)) }) : unavailable(o.markee)))
+}
+async function evaluateTrusted(id: string, message: string, board: string, manual: { board: boolean; site: boolean }): Promise<PublishedModeration> {
   const hash = contentHash(message)
   const base = { markee: id.toLowerCase(), board, contentHash: hash, policyVersion: AUTO_POLICY }
   if (manual.board) return { ...base, state: 'manual-flagged', siteState: 'manual-flagged' }
@@ -86,12 +104,31 @@ export async function evaluateObserved(id: string, message: string, board: strin
 export async function checkPublished(ids: string[]): Promise<PublishedModeration[]> {
   const [observations, flags] = await Promise.all([automaticDeps.read(ids), automaticDeps.flags()])
   const boardFlags = new Set(flags.board), siteFlags = new Set(flags.site)
-  return Promise.all(observations.map(o => evaluateObserved(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) })))
+  const byId = new Map(observations.map(o => [o.markee.toLowerCase(), o]))
+  return Promise.all(ids.map(id => {
+    const o = byId.get(id.toLowerCase())
+    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }) : unavailable(id)
+  }))
 }
 export async function softRecords(): Promise<PublishedModeration[]> {
   if (!autoEnabled()) return []
-  const ids = await kv.smembers<string[]>(SOFT_INDEX)
+  const ids = await automaticDeps.members()
   if (!ids.length) return []
-  const records = await kv.mget<(PublishedModeration | null)[]>(...ids.map(softKey))
-  return records.filter((r): r is PublishedModeration => !!r && r.state !== 'visible' && r.policyVersion === AUTO_POLICY)
+  const records = await automaticDeps.mget(...ids.map(softKey))
+  const valid = records.filter((r): r is PublishedModeration => !!r && r.state !== 'visible' && r.policyVersion === AUTO_POLICY && typeof r.board === 'string')
+  const output: PublishedModeration[] = []
+  for (let start = 0; start < valid.length; start += 50) {
+    const batch = valid.slice(start, start + 50)
+    const trusted = await automaticDeps.membership(batch as (PublishedModeration & { board: string })[])
+    if (trusted.some(value => value === null)) throw new Error('Moderation membership unavailable')
+    const rejected = batch.filter((_, i) => trusted[i] === false)
+    if (rejected.length) {
+      const pipeline = automaticDeps.pipeline()
+      rejected.forEach(r => { pipeline.srem(SOFT_INDEX, r.markee); pipeline.del(softKey(r.markee)) })
+      pipeline.set('sdk:snapshots:generation', randomUUID())
+      await pipeline.exec()
+    }
+    output.push(...batch.filter((_, i) => trusted[i] === true))
+  }
+  return output
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildEmbedPrompt, type EmbedStrategy, type EmbedWallet } from '../lib/embedPrompt/fragments'
+import { buildEmbedPrompt, moderationFragment, type EmbedStrategy, type EmbedWallet } from '../lib/embedPrompt/fragments'
 
 const address = '0x0000000000000000000000000000000000000001'
 for (const strategy of ['fixed', 'streaming'] as EmbedStrategy[]) {
@@ -33,4 +33,14 @@ test('wizard prompt needs no framework, wallet, or agent selection and follows d
   assert.ok(prompt.includes('Site verification confirms the public HTML marker'))
   assert.ok(!prompt.includes('undefined'))
   assert.equal(prompt, buildEmbedPrompt({ address, name: 'Existing board', strategy: 'fixed', framework: 'nextjs', wallet: 'none', agent: 'codex' }))
+})
+
+
+test('legacy moderation instructions hide content until a trustworthy flag list is available', () => {
+  const prompt = moderationFragment()
+  assert.ok(prompt.includes('useState<Set<string> | null>(null)'))
+  assert.ok(prompt.includes('status: 503'))
+  assert.ok(prompt.includes('flagged === null'))
+  assert.ok(prompt.includes('do not record views'))
+  assert.ok(!prompt.includes('flagged: []'))
 })
