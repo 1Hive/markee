@@ -44,7 +44,7 @@ export function useMessageModeration(message: string, enabled = true) {
     setConfirming(true)
     return new Promise(resolve => { pending.current = allowed => resolve(allowed && current.current === text) })
   }
-  const reason = verdict?.state === 'unavailable' ? 'Moderation check unavailable' : verdict?.reason || 'This message matched the profanity filter.'
+  const reason = verdict?.state === 'unavailable' ? 'Moderation check unavailable' : verdict?.reason || 'This message matched an automatic moderation rule.'
   useEffect(() => {
     if (!confirming) return
     const previous = document.activeElement as HTMLElement | null

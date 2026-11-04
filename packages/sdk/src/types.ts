@@ -1,5 +1,5 @@
-export interface MessageCheck { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string }
-export interface EntryModeration { state: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'; contentHash: string; reason?: string; policyVersion: string }
+export interface MessageCheck { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string; reasonCodes?: string[] }
+export interface EntryModeration { state: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'; contentHash: string; reason?: string; reasonCodes?: string[]; policyVersion: string }
 export type Address = `0x${string}`;
 export type Hex = `0x${string}`;
 export type Placement =

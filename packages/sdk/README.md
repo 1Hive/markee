@@ -330,17 +330,17 @@ wallet payments remain available independently.
 
 ### Automatic message moderation
 
-When enabled by Markee, create/edit forms warn if a message matches the automatic profanity
-filter. Authors can edit or explicitly continue; publication may still be hidden. A passing
+When enabled by Markee, create/edit forms warn if a message matches an automatic moderation
+rule. Authors can edit or explicitly continue; publication may still be hidden. A passing
 message edit clears an automatic flag, while manual flags require moderator action.
 
 `await client.checkMessage(message)` exposes the same draft check for custom interfaces. It
-returns `enabled`, `state`, `contentHash`, `engine`, `policyVersion`, and optional `reason`.
+returns `enabled`, `state`, `contentHash`, `engine`, `policyVersion`, and optional `reason` and `reasonCodes`.
 Treat `unavailable` as unknown, never as a pass. Names are not automatically checked.
 The standard modal handles these warnings for React and vanilla JavaScript integrations.
 No API key or moderation configuration is required in the host app.
 
 Snapshots retain `entry.moderated` (`false`, `true`, or `null`) and can additionally include
-`entry.moderation` with the state and reason. Hide unavailable and flagged content and do not
+`entry.moderation` with the state, reason, and optional `reasonCodes`. Hide unavailable and flagged content and do not
 record views for it. A moderator's false-positive exception on Markee applies only on Markee;
 it does not change SDK visibility. This optional backend feature is disabled by default.

@@ -10,7 +10,7 @@
     "test:keeper": "tsx --test tests/keeper.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "test:review-regressions": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/review-regressions.test.ts",
-    "test:moderation": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/moderationQueue.test.ts tests/moderation-route.test.ts tests/automatic-moderation.test.ts tests/moderation-security.test.ts",
+    "test:moderation": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/moderationQueue.test.ts tests/moderation-route.test.ts tests/automatic-moderation.test.ts tests/moderation-security.test.ts tests/moderation-rules.test.ts",
     "test:email-notifications": "tsx --test tests/emailNotifications.test.ts",
     "test:e2e": "playwright test",
     "start": "next start",

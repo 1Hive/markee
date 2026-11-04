@@ -107,7 +107,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
           {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
-          {item.automatic && <span>Automatic · {item.automatic.reason || 'Matched profanity filter'}</span>}
+          {item.automatic && <span>Automatic · {item.automatic.reason || 'Matched automatic moderation rule'}</span>}
           {ago(item) && <span>{ago(item)}</span>}
           <SignLink item={item} board={board} />
         </div>

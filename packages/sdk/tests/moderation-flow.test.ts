@@ -40,7 +40,9 @@ test('checker outage prompts a warning rather than inventing a pass; non-message
 test('automatic flags and unknown moderation do not disclose message text', () => {
   const modal = Object.create(MarkeeModal.prototype) as any
   assert.doesNotMatch(modal.entryMessageHtml({ message: 'unsafe original', moderated: true, moderation: { state: 'soft-flagged' } }), /unsafe original/)
-  assert.match(modal.entryMessageHtml({ message: 'unsafe original', moderated: true, moderation: { state: 'soft-flagged' } }), /automatic profanity filter/)
+  assert.match(modal.entryMessageHtml({ message: 'unsafe original', moderated: true, moderation: { state: 'soft-flagged' } }), /automatic moderation/)
+  assert.match(modal.entryMessageHtml({ message: 'unsafe original', moderated: true, moderation: { state: 'soft-flagged', reason: 'This message requests wallet secrets.' } }), /requests wallet secrets/)
+  assert.ok(!modal.entryMessageHtml({ message: 'unsafe original', moderated: true, moderation: { state: 'soft-flagged', reason: '<script>alert(1)</script>' } }).includes('<script>'))
   assert.doesNotMatch(modal.entryMessageHtml({ message: 'unsafe original', moderated: null }), /unsafe original/)
 })
 test('a delayed draft response cannot replace the verdict for newer text', async t => {

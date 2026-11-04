@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { privateKeyToAccount } from 'viem/accounts'
-import { checkDraft, checkPublished, evaluateObserved, automaticDeps, automaticAuthDeps, contentHash, overrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
+import { checkDraft, checkPublished, evaluateObserved, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
 import { falsePositiveMessage } from '../lib/moderation/automatic-message'
 import { POST } from '../app/api/moderation/false-positive/route'
 
@@ -27,6 +27,8 @@ function storage(t: any) {
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
   t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(automaticDeps, 'get', async (key: string) => records.get(key) ?? null)
+  t.mock.method(automaticDeps, 'members', async () => [...soft])
+  t.mock.method(automaticDeps, 'mget', async (...keys: string[]) => keys.map(key => records.get(key) ?? null))
   t.mock.method(automaticDeps, 'flags', async () => ({ board: [], site: [] }))
   t.mock.method(automaticDeps, 'pipeline', () => {
     const pipeline = { set(key: string, value: unknown) { records.set(key, value); return pipeline }, sadd(_key: string, value: string) { soft.add(value); return pipeline }, srem(_key: string, value: string) { soft.delete(value); return pipeline }, async exec() { return [] } }
@@ -39,7 +41,59 @@ test('automatic moderation is opt-in and message hashes preserve exact text', t 
   t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)
   assert.equal(checkDraft('shit').enabled, false)
   assert.equal(checkDraft('shit').state, 'pass')
+  assert.equal(checkDraft('DM your seed phrase to support').state, 'pass')
   assert.notEqual(contentHash('text'), contentHash('text '))
+})
+
+test('website rules share draft, published, sale/rent snapshot and view enforcement; passing edits recover', async t => {
+  enable(t); const { records, soft } = storage(t)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(viewsWriteDeps, 'mget', async () => [12, 4])
+  let message = 'Support desk: DM your seed phrase to recover funds'
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message }])
+  const req = (body: object) => new NextRequest('https://www.markee.xyz/api/moderation/check', { method: 'POST', body: JSON.stringify(body) })
+  const draft = await (await checkRoute(req({ kind: 'draft', message }))).json()
+  assert.equal(draft.state, 'soft-flagged')
+  assert.deepEqual(draft.reasonCodes, ['SECRET_REQUEST'])
+  assert.match(draft.reason, /seed phrase/)
+  const published = await (await checkRoute(req({ kind: 'published', chainId: 8453, markeeIds: [id] }))).json()
+  assert.deepEqual(published.items[0].reasonCodes, draft.reasonCodes)
+  assert.equal(soft.has(id), true)
+  for (const strategy of ['sale', 'rent']) {
+    const input = { chainId: 8453, board, top: id, strategy, warnings: [], entries: [{ address: id, message, moderated: false, totalFunds: '123' }] } as any
+    const result = await applySnapshotModeration(input)
+    assert.equal(result.entries[0].moderated, true)
+    assert.deepEqual(result.entries[0].moderation?.reasonCodes, ['SECRET_REQUEST'])
+    assert.equal(result.entries[0].totalFunds, '123')
+    for (const artifact of (process.env.MARKEE_PUBLISHED_SDK_MODULES || '').split(',').filter(Boolean)) {
+      const { signContent } = await import(pathToFileURL(artifact).href)
+      assert.equal(signContent(result).visibility, 'flagged')
+    }
+  }
+  const view = await recordView(new NextRequest('https://www.markee.xyz/api/views', { method: 'POST', body: JSON.stringify({ address: id, message }) }))
+  assert.equal((await view.json()).counted, false)
+  message = 'gm from alice.eth'
+  assert.equal((await checkPublished([id]))[0].state, 'visible')
+  assert.equal(soft.has(id), false)
+  assert.equal(records.get(softKey(id)).policyVersion, AUTO_POLICY)
+})
+
+test('policy upgrades recheck old indexed flags instead of silently dropping them', async t => {
+  enable(t); const { records, soft } = storage(t)
+  soft.add(id)
+  records.set(softKey(id), { markee: id, board, state: 'soft-flagged', siteState: 'soft-flagged', contentHash: contentHash('old text'), policyVersion: 'profanity-3.3.0-v1' })
+  let message = 'Send ETH to giveaway-claim.eth and get 2x back'
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message }])
+  const refreshed = await softRecords()
+  assert.equal(refreshed[0].policyVersion, AUTO_POLICY)
+  assert.ok(refreshed[0].reasonCodes?.includes('PAYMENT_SOLICITATION'))
+  records.get(softKey(id)).policyVersion = 'older-policy'
+  t.mock.method(automaticDeps, 'read', async () => { throw new Error('RPC unavailable') })
+  await assert.rejects(softRecords(), /RPC unavailable/)
+  assert.equal(soft.has(id), true)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'Support public goods' }])
+  assert.deepEqual(await softRecords(), [])
+  assert.equal(soft.has(id), false)
 })
 test('all twelve dictionaries are enabled; native language fixtures, Unicode, boundaries and known dictionary limitations', t => {
   enable(t)

@@ -2,24 +2,26 @@ import 'server-only'
 import { createHash, randomUUID } from 'node:crypto'
 import { kv } from '@vercel/kv'
 import { Profanity } from '@2toad/profanity'
+import { checkRules } from './rules'
 import { parseAbi, type Address } from 'viem'
 import { underRateLimit } from '../rate-limit'
 import { trustedMembership } from './membership'
 import { getModerationClient, readAllFlagged, flagKey, authorizedScopes } from './server'
 
-export const AUTO_POLICY = 'profanity-3.3.0-v1'
+export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-v1'
 export const AUTO_LANGUAGES = ['ar', 'zh', 'en', 'fr', 'de', 'hi', 'it', 'ja', 'ko', 'pt', 'ru', 'es']
 export const AUTO_REASON = 'This message matched the profanity filter.'
 export const autoEnabled = () => process.env.FLAG_AUTO_MODERATION === 'true'
 export const contentHash = (message: string) => createHash('sha256').update(message, 'utf8').digest('hex')
-export type AutoVerdict = { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string }
+export type AutoVerdict = { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string; reasonCodes?: string[] }
 export type Visibility = 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'
-export type PublishedModeration = { markee: string; board?: string; contentHash: string; state: Visibility; siteState: Visibility; reason?: string; policyVersion: string }
+export type PublishedModeration = { markee: string; board?: string; contentHash: string; state: Visibility; siteState: Visibility; reason?: string; reasonCodes?: string[]; policyVersion: string }
 export interface ModerationEngine { check(message: string): boolean }
 let filter: Profanity | undefined
 export const automaticAuthDeps = { authorizedScopes, underRateLimit }
 export const automaticDeps = {
   engine: { check(message: string) { filter ??= new Profanity({ languages: AUTO_LANGUAGES, wholeWord: true, unicodeWordBoundaries: true }); return filter.exists(message.normalize('NFKC')) } } as ModerationEngine,
+  rules: checkRules,
   get: <T>(key: string) => kv.get<T>(key),
   set: (key: string, value: unknown) => kv.set(key, value),
   pipeline: () => kv.pipeline(),
@@ -48,14 +50,15 @@ export const automaticDeps = {
 const verdictCache = new Map<string, AutoVerdict>()
 export function checkDraft(message: string): AutoVerdict {
   const hash = contentHash(message)
-  const base = { enabled: autoEnabled(), contentHash: hash, engine: '@2toad/profanity', policyVersion: AUTO_POLICY }
+  const base = { enabled: autoEnabled(), contentHash: hash, engine: 'markee-rules+@2toad/profanity', policyVersion: AUTO_POLICY }
   if (!base.enabled) return { ...base, state: 'pass' }
   const key = `${AUTO_POLICY}:${hash}`
   const cached = verdictCache.get(key)
   if (cached) return cached
   try {
-    const flagged = automaticDeps.engine.check(message)
-    const result: AutoVerdict = { ...base, state: flagged ? 'soft-flagged' : 'pass', ...(flagged ? { reason: AUTO_REASON } : {}) }
+    const matches = automaticDeps.rules(message)
+    if (automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
+    const result: AutoVerdict = { ...base, state: matches.length ? 'soft-flagged' : 'pass', ...(matches.length ? { reason: matches.map(m => m.reason).join(' '), reasonCodes: matches.map(m => m.code) } : {}) }
     if (verdictCache.size >= 2000) verdictCache.delete(verdictCache.keys().next().value!)
     verdictCache.set(key, result)
     return result
@@ -88,13 +91,13 @@ async function evaluateTrusted(id: string, message: string, board: string, manua
   try {
     override = verdict.state === 'soft-flagged' && !!await automaticDeps.get(overrideKey(id, hash))
     const previous = await automaticDeps.get<PublishedModeration>(softKey(id))
-    const result: PublishedModeration = { ...base, state, siteState: manual.site ? 'manual-flagged' : override ? 'visible' : state, ...(verdict.reason ? { reason: verdict.reason } : {}) }
+    const result: PublishedModeration = { ...base, state, siteState: manual.site ? 'manual-flagged' : override ? 'visible' : state, ...(verdict.reason ? { reason: verdict.reason, reasonCodes: verdict.reasonCodes } : {}) }
     if (previous?.contentHash === hash && previous?.state === state && previous?.siteState === result.siteState && previous?.policyVersion === AUTO_POLICY) return result
     const pipeline = automaticDeps.pipeline()
     pipeline.set(softKey(id), result)
     if (state !== 'visible') pipeline.sadd(SOFT_INDEX, id.toLowerCase())
     else pipeline.srem(SOFT_INDEX, id.toLowerCase())
-    if (previous?.contentHash !== hash || previous?.state !== state || previous?.siteState !== result.siteState) pipeline.set('sdk:snapshots:generation', randomUUID())
+    if (previous?.contentHash !== hash || previous?.state !== state || previous?.siteState !== result.siteState || previous?.policyVersion !== AUTO_POLICY) pipeline.set('sdk:snapshots:generation', randomUUID())
     await pipeline.exec()
     return result
   } catch {
@@ -115,7 +118,7 @@ export async function softRecords(): Promise<PublishedModeration[]> {
   const ids = await automaticDeps.members()
   if (!ids.length) return []
   const records = await automaticDeps.mget(...ids.map(softKey))
-  const valid = records.filter((r): r is PublishedModeration => !!r && r.state !== 'visible' && r.policyVersion === AUTO_POLICY && typeof r.board === 'string')
+  const valid = records.filter((r): r is PublishedModeration => !!r && r.state !== 'visible' && typeof r.board === 'string')
   const output: PublishedModeration[] = []
   for (let start = 0; start < valid.length; start += 50) {
     const batch = valid.slice(start, start + 50)
@@ -128,7 +131,11 @@ export async function softRecords(): Promise<PublishedModeration[]> {
       pipeline.set('sdk:snapshots:generation', randomUUID())
       await pipeline.exec()
     }
-    output.push(...batch.filter((_, i) => trusted[i] === true))
+    const accepted = batch.filter((_, i) => trusted[i] === true)
+    const stale = accepted.filter(r => r.policyVersion !== AUTO_POLICY)
+    const refreshed = stale.length ? await checkPublished(stale.map(r => r.markee)) : []
+    if (refreshed.some(r => r.state === 'unavailable')) throw new Error('Moderation policy refresh unavailable')
+    output.push(...accepted.filter(r => r.policyVersion === AUTO_POLICY), ...refreshed.filter(r => r.state !== 'visible'))
   }
   return output
 }
