@@ -1,9 +1,10 @@
 import 'server-only'
 import { isAddress, parseAbi, type Address } from 'viem'
-import { FACTORIES, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
+import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { getModerationClient } from './server'
 
 const ABI = parseAbi([
+  'function markeeAddress() view returns (address)',
   'function factory() view returns (address)',
   'function isFactoryLeaderboard(address) view returns (bool)',
   'function isMarkeeOnLeaderboard(address) view returns (bool)',
@@ -23,9 +24,10 @@ export async function trustedMembership(pairs: MarkeeMembership[], client = memb
     process.env.MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE ?? '',
     ...(process.env.MARKEE_SDK_FACTORIES_8453 ?? '').split(','),
   ].map(a => a.trim().toLowerCase()).filter(a => isAddress(a)))
+  const fixedStrategies = new Set(CONTRACTS[8453].fixedPriceStrategies.map(s => s.address.toLowerCase()))
   const boards = [...new Set(pairs.map(p => p.board.toLowerCase()).filter(a => isAddress(a)))]
   const trust = new Map<string, boolean | null>(boards.filter(b => roots.has(b)).map(b => [b, true]))
-  const candidates = boards.filter(b => !roots.has(b))
+  const candidates = boards.filter(b => !roots.has(b) && !fixedStrategies.has(b))
   const factoryReads = candidates.length ? await client.multicall({ blockNumber, contracts: candidates.map(address => ({ address: address as Address, abi: ABI, functionName: 'factory' as const })) }) : []
   const claims: { board: string; factory: Address }[] = []
   candidates.forEach((board, i) => {
@@ -40,5 +42,13 @@ export async function trustedMembership(pairs: MarkeeMembership[], client = memb
   const members = eligible.length ? await client.multicall({ blockNumber, contracts: eligible.map(p => ({ address: p.board as Address, abi: ABI, functionName: 'isMarkeeOnLeaderboard' as const, args: [p.markee as Address] })) }) : []
   const result = pairs.map(p => !isAddress(p.markee) || !isAddress(p.board) ? false : trust.get(p.board.toLowerCase()) ?? null)
   eligible.forEach((p, i) => { result[p.i] = members[i]?.status === 'success' ? members[i].result === true : null })
+  // Only configured standalone strategies are trusted, and only for their actual Markee.
+  // The caller has read the Markee's reciprocal pricingStrategy at this same block.
+  const fixedPairs = pairs.map((p, i) => ({ ...p, i })).filter(p => isAddress(p.markee) && fixedStrategies.has(p.board.toLowerCase()))
+  const fixedReads = fixedPairs.length ? await client.multicall({ blockNumber, contracts: fixedPairs.map(p => ({ address: p.board as Address, abi: ABI, functionName: 'markeeAddress' as const })) }) : []
+  fixedPairs.forEach((p, i) => {
+    const read = fixedReads[i]
+    result[p.i] = read?.status === 'success' && typeof read.result === 'string' ? read.result.toLowerCase() === p.markee.toLowerCase() : null
+  })
   return result
 }
