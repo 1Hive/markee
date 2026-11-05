@@ -37,6 +37,10 @@ export default defineConfig({
     {
       command: 'node tests/e2e/fork/server.mjs',
       env: { E2E_FORK_RPC_URL: FORK_RPC, E2E_FORK_BLOCK: String(FORK_BLOCK), E2E_MNEMONIC },
+      // Without this Playwright SIGKILLs the wrapper, so it never tells Anvil to stop: Anvil never
+      // writes its fork cache (CI then saves an empty one) and is left running. SIGTERM lets the
+      // wrapper forward SIGINT and wait for Anvil to flush ~/.foundry/cache/rpc.
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 30_000 },
       port: 8545,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

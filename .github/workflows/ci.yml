@@ -83,6 +83,10 @@ jobs:
     name: Fork E2E
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
+      # dorny/paths-filter lists a PR's changed files through the API.
+      pull-requests: read
     defaults:
       run:
         working-directory: frontend
@@ -94,11 +98,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Every run spends calls on the E2E Alchemy project, so PRs that don't touch the app (SDK
+      # package, docs, examples, contracts) skip it. Pushes to main always run.
+      - name: Check changed paths
+        id: changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            app:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
       # Secrets aren't passed to pull requests from forks; skip rather than fail there.
       - name: Check fork RPC
         id: rpc
         run: |
-          if [ -n "$E2E_FORK_RPC_URL" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ steps.changes.outputs.app }}" != "true" ]; then
+            echo "::notice::No frontend changes; skipping fork E2E."
+          elif [ -n "$E2E_FORK_RPC_URL" ]; then
             chain=$(curl -s -X POST -H 'Content-Type: application/json' \
               --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "$E2E_FORK_RPC_URL" \
               | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
@@ -128,6 +146,9 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.5.0
+          # Its built-in cache also targets ~/.foundry/cache/rpc (under a per-commit key); the
+          # Anvil fork state steps below own that directory.
+          cache: false
 
       # Anvil's per-block fork cache: without it every run re-fetches all touched state from the RPC.
       - name: Restore Anvil fork state
@@ -158,7 +179,8 @@ jobs:
         run: |
           bytes=$(find ~/.foundry/cache/rpc -name storage.json -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum+0}')
           echo "Fork cache bytes: ${bytes:-0}"
-          if [ "${bytes:-0}" -gt 4096 ]; then echo "useful=true" >> "$GITHUB_OUTPUT"; fi
+          if [ "${bytes:-0}" -gt 4096 ]; then echo "useful=true" >> "$GITHUB_OUTPUT"
+          else echo "::warning::Anvil wrote no fork cache (${bytes:-0} bytes), so the next run forks cold from the RPC. Did Anvil shut down cleanly?"; fi
       - name: Save Anvil fork state
         if: always() && steps.fork-cache.outputs.useful == 'true'
         uses: actions/cache/save@v4
