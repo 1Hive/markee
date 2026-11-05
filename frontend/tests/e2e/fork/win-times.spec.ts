@@ -86,6 +86,20 @@ test('views count the board and its top message, on the dashboard and in Best Bu
   await kv(['SET', `views:total:${top.toLowerCase()}`, 250])
   await clearListingCaches()
 
+  // Refresh the public listing before mounting the hub. Its account and Best
+  // Buys requests otherwise race a cold ecosystem read immediately after a
+  // chain revert/cache reset, and the UI fetches Best Buys only once on mount.
+  const listing = await page.request.get('/api/ecosystem/leaderboards?bust=1')
+  expect(listing.ok()).toBeTruthy()
+  expect((await listing.json()).leaderboards.some((lb: { address: string }) =>
+    lb.address.toLowerCase() === BOARDS.sale.toLowerCase())).toBe(true)
+  await kv(['DEL', 'cache:marketplace:best-buys'])
+  const bestBuys = await page.request.get('/api/marketplace/best-buys')
+  expect(bestBuys.ok()).toBeTruthy()
+  expect((await bestBuys.json()).buys).toEqual(expect.arrayContaining([
+    expect.objectContaining({ address: expect.stringMatching(new RegExp(`^${BOARDS.sale}$`, 'i')), views: 5250 }),
+  ]))
+
   await page.goto('/account?section=buyer')
   await expect(messageRow(page, 'e2e win second')).toContainText('5,250', { timeout: TX_TIMEOUT })
   const panel = page.locator('section', { hasText: 'Best Buys' })
