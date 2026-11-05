@@ -1,0 +1,46 @@
+name: Lock PR conversations
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+  push:
+    branches: [main]
+    paths: [.github/workflows/lock-pr-conversations.yml]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: lock-pr-conversations
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No checkout: never execute PR code with this privileged event/token.
+      - name: Restrict PR conversations to collaborators
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            // A manual run or installation on main reconciles existing open PRs.
+            // Issues are deliberately excluded; public issue creation stays enabled.
+            const pulls = context.eventName === 'pull_request_target'
+              ? [context.payload.pull_request]
+              : await github.paginate(github.rest.pulls.list, {
+                  owner, repo, state: 'open', per_page: 100,
+                });
+            for (const pull of pulls) {
+              const { data: current } = await github.rest.issues.get({
+                owner, repo, issue_number: pull.number,
+              });
+              if (current.locked) continue;
+              await github.rest.issues.lock({
+                owner, repo, issue_number: pull.number,
+              });
+              core.info(`Locked PR #${pull.number}; public visibility is unchanged.`);
+            }
