@@ -41,6 +41,26 @@ test('chain-switch cancellation never sends a transaction', async () => {
   await assert.rejects(client.send(preparation()), /rejected/);
   assert.ok(!calls.includes('eth_sendTransaction'));
 });
+
+test('plain-object cancellation emits readable errors, leaves no pending payment and allows retry', async () => {
+  let rejected = true;
+  const error = { code: 4001, message: 'User rejected the request.' };
+  const events: { type: string; message?: string }[] = [];
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (rejected) throw error;
+    return hash;
+  } };
+  const client = new MarkeeClient({ wallet: { getProvider: async () => provider }, onEvent: event => events.push(event) });
+  const p = preparation();
+  await assert.rejects(client.send(p), value => value === error);
+  assert.match(events[0].message!, /^Wallet request cancelled\./);
+  assert.equal(client.pending(p.placement, account), undefined);
+  assert.equal(events.some(event => event.type === 'submitted'), false);
+  rejected = false;
+  assert.equal(await client.send(p), hash);
+});
 test('host wallet is reused and pending transaction blocks duplicate payment until verified', async () => {
   const calls: string[] = [];
   const provider: EIP1193Provider = { async request({ method }) { calls.push(method); return method === 'eth_accounts' ? [account] : method === 'eth_chainId' ? '0x2105' : hash; } };

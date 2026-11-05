@@ -2,6 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MarkeeModal } from '../src/modal';
 
+test('cancelling the wallet request preserves the review and enables retry', async () => {
+  const modal = Object.create(MarkeeModal.prototype);
+  const review = { id: 'existing-review' };
+  Object.assign(modal, { busy: false, review, render() {} });
+  await modal.task(async () => { throw { code: 4001 }; });
+  assert.match(modal.error, /^Wallet request cancelled\./);
+  assert.equal(modal.review, review);
+  assert.equal(modal.pending, undefined);
+  assert.equal(modal.busy, false);
+});
+
 const address = '0x1111111111111111111111111111111111111111';
 function view(account: string | null, available = true) {
   const modal = Object.create(MarkeeModal.prototype);

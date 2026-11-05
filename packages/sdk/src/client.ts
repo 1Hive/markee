@@ -1,4 +1,5 @@
 import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
+import { errorMessage } from './errors.js';
 import type { MessageCheck, Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 /** Markee-hosted API used by integrations unless overridden for local development. */
@@ -129,7 +130,7 @@ export class MarkeeClient {
       this.options.onEvent?.({ type: 'submitted', hash });
       return hash;
     } catch (error) {
-      this.options.onEvent?.({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+      this.options.onEvent?.({ type: 'error', message: errorMessage(error) });
       throw error;
     } finally { this.sending = false; }
   }

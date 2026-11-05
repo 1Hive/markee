@@ -1,4 +1,5 @@
 import { openHostedCheckout } from './checkout.js';
+import { errorMessage } from './errors.js';
 import { discoverWallets, MarkeeClient, MarkeeError, type DiscoveredWallet, type PendingTransaction } from './client.js';
 import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount.js';
 import { styles } from './styles.js';
@@ -139,7 +140,7 @@ export class MarkeeModal {
       if (this.pending) void this.poll();
     } catch (error) { if (!this.closed && epoch === this.epoch) this.fail(error); }
   }
-  private fail(error: unknown) { this.error = error instanceof Error ? error.message : String(error); this.render(); }
+  private fail(error: unknown) { this.error = errorMessage(error); this.render(); }
   private async task(work: () => Promise<void>) {
     if (this.busy) return;
     this.busy = true; this.error = ''; this.render();
