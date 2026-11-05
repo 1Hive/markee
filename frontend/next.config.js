@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const path = require('path')
 
 // Allow the RPC endpoint the app is actually configured to use, so reconfiguring
 // NEXT_PUBLIC_BASE_RPC_URL is not silently blocked by connect-src.
@@ -11,7 +12,7 @@ const cspDirectives = {
   'default-src':     ["'self'"],
   // Next.js injects inline scripts; 'unsafe-inline' is required without nonces.
   // 'unsafe-eval' is required by some wallet SDKs (WalletConnect, MetaMask SDK).
-  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com', 'https://vercel.live'],
+  'script-src':      ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://challenges.cloudflare.com', 'https://vercel.live', 'https://js.stripe.com', 'https://crypto-js.stripe.com'],
   'style-src':       ["'self'", "'unsafe-inline'"],
   // Partner logos come from arbitrary HTTPS sources stored in KV — allow all HTTPS images.
   'img-src':         ["'self'", 'data:', 'blob:', 'https:'],
@@ -24,11 +25,23 @@ const cspDirectives = {
   // Privy auth iframe + WalletConnect verification iframes
   'child-src': [
     'https://auth.privy.io',
+    'https://js.stripe.com',
+    'https://crypto-js.stripe.com',
+    'https://hooks.stripe.com',
+    'https://crypto.link.com',
+    'https://buy.moonpay.com',
+    'https://buy-sandbox.moonpay.com',
     'https://verify.walletconnect.com',
     'https://verify.walletconnect.org',
   ],
   'frame-src': [
     'https://auth.privy.io',
+    'https://js.stripe.com',
+    'https://crypto-js.stripe.com',
+    'https://hooks.stripe.com',
+    'https://crypto.link.com',
+    'https://buy.moonpay.com',
+    'https://buy-sandbox.moonpay.com',
     'https://verify.walletconnect.com',
     'https://verify.walletconnect.org',
     'https://challenges.cloudflare.com',
@@ -38,7 +51,17 @@ const cspDirectives = {
     "'self'",
     // Privy
     'https://auth.privy.io',
+    'https://js.stripe.com',
+    'https://crypto-js.stripe.com',
+    'https://hooks.stripe.com',
+    'https://crypto.link.com',
+    'https://buy.moonpay.com',
+    'https://buy-sandbox.moonpay.com',
     'https://*.rpc.privy.systems',
+    'https://api.stripe.com',
+    'https://m.stripe.network',
+    // Privy native-ETH card funding quotes.
+    'https://api.moonpay.com',
     // WalletConnect
     'wss://relay.walletconnect.com',
     'wss://relay.walletconnect.org',
@@ -107,11 +130,26 @@ const nextConfig = {
     return [
       { source: '/ecosystem', destination: '/create-a-markee', permanent: true },
       { source: '/ecosystem/platforms/superfluid', destination: '/campaigns/superfluid', permanent: true },
+      // The GitHub board page was retired: Add to Your Site handles GitHub files, and every board's
+      // detail page is /markee/[address].
+      { source: '/ecosystem/platforms/github', destination: '/marketplace', permanent: true },
+      { source: '/ecosystem/platforms/github/:address', destination: '/markee/:address', permanent: true },
       { source: '/own-the-network', destination: '/owners', permanent: false },
     ]
   },
 
+  // Lets an E2E dev server run beside a normal one without sharing (and clobbering) .next.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   webpack: (config) => {
+    // E2E builds swap Privy for a mock wagmi wallet on a local fork (tests/e2e/fork/stubs).
+    if (process.env.NEXT_PUBLIC_E2E === '1') {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@privy-io/react-auth$': path.resolve(__dirname, 'tests/e2e/fork/stubs/privy-react-auth.tsx'),
+        '@privy-io/wagmi$': path.resolve(__dirname, 'tests/e2e/fork/stubs/privy-wagmi.tsx'),
+      }
+    }
     config.resolve.fallback = {
       fs: false,
       net: false,

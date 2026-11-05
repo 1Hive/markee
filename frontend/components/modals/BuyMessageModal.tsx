@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
@@ -8,11 +10,11 @@ import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/a
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
-import { ModeratedContent } from '@/components/moderation'
+import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -146,6 +148,7 @@ export function BuyMessageModal({
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
+  const messageModeration = useMessageModeration(message, isOpen)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -155,7 +158,7 @@ export function BuyMessageModal({
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined,
@@ -198,7 +201,8 @@ export function BuyMessageModal({
     : null
   const addFundsTakeFirstAmount = addFundsRawTakeFirst && addFundsRawTakeFirst > 0n ? addFundsRawTakeFirst : null
 
-  const userIsTopDawg = activeTab === 'addFunds' && userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
+  const userIsTop = !!userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
+  const userIsTopDawg = activeTab === 'addFunds' && userIsTop
   const activeTakeFirstAmount = activeTab === 'addFunds' ? addFundsTakeFirstAmount : takeFirstAmount
 
   const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
@@ -319,6 +323,11 @@ export function BuyMessageModal({
     if (writeError) logTransactionError(writeError, 'BuyMessageModal')
   }, [writeError])
 
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash && isOpen) setError(formatReceiptError(receiptError, 'BuyMessageModal.receipt'))
+  }, [txReverted, hash, isOpen, receiptError])
+
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep
 
@@ -339,6 +348,7 @@ export function BuyMessageModal({
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreateMarkee = async () => {
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
@@ -372,6 +382,7 @@ export function BuyMessageModal({
   }
 
   const handleUpdateMessage = async () => {
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!message.trim()) { setError('Please enter a message'); return }
@@ -418,12 +429,14 @@ export function BuyMessageModal({
   // Review-step prediction: activeTakeFirstAmount is already "total wei needed to take #1" in the
   // right unit for whichever tab is active (a one-time total for create, an increment for addFunds),
   // so willWin/shortfall both fall straight out of it without re-deriving the ranking math.
-  const reviewAmountWei = (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  // An update pays nothing, so its shortfall is the top-up the user's message needs to reach #1.
+  const reviewAmountWei = activeTab === 'updateMessage' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const reviewTakeFirstAmount = activeTab === 'updateMessage' ? addFundsTakeFirstAmount : activeTakeFirstAmount
   const reviewWillWin = activeTab === 'updateMessage'
-    ? !!userIsTopDawg
+    ? userIsTop
     : !activeTakeFirstAmount || reviewAmountWei >= activeTakeFirstAmount
-  const reviewShortfallWei = !reviewWillWin && activeTakeFirstAmount && activeTakeFirstAmount > reviewAmountWei
-    ? activeTakeFirstAmount - reviewAmountWei : 0n
+  const reviewShortfallWei = !reviewWillWin && reviewTakeFirstAmount && reviewTakeFirstAmount > reviewAmountWei
+    ? reviewTakeFirstAmount - reviewAmountWei : 0n
   const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
 
   const inputStyle = {
@@ -549,6 +562,8 @@ export function BuyMessageModal({
                   amountUsd={activeTab !== 'updateMessage' && ethPrice && bidNum > 0 ? formatUsd(bidNum * ethPrice) : null}
                   markeeEarnedLabel={activeTab === 'updateMessage' ? '0 MARKEE' : `${formatMarkeeAmount(markeeEarned)} MARKEE`}
                   willWin={reviewWillWin}
+                  editing={activeTab === 'updateMessage'}
+                  alreadyWinning={!!userIsTopDawg}
                   minToWinLabel={reviewMinToWinLabel}
                   chainId={activeTab !== 'create' ? CANONICAL_CHAIN_ID : undefined}
                   markeeId={activeTab !== 'create' ? userMarkee?.address : undefined}
@@ -588,7 +603,7 @@ export function BuyMessageModal({
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
-                    />
+                    />{messageModeration.ui}
                     <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
                       {message.length}/{maxLen}
                     </div>
@@ -609,13 +624,13 @@ export function BuyMessageModal({
               {/* Funded message read-only (addFunds) */}
               {activeTab === 'addFunds' && (
                 <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
-                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee?.address ?? ''}>
+                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={userMarkee?.message ?? ''} markeeId={userMarkee?.address ?? ''}>
                     <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45, wordBreak: 'break-word' }}>
                       {userMarkee?.message || <MessageLoading />}
                     </div>
                   </ModeratedContent>
                   {userMarkee?.name && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- {userMarkee.name}</div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userMarkee.name}</ModeratedAuthor></div>
                   )}
                 </div>
               )}
@@ -625,7 +640,7 @@ export function BuyMessageModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                   <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px' }}>
                     <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={userMarkee.address}>
+                    <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>
                       <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{userMarkee.message}</div>
                     </ModeratedContent>
                   </div>
@@ -637,7 +652,7 @@ export function BuyMessageModal({
                       rows={3}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
-                    />
+                    />{messageModeration.ui}
                   </ModalField>
                 </div>
               )}

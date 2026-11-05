@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Read [../AGENTS.md](../AGENTS.md) first. Its SDK/API compatibility and release
+policy applies to all frontend API routes and integration prompts.
+
 ## Commands
 
 ```bash
@@ -11,12 +14,12 @@ npm run start     # Start production server
 npm run lint      # Run ESLint
 ```
 
-No test runner is configured.
+Targeted tests are configured in package.json. Run the relevant suites and TypeScript checks before delivery.
 
 ## Deployment
 
 - All deploys happen via GitHub push to Vercel — there is no local dev environment in active use
-- No test suite configured — verify changes by deploying and checking Vercel logs
+- Run relevant tests before deploying; verify the resulting deployment and logs as well.
 - `vercel.json` lives inside `frontend/` (matches Vercel's configured Root Directory)
 
 ## Key Principles
@@ -107,7 +110,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 
 ## Pages
 
-- `/account` — "My Markees": shows all leaderboards the connected wallet created across Superfluid and GitHub. Always fetches with `?bust=1` to skip cache. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
+- `/account` — "My Markees": shows all leaderboards the connected wallet created across Superfluid and GitHub. Uses shared listing snapshots on normal loads; explicit post-mutation refreshes use `?bust=1`. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
 
 ## Patterns
 
@@ -115,7 +118,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 The `admin` field on Superfluid leaderboard contracts is the beneficiary address, not the creator. To determine the creator, the API calls `eth_getLogs` on the factory to find creation events, then `eth_getTransaction` to read the `from` address. Results are cached permanently in KV as `creator:sf:{address}`. Always filter "My Markees" by `creator`, falling back to `admin` if not yet resolved.
 
 ### Cache bust
-Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation and on the `/account` page. Never pass `bust=1` on regular listing page loads.
+Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation or a successful mutation. Normal `/account` hydration and regular listing page loads must use cached responses. Distributed refresh leases coalesce simultaneous refresh requests.
 
 ### Wallet hydration flash
 Client components that show different UI based on `isConnected` must use a `mounted` state to prevent a flash of the disconnected state on load:

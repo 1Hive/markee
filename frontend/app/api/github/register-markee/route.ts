@@ -4,6 +4,9 @@ import { kv } from '@vercel/kv'
 import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
 import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 // A timeout or missing file both just mean "not verified yet" here (the panel's own "Check Now"
 // retries with the same bounded fetch), so this stays a plain boolean unlike verify-markee-file's
 // explicit check, which needs to tell the user apart from a genuine not-found.

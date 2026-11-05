@@ -1,0 +1,23 @@
+// Bare hostname, lowercased, no protocol/path/www — the key both the POST increment and the GET
+// per-URL lookup normalize to, so "https://Example.com/blog" and "example.com" count together.
+export function normalizeHost(raw: string): string | null {
+  const trimmed = raw.trim().slice(0, 253) // longest valid hostname
+  if (!trimmed) return null
+  try {
+    const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`
+    return new URL(withProtocol).hostname.replace(/^www\./, '').toLowerCase() || null
+  } catch {
+    return null
+  }
+}
+
+// Unix seconds of the last view a site reported for a board or message address.
+export const lastSiteViewKey = (address: string, host: string) => `views:url:last:${address.toLowerCase()}:${host}`
+
+// Vercel deployments must use the board's normal verifiedUrls path. A shared
+// hosting suffix (including names containing "markee") does not prove ownership.
+export function isTrustedHost(host: string | null): boolean {
+  if (!host) return true // Preserve privacy-browser/server callers without referrer.
+  return host === 'markee.xyz' || host.endsWith('.markee.xyz')
+    || host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
+}

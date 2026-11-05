@@ -408,26 +408,30 @@ Add a proxy route to fetch the flagged content list:
 // app/api/markee/moderation/route.ts
 export async function GET() {
   const res = await fetch('https://markee.xyz/api/moderation', { next: { revalidate: 60 } })
-  if (!res.ok) return Response.json({ flagged: [] })
+  if (!res.ok) return Response.json({ error: 'Moderation unavailable' }, { status: 503 })
   return Response.json(await res.json())
 }
 
 In MarkeeSign (and in MarkeeModal's boost tab), fetch this once on mount and build a Set:
-  const [flagged, setFlagged] = useState<Set<string>>(new Set())
+  const [flagged, setFlagged] = useState<Set<string> | null>(null)
   useEffect(() => {
     fetch('/api/markee/moderation')
-      .then(r => r.json())
-      .then(d => setFlagged(new Set((d.flagged ?? []) as string[])))
-      .catch(() => {})
+      .then(r => { if (!r.ok) throw new Error('Moderation unavailable'); return r.json() })
+      .then(d => { if (!Array.isArray(d.flagged)) throw new Error('Invalid moderation response'); setFlagged(new Set(d.flagged)) })
+      .catch(() => setFlagged(null))
   }, [])
   function isFlagged(markeeAddr: string) {
-    return flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`)
+    return (flagged === null || flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`))
   }
 
+While flagged is null (loading or failed), hide all message text and authors and do not record views. Offer Retry; never interpret an unavailable check as an empty flag list.
+
+The \`flagged\` list holds messages this board's own moderators hid (its owner, plus any wallets the owner added as moderators on markee.xyz). Their flags apply on every site showing the board. Ignore \`siteFlagged\` -- those flags only apply on markee.xyz.
+
 Flagging behavior:
-- MarkeeSign: if isFlagged(topMarkeeAddress), show "Content unavailable" instead of the message. Still allow the modal to open so users can buy a new top message.
+- MarkeeSign: if isFlagged(topMarkeeAddress), show "Content unavailable" instead of the message, and hide its author too (topMessageOwner / name). Still allow the modal to open so users can buy a new top message.
 - MarkeeModal Boost tab: omit flagged entries from the list. If all are flagged, show "No messages available."
-- MarkeeModal Buy tab: always show the current top message (users can replace it by outbidding), even if flagged.
+- MarkeeModal Buy tab: hide flagged or unavailable message text and author; users may still replace it by outbidding.
 
 ## Optional: health endpoint
 

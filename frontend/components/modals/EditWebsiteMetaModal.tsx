@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useAccount, useSignMessage } from 'wagmi'
+import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { metaUpdateMessage } from '@/lib/openinternet/meta'
 
 interface EditWebsiteMetaModalProps {
   isOpen: boolean
@@ -25,6 +28,8 @@ export function EditWebsiteMetaModal({
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
 
   useEffect(() => {
     if (isOpen) {
@@ -59,16 +64,15 @@ export function EditWebsiteMetaModal({
     setError(null)
     setIsSaving(true)
     try {
+      const update = { siteUrl: siteUrl.trim(), logoUrl: logoUrl.trim() }
+      const timestamp = Math.floor(Date.now() / 1000)
+      const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, leaderboardAddress, update, timestamp) })
       const res = await fetch('/api/openinternet/meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaderboardAddress,
-          ...(siteUrl.trim() && { siteUrl: siteUrl.trim() }),
-          ...(logoUrl.trim() && { logoUrl: logoUrl.trim() }),
-        }),
+        body: JSON.stringify({ leaderboardAddress, ...update, signatureVersion: 2, owner: address, signature, timestamp }),
       })
-      if (!res.ok) throw new Error('Failed to save')
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Failed to save')
       setSaved(true)
       onSuccess?.()
       setTimeout(onClose, 1500)
@@ -140,7 +144,7 @@ export function EditWebsiteMetaModal({
 
           <button
             onClick={handleSave}
-            disabled={isSaving || saved || (!siteUrl.trim() && !logoUrl.trim())}
+            disabled={!isDirty}
             className="w-full bg-[#F897FE] text-[#060A2A] px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#7C9CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {saved ? (

@@ -1,5 +1,7 @@
 'use client'
 
+import { useMessageModeration } from '@/hooks/useMessageModeration'
+
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
@@ -8,7 +10,7 @@ import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
@@ -66,13 +68,14 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
+  const messageModeration = useMessageModeration(newMessage, isOpen)
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
   const priceEth = formatEther(priceWei)
@@ -95,6 +98,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   useEffect(() => {
     if (writeError) logTransactionError(writeError, 'FixedPriceModal')
   }, [writeError])
+
+  // A reverted tx otherwise just drops back to the form with no error.
+  useEffect(() => {
+    if (txReverted && hash && isOpen) setError(formatReceiptError(receiptError, 'FixedPriceModal.receipt'))
+  }, [txReverted, hash, isOpen, receiptError])
 
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
   const blockBackdropClose = hasUserEdited && !txStep
@@ -122,6 +130,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const balanceWarning = insufficientBalance ? `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.` : null
 
   const handleChangeMessage = async () => {
+    if (!await messageModeration.guard(newMessage)) { setReviewOpen(false); return }
     if (!fixedMarkee || !hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
@@ -269,7 +278,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   {fixedMarkee.message && (
                     <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(15,27,107,0.35)', padding: '14px 16px', marginBottom: 18 }}>
                       <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Current message</div>
-                      <ModeratedContent chainId={fixedMarkee.chainId} markeeId={fixedMarkee.markeeAddress}>
+                      <ModeratedContent chainId={fixedMarkee.chainId} message={fixedMarkee.message ?? ''} markeeId={fixedMarkee.markeeAddress}>
                         <div style={{ fontFamily: MONO, fontSize: 14, color: TEXT, lineHeight: 1.45 }}>{fixedMarkee.message}</div>
                       </ModeratedContent>
                     </div>
@@ -287,7 +296,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
                       disabled={isPending || isConfirming}
-                    />
+                    />{messageModeration.ui}
                     <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
                       {newMessage.length}/{maxLen}
                     </div>

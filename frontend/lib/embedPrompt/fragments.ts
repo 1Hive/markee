@@ -1,3 +1,5 @@
+// Legacy manual-integration fragments below are retained for compatibility.
+// New integrations use buildEmbedPrompt, which detects framework/wallet/strategy.
 // Composable fragments for the Website embed AI-prompt wizard (EmbedModal -> WebsiteEmbedWizard).
 //
 // Each fragment is a small, independently-editable string builder instead of one giant static
@@ -18,10 +20,14 @@ export type EmbedStrategy = 'fixed' | 'streaming'
 export interface BuildEmbedPromptInput {
   address: string
   name?: string
+  /** @deprecated Retained for callers; the SDK detects the board strategy. */
   strategy: EmbedStrategy
-  framework: EmbedFramework
-  wallet: EmbedWallet
-  agent: EmbedAgent
+  /** @deprecated Retained for callers; the coding assistant detects the framework. */
+  framework?: EmbedFramework
+  /** @deprecated Retained for callers; the coding assistant detects existing wallets. */
+  wallet?: EmbedWallet
+  /** @deprecated The prompt works with any coding assistant. */
+  agent?: EmbedAgent
 }
 
 // ── Reference UI copy ─────────────────────────────────────────────────────────
@@ -29,6 +35,7 @@ export interface BuildEmbedPromptInput {
 // comes from. The buy-flow fragments interpolate these rather than hardcoding strings, and
 // tests/embedPrompt.test.ts fails if any of them stops appearing in its source file -- so renaming a
 // button in a modal breaks CI here instead of leaving the prompt describing a UI that no longer exists.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export const UI_COPY = {
   fixedModal: {
     file: 'components/modals/MarkeeSignModal.tsx',
@@ -151,6 +158,7 @@ const FRAMEWORK_LABEL: Record<EmbedFramework, string> = {
 }
 
 // ── Core identity ─────────────────────────────────────────────────────────────
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function coreIdentityFragment(
   { address, name, buyUrl, strategy }: { address: string; name?: string; buyUrl: string; strategy: EmbedStrategy },
 ): string {
@@ -191,6 +199,7 @@ needs to change or redeploy.`
 // instead of something that reads as Markee. Mirrors markee.xyz's own hero card
 // (components/board-detail/shared.tsx's FeaturedCard + MarkeeWatermark), restyled in the host
 // site's own colors -- not Markee's pink, just Markee's shape.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function triggerCardFragment(): string {
   return `## Trigger card: match Markee's own hero-card pattern
 
@@ -267,6 +276,7 @@ This card is also the click target that opens the buy modal below.`
 // wagmi + viem is the one non-negotiable base under every option -- every contract-call fragment
 // below assumes it. Don't pre-detect whether it's already installed; let the agent figure that out
 // from the target repo.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function walletFragment(wallet: EmbedWallet): string {
   if (wallet === 'none') {
     return `## Wallet connection: none set up yet
@@ -498,6 +508,7 @@ Your existing \`backerDeposit\` survives the delete (deposits are tracked per-ba
 - **Buffer:** \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise). markee.xyz doesn't expose this as a button, so it's optional here too.`
 }
 
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function strategyFragment(strategy: EmbedStrategy, address: string): string {
   return strategy === 'streaming' ? streamingStrategyFragment(address) : fixedStrategyFragment(address)
 }
@@ -650,6 +661,7 @@ Rates are entered in ETHx per month everywhere. Read \`backerMarkee(connectedWal
 **Success headlines:** "${s.successLive}" (new message), "${s.successFunded}" (new stream to an existing message), "${s.successMoved}" (switch), "${s.successRate}" (rate change).`
 }
 
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function buyFlowFragment(strategy: EmbedStrategy): string {
   return `${buyModalShellFragment()}\n\n---\n\n${strategy === 'streaming' ? streamingBuyFlowFragment() : fixedBuyFlowFragment()}`
 }
@@ -657,6 +669,7 @@ export function buyFlowFragment(strategy: EmbedStrategy): string {
 // ── Data fetching / proxy route ─────────────────────────────────────────────────
 const PUBLIC_API_URL = 'https://markee.xyz/api/ecosystem/leaderboards'
 
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function proxyRouteFragment(framework: EmbedFramework, address: string): string {
   const commonNote = `Browser fetches to markee.xyz are blocked by CORS on most setups, so this needs a server-side hop. Find your leaderboard by matching \`address\` (case-insensitive) against "${address}" in the response. Useful fields: \`topMessage\`, \`topMessageOwner\`, \`topMarkeeAddress\`, and, only as a fallback for the trigger card's price pill until your on-chain reads land, \`topFundsAddedRaw\` (fixed: add 0.001 ETH to get the price to take #1) or \`effectiveRateRaw\` (streaming: the top message's own wei/sec rate) -- format either exactly as the trigger-card section describes. (\`minimumPrice\` is the floor for a brand-new message, not the price to take #1.) **Don't use \`streamedRateRaw\` as the price** -- that field is the board's total combined inflow across every backed message, not what it costs to take #1. A brand-new, not-yet-verified leaderboard won't appear in this response at all (verification gates the entire board out of this public listing, not just its top message -- see the note near the top of this prompt), so a live, paid message can legitimately render as "no data yet" here for a while. Have the trigger component fall back to a "be first!" empty state in that case, not an error -- it's expected, not a sign anything is broken.`
 
@@ -695,6 +708,7 @@ Cache the non-\`bust\` response for ~60s (in-memory or your platform's edge cach
 // ── View tracking ────────────────────────────────────────────────────────────
 // Anti-spoofing hardening on the markee.xyz side is a separate, explicitly out-of-scope follow-up --
 // this fragment documents today's real (simple) mechanism, not an aspirational one.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function viewTrackingFragment(): string {
   return `## View tracking
 
@@ -717,6 +731,7 @@ Safe to call on every page load -- the server-side dedup (keyed by the real visi
 }
 
 // ── Moderation ───────────────────────────────────────────────────────────────
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function moderationFragment(): string {
   return `## Moderation
 
@@ -725,25 +740,35 @@ Add a proxy route to fetch the flagged-content list:
 // app/api/markee/moderation/route.ts (adapt to your framework)
 export async function GET() {
   const res = await fetch('https://markee.xyz/api/moderation', { next: { revalidate: 60 } })
-  if (!res.ok) return Response.json({ flagged: [] })
+  if (!res.ok) return Response.json({ error: 'Moderation unavailable' }, { status: 503 })
   return Response.json(await res.json())
 }
 \`\`\`
 Fetch this once on mount and build a Set:
 \`\`\`ts
-const [flagged, setFlagged] = useState<Set<string>>(new Set())
+const [flagged, setFlagged] = useState<Set<string> | null>(null)
 useEffect(() => {
-  fetch('/api/markee/moderation').then(r => r.json()).then(d => setFlagged(new Set(d.flagged ?? []))).catch(() => {})
+  fetch('/api/markee/moderation')
+    .then(r => { if (!r.ok) throw new Error('Moderation unavailable'); return r.json() })
+    .then(d => { if (!Array.isArray(d.flagged)) throw new Error('Invalid moderation response'); setFlagged(new Set(d.flagged)) })
+    .catch(() => setFlagged(null))
 }, [])
-const isFlagged = (markeeAddr: string) => flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`)
+const isFlagged = (markeeAddr: string) => (flagged === null || flagged.has(\`8453:\${markeeAddr.toLowerCase()}\`))
 \`\`\`
-If the current top message is flagged, show "Content unavailable" instead of the text, but still let the modal open so visitors can buy a new top message. In any message-picker list, omit flagged entries entirely.`
+While flagged is null (loading or failed), hide all message text and authors and do not record views. Offer Retry; never interpret an unavailable check as an empty flag list.
+
+\`flagged\` holds the messages this board's own moderators hid: its owner, plus any wallets the owner added as moderators on markee.xyz (Dashboard -> the board's Admin panel -> Moderators). Their flags apply on every site showing the board, so honour them here. Ignore \`siteFlagged\` if present -- those are markee.xyz's own admin flags and only apply on markee.xyz.
+
+If the current top message is flagged, show "Content unavailable" instead of the text **and hide its author** (the name, or the wallet address when there's no name) -- names are free text too. Still let the modal open so visitors can buy a new top message. In any message-picker list, omit flagged entries entirely.
+
+To show who moderates the board (e.g. a "Report to moderators" link), \`GET https://markee.xyz/api/moderation/moderators?board=<board address>\` returns \`{ owners: string[], moderators: string[] }\` (lowercase addresses, CORS-open). Moderators review and flag on markee.xyz; your site only reads the result.`
 }
 
 // ── Health endpoint ─────────────────────────────────────────────────────────
 // Backs the "Check View Tracking" / "Check Moderation" steps in the embed modal's verify flow
 // (WebsiteEmbedWizard -> /api/openinternet/check-health). Optional by design -- those steps soft-pass
 // if this endpoint is missing -- but without it they're not verifying anything real for this integrator.
+/** @deprecated Use buildEmbedPrompt for SDK integrations. */
 export function healthEndpointFragment(): string {
   return `## Health endpoint (optional, powers Markee's embed verification)
 
@@ -772,27 +797,33 @@ Don't import Markee's own color palette. Before building the modal, read this si
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
-export function buildEmbedPrompt({ address, name, strategy, framework, wallet, agent }: BuildEmbedPromptInput): string {
-  const buyUrl = `https://markee.xyz/markee/${address}`
-  const sections = [
-    coreIdentityFragment({ address, name, buyUrl, strategy }),
-    triggerCardFragment(),
-    walletFragment(wallet),
-    strategyFragment(strategy, address),
-    buyFlowFragment(strategy),
-    proxyRouteFragment(framework, address),
-    viewTrackingFragment(),
-    moderationFragment(),
-    healthEndpointFragment(),
-    themeAdoptionFragment(),
-    `## Implementation notes
-- The \`data-markee-address="${address.toLowerCase()}"\` attribute must be present on the widget's server-rendered HTML for integration verification -- setting it only via \`useEffect\`/\`document.setAttribute()\` runs client-side only and won't be detected. This is the one hard requirement for the "Verify Embed" step on markee.xyz.
-- Poll the leaderboard data every 60 seconds. After a successful transaction, re-fetch with \`?bust=1\` appended to your own proxy route's fetch of the upstream markee.xyz endpoint (and have your proxy forward it) -- the upstream data passes through multiple stacked ~60s server caches, so a plain re-fetch shortly after a transaction will very likely still return the pre-transaction value. \`?bust=1\` skips all of them for one request; don't pass it on regular page loads.
-- Before creating any new file or route, check whether this repo already has one that does the same job (an existing API proxy layer, an existing env-var naming convention, an existing Superfluid/wallet setup) and extend that instead of assuming a blank slate -- these instructions describe the shape of what's needed, not a mandate to create every file listed here from scratch regardless of what's already present.
-- Style to match this site's existing design system (see above) -- the pattern works with any CSS approach.
+export function buildEmbedPrompt({ address, name }: BuildEmbedPromptInput): string {
+  return `Integrate @markee_team/sdk@latest into this app using the existing leaderboard below. Follow this flow: inspect the codebase, resolve missing requirements, implement the SDK, test, deploy, and verify the public page.
 
-Please look at this codebase and implement the embed. Choose an appropriate location for the trigger (header, footer, sidebar widget). Match the existing code style, and keep it minimal.`,
-  ]
-  const intro = agent === 'other' ? '' : `<!-- Paste this into ${AGENT_LABEL[agent]} alongside this repo. -->\n\n`
-  return intro + sections.join('\n\n---\n\n')
+First inspect package.json, entry points, existing components, wallet providers, and design tokens. Detect React/Next.js versus vanilla JavaScript or another framework yourself. Detect the existing wallet library and reuse it. Do not ask me to choose a framework, wallet library, or coding agent.
+
+The leaderboard is already created${name ? ` (${JSON.stringify(name)})` : ''}:
+https://www.markee.xyz/markee/${address}
+Use placement = { kind: 'board', chainId: 8453, address: '${address}' }.
+Verify it with new MarkeeClient().snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
+
+Ask only unanswered requirements:
+- Where should the sign appear and what should open the modal?
+- Match the existing app theme by default. Ask about styling only if the codebase has no clear theme or conflicting design patterns.
+- What public HTTPS page/domain should be registered as siteUrl?
+- What should happen after a confirmed payment?
+- If no wallet integration exists, ask whether to add a host wallet or use Markee-hosted checkout. Hosted checkout is only available for eligible For Sale boards when enabled by the API; For Rent requires a wallet. Do not promise card checkout if disabled. If a wallet already exists, reuse its active EIP-1193 provider without installing a second wallet context.
+
+Implementation:
+1. Install @markee_team/sdk@latest and read its current README/types. The SDK knows its API endpoint. Do not request API keys or create RPC, database, moderation, or view-tracking proxies.
+2. For React/Next.js, use MarkeeSign and MarkeeModal from @markee_team/sdk/react in a client component. Use static imports, placement, open, and onClose. For vanilla JavaScript or other frameworks, use createMarkeeSign and createMarkee from @markee_team/sdk; destroy both on teardown as documented in the installed README.
+3. Pass the host wallet adapter when available. Resolve connect only after selection, handle cancellation, and never silently use a different provider. Do not collect card details or install Privy in the host app for hosted checkout.
+4. Try to match the app’s existing theme as closely as possible. Inspect its design tokens, CSS variables, Tailwind configuration, and nearby cards, buttons, inputs, and modals. Reuse those colors, typography, light/dark behavior, and corner radii for both the sign and modal through the SDK theme options: mode, colors, fontFamily, radius, cardRadius, and controlRadius. Include backgrounds, surfaces, text, muted text, inputs, primary buttons, link, focusRing, border, selected, accent, and semantic status colors; keep text readable in every supported mode. Do not default to Markee’s purple palette or invent a new visual style. Preserve the SDK layout and transaction logic; do not rebuild the modal.
+5. Pass the agreed public URL as siteUrl. Include data-markee-address="${address.toLowerCase()}" in server-rendered or static HTML so Markee can verify the site. For client-only apps, put a hidden marker in the static HTML. Use onSiteVerification or client.verifySite after deployment; localhost is not a verified public integration.
+6. Let the SDK handle strategy detection, balances, moderation, views, reward estimates, refunds, review refresh, network switching, and confirmation. Show success only after the confirmed event, then refresh the sign if needed.
+7. Check build/types, board loading, theme, open/close, and wallet reuse. Do not sign transactions or spend funds during automated verification. Report changed files and any limitations.
+8. Deploy through the app’s existing deployment workflow when authorized. Give me the public page URL and ask me to return to Markee’s Add Markee To Your Site modal, paste that URL, and click Verify Site. Site verification confirms the public HTML marker; do not claim it tested wallet transactions or payments.
+
+Use the latest package, not a pinned prerelease in these instructions. Base payments use real funds.
+`
 }

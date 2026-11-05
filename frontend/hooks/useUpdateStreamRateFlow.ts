@@ -13,7 +13,7 @@ import {
   STREAMING_BASE, SUPERFLUID_HOST_ABI, CFA_AGREEMENT_ID, CFA_FORWARDER_ABI, buildUpdateStreamOps,
 } from '@/lib/superfluid/streaming'
 import { retryUntilLoaded } from '@/components/modals/StreamUI'
-import { formatTransactionError, logTransactionError } from '@/lib/transactionErrors'
+import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -30,7 +30,8 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
+    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const openRef = useRef(isOpen)
   openRef.current = isOpen
@@ -61,6 +62,14 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
       setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
+
+  // A reverted batch otherwise leaves the modal on "Confirming" with no error (same as useCreateStreamFlow).
+  useEffect(() => {
+    if (txReverted && txHash && isOpen) {
+      setSubmitting(false)
+      setError(formatReceiptError(receiptError, 'useUpdateStreamRateFlow.receipt'))
+    }
+  }, [txReverted, txHash, isOpen, receiptError])
 
   async function updateRate(
     next: { nextRate: bigint; depositTopUp: bigint },

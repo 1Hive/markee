@@ -19,6 +19,9 @@ interface GitHubTrafficResponse {
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 const rpcClient = createPublicClient({ chain: base, transport: http(process.env.ALCHEMY_BASE_URL ?? undefined) })
 
 const LEADERBOARD_ABI = [{

@@ -5,6 +5,11 @@ on:
     branches:
       - main
       - dev
+  # Vercel deploys main itself; its Deployment Checks hold the production deploy until these
+  # checks pass on the merge commit, which the PR run never sees.
+  push:
+    branches:
+      - main
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -41,3 +46,162 @@ jobs:
 
       - name: Embed prompt matches the reference modals
         run: npm run test:embed-prompt
+
+      - name: Streaming campaign math
+        run: npm run test:streaming-campaign
+
+      - name: Keeper logic
+        run: npm run test:keeper
+
+      - name: Moderation queue state machine
+        run: npm run test:moderation
+
+      - name: RPC efficiency regressions
+        run: npm run test:rpc
+
+      - name: Email notification message format
+        run: npm run test:email-notifications
+
+      - name: Check e2e target
+        id: e2e
+        run: echo "url=${{ secrets.STAGING_URL }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Playwright browsers
+        if: steps.e2e.outputs.url != ''
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E tests
+        if: steps.e2e.outputs.url != ''
+        run: npm run test:e2e
+        env:
+          BASE_URL: ${{ secrets.STAGING_URL }}
+
+  # Real transactions through the app's own modals against a local Anvil fork of Base, with a mock
+  # wallet and local Redis in place of Vercel KV (see frontend/tests/e2e/fork/README.md). Also runs
+  # the read-only account.spec.ts checks against the same local server.
+  fork-e2e:
+    name: Fork E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      # dorny/paths-filter lists a PR's changed files through the API.
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_FORK_RPC_URL: ${{ secrets.E2E_FORK_RPC_URL }}
+      E2E_FORK_BLOCK: '52820000'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Every run spends calls on the E2E Alchemy project, so PRs that don't touch the app (SDK
+      # package, docs, examples, contracts) skip it. Pushes to main always run.
+      - name: Check changed paths
+        id: changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            app:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
+      # Secrets aren't passed to pull requests from forks; skip rather than fail there.
+      - name: Check fork RPC
+        id: rpc
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ steps.changes.outputs.app }}" != "true" ]; then
+            echo "::notice::No frontend changes; skipping fork E2E."
+          elif [ -n "$E2E_FORK_RPC_URL" ]; then
+            chain=$(curl -s -X POST -H 'Content-Type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "$E2E_FORK_RPC_URL" \
+              | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
+            if [ "$chain" != "0x2105" ]; then
+              echo "::error::E2E_FORK_RPC_URL must be a Base Mainnet RPC (chain id 0x2105), got '${chain:-no response}'."
+              exit 1
+            fi
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::E2E_FORK_RPC_URL is not available to this run; skipping fork E2E."
+          fi
+
+      - name: Setup Node.js
+        if: steps.rpc.outputs.available == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.rpc.outputs.available == 'true'
+        run: npm ci
+
+      - name: Install Foundry
+        if: steps.rpc.outputs.available == 'true'
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.0
+          # Its built-in cache also targets ~/.foundry/cache/rpc (under a per-commit key); the
+          # Anvil fork state steps below own that directory.
+          cache: false
+
+      # Anvil's per-block fork cache: without it every run re-fetches all touched state from the RPC.
+      - name: Restore Anvil fork state
+        if: steps.rpc.outputs.available == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.foundry/cache/rpc
+          key: anvil-v1.5.0-v3-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: anvil-v1.5.0-v3-base-${{ env.E2E_FORK_BLOCK }}-
+
+      - name: Install Playwright browsers
+        if: steps.rpc.outputs.available == 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Verify fork cache lifecycle without external RPC
+        if: steps.rpc.outputs.available == 'true'
+        run: node --test tests/fork-cache.test.mjs
+
+      - name: Fork E2E tests
+        if: steps.rpc.outputs.available == 'true'
+        run: npm run test:e2e:fork
+
+      # Save warmed state even after test failures. Rotating keys allow later runs
+      # to improve the cache; the old fixed key permanently retained a tiny archive.
+      - name: Inspect fork cache
+        id: fork-cache
+        if: always() && steps.rpc.outputs.available == 'true'
+        run: |
+          bytes=$(find ~/.foundry/cache/rpc -name storage.json -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum+0}')
+          echo "Fork cache bytes: ${bytes:-0}"
+          if [ "${bytes:-0}" -gt 4096 ]; then echo "useful=true" >> "$GITHUB_OUTPUT"
+          else echo "::warning::Anvil wrote no fork cache (${bytes:-0} bytes), so the next run forks cold from the RPC. Did Anvil shut down cleanly?"; fi
+      - name: Save Anvil fork state
+        if: always() && steps.fork-cache.outputs.useful == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.foundry/cache/rpc
+          key: anvil-v1.5.0-v3-base-${{ env.E2E_FORK_BLOCK }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload upstream RPC counts
+        if: always() && steps.rpc.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-rpc-counts
+          path: frontend/test-results/fork-rpc-counts.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Playwright report
+        if: failure() && steps.rpc.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-e2e-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7

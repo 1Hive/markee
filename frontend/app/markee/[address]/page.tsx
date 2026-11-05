@@ -223,7 +223,6 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
               messagesLoading={isLoading}
               totalLabel="Total funds added"
               totalNode={<MetricValue text={totalFundsLabel} color={GREEN} title={ethPrice ? totalFundsEthLabel : undefined} />}
-              topMarkeeAddress={topMarkee.address}
               onAddToSite={() => setEmbedOpen(true)}
             />
           </section>

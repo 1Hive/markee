@@ -5,6 +5,9 @@ import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, encodedFilePath } from '@/lib/github/linkedFiles'
 
+// @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
+export const dynamic = 'force-dynamic'
+
 // ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
 // Emoji and CJK characters occupy 2 columns; everything else occupies 1.
 function wcwidth(str: string): number {

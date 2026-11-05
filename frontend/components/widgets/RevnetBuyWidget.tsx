@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { parseEther } from 'viem'
 import { base } from 'viem/chains'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
-import { MONO, PINK, BLUE, BORDER } from '@/lib/design-tokens'
+import { formatReceiptError } from '@/lib/transactionErrors'
+import { MONO, PINK, BLUE, BORDER, DANGER } from '@/lib/design-tokens'
 
 
 // Juicebox v4 uses this sentinel address for native ETH
@@ -72,7 +73,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   const { switchChain } = useSwitchChain()
 
   const { writeContract, data: txHash, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({
     hash: txHash,
     query: { enabled: !!txHash },
   })
@@ -108,6 +109,8 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   }
 
   const busy = isPending || isConfirming
+  // A reverted pay otherwise just re-enables the button with no error.
+  const failure = useMemo(() => txReverted ? formatReceiptError(receiptError, 'RevnetBuyWidget.receipt') : null, [txReverted, receiptError])
 
   return (
     <div style={{
@@ -228,6 +231,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
             {isConfirming ? 'Confirming…' : isPending ? 'Confirm in wallet…' : authenticated ? 'Buy MARKEE' : 'Connect wallet to buy'}
           </button>
         )}
+        {failure && !busy && <p style={{ margin: '10px 0 0', fontSize: 12, color: DANGER, textAlign: 'center' }}>{failure}</p>}
       </div>
     </div>
   )

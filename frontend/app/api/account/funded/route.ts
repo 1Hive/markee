@@ -8,6 +8,8 @@ import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
+import { withWinTimes } from '@/lib/leaderboard/topHistory'
+import { fundedSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,10 +103,11 @@ async function fixedFunded(
   origin: string,
   headers: HeadersInit,
 ): Promise<FundedMessage[]> {
-  const [sfData, ghData, oiData] = await Promise.all([
-    fetch(`${origin}/api/superfluid/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/github/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/openinternet/leaderboards`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+  const [sfData, ghData, oiData, fsData] = await Promise.all([
+    fetch(`${origin}/api/superfluid/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/github/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/openinternet/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${origin}/api/forsale/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
   ])
 
   const leaderboards: Board[] = [
@@ -114,7 +117,9 @@ async function fixedFunded(
     ...(sfData?.leaderboards ?? []).map((lb: any) => ({ ...lb, platform: 'superfluid', verifiedUrls: [], linkedFiles: [] })),
     ...(ghData?.leaderboards ?? []),
     ...(oiData?.leaderboards ?? []),
-  ].filter((lb: any) => lb.markeeCount > 0)
+    // For Sale factory boards come from their own listing route, not the openinternet one.
+    ...(fsData?.leaderboards ?? []),
+  ].filter((lb: any, i, all) => lb.markeeCount > 0 && all.findIndex((x: any) => x.address.toLowerCase() === lb.address.toLowerCase()) === i)
 
   if (leaderboards.length === 0) return []
 
@@ -266,7 +271,7 @@ async function streamingFunded(
   origin: string,
   headers: HeadersInit,
 ): Promise<FundedMessage[]> {
-  const data = await fetch(`${origin}/api/streaming/leaderboards`, { headers })
+  const data = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
     .then(r => r.ok ? r.json() : null).catch(() => null)
 
   const boards: Board[] = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
@@ -355,9 +360,17 @@ export async function GET(request: Request) {
 
   // One strategy failing should not blank out the other's positions.
   const [fixed, streaming] = await Promise.all([
-    fixedFunded(client, owner, origin, headers).catch(() => []),
-    streamingFunded(client, owner, origin, headers).catch(() => []),
+    fixedFunded(client, owner, origin, headers).catch(() => null),
+    streamingFunded(client, owner, origin, headers).catch(() => null),
   ])
+  const funded = [...(fixed ?? []), ...(streaming ?? [])]
 
-  return NextResponse.json({ funded: [...fixed, ...streaming] })
+  // The wallet's running total put into other people's messages, for the Buyer Hub chart
+  // (lib/stats/daily.ts). Skipped when either read failed, so a partial read can't look like a refund.
+  if (fixed && streaming) {
+    const total = funded.reduce((sum, m) => sum + BigInt(m.totalContributed || '0'), 0n)
+    await snapshotTotals([{ key: fundedSnapshotKey(owner), total }]).catch(e => console.error('[account/funded] snapshot failed', e))
+  }
+
+  return NextResponse.json({ funded: await withWinTimes(funded) })
 }

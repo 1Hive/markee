@@ -1,3 +1,4 @@
+import { cachedListing } from '@/lib/leaderboards/cached'
 // app/api/github/leaderboards/route.ts
 import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
@@ -8,6 +9,7 @@ import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
 import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const LEADERBOARD_FACTORY_ADDRESS = '0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2' as const
 
@@ -70,17 +72,11 @@ const MARKEE_ABI = [
 
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 const CACHE_KEY = 'cache:github:leaderboards'
-const CACHE_TTL = 60 // seconds
 
 // ── GET /api/github/leaderboards ─────────────────────────────────────────────
 
-export async function GET(request: Request) {
+async function loadListing(request: Request) {
   try {
-    const bust = new URL(request.url).searchParams.get('bust') === '1'
-    if (!bust) {
-      const cached = await kv.get<object>(CACHE_KEY)
-      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
-    }
 
     const client = getClient()
 
@@ -230,10 +226,13 @@ export async function GET(request: Request) {
     })
 
     const payload = { leaderboards, totalPlatformFunds: formatEther(totalPlatformFundsWei) }
-    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[leaderboards] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+export async function GET(request: Request) {
+  return cachedListing(request, CACHE_KEY, loadListing, NO_CACHE)
 }

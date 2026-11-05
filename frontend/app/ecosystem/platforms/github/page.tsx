@@ -149,7 +149,7 @@ function TableRow({
 
       {/* CURRENT MESSAGE */}
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>

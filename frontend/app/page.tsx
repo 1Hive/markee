@@ -80,7 +80,7 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
           {formatViews(views.totalViews)}
         </span>
       )}
-      <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={fixedMarkee.strategyAddress}>
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={fixedMarkee.message ?? ''} markeeId={fixedMarkee.strategyAddress}>
         <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
       </ModeratedContent>
       {hasPrice && (
@@ -235,7 +235,7 @@ function PlatformGlyph({ icon, size = 26, color }: { icon: string; size?: number
 
 const PLATFORMS = [
   { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE', href: '/marketplace' },
-  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/ecosystem/platforms/github' },
+  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/marketplace' },
   { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/ecosystem/platforms/superfluid' },
 ] as const
 
@@ -599,7 +599,7 @@ export default function Home() {
                             FlagButton's handler only stopPropagation()s, not preventDefault()s, so
                             nesting it here would still navigate on click. The target page has a
                             working FlagButton already. */}
-                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
                           <div style={{
                             fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

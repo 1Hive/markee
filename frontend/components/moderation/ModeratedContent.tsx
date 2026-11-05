@@ -13,12 +13,14 @@
  * 
  */
 
+import { usePublishedModeration } from '@/hooks/usePublishedModeration'
 import { useState, type ReactNode } from 'react'
 import { useModeration } from '@/components/moderation/ModerationProvider'
 import { MODERATION_DEFAULTS } from '@/lib/moderation/config'
 
 interface ModeratedContentProps {
   chainId: number | string
+  message?: string
   markeeId: string
   children: ReactNode
   /** This markee's board admin -- lets that board's own admin see through the blur too, not just global admins */
@@ -38,6 +40,7 @@ interface ModeratedContentProps {
 export function ModeratedContent({
   chainId,
   markeeId,
+  message,
   children,
   boardAdmin,
   boardCreator,
@@ -47,9 +50,11 @@ export function ModeratedContent({
   className = '',
 }: ModeratedContentProps) {
   const { isFlagged, canModerate } = useModeration()
-  const [revealed, setRevealed] = useState(false)
+  const [revealed, setRevealed] = useState<string | null>(null)
 
-  const flagged = isFlagged(chainId, markeeId)
+  const automatic = usePublishedModeration(chainId, markeeId, message)
+  const flagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'soft-flagged' || automatic.data?.siteState === 'manual-flagged'
+  if (automatic.unavailable) return <div role="status" className={className}>Message unavailable while moderation loads.</div>
   const isAdmin = canModerate(boardAdmin, boardCreator)
 
   // Admins/board moderators always see content (with a subtle indicator)
@@ -68,12 +73,12 @@ export function ModeratedContent({
   }
 
   // Flagged content for regular users
-  if (revealed) {
+  if (revealed === `${markeeId}:${message ?? ''}`) {
     return (
       <div className={`relative ${className}`}>
         {children}
         <button
-          onClick={() => setRevealed(false)}
+          onClick={() => setRevealed(null)}
           className="absolute top-1 right-1 text-[10px] text-[#8A8FBF] hover:text-[#B8B6D9] transition-colors"
         >
           Hide
@@ -100,7 +105,7 @@ export function ModeratedContent({
         </span>
         {allowReveal && (
           <button
-            onClick={() => setRevealed(true)}
+            onClick={() => setRevealed(`${markeeId}:${message ?? ''}`)}
             className="text-xs text-[#7C9CFF] hover:text-[#F897FE] underline transition-colors"
           >
             {MODERATION_DEFAULTS.revealText}
@@ -109,4 +114,36 @@ export function ModeratedContent({
       </div>
     </div>
   )
+}
+
+/**
+ * ModeratedAuthor
+ *
+ * Wraps a message's author (name, or wallet when there is no name). A flagged message hides its
+ * author too, since names are free text written by the same person. Same visibility rules as
+ * ModeratedContent: the board's moderators and global admins still see it.
+ *
+ * Usage:
+ *   <ModeratedAuthor chainId={8453} markeeId={markee.address}>{markee.name}</ModeratedAuthor>
+ */
+export function ModeratedAuthor({
+  chainId,
+  markeeId,
+  message,
+  boardAdmin,
+  boardCreator,
+  children,
+}: {
+  chainId: number | string
+  message?: string
+  markeeId: string
+  boardAdmin?: string | null
+  boardCreator?: string | null
+  children: ReactNode
+}) {
+  const { isHidden } = useModeration()
+  const automatic = usePublishedModeration(chainId, markeeId, message)
+  if (automatic.unavailable || automatic.data?.siteState === 'soft-flagged' || automatic.data?.siteState === 'manual-flagged') return <span>{MODERATION_DEFAULTS.hiddenAuthorText}</span>
+  if (!isHidden(chainId, markeeId, boardAdmin, boardCreator)) return <>{children}</>
+  return <span style={{ fontStyle: 'italic', opacity: 0.6 }}>{MODERATION_DEFAULTS.hiddenAuthorText}</span>
 }
