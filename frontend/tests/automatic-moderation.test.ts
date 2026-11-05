@@ -247,11 +247,13 @@ test('queue approval is signed for exact text, overrides automatic moderation an
   text = 'Changed while signing'
   assert.equal((await POST(req())).status, 409)
   text = 'shit'
-  t.mock.method(automaticAuthDeps, 'readItems', async () => [{ ...item, message: 'Different queued text' }])
+  t.mock.method(automaticAuthDeps, 'readItems', async () => [{ ...item, board: '0x3333333333333333333333333333333333333333' }])
   assert.equal((await POST(req())).status, 409)
   assert.equal(records.has(sharedOverrideKey(id, hash)), false)
-  t.mock.method(automaticAuthDeps, 'readItems', async () => [item])
+  t.mock.method(automaticAuthDeps, 'readItems', async () => [{ ...item, message: 'Older scanned text', previousMessage: 'Last reviewed text' }])
   assert.equal((await POST(req())).status, 200)
+  assert.equal(records.get(itemKey(id)).message, 'shit')
+  assert.equal(records.get(itemKey(id)).previousMessage, 'Last reviewed text')
   assert.equal(records.get(itemKey(id)).reviews.board.status, 'approved')
   assert.equal(records.get(itemKey(id)).reviews.site.status, 'pending')
   const result = (await checkPublished([id]))[0]

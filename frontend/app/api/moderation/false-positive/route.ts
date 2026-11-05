@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { automaticDeps, automaticAuthDeps, autoEnabled, checkDraft, contentHash, overrideKey, sharedOverrideKey, checkPublished } from '@/lib/moderation/automatic'
 import { approveMessage, falsePositiveMessage } from '@/lib/moderation/automatic-message'
 import { itemKey, pendingKey } from '@/lib/moderation/server'
-import { ADDRESS_PATTERN, reviewItem } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, observeMessage, reviewItem } from '@/lib/moderation/queue'
 import { clientIp } from '@/lib/rate-limit'
 import { readLimitedJsonBody } from '@/lib/sdk/gardens/body'
 export const dynamic = 'force-dynamic'
@@ -24,8 +24,11 @@ export async function POST(req: NextRequest) {
     const [current] = await automaticDeps.read([markee])
     if (!current || contentHash(current.message) !== hash) return NextResponse.json({ error: 'Message changed. Refresh and review again.' }, { status: 409 })
     if (intent === 'false-positive' && checkDraft(current.message).state !== 'soft-flagged') return NextResponse.json({ error: 'This message is not soft-flagged' }, { status: 409 })
-    const [item] = intent === 'approve' ? await automaticAuthDeps.readItems([markee]) : []
-    if (intent === 'approve' && (!item || item.board.toLowerCase() !== current.board.toLowerCase() || contentHash(item.message) !== hash)) return NextResponse.json({ error: 'Queue changed. Refresh and review again.' }, { status: 409 })
+    const [stored] = intent === 'approve' ? await automaticAuthDeps.readItems([markee]) : []
+    if (intent === 'approve' && (!stored || stored.board.toLowerCase() !== current.board.toLowerCase())) return NextResponse.json({ error: 'Queue changed. Refresh and review again.' }, { status: 409 })
+    // The queue reads live text; the scanner's stored review may still be an older revision.
+    // Rebase its pending scopes before approving the exact on-chain hash signed by this moderator.
+    const item = stored ? observeMessage(stored, { ...stored, message: current.message, blockNumber: current.blockNumber ?? stored.blockNumber, at: Math.floor(Date.now() / 1000) }, { flagged: { board: false, site: false }, preexisting: false }) ?? stored : undefined
     const pipeline = automaticDeps.pipeline()
     if (item) {
       // Approval settles pending reviews only; manual flags require explicit unflagging.
