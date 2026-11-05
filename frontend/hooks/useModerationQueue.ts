@@ -45,8 +45,8 @@ export function useModerationQueue() {
           if (!item?.automatic) throw new Error('Refresh the moderation queue and try again.')
           const timestamp = Math.floor(Date.now() / 1000)
           const hash = item.automatic.contentHash
-          const signature = await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp) })
-          const response = await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, moderator: addr, signature, timestamp }) })
+          const signature = await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all') })
+          const response = await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, scope: 'all', moderator: addr, signature, timestamp }) })
           if (!response.ok) throw new Error((await response.json()).error || 'Unable to approve false positive')
         }
         await queryClient.invalidateQueries({ queryKey: ['message-moderation'] })

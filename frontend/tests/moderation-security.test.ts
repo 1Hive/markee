@@ -171,6 +171,21 @@ test('visible accepted views count; hidden and unavailable messages never increm
   assert.equal(increments, before)
 })
 
+test('site-only false positives stay discoverable for an explicit SDK approval', async t => {
+  setup(t)
+  const record = { markee, board, state: 'soft-flagged', siteState: 'visible', contentHash: contentHash('shit'), policyVersion: AUTO_POLICY }
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [[]] } }; return p })
+  t.mock.method(queueDeps, 'softRecords', async () => [record])
+  t.mock.method(queueDeps, 'readItems', async () => [])
+  const response = await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))
+  const result = await response.json()
+  assert.equal(result.flagged.length, 1)
+  assert.equal(result.flagged[0].message, 'shit')
+  assert.equal(result.flagged[0].automatic.siteState, 'visible')
+})
+
 test('cached embed text is withheld on moderation outage, new manual flag, auto flag or changed text', async t => {
   setup(t)
   const payload = { topMarkeeAddress: markee, message: 'Hello', name: 'Author', flagged: false }

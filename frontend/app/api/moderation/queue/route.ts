@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     // Flagged markees are only known by key, so read them all and keep the viewer's boards below.
     const flaggedMarkees = [...new Set([...flags.board, ...(global ? flags.site : [])])].map(markeeOfFlagKey)
-    const soft = (await queueDeps.softRecords()).filter(r => r.state === 'soft-flagged' && r.siteState !== 'visible' && scopesOf.has(r.board!))
+    const soft = (await queueDeps.softRecords()).filter(r => r.state === 'soft-flagged' && scopesOf.has(r.board!))
     const softMap = new Map(soft.map(r => [r.markee, r]))
     const markees = [...new Set([...pending.flat(), ...flaggedMarkees, ...soft.map(r => r.markee)])]
     const stored = (await queueDeps.readItems(markees)).filter((it): it is ModerationItem => !!it && scopesOf.has(it.board))

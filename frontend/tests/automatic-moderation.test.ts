@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { privateKeyToAccount } from 'viem/accounts'
-import { checkDraft, checkPublished, evaluateObserved, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
+import { checkDraft, checkPublished, evaluateObserved, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, sharedOverrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
 import { falsePositiveMessage } from '../lib/moderation/automatic-message'
 import { POST } from '../app/api/moderation/false-positive/route'
 
@@ -150,6 +150,21 @@ test('soft flags recover on edit; manual flags win; site exceptions never reveal
   assert.equal((await evaluateObserved(id, 'Hello gardens', board, { board: true, site: false })).state, 'manual-flagged')
   assert.equal((await evaluateObserved(id, 'shit', board, { board: false, site: true })).siteState, 'manual-flagged')
 })
+test('shared exceptions restore both surfaces for exact text, preserve manual flags and expire on edits', async t => {
+  enable(t); const { records, soft } = storage(t)
+  const hash = contentHash('shit')
+  await evaluateObserved(id, 'shit', board, { board: false, site: false })
+  records.set(sharedOverrideKey(id, hash), { scope: 'all', contentHash: hash })
+  const result = await evaluateObserved(id, 'shit', board, { board: false, site: false })
+  assert.equal(result.state, 'visible'); assert.equal(result.siteState, 'visible')
+  assert.equal(soft.has(id), false)
+  assert.equal((await evaluateObserved(id, 'shit', board, { board: true, site: false })).state, 'manual-flagged')
+  assert.equal((await evaluateObserved(id, 'shit', board, { board: false, site: true })).siteState, 'manual-flagged')
+  assert.equal((await evaluateObserved(id, 'merde', board, { board: false, site: false })).state, 'soft-flagged')
+  records.set(sharedOverrideKey(id, hash), { scope: 'all', contentHash: contentHash('other') })
+  assert.equal((await evaluateObserved(id, 'shit', board, { board: false, site: false })).state, 'soft-flagged')
+})
+
 test('engine and storage outages are unavailable, never passing; manual flags skip the engine', async t => {
   enable(t); storage(t)
   t.mock.method(automaticDeps.engine, 'check', () => { throw Error('checker down') })
@@ -192,6 +207,16 @@ test('false-positive approval rejects unsigned, unauthorized, stale, altered and
   assert.equal(records.has(overrideKey(id, hash)), true)
   const result = (await checkPublished([id]))[0]
   assert.equal(result.siteState, 'visible'); assert.equal(result.state, 'soft-flagged')
+  // A legacy site signature cannot be widened by changing the request body.
+  assert.equal((await POST(req({ scope: 'all' }))).status, 401)
+  assert.equal((await POST(req({ scope: 'unknown' }))).status, 400)
+  assert.equal(records.has(sharedOverrideKey(id, hash)), false)
+  const sharedSignature = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp, 'all') })
+  assert.equal((await POST(req({ signature: sharedSignature }))).status, 401)
+  assert.equal((await POST(req({ signature: sharedSignature, scope: 'all' }))).status, 200)
+  assert.equal(records.get(sharedOverrideKey(id, hash)).scope, 'all')
+  const shared = (await checkPublished([id]))[0]
+  assert.equal(shared.state, 'visible'); assert.equal(shared.siteState, 'visible')
 })
 
 test('draft and published HTTP boundaries reject invalid inputs and ignore caller-supplied published text', async t => {
@@ -225,6 +250,26 @@ test('moderation overlays cached sale/rent snapshots without mutating financial 
       assert.equal(signContent(result).visibility, 'flagged')
       const unavailable = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })) }
       assert.equal(signContent(unavailable).visibility, 'unavailable')
+    }
+  }
+})
+
+test('shared false positives restore cached sale/rent SDK signs without changing financial data', async t => {
+  enable(t); const { records } = storage(t)
+  const hash = contentHash('shit')
+  records.set(sharedOverrideKey(id, hash), { scope: 'all', contentHash: hash })
+  for (const strategy of ['sale', 'rent'] as const) {
+    const snapshot = { apiVersion: 1, placement: { kind: 'board', chainId: 8453, address: board }, board, chainId: 8453, strategy, warnings: [], top: id, entries: [{ address: id, message: 'shit', moderated: true, totalFunds: '123', score: '456', views: 12 }], wallet: { eth: '789' } } as any
+    const result = await applySnapshotModeration(snapshot)
+    assert.equal(result.entries[0].moderated, false)
+    assert.equal(result.entries[0].moderation?.state, 'visible')
+    assert.equal(snapshot.entries[0].moderated, true)
+    assert.equal(result.wallet, snapshot.wallet)
+    assert.equal(result.entries[0].totalFunds, '123')
+    for (const artifact of (process.env.MARKEE_PUBLISHED_SDK_MODULES || '').split(',').filter(Boolean)) {
+      const { signContent } = await import(pathToFileURL(artifact).href)
+      assert.equal(signContent(result).visibility, 'visible')
+      assert.equal(signContent(result).entry.message, 'shit')
     }
   }
 })

@@ -19,7 +19,7 @@ export interface ScopeReview {
 }
 
 export interface ModerationItem {
-  automatic?: { contentHash: string; reason?: string }
+  automatic?: { contentHash: string; reason?: string; siteState?: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable' }
   markee: string
   board: string
   kind: 'created' | 'edited'
