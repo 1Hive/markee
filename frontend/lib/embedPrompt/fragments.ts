@@ -20,9 +20,9 @@ export type EmbedAgent = 'claude-code' | 'cursor' | 'codex' | 'copilot' | 'other
 export type EmbedStrategy = 'fixed' | 'streaming'
 
 export const EMBED_MODERATION_PRESETS = {
-  relaxed: { label: 'Relaxed', description: 'Scam, phishing, concealed-link, and payment-solicitation rules; no profanity filter.' },
+  relaxed: { label: 'Relaxed', description: 'Scam and phishing checks, without the profanity filter.' },
   standard: { label: 'Standard', description: 'Current safety rules plus the profanity filter.' },
-  strict: { label: 'Strict', description: 'Standard plus detected links, domains, wallet addresses, and ENS names.' },
+  strict: { label: 'Strict', description: 'Standard plus links, domains, wallet addresses, and ENS names.' },
 } satisfies Record<ModerationSeverity, { label: string; description: string }>
 
 export interface BuildEmbedPromptInput {

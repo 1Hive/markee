@@ -257,13 +257,22 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
   // ── Questions ──────────────────────────────────────────────────────────────
   return (
     <>
-      <div style={{ marginBottom: 24 }}>
-        <label htmlFor="embed-moderation-severity" style={{ display: 'block', color: TEXT, fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Automatic moderation severity</label>
-        <select id="embed-moderation-severity" value={severity} onChange={event => setSeverity(event.target.value as keyof typeof EMBED_MODERATION_PRESETS)} aria-describedby="embed-moderation-description" style={{ width: '100%', background: BG, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', font: 'inherit', fontSize: 14 }}>
-          {Object.entries(EMBED_MODERATION_PRESETS).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
-        </select>
-        <p id="embed-moderation-description" style={{ color: TEXT2, fontSize: 12, lineHeight: 1.6, margin: '10px 0 0' }}>{EMBED_MODERATION_PRESETS[severity].description} Manual flags still apply. Content stays hidden when moderation is unavailable.</p>
-      </div>
+      <fieldset id="embed-moderation-severity" aria-describedby="embed-moderation-description" style={{ border: 0, padding: 0, margin: '0 0 24px' }}>
+        <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>Automatic moderation severity</legend>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {(Object.keys(EMBED_MODERATION_PRESETS) as (keyof typeof EMBED_MODERATION_PRESETS)[]).map(value => {
+            const preset = EMBED_MODERATION_PRESETS[value]
+            return <label key={value} style={{ flex: '1 1 160px', cursor: 'pointer', padding: 14, border: `1px solid ${severity === value ? PINK : BORDER}`, borderRadius: 8, background: severity === value ? 'rgba(244,159,255,0.08)' : BG }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: TEXT, fontWeight: 700, fontSize: 14 }}>
+                <input type="radio" name="markee-moderation-severity" value={value} checked={severity === value} onChange={() => setSeverity(value)} style={{ accentColor: PINK }} />
+                {preset.label}
+              </span>
+              <span style={{ display: 'block', color: TEXT2, fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{preset.description}</span>
+            </label>
+          })}
+        </div>
+        <p id="embed-moderation-description" style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: '10px 0 0' }}>Manual flags still apply. Content stays hidden when moderation is unavailable.</p>
+      </fieldset>
       <fieldset style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
         <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>How would you like to integrate Markee?</legend>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
