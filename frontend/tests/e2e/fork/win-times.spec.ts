@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
+import { decodeFunctionResult, encodeFunctionData, formatEther, parseAbi, parseEther } from 'viem'
 import { BOARDS, TX_TIMEOUT, buySale, isolateChain, kv, messageRow, rpc } from './support'
 
 // How long a message has been winning, and its total time at #1 (the board's #1 history), plus how
@@ -14,6 +14,15 @@ const run = promisify(execFile)
 // The page counts "winning for" up to the browser's clock, which runs ahead of the fork's block times,
 // so only its shape is checked; total time won is all chain time and is checked exactly.
 const WINNING_FOR = /Winning\s*for \d+[dhm]/
+
+async function buyWinningSale(page: Page, message: string) {
+  // These tests require #1; the modal's minimum/default bid need not beat the winner.
+  // Read the fork rather than using live indexed prices for this historical chain.
+  const abi = parseAbi(['function getTopMarkees(uint256) view returns (address[], uint256[])'])
+  const data = await rpc<`0x${string}`>('eth_call', [{ to: BOARDS.sale, data: encodeFunctionData({ abi, functionName: 'getTopMarkees', args: [1n] }) }, 'latest'])
+  const [, totals] = decodeFunctionResult({ abi, functionName: 'getTopMarkees', data })
+  await buySale(page, BOARDS.sale, message, formatEther((totals[0] ?? 0n) + parseEther('0.001')))
+}
 
 async function advanceHistory() {
   // Past the reorg margin the history stays behind the head by.
@@ -38,7 +47,7 @@ test.beforeAll(async () => {
 })
 
 test('a winning message shows how long it has been winning', async ({ page }) => {
-  await buySale(page, BOARDS.sale, 'e2e win first')
+  await buyWinningSale(page, 'e2e win first')
   await openHubWithHistory(page)
   await expect(messageRow(page, 'e2e win first')).toContainText(WINNING_FOR, { timeout: TX_TIMEOUT })
 })
@@ -48,7 +57,7 @@ test('once outbid, it shows its total time won', async ({ page }) => {
   // Fresh listings, so the buy modal's default amount clears the first message rather than tying it.
   const caches = await kv<string[]>(['KEYS', 'cache:*'])
   if (caches.length) await kv(['DEL', ...caches])
-  await buySale(page, BOARDS.sale, 'e2e win second')
+  await buyWinningSale(page, 'e2e win second')
   await openHubWithHistory(page)
   await expect(messageRow(page, 'e2e win first')).toContainText(/Won for 2h \d+m total/, { timeout: TX_TIMEOUT })
   await expect(messageRow(page, 'e2e win second')).toContainText(WINNING_FOR)

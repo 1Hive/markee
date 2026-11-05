@@ -52,5 +52,5 @@ test('signed approval checks moderator permissions and preserves other scopes', 
   assert.equal(saved, undefined, 'approval must not overwrite an existing flag')
   const unauthorized = { ...base, adminAddress: attacker.address, signature: await attacker.signMessage({ message: reviewMessage('approve', 8453, [id], timestamp) }) }
   assert.equal((await POST(request(unauthorized))).status, 403)
-  assert.equal(writes, 2)
+  assert.equal(writes, 1, 'approval of a flagged item must not execute an empty pipeline')
 })
