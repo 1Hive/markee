@@ -89,6 +89,8 @@ test('views count the board and its top message, on the dashboard and in Best Bu
   // Refresh the public listing before mounting the hub. Its account and Best
   // Buys requests otherwise race a cold ecosystem read immediately after a
   // chain revert/cache reset, and the UI fetches Best Buys only once on mount.
+  // bust=1 skips the ecosystem KV cache and propagates a forced refresh to
+  // each platform's shared listing snapshot cache; it is not a CDN cache key.
   const listing = await page.request.get('/api/ecosystem/leaderboards?bust=1')
   expect(listing.ok()).toBeTruthy()
   expect((await listing.json()).leaderboards.some((lb: { address: string }) =>
