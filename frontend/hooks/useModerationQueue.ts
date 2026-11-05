@@ -1,6 +1,6 @@
 'use client'
 
-import { falsePositiveMessage } from '@/lib/moderation/automatic-message'
+import { approveMessage, falsePositiveMessage } from '@/lib/moderation/automatic-message'
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAccount, useSignMessage } from 'wagmi'
@@ -15,7 +15,7 @@ const IDLE_POLL_MS = 5 * 60_000
 export const moderationQueueKey = (address: string | undefined) => ['moderation-queue', address?.toLowerCase()]
 
 // Shared by the account nav badge and the /account queue: both read the same query, so only one
-// poll runs. Reading the queue and approving need no signature; flagging and unflagging do.
+// poll runs. Reading the queue is public; every review action requires a signature.
 export function useModerationQueue() {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
@@ -39,15 +39,17 @@ export function useModerationQueue() {
   const review = useCallback(async (action: QueueAction, markeeIds: string[]) => {
     if (!addr || markeeIds.length === 0) return
     try {
-      if (action === 'false-positive') {
+      if (action === 'false-positive' || action === 'approve') {
         for (const id of markeeIds) {
-          const item = queueQuery.data?.flagged.find(it => it.markee === id.toLowerCase())
-          if (!item?.automatic) throw new Error('Refresh the moderation queue and try again.')
+          const item = (action === 'approve' ? queueQuery.data?.items : queueQuery.data?.flagged)?.find(it => it.markee === id.toLowerCase())
+          if (!item || (action === 'false-positive' && !item.automatic)) throw new Error('Refresh the moderation queue and try again.')
           const timestamp = Math.floor(Date.now() / 1000)
-          const hash = item.automatic.contentHash
-          const signature = await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all') })
-          const response = await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, scope: 'all', moderator: addr, signature, timestamp }) })
-          if (!response.ok) throw new Error((await response.json()).error || 'Unable to approve false positive')
+          const hash = action === 'approve'
+            ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(item.message))), byte => byte.toString(16).padStart(2, '0')).join('')
+            : item.automatic!.contentHash
+          const signature = await signMessageAsync({ message: action === 'approve' ? approveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp) : falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all') })
+          const response = await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, scope: 'all', intent: action, moderator: addr, signature, timestamp }) })
+          if (!response.ok) throw new Error((await response.json()).error || 'Unable to approve message')
         }
         await queryClient.invalidateQueries({ queryKey: ['message-moderation'] })
         return

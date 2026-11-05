@@ -40,7 +40,7 @@ export function ModerationItemRow({ item, board, onReview }: {
     setError(null)
     try {
       await onReview(action, [item.markee])
-      toast(action === 'flag' ? 'Message flagged' : 'Message approved')
+      toast(action === 'flag' ? 'Message flagged' : 'Message approved on Markee and SDK integrations')
     } catch (e) {
       if (!isUserRejection(e)) setError('That review did not go through. Try again.')
       setBusy(false)

@@ -6,7 +6,7 @@ import { checkRules } from './rules'
 import { parseAbi, type Address } from 'viem'
 import { underRateLimit } from '../rate-limit'
 import { trustedMembership } from './membership'
-import { getModerationClient, readAllFlagged, flagKey, authorizedScopes } from './server'
+import { getModerationClient, readAllFlagged, flagKey, authorizedScopes, readItems } from './server'
 
 export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-v1'
 export const AUTO_LANGUAGES = ['ar', 'zh', 'en', 'fr', 'de', 'hi', 'it', 'ja', 'ko', 'pt', 'ru', 'es']
@@ -18,7 +18,7 @@ export type Visibility = 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavai
 export type PublishedModeration = { markee: string; board?: string; contentHash: string; state: Visibility; siteState: Visibility; reason?: string; reasonCodes?: string[]; policyVersion: string }
 export interface ModerationEngine { check(message: string): boolean }
 let filter: Profanity | undefined
-export const automaticAuthDeps = { authorizedScopes, underRateLimit }
+export const automaticAuthDeps = { authorizedScopes, underRateLimit, readItems }
 export const automaticDeps = {
   engine: { check(message: string) { filter ??= new Profanity({ languages: AUTO_LANGUAGES, wholeWord: true, unicodeWordBoundaries: true }); return filter.exists(message.normalize('NFKC')) } } as ModerationEngine,
   rules: checkRules,
