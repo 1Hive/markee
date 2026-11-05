@@ -152,7 +152,19 @@ Theme changes update styles in place: drafts, focus, scroll, wallet sessions, an
 | `sign.hoverLogo` | Show the theme-matched MARKEE logo on hover/focus (default `true`) |
 | `sign.hoverBackground` | Optional sign hover surface color; defaults to the normal surface |
 
-Color tokens: `background`, `surface`, `text`, `muted`, `border`, `inputBackground`, `inputText`, `primary`, `primaryText`, `accent`, `accentText`, `accentSurface`, `accentSurfaceText`, `accentBorder`, `selected`, `selectedText`, `info`, `infoText`, `error`, `errorText`, `success`, `successText`, `link`, `focusRing`, and `overlay`. Set foreground/background pairs together and check your brand's contrast in both modes. Overrides apply over either selected palette; omitted values use that palette's defaults. Invalid CSS color/font values fall back to defaults.
+Color tokens: `background`, `surface`, `text`, `muted`, `border`, `inputBackground`, `inputText`, `primary`, `primaryText`, `accent`, `accentText`, `accentSurface`, `accentSurfaceText`, `accentBorder`, `selected`, `selectedText`, `info`, `infoText`, `error`, `errorText`, `warning`, `warningText`, `warningBorder`, `success`, `successText`, `link`, `focusRing`, and `overlay`. Set foreground/background pairs together and check your brand's contrast in both modes. Overrides apply over either selected palette; omitted values use that palette's defaults. Invalid CSS color/font values fall back to defaults.
+
+The optional warning colors style moderation notices in the form, confirmation, and payment review:
+
+```ts
+const theme: MarkeeTheme = {
+  colors: {
+    warning: '#fff8e6',
+    warningText: '#754b08',
+    warningBorder: '#d49a26',
+  },
+};
+```
 
 To match an app completely, override `link`, `focusRing`, `border`, `selected`/`selectedText`, and the accent colors as well as the primary button colors. Otherwise those elements retain the SDK palette. Use the typed theme options; arbitrary custom CSS is not currently supported. The sign’s price badge appears on hover or keyboard focus, and stays visible on touch devices.
 

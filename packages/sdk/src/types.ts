@@ -96,6 +96,8 @@ export interface MarkeeThemeColors {
   accentSurface: string; accentSurfaceText: string; accentBorder: string;
   selected: string; selectedText: string;
   info: string; infoText: string; error: string; errorText: string;
+  /** Optional warning colors; omitted values use the light/dark defaults. */
+  warning?: string; warningText?: string; warningBorder?: string;
   success: string; successText: string; link: string; focusRing: string; overlay: string;
 }
 export interface MarkeeTheme {
