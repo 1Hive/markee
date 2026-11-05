@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
-import { FACTORIES, V13_LEADERBOARDS } from '../lib/contracts/addresses'
+import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '../lib/contracts/addresses'
 import { trustedMembership, membershipDeps } from '../lib/moderation/membership'
 import { automaticDeps, checkPublished, evaluateObserved, softRecords, softKey, SOFT_INDEX, AUTO_POLICY, contentHash } from '../lib/moderation/automatic'
 import { queueDeps } from '../lib/moderation/queue-deps'
@@ -53,6 +53,35 @@ function setup(t: any) {
   })
   return { client, records, index }
 }
+
+test('homepage fixed strategies trust only their actual Markee and preserve moderation', async t => {
+  const { client } = setup(t)
+  const strategy = CONTRACTS[8453].fixedPriceStrategies[0].address
+  let text = 'this is a sign.'
+  let available = true
+  t.mock.method(client, 'multicall', async ({ contracts, blockNumber }: any) => {
+    assert.equal(blockNumber, 100n)
+    return contracts.map((c: any) => {
+      if (c.functionName === 'message') return { status: 'success', result: text }
+      if (c.functionName === 'pricingStrategy') return { status: 'success', result: strategy }
+      if (c.functionName === 'markeeAddress' && available) return { status: 'success', result: markee }
+      return { status: 'failure' }
+    })
+  })
+  assert.deepEqual(await trustedMembership([{ markee, board: strategy }, { markee: fake, board: strategy }]), [true, false])
+  for (const configured of CONTRACTS[8453].fixedPriceStrategies) {
+    assert.deepEqual(await trustedMembership([{ markee, board: configured.address }]), [true])
+  }
+  assert.equal((await checkPublished([strategy]))[0].state, 'unavailable')
+  const [visible] = await checkPublished([markee])
+  assert.equal(visible.state, 'visible')
+  assert.equal(visible.contentHash, contentHash(text))
+  text = 'shit'
+  assert.equal((await checkPublished([markee]))[0].state, 'soft-flagged')
+  assert.equal((await evaluateObserved(markee, text, strategy, { board: true, site: true })).state, 'manual-flagged')
+  available = false
+  assert.equal((await checkPublished([markee]))[0].state, 'unavailable')
+})
 
 test('a claimed victim board or canonical factory cannot inject soft flags; real members pass', async t => {
   const { records } = setup(t)

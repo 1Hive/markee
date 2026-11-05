@@ -80,7 +80,7 @@ function ReaderSign({ fixedMarkee, views, onClick }: {
           {formatViews(views.totalViews)}
         </span>
       )}
-      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={fixedMarkee.message ?? ''} markeeId={fixedMarkee.strategyAddress}>
+      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={fixedMarkee.message ?? ''} markeeId={fixedMarkee.markeeAddress}>
         <span className="reader-text">{fixedMarkee.message || fixedMarkee.name}</span>
       </ModeratedContent>
       {hasPrice && (
