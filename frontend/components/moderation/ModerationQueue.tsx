@@ -93,7 +93,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
     setError(null)
     try {
       await onReview(item.automatic ? 'false-positive' : 'unflag', [item.markee])
-      toast(item.automatic ? 'False positive approved on Markee' : 'Message unflagged')
+      toast(item.automatic ? 'False positive approved on Markee and SDK integrations' : 'Message unflagged')
     } catch (e) {
       if (!isUserRejection(e)) setError('That review did not go through. Try again.')
       setBusy(false)
@@ -107,7 +107,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
           {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
-          {item.automatic && <span>Automatic · {item.automatic.reason || 'Matched automatic moderation rule'}</span>}
+          {item.automatic && <span>{item.automatic.siteState === 'visible' ? 'Approved on Markee only · Still hidden in SDK integrations' : `Automatic · ${item.automatic.reason || 'Matched automatic moderation rule'}`}</span>}
           {ago(item) && <span>{ago(item)}</span>}
           <SignLink item={item} board={board} />
         </div>
@@ -119,7 +119,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
             <button onClick={() => setPeek(p => !p)} aria-pressed={peek} style={{ ...ghost, color: TEXT2, border: `1px solid ${BORDER}` }}>
               {peek ? <EyeOff size={14} /> : <Eye size={14} />}{peek ? 'Hide Message' : 'See Message'}
             </button>
-            <button onClick={unflag} style={{ ...ghost, color: TEXT, border: '1px solid rgba(237,238,255,0.45)' }}>{item.automatic ? 'Mark as false positive' : 'Unflag'}</button>
+            <button onClick={unflag} style={{ ...ghost, color: TEXT, border: '1px solid rgba(237,238,255,0.45)' }}>{item.automatic ? item.automatic.siteState === 'visible' ? 'Approve for SDK too' : 'Mark as false positive' : 'Unflag'}</button>
           </>
         )}
       </div>

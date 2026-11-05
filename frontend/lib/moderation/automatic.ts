@@ -66,6 +66,7 @@ export function checkDraft(message: string): AutoVerdict {
 }
 export const softKey = (id: string) => `moderation:auto:8453:${id.toLowerCase()}`
 export const overrideKey = (id: string, hash: string) => `moderation:auto:site-override:8453:${id.toLowerCase()}:${hash}`
+export const sharedOverrideKey = (id: string, hash: string) => `moderation:auto:all-override:8453:${id.toLowerCase()}:${hash}`
 export const SOFT_INDEX = 'moderation:auto:soft:8453'
 
 // Call only with text read by our server (never a browser-provided published message).
@@ -86,11 +87,15 @@ async function evaluateTrusted(id: string, message: string, board: string, manua
   if (manual.board) return { ...base, state: 'manual-flagged', siteState: 'manual-flagged' }
   const verdict = checkDraft(message)
   if (!verdict.enabled) return { ...base, state: 'visible', siteState: manual.site ? 'manual-flagged' : 'visible' }
-  const state: Visibility = verdict.state === 'pass' ? 'visible' : verdict.state
-  let override = false
+  let state: Visibility = verdict.state === 'pass' ? 'visible' : verdict.state
   try {
-    override = verdict.state === 'soft-flagged' && !!await automaticDeps.get(overrideKey(id, hash))
-    const previous = await automaticDeps.get<PublishedModeration>(softKey(id))
+    const [siteOverride, sharedOverride, previous] = await Promise.all([
+      verdict.state === 'soft-flagged' ? automaticDeps.get(overrideKey(id, hash)) : null,
+      verdict.state === 'soft-flagged' ? automaticDeps.get<{ scope: string; contentHash: string }>(sharedOverrideKey(id, hash)) : null,
+      automaticDeps.get<PublishedModeration>(softKey(id)),
+    ])
+    if (sharedOverride?.scope === 'all' && sharedOverride.contentHash === hash) state = 'visible'
+    const override = !!siteOverride
     const result: PublishedModeration = { ...base, state, siteState: manual.site ? 'manual-flagged' : override ? 'visible' : state, ...(verdict.reason ? { reason: verdict.reason, reasonCodes: verdict.reasonCodes } : {}) }
     if (previous?.contentHash === hash && previous?.state === state && previous?.siteState === result.siteState && previous?.policyVersion === AUTO_POLICY) return result
     const pipeline = automaticDeps.pipeline()

@@ -52,7 +52,8 @@ used only for detection. Explicit safety advice such as “Never share your seed
 Verdicts include a human-readable reason and optional `reasonCodes` in addition to existing fields.
 They are cached by exact message hash and policy version. Old indexed policy results are rechecked
 from trusted current on-chain observations; failures remain unavailable, not implicitly passing.
-Exact-text site-only false-positive overrides survive policy updates. Changing text still requires
+Exact-text false-positive overrides survive policy updates. New approvals apply to Markee and SDK
+integrations; legacy site-only approvals retain their original scope. Changing text still requires
 a fresh verdict and never removes manual flags. Existing draft warnings retain Continue anyway.
 
 GitHub README synchronization, model classification, approval-required mode and per-board policy
@@ -87,11 +88,15 @@ or storage failures produce unavailable and hide unverified content. No financia
 submitted automatically. Draft warnings offer Edit message, Retry, and Continue anyway.
 
 `POST /api/moderation/false-positive` accepts chainId, markee, contentHash, timestamp, moderator,
-and signature. The signature binds a canonical message containing the action, chain, identifier,
-hash, timestamp, and site scope. Existing board moderators/owners and global admins are eligible.
+signature, and optional `scope` (`all` or legacy `site`; omitted means `site`). The signature binds
+a canonical message containing the action, chain, identifier,
+hash, timestamp, and exact scope. New UI approvals use v2 with `all`; v1 site signatures cannot
+authorize all surfaces. Existing board moderators/owners and global admins are eligible.
 The server re-reads the current revision before persisting an exception. It never clears manual
-flags. Exceptions are per Markee and exact text, persist across engine updates, and restore only
-Markee-site visibility; SDK integrations continue hiding the automatically flagged message.
+flags. Exceptions are per Markee and exact text, persist across engine updates, and new `all` approvals restore both
+Markee-site and SDK visibility. Legacy site-only approvals remain listed with “Approve for SDK too”
+so moderators can explicitly extend them with a fresh signature. SDK response shapes are unchanged;
+existing clients receive `moderated: false` for approved text.
 
 Soft/unavailable indexes are separate from manual sets. The existing scanner reconciles on-chain
 edits, including transactions outside the UI. Unfiltered legacy flag lists include the index and
