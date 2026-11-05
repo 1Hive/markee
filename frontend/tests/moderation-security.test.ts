@@ -186,6 +186,49 @@ test('site-only false positives stay discoverable for an explicit SDK approval',
   assert.equal(result.flagged[0].automatic.siteState, 'visible')
 })
 
+test('pending queue refreshes current text before the scanner catches up and preserves manual flags', async t => {
+  setup(t)
+  const pending = { status: 'pending', reviewedBy: null, reviewedAt: null }
+  const old = { markee, board, message: 'shite', name: 'Author', author: moderator, kind: 'edited', previousMessage: 'Real message', blockNumber: '80', at: 1, reviews: { board: pending, site: pending } }
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [[markee]] } }; return p })
+  t.mock.method(queueDeps, 'softRecords', async () => [])
+  t.mock.method(queueDeps, 'readItems', async () => [old])
+  t.mock.method(automaticDeps, 'read', async () => [{ markee, board, message: 'merde', blockNumber: '100' }])
+  const req = () => new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`)
+  const result = await (await queue(req())).json()
+  assert.equal(result.items[0].message, 'merde')
+  assert.equal(result.items[0].previousMessage, 'Real message')
+  assert.equal(result.items[0].blockNumber, '100')
+  assert.equal(old.message, 'shite', 'read-only refresh must not mutate stored reviews')
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [`8453:${markee}`], site: [] }))
+  const flagged = await (await queue(req())).json()
+  assert.equal(flagged.items.length, 0)
+  assert.equal(flagged.flagged[0].message, 'merde')
+  t.mock.method(automaticDeps, 'read', async () => [])
+  t.mock.method(console, 'error', () => {})
+  assert.equal((await queue(req())).status, 500, 'RPC failure must not expose an older revision for approval')
+})
+
+test('queue refreshes only its candidates in batches of at most fifty', async t => {
+  setup(t)
+  const pending = { status: 'pending', reviewedBy: null, reviewedAt: null }
+  const rows = Array.from({ length: 51 }, (_, i) => ({ markee: `0x${(i + 1).toString(16).padStart(40, '0')}`, board, message: 'old text', name: '', author: moderator, kind: 'created', previousMessage: null, blockNumber: '1', at: 1, reviews: { board: pending, site: pending } }))
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [rows.map(row => row.markee)] } }; return p })
+  t.mock.method(queueDeps, 'softRecords', async () => [])
+  t.mock.method(queueDeps, 'readItems', async () => rows)
+  t.mock.method(automaticDeps, 'membership', async (pairs: unknown[]) => pairs.map(() => true))
+  const batches: number[] = []
+  t.mock.method(automaticDeps, 'read', async (ids: string[]) => { batches.push(ids.length); return ids.map(markee => ({ markee, board, message: 'current text' })) })
+  const result = await (await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))).json()
+  assert.deepEqual(batches, [50, 1])
+  assert.equal(result.items.length, 51)
+  assert.ok(result.items.every((item: any) => item.message === 'current text'))
+})
+
 test('cached embed text is withheld on moderation outage, new manual flag, auto flag or changed text', async t => {
   setup(t)
   const payload = { topMarkeeAddress: markee, message: 'Hello', name: 'Author', flagged: false }

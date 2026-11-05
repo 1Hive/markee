@@ -30,7 +30,7 @@ export const automaticDeps = {
   client: getModerationClient,
   members: () => kv.smembers<string[]>(SOFT_INDEX),
   mget: (...keys: string[]) => kv.mget<(PublishedModeration | null)[]>(...keys),
-  read: async (ids: string[]) => {
+  read: async (ids: string[]): Promise<Observation[]> => {
     const client = automaticDeps.client()
     const abi = parseAbi(['function message() view returns (string)', 'function pricingStrategy() view returns (address)'])
     const blockNumber = await client.getBlockNumber({ cacheTime: 0 })
@@ -41,7 +41,7 @@ export const automaticDeps = {
     const observations = ids.flatMap((markee, i) => {
       const message = reads[i * 2], board = reads[i * 2 + 1]
       if (message.status !== 'success' || board.status !== 'success' || typeof message.result !== 'string' || typeof board.result !== 'string') return []
-      return [{ markee: markee.toLowerCase(), message: message.result, board: board.result.toLowerCase() }]
+      return [{ markee: markee.toLowerCase(), message: message.result, board: board.result.toLowerCase(), blockNumber: blockNumber.toString() }]
     })
     const members = await automaticDeps.membership(observations, client, blockNumber)
     return observations.filter((_, i) => members[i] === true)
@@ -70,7 +70,7 @@ export const sharedOverrideKey = (id: string, hash: string) => `moderation:auto:
 export const SOFT_INDEX = 'moderation:auto:soft:8453'
 
 // Call only with text read by our server (never a browser-provided published message).
-type Observation = { markee: string; message: string; board: string }
+type Observation = { markee: string; message: string; board: string; blockNumber?: string }
 const unavailable = (markee: string): PublishedModeration => ({ markee: markee.toLowerCase(), contentHash: '', state: 'unavailable', siteState: 'unavailable', reason: 'Moderation check unavailable', policyVersion: AUTO_POLICY })
 
 export async function evaluateObserved(id: string, message: string, board: string, manual: { board: boolean; site: boolean }): Promise<PublishedModeration> {

@@ -101,8 +101,10 @@ existing clients receive `moderated: false` for approved text.
 Queue **Approve** uses the same exact-text visibility override and also settles the moderator's
 pending review scopes atomically. It sends `intent: 'approve'` and `scope: 'all'`, signed with
 `markee-moderation:approve:v1` binding the chain, identifier, text hash, scope and timestamp.
-The server checks both current on-chain text and the queued revision; changed text requires
-refreshing and signing again. Passing messages can also be explicitly approved. Legacy approvals
+The queue refreshes pending and flagged text from chain in batches of at most 50 identifiers,
+without scanning whole leaderboards. A read failure returns an error rather than an older revision.
+Approval re-reads the exact signed text and rebases any older scanner record before settling reviews;
+an edit during signing requires refreshing and signing again. Passing messages can also be explicitly approved. Legacy approvals
 through `POST /api/moderation` keep their original review-only behavior because those signatures
 do not bind text and cannot safely authorize an automatic-moderation override.
 

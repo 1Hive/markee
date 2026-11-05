@@ -8,7 +8,7 @@ import { contentHash, automaticDeps } from '@/lib/moderation/automatic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { queueDeps } from '@/lib/moderation/queue-deps'
-import { ADDRESS_PATTERN, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, observeMessage, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
 import { PENDING_SITE_KEY, flagKey, isGlobalAdmin, markeeOfFlagKey, pendingKey } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
@@ -46,10 +46,19 @@ export async function GET(req: NextRequest) {
     const stored = (await queueDeps.readItems(markees)).filter((it): it is ModerationItem => !!it && scopesOf.has(it.board))
     // Revalidate ordinary rows too: older scans could have admitted forged edit-log entries.
     const trusted = await automaticDeps.membership(stored)
+    if (trusted.some(value => value === null)) throw new Error('Moderation membership unavailable')
     const verifiedStored = stored.filter((_, i) => trusted[i] === true)
-    const fresh = soft.length ? await automaticDeps.read(soft.map(r => r.markee)) : []
+    // Refresh pending/manual rows too, not only automatic flags. Read only queue candidates,
+    // in bounded batches; never scan the whole board or return stale text on an RPC failure.
+    const freshIds = [...new Set([...verifiedStored.map(it => it.markee), ...soft.map(r => r.markee)])]
+    const fresh: Awaited<ReturnType<typeof automaticDeps.read>> = []
+    for (let offset = 0; offset < freshIds.length; offset += 50) fresh.push(...await automaticDeps.read(freshIds.slice(offset, offset + 50)))
     const freshById = new Map(fresh.map(o => [o.markee, o]))
-    const all = [...verifiedStored]
+    const all = verifiedStored.map(it => {
+      const observation = freshById.get(it.markee)
+      if (!observation || observation.board !== it.board) throw new Error('Current queue message unavailable')
+      return observeMessage(it, { ...it, message: observation.message, blockNumber: observation.blockNumber ?? it.blockNumber, at: Math.floor(Date.now() / 1000) }, { flagged: { board: false, site: false }, preexisting: false }) ?? it
+    })
     for (const record of soft) {
       const observation = freshById.get(record.markee)
       if (!observation || observation.board !== record.board || !scopesOf.has(observation.board) || contentHash(observation.message) !== record.contentHash) { softMap.delete(record.markee); continue }
@@ -67,7 +76,8 @@ export async function GET(req: NextRequest) {
     all.forEach(it => {
       const scopes = scopesOf.get(it.board)
       if (!scopes) return
-      if (isFlaggedIn(it, scopes)) flagged.push(it)
+      const manual = scopes.some(scope => flags[scope].includes(flagKey(it.markee)))
+      if (manual || isFlaggedIn(it, scopes)) flagged.push(it)
       else if (softMap.has(it.markee)) flagged.push({ ...it, automatic: softMap.get(it.markee)! })
       else if (isPendingIn(it, scopes) && !siteReviewIsMoot(it, scopes)) items.push(it)
     })
