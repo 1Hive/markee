@@ -1,3 +1,5 @@
+import type { ModerationSeverity } from '../moderation/severity'
+
 // Legacy manual-integration fragments below are retained for compatibility.
 // New integrations use buildEmbedPrompt, which detects framework/wallet/strategy.
 // Composable fragments for the Website embed AI-prompt wizard (EmbedModal -> WebsiteEmbedWizard).
@@ -17,7 +19,14 @@ export type EmbedWallet = 'privy' | 'rainbowkit' | 'other' | 'none'
 export type EmbedAgent = 'claude-code' | 'cursor' | 'codex' | 'copilot' | 'other'
 export type EmbedStrategy = 'fixed' | 'streaming'
 
+export const EMBED_MODERATION_PRESETS = {
+  relaxed: { label: 'Relaxed', description: 'Scam, phishing, concealed-link, and payment-solicitation rules; no profanity filter.' },
+  standard: { label: 'Standard', description: 'Current safety rules plus the profanity filter.' },
+  strict: { label: 'Strict', description: 'Standard plus detected links, domains, wallet addresses, and ENS names.' },
+} satisfies Record<ModerationSeverity, { label: string; description: string }>
+
 export interface BuildEmbedPromptInput {
+  severity?: ModerationSeverity;
   address: string
   name?: string
   /** @deprecated Retained for callers; the SDK detects the board strategy. */
@@ -797,7 +806,7 @@ Don't import Markee's own color palette. Before building the modal, read this si
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
-export function buildEmbedPrompt({ address, name }: BuildEmbedPromptInput): string {
+export function buildEmbedPrompt({ address, name, severity = 'standard' }: BuildEmbedPromptInput): string {
   return `Integrate @markee_team/sdk@latest into this app using the existing leaderboard below. Follow this flow: inspect the codebase, resolve missing requirements, implement the SDK, test, deploy, and verify the public page.
 
 First inspect package.json, entry points, existing components, wallet providers, and design tokens. Detect React/Next.js versus vanilla JavaScript or another framework yourself. Detect the existing wallet library and reuse it. Do not ask me to choose a framework, wallet library, or coding agent.
@@ -805,7 +814,10 @@ First inspect package.json, entry points, existing components, wallet providers,
 The leaderboard is already created${name ? ` (${JSON.stringify(name)})` : ''}:
 https://www.markee.xyz/markee/${address}
 Use placement = { kind: 'board', chainId: 8453, address: '${address}' }.
-Verify it with new MarkeeClient().snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
+Verify it with new MarkeeClient({ moderation: { severity: '${severity}' } }).snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
+
+Automatic moderation has already been selected: ${EMBED_MODERATION_PRESETS[severity].label}. ${EMBED_MODERATION_PRESETS[severity].description}
+Use moderation = { severity: '${severity}' } on both the sign and modal and on any MarkeeClient instance. For vanilla JavaScript, pass it to both createMarkeeSign and createMarkee. Keep this exact preset; do not ask me to choose it again. Manual flags and unavailable-state hiding still apply; this configures the integration without changing Markee's own Standard policy.
 
 Ask only unanswered requirements:
 - Where should the sign appear and what should open the modal?
