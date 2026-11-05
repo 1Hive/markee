@@ -477,4 +477,27 @@ contract MarkeeJuiceboxForwarderTest is Test {
         assertGt(_jb(alice), 0);
         assertGt(_markeeTokens(alice), 0);
     }
+
+    /// @dev Regression: with a tight gas limit (as gas estimation picks), the try/catch'd payouts could
+    ///      run out of gas while the outer sync still succeeded. Every gas limit must now either revert
+    ///      or fully settle and pay; none may "succeed" leaving the credit unpaid or the rent unsettled.
+    function test_lowGas_neverSucceedsWithoutPaying() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(30 days);
+
+        uint256 successes;
+        for (uint256 g = 300_000; g <= 3_000_000; g += 100_000) {
+            uint256 snap = vm.snapshotState();
+            (bool ok,) = address(fwd).call{ gas: g }(abi.encodeCall(fwd.sync, (_one(alice))));
+            if (ok) {
+                successes++;
+                assertEq(board.pendingSettlement(alice), 0, "sync succeeded without settling MARKEE");
+                assertEq(fwd.owedOf(alice), 0, "sync succeeded without paying the project");
+                assertGt(_jb(alice), 0, "sync succeeded without issuing project tokens");
+            }
+            vm.revertToState(snap);
+        }
+        assertGt(successes, 0, "no gas limit in range was enough");
+    }
 }

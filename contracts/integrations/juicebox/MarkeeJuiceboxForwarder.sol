@@ -114,6 +114,7 @@ contract MarkeeJuiceboxForwarder {
     error StillBeneficiary();
     error NoTerminal();
     error Reentrancy();
+    error InsufficientGas();
 
     modifier nonReentrant() {
         if (_status == _ENTERED) revert Reentrancy();
@@ -173,9 +174,15 @@ contract MarkeeJuiceboxForwarder {
             uint256 before = LEADERBOARD.pendingSettlement(backer);
             if (before > 0) {
                 one[0] = backer;
+                uint256 gasBeforeSettle = gasleft();
                 LEADERBOARD.settle(one);
                 uint256 remaining = LEADERBOARD.pendingSettlement(backer);
                 uint256 settled = remaining < before ? before - remaining : 0;
+                // The leaderboard try/catches each MARKEE payout and restores the balance on failure. If
+                // nothing settled and nearly all forwarded gas is gone, that payout most likely ran out
+                // of gas (a gas-estimated or deliberately low gas limit). Revert so the caller must
+                // supply enough gas instead of "succeeding" while settling nothing.
+                if (settled == 0 && gasleft() < gasBeforeSettle / 16) revert InsufficientGas();
                 uint256 credit = _share(settled, pct);
                 if (credit > free) credit = free;
                 if (credit > 0) {
@@ -245,7 +252,8 @@ contract MarkeeJuiceboxForwarder {
     }
 
     /// @dev Pays as much of `backer`'s credit as the funds held allow. Never reverts on a terminal
-    ///      failure: the credit simply stays owed for a later `sync` / `payOwed`.
+    ///      failure (the credit stays owed for a later `sync` / `payOwed`), except when the failure was
+    ///      the caller's gas running out.
     function _pay(address backer) internal {
         uint256 owed = owedOf[backer];
         if (owed == 0) return;
@@ -260,6 +268,7 @@ contract MarkeeJuiceboxForwarder {
         }
 
         uint256 balanceBefore = address(this).balance;
+        uint256 gasBeforePay = gasleft();
         try IJBTerminalMinimal(terminal).pay{value: amount}(PROJECT_ID, NATIVE_TOKEN, amount, backer, 0, memo, "")
         returns (uint256 tokenCount) {
             // A terminal may hand part of the ETH back (e.g. a router refund); only what it kept counts.
@@ -270,6 +279,10 @@ contract MarkeeJuiceboxForwarder {
             totalOwed -= spent;
             emit Paid(backer, spent, tokenCount);
         } catch (bytes memory reason) {
+            // Out of gas inside the terminal leaves only the 1/64 the EVM withholds. Treat that as the
+            // caller's gas limit being too low, not as a terminal failure: revert, so gas estimation
+            // (and griefers) cannot make a sync "succeed" while every payment fails.
+            if (gasleft() < gasBeforePay / 32) revert InsufficientGas();
             emit PaymentFailed(backer, amount, reason);
         }
     }

@@ -66,6 +66,10 @@ choose when the sync happens.
   leaderboard fails and restores all credit zero.
 - Solvency: credits are capped by unallocated funds, so `totalOwed ≤ funds held` always.
 - A failed Juicebox payment never reverts the sync. The MARKEE settlement still happens and the credit stays owed.
+- **Except when gas ran out.** Both payouts are wrapped in try/catch, so a gas limit that is too low (including one
+  picked by gas estimation) could otherwise make a sync "succeed" while settling or paying nothing. If a payout
+  fails with almost no gas left, `sync` reverts with `InsufficientGas`, so wallets, crons and estimators have to
+  supply enough gas for the payments to go through. Budget roughly 1M gas per backer.
 
 ## Known limitations
 
@@ -89,4 +93,11 @@ Base-mainnet fork tests against the real `StreamingLeaderboard`, Superfluid ETHx
 
 ```bash
 BASE_RPC_URL=<base-rpc> forge test --match-contract MarkeeJuiceboxForwarderTest -vv
+```
+
+The app-level E2E (`frontend/tests/e2e/fork/juicebox-forwarder.spec.ts`) creates a For Rent sign and streams to it
+through the unchanged Markee app on an Anvil fork, attaches the forwarder, and checks `sync` and the Claim button:
+
+```bash
+cd frontend && npm run test:e2e:fork -- juicebox-forwarder
 ```
