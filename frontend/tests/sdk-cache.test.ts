@@ -385,3 +385,41 @@ test('simultaneous cold listing requests wait for one loader instead of returnin
   const results = await Promise.all(Array.from({ length: 3 }, () => cachedListing(new Request('https://markee.example/api'), 'cold', load, {})))
   assert.equal(calls, 1); assert.deepEqual(results.map(result => result.status), [200, 200, 200])
 })
+
+test('ecosystem refresh and concurrent marketplace read share one published listing', async t => {
+  const { GET } = await import('../app/api/ecosystem/leaderboards/route')
+  const { COOPERATIVE_MULTISIG } = await import('../lib/contracts/addresses')
+  const db = database(); t.mock.method(snapshotStorage, 'get', () => db.store)
+  const previousUrl = process.env.KV_REST_API_URL, previousToken = process.env.KV_REST_API_TOKEN
+  process.env.KV_REST_API_URL = 'https://kv-cache-test.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.KV_REST_API_URL; else process.env.KV_REST_API_URL = previousUrl
+    if (previousToken === undefined) delete process.env.KV_REST_API_TOKEN; else process.env.KV_REST_API_TOKEN = previousToken
+  })
+  let saleReads = 0
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const board = { address: '0x1111111111111111111111111111111111111111', admin: COOPERATIVE_MULTISIG, topMessage: 'Current winner', totalFundsRaw: '1000' }
+  t.mock.method(globalThis, 'fetch', async (input: unknown) => {
+    if (String(input).startsWith('https://kv-cache-test.example')) return Response.json([{ result: null }])
+    if (String(input).includes('/api/forsale/leaderboards')) {
+      saleReads++; await gate
+      return Response.json({ leaderboards: [board] })
+    }
+    return Response.json({ leaderboards: [] })
+  })
+  const refreshed = GET(new Request('https://markee.example/api/ecosystem/leaderboards?bust=1'))
+  for (let i = 0; i < 20 && !saleReads; i++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(saleReads, 1)
+  const concurrent = GET(new Request('https://markee.example/api/ecosystem/leaderboards'))
+  release()
+  const results = await Promise.all([refreshed, concurrent])
+  for (const response of results) {
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).leaderboards[0].topMessage, 'Current winner')
+  }
+  assert.equal(saleReads, 1, 'a concurrent cold reader must not start a second aggregate loader')
+  await GET(new Request('https://markee.example/api/ecosystem/leaderboards'))
+  assert.equal(saleReads, 1, 'subsequent marketplace reads must reuse the published snapshot')
+})

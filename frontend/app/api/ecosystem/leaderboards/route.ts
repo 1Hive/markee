@@ -15,11 +15,11 @@ import { imputeEffectiveRate } from '@/lib/strategy'
 import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
+import { cachedListing } from '@/lib/leaderboards/cached'
 
 export const dynamic = 'force-dynamic'
 
 const CACHE_KEY = 'cache:ecosystem:leaderboards'
-const CACHE_TTL = 60 // seconds
 
 // Excluded from totalPlatformFunds — leaderboards with clearly recycled/gamed ETH
 const GAMED_ADDRESSES = new Set([
@@ -40,13 +40,9 @@ const GAMED_ADDRESSES = new Set([
 
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
-export async function GET(request: Request) {
+async function loadListing(request: Request) {
   try {
     const bust = new URL(request.url).searchParams.get('bust') === '1'
-    if (!bust) {
-      const cached = await kv.get<object>(CACHE_KEY)
-      if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
-    }
 
     const origin = internalOrigin()
     const bustParam = bust ? '?bust=1' : ''
@@ -180,10 +176,15 @@ export async function GET(request: Request) {
       },
     }
 
-    await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[ecosystem/leaderboards] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+// Use the same lease/fenced publication as platform listings. An older account
+// request must not overwrite a forced refresh with its pre-verification result.
+export async function GET(request: Request) {
+  return cachedListing(request, CACHE_KEY, loadListing, NO_CACHE)
 }
