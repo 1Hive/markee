@@ -1,3 +1,4 @@
+import { moderationSeverity, type ModerationSeverity } from '@/lib/moderation/severity'
 import { autoEnabled, checkPublished, contentHash } from '@/lib/moderation/automatic'
 // app/api/views/route.ts
 import { kv } from '@vercel/kv'
@@ -147,13 +148,14 @@ export async function GET(req: NextRequest) {
 // Body: { address: string, message: string, url?: string }
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
-  let body: { address: string; message: string; url?: string }
+  let body: { address: string; message: string; url?: string; severity?: ModerationSeverity }
   try {
     const parsed = await readLimitedJsonBody(req, 16 * 1024) as Record<string, unknown> | null
     const validAddress = typeof parsed?.address === 'string' && /^0x[0-9a-f]{40}$/i.test(parsed.address)
     const validMessage = typeof parsed?.message === 'string' && parsed.message.length > 0 && Buffer.byteLength(parsed.message) <= 4096
     const validUrl = parsed?.url === undefined || (typeof parsed.url === 'string' && parsed.url.length <= 2048)
     if (!validAddress || !validMessage || !validUrl) return NextResponse.json({ error: 'Invalid address or message' }, { status: 400, headers: corsHeaders(origin) })
+    try { moderationSeverity(parsed?.severity) } catch { return NextResponse.json({ error: 'Invalid moderation severity' }, { status: 400, headers: corsHeaders(origin) }) }
     body = parsed as typeof body
   } catch (error) {
     return NextResponse.json({ error: error instanceof RequestBodyTooLargeError ? 'Request body is too large.' : 'Invalid JSON request.' }, { status: error instanceof RequestBodyTooLargeError ? 413 : 400, headers: corsHeaders(origin) })
@@ -225,7 +227,7 @@ export async function POST(req: NextRequest) {
 
   if (autoEnabled()) {
     try {
-      const [moderation] = await checkPublished([address])
+      const [moderation] = await checkPublished([address], body.severity)
       const source = normalizeHost(req.headers.get('origin') ?? req.headers.get('referer') ?? '')
       const site = !!source && (source === 'markee.xyz' || source.endsWith('.markee.xyz') || source === 'localhost' || source === '127.0.0.1')
       if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) {

@@ -1,3 +1,4 @@
+import { moderationSeverity } from '@/lib/moderation/severity';
 import { autoEnabled } from '@/lib/moderation/automatic';
 import { POST as moderationCheck } from '@/app/api/moderation/check/route';
 import { underRateLimit } from '@/lib/rate-limit';
@@ -34,6 +35,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
     await rateLimit(request);
     const path = context.params.path.join('/');
     const search = request.nextUrl.searchParams;
+    const severity = (value: unknown) => { try { return moderationSeverity(value); } catch { throw new SDKError('INVALID_SEVERITY', 'Invalid moderation severity.'); } };
     if (request.method === 'GET') {
       if (path === 'checkout/config') return cors(NextResponse.json({ enabled: checkoutEnabled() }), request);
       if (path.startsWith('operations/')) return cors(NextResponse.json(await operationStatus(path.slice(11))), request);
@@ -45,7 +47,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
         const account = search.has('account') ? address(search.get('account')) : undefined;
         const offset = search.has('offset') ? Number(search.get('offset')) : undefined;
         if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000)) throw new SDKError('INVALID_OFFSET', 'Invalid page offset.');
-        return cors(NextResponse.json(await snapshot(p, account, offset)), request);
+        return cors(NextResponse.json(await snapshot(p, account, offset, severity(search.get('severity') ?? undefined))), request);
       }
       if (path === 'community') return cors(await community.GET(request), request);
       if (path === 'community/quote') return cors(await quote.GET(request), request);
@@ -77,7 +79,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
         return cors(NextResponse.json(await checkoutRequest(path.slice(9), body)), request);
       }
       if (path === 'sites/verify') return cors(NextResponse.json(await verifySite(placement(body.placement), body.siteUrl, request.headers.get('origin'))), request);
-      if (path === 'prepare') return cors(NextResponse.json(await prepare(placement(body.placement), address(body.account), parseAction(body.action))), request);
+      if (path === 'prepare') return cors(NextResponse.json(await prepare(placement(body.placement), address(body.account), parseAction(body.action), severity(body.severity))), request);
       if (path === 'verify') {
         if (typeof body.id !== 'string') throw new SDKError('INVALID_PREPARATION', 'A preparation ID is required.');
         return cors(NextResponse.json(await verifyTransaction(body.id, hash(body.hash))), request);
@@ -86,7 +88,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
         const markee = address(body.address);
         if (typeof body.message !== 'string' || Buffer.byteLength(body.message) > 4096 || (body.url !== undefined && (typeof body.url !== 'string' || body.url.length > 2048))) throw new SDKError('INVALID_VIEW', 'Invalid view event.');
         if (publicDataProxyEnabled() && !autoEnabled()) return cors(NextResponse.json(await recordPublicView({ address: markee, message: body.message, url: body.url as string | undefined })), request);
-        return cors(await views.POST(new NextRequest(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify({ address: markee, message: body.message, url: body.url }) })), request);
+        return cors(await views.POST(new NextRequest(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify({ address: markee, message: body.message, url: body.url, severity: severity(body.severity) }) })), request);
       }
     }
     throw new SDKError('NOT_FOUND', 'Unknown SDK endpoint.', 404);

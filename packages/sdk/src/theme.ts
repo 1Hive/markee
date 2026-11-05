@@ -1,22 +1,24 @@
 import type { MarkeeTheme, MarkeeThemeColors } from './types.js';
 
-const light: MarkeeThemeColors = {
+const light: Required<MarkeeThemeColors> = {
   background: '#fbfcff', surface: '#ffffff', text: '#181b21', muted: '#687080', border: '#dce1ea',
   inputBackground: '#ffffff', inputText: '#202737',
   primary: '#282e3e', primaryText: '#ffffff', accent: '#c9f1a7', accentText: '#2b3c20',
   accentSurface: '#f1f7ea', accentSurfaceText: '#4e6535', accentBorder: '#cde3b5',
   selected: '#e9edf7', selectedText: '#242c47',
   info: '#edf1f9', infoText: '#52617b', error: '#fff0f0', errorText: '#9c3540',
+  warning: '#fff8e6', warningText: '#754b08', warningBorder: '#d49a26',
   success: '#edf7e6', successText: '#40602f', link: '#4762a5', focusRing: '#5871c8', overlay: '#17203888',
 };
 
-const dark: MarkeeThemeColors = {
+const dark: Required<MarkeeThemeColors> = {
   background: '#151923', surface: '#202633', text: '#f0f3f8', muted: '#a6b1c3', border: '#434f63',
   inputBackground: '#10151e', inputText: '#f0f3f8',
   primary: '#dde6fa', primaryText: '#182238', accent: '#c9f1a7', accentText: '#24361a',
   accentSurface: '#243221', accentSurfaceText: '#c4e5ad', accentBorder: '#526b40',
   selected: '#313d53', selectedText: '#edf3ff',
   info: '#243149', infoText: '#bdcff1', error: '#44262e', errorText: '#ffbdc5',
+  warning: '#352a17', warningText: '#f5d48b', warningBorder: '#bd8b32',
   success: '#233b2b', successText: '#b5e4bf', link: '#adc5ff', focusRing: '#a1b4ff', overlay: '#030711b8',
 };
 

@@ -43,7 +43,7 @@ export async function openHostedCheckout(client: MarkeeClient, placement: Placem
       break;
     }
     if (!session) {
-      session = await client.request<CheckoutSession>('checkout/create', { placement, action, origin: window.location.origin });
+      session = await client.request<CheckoutSession>('checkout/create', { placement, action, origin: window.location.origin, ...(client.options.moderation?.severity ? { severity: client.options.moderation.severity } : {}) });
       try { localStorage.setItem(storageKey(client, placement), JSON.stringify(session)); } catch { /* Popup still retains its own session. */ }
     }
     const url = new URL(`/checkout/${session.id}`, session.checkoutOrigin || sources.get(session) || client.apiUrl);

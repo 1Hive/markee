@@ -1,4 +1,5 @@
 import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
+import { errorMessage } from './errors.js';
 import type { MessageCheck, Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 /** Markee-hosted API used by integrations unless overridden for local development. */
@@ -95,6 +96,7 @@ export class MarkeeClient {
   }
   async snapshot(placement: Placement, account?: Address | null, offset?: number, signal?: AbortSignal): Promise<Snapshot> {
     const params = new URLSearchParams({ placement: JSON.stringify(placement) });
+    if (this.options.moderation?.severity) params.set('severity', this.options.moderation.severity);
     if (account) params.set('account', account);
     if (offset !== undefined) params.set('offset', String(offset));
     return this.request(`snapshot?${params}`, undefined, signal);
@@ -102,7 +104,7 @@ export class MarkeeClient {
   async prepare(placement: Placement, action: Action): Promise<PreparedAction> {
     const account = await this.account();
     if (!account) throw new MarkeeError('Connect your wallet first.', 'NOT_CONNECTED');
-    return this.request('prepare', { placement, account, action });
+    return this.request('prepare', { placement, account, action, ...(this.options.moderation?.severity ? { severity: this.options.moderation.severity } : {}) });
   }
   private async ensureWallet(account: Address, chainId: number): Promise<EIP1193Provider> {
     const provider = await this.provider();
@@ -129,7 +131,7 @@ export class MarkeeClient {
       this.options.onEvent?.({ type: 'submitted', hash });
       return hash;
     } catch (error) {
-      this.options.onEvent?.({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+      this.options.onEvent?.({ type: 'error', message: errorMessage(error) });
       throw error;
     } finally { this.sending = false; }
   }
@@ -242,10 +244,10 @@ export class MarkeeClient {
     return this.request(`community/status?${new URLSearchParams({ protocol, transactionHash: hash, fromChainId: String(fromChainId), toChainId: String(toChainId) })}`);
   }
   async checkMessage(message: string): Promise<MessageCheck> {
-    try { return await this.request('moderation/check', { kind: 'draft', message }); }
-    catch (error) { if (error instanceof MarkeeError && error.status === 404) return { enabled: false, state: 'pass', contentHash: '', engine: '', policyVersion: '' }; throw error; }
+    try { return await this.request('moderation/check', { kind: 'draft', message, ...(this.options.moderation?.severity ? { severity: this.options.moderation.severity } : {}) }); }
+    catch (error) { if (!this.options.moderation?.severity && error instanceof MarkeeError && error.status === 404) return { enabled: false, state: 'pass', contentHash: '', engine: '', policyVersion: '' }; throw error; }
   }
   recordView(address: Address, message: string, url?: string): Promise<{ counted: boolean; totalViews: number }> {
-    return this.request('views', { address, message, url });
+    return this.request('views', { address, message, url, ...(this.options.moderation?.severity ? { severity: this.options.moderation.severity } : {}) });
   }
 }

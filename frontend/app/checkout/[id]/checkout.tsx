@@ -6,11 +6,11 @@ import { useEffect, useRef, useState } from 'react';
 import { usePrivy, useWallets, useFundWallet, useSendTransaction, useCreateWallet, useDepositFunds } from '@privy-io/react-auth';
 import { base } from 'viem/chains';
 import { formatEther, formatUnits, isHash, type Hex } from 'viem';
-import type { Action, CheckoutStatus, Placement, PreparedAction } from '../../../../packages/sdk/src/types';
+import type { Action, ModerationSeverity, CheckoutStatus, Placement, PreparedAction } from '../../../../packages/sdk/src/types';
 
 import type { ConversionQuote, ConversionStep } from '../../../lib/sdk/conversion';
 
-type Session = CheckoutStatus & { action: Extract<Action, { kind: 'create' | 'fund' }>; placement: Placement; name: string; origin: string; funding?: 'stripe' | 'moonpay'; conversion?: ConversionStep; hash?: Hex };
+type Session = CheckoutStatus & { severity?: ModerationSeverity; action: Extract<Action, { kind: 'create' | 'fund' }>; placement: Placement; name: string; origin: string; funding?: 'stripe' | 'moonpay'; conversion?: ConversionStep; hash?: Hex };
 class CheckoutError extends Error { constructor(message: string, public code: string) { super(message); } }
 const pause = () => new Promise(resolve => setTimeout(resolve, 4000));
 function explicitlyRejected(error: unknown): boolean {
@@ -25,7 +25,7 @@ export default function Checkout({ id }: { id: string }) {
   const { fundWallet } = useFundWallet();
   const { sendTransaction } = useSendTransaction();
   const [session, setSession] = useState<Session | null>(null);
-  const messageModeration = useMessageModeration(session?.action.kind === 'create' ? session.action.message : '')
+  const messageModeration = useMessageModeration(session?.action.kind === 'create' ? session.action.message : '', true, { severity: session?.severity })
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('Loading checkout…');
   const [busy, setBusy] = useState(false);

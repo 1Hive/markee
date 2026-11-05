@@ -41,6 +41,26 @@ test('chain-switch cancellation never sends a transaction', async () => {
   await assert.rejects(client.send(preparation()), /rejected/);
   assert.ok(!calls.includes('eth_sendTransaction'));
 });
+
+test('plain-object cancellation emits readable errors, leaves no pending payment and allows retry', async () => {
+  let rejected = true;
+  const error = { code: 4001, message: 'User rejected the request.' };
+  const events: { type: string; message?: string }[] = [];
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (rejected) throw error;
+    return hash;
+  } };
+  const client = new MarkeeClient({ wallet: { getProvider: async () => provider }, onEvent: event => events.push(event) });
+  const p = preparation();
+  await assert.rejects(client.send(p), value => value === error);
+  assert.match(events[0].message!, /^Wallet request cancelled\./);
+  assert.equal(client.pending(p.placement, account), undefined);
+  assert.equal(events.some(event => event.type === 'submitted'), false);
+  rejected = false;
+  assert.equal(await client.send(p), hash);
+});
 test('host wallet is reused and pending transaction blocks duplicate payment until verified', async () => {
   const calls: string[] = [];
   const provider: EIP1193Provider = { async request({ method }) { calls.push(method); return method === 'eth_accounts' ? [account] : method === 'eth_chainId' ? '0x2105' : hash; } };
@@ -80,4 +100,25 @@ test('site registration sends placement and URL once without wallet or credentia
   client.registerSite(placement);
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(calls, 1);
+});
+
+test('configured moderation severity reaches draft, published snapshot, preparation, and view requests', async () => {
+  const requests: { url: string; body: any }[] = [];
+  const client = new MarkeeClient({ moderation: { severity: 'strict' }, wallet: { getProvider: async () => ({ request: async () => [account] }) }, fetch: async (url, init) => {
+    requests.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    return Response.json({ state: 'pass' });
+  } });
+  await client.checkMessage('hello');
+  await client.snapshot(preparation().placement);
+  await client.prepare(preparation().placement, { kind: 'edit-message', markee: other, message: 'hello' });
+  await client.recordView(other, 'hello');
+  assert.equal(requests[0].body.severity, 'strict');
+  assert.equal(new URL(requests[1].url).searchParams.get('severity'), 'strict');
+  assert.equal(requests[2].body.severity, 'strict');
+  assert.equal(requests[3].body.severity, 'strict');
+});
+
+test('a configured moderation policy never treats an unsupported check endpoint as passing', async () => {
+  const client = new MarkeeClient({ moderation: { severity: 'strict' }, fetch: async () => Response.json({ error: 'Not found' }, { status: 404 }) });
+  await assert.rejects(client.checkMessage('hello'), { status: 404 });
 });

@@ -2,7 +2,8 @@ import 'server-only'
 import { createHash, randomUUID } from 'node:crypto'
 import { kv } from '@vercel/kv'
 import { Profanity } from '@2toad/profanity'
-import { checkRules } from './rules'
+import { checkRules, checkStrictRules } from './rules'
+import type { ModerationSeverity } from './severity'
 import { parseAbi, type Address } from 'viem'
 import { underRateLimit } from '../rate-limit'
 import { trustedMembership } from './membership'
@@ -48,16 +49,17 @@ export const automaticDeps = {
   },
 }
 const verdictCache = new Map<string, AutoVerdict>()
-export function checkDraft(message: string): AutoVerdict {
+export function checkDraft(message: string, severity: ModerationSeverity = 'standard'): AutoVerdict {
   const hash = contentHash(message)
-  const base = { enabled: autoEnabled(), contentHash: hash, engine: 'markee-rules+@2toad/profanity', policyVersion: AUTO_POLICY }
+  const base = { enabled: autoEnabled(), contentHash: hash, engine: 'markee-rules+@2toad/profanity', policyVersion: severity === 'standard' ? AUTO_POLICY : `${AUTO_POLICY}:${severity}-v1` }
   if (!base.enabled) return { ...base, state: 'pass' }
-  const key = `${AUTO_POLICY}:${hash}`
+  const key = `${base.policyVersion}:${hash}`
   const cached = verdictCache.get(key)
   if (cached) return cached
   try {
     const matches = automaticDeps.rules(message)
-    if (automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
+    if (severity !== 'relaxed' && automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
+    if (severity === 'strict') matches.push(...checkStrictRules(message))
     const result: AutoVerdict = { ...base, state: matches.length ? 'soft-flagged' : 'pass', ...(matches.length ? { reason: matches.map(m => m.reason).join(' '), reasonCodes: matches.map(m => m.code) } : {}) }
     if (verdictCache.size >= 2000) verdictCache.delete(verdictCache.keys().next().value!)
     verdictCache.set(key, result)
@@ -77,26 +79,29 @@ export async function evaluateObserved(id: string, message: string, board: strin
   const [trusted] = await automaticDeps.membership([{ markee: id, board }])
   return trusted === true ? evaluateTrusted(id, message, board, manual) : unavailable(id)
 }
-export async function evaluateObservedBatch(observations: Observation[], flags: { board: string[]; site: string[] }): Promise<PublishedModeration[]> {
+export async function evaluateObservedBatch(observations: Observation[], flags: { board: string[]; site: string[] }, severity: ModerationSeverity = 'standard'): Promise<PublishedModeration[]> {
   const trusted = await automaticDeps.membership(observations)
-  return Promise.all(observations.map((o, i) => trusted[i] === true ? evaluateTrusted(o.markee, o.message, o.board, { board: flags.board.includes(flagKey(o.markee)), site: flags.site.includes(flagKey(o.markee)) }) : unavailable(o.markee)))
+  return Promise.all(observations.map((o, i) => trusted[i] === true ? evaluateTrusted(o.markee, o.message, o.board, { board: flags.board.includes(flagKey(o.markee)), site: flags.site.includes(flagKey(o.markee)) }, severity) : unavailable(o.markee)))
 }
-async function evaluateTrusted(id: string, message: string, board: string, manual: { board: boolean; site: boolean }): Promise<PublishedModeration> {
+async function evaluateTrusted(id: string, message: string, board: string, manual: { board: boolean; site: boolean }, severity: ModerationSeverity = 'standard'): Promise<PublishedModeration> {
   const hash = contentHash(message)
   const base = { markee: id.toLowerCase(), board, contentHash: hash, policyVersion: AUTO_POLICY }
   if (manual.board) return { ...base, state: 'manual-flagged', siteState: 'manual-flagged' }
-  const verdict = checkDraft(message)
+  const verdict = checkDraft(message, severity)
+  base.policyVersion = verdict.policyVersion
   if (!verdict.enabled) return { ...base, state: 'visible', siteState: manual.site ? 'manual-flagged' : 'visible' }
   let state: Visibility = verdict.state === 'pass' ? 'visible' : verdict.state
   try {
     const [siteOverride, sharedOverride, previous] = await Promise.all([
       verdict.state === 'soft-flagged' ? automaticDeps.get(overrideKey(id, hash)) : null,
       verdict.state === 'soft-flagged' ? automaticDeps.get<{ scope: string; contentHash: string }>(sharedOverrideKey(id, hash)) : null,
-      automaticDeps.get<PublishedModeration>(softKey(id)),
+      severity === 'standard' ? automaticDeps.get<PublishedModeration>(softKey(id)) : null,
     ])
     if (sharedOverride?.scope === 'all' && sharedOverride.contentHash === hash) state = 'visible'
     const override = !!siteOverride
     const result: PublishedModeration = { ...base, state, siteState: manual.site ? 'manual-flagged' : override ? 'visible' : state, ...(verdict.reason ? { reason: verdict.reason, reasonCodes: verdict.reasonCodes } : {}) }
+    // Per-integration presets never mutate the global Standard moderation queue/index.
+    if (severity !== 'standard') return result
     if (previous?.contentHash === hash && previous?.state === state && previous?.siteState === result.siteState && previous?.policyVersion === AUTO_POLICY) return result
     const pipeline = automaticDeps.pipeline()
     pipeline.set(softKey(id), result)
@@ -109,13 +114,13 @@ async function evaluateTrusted(id: string, message: string, board: string, manua
     return { ...base, state: 'unavailable', siteState: manual.site ? 'manual-flagged' : 'unavailable', reason: 'Moderation check unavailable' }
   }
 }
-export async function checkPublished(ids: string[]): Promise<PublishedModeration[]> {
+export async function checkPublished(ids: string[], severity: ModerationSeverity = 'standard'): Promise<PublishedModeration[]> {
   const [observations, flags] = await Promise.all([automaticDeps.read(ids), automaticDeps.flags()])
   const boardFlags = new Set(flags.board), siteFlags = new Set(flags.site)
   const byId = new Map(observations.map(o => [o.markee.toLowerCase(), o]))
   return Promise.all(ids.map(id => {
     const o = byId.get(id.toLowerCase())
-    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }) : unavailable(id)
+    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }, severity) : unavailable(id)
   }))
 }
 export async function softRecords(): Promise<PublishedModeration[]> {

@@ -1,3 +1,4 @@
+import type { ModerationSeverity } from '../moderation/severity';
 import { automaticDeps, autoEnabled, evaluateObservedBatch } from '../moderation/automatic';
 import { getAddress, parseAbi, zeroAddress, type Abi, type Address, type PublicClient } from 'viem';
 import type { CommunityState, Entry, Placement, Snapshot, WalletState } from '../../../packages/sdk/src/types';
@@ -138,7 +139,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
   return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? (c.count > 20 ? 0 : null) : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
 }
 
-export async function snapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
+export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
   let result: Snapshot;
   if (displayCacheConfigured()) {
     const cached = await displayCache().read(displayKey(p, account, offset), () => loadSnapshot(p, account, offset), !!account);
@@ -153,15 +154,15 @@ export async function snapshot(p: Placement, account?: Address, offset?: number)
     const permissions = await communityPermissions(p.chainId, p.community, account);
     if (result.community) result = { ...result, community: { ...result.community, permissions } };
   }
-  return applySnapshotModeration(result);
+  return applySnapshotModeration(result, severity);
 }
 
-export async function applySnapshotModeration(result: Snapshot): Promise<Snapshot> {
+export async function applySnapshotModeration(result: Snapshot, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
   result = { ...result, autoModerationEnabled: autoEnabled() && result.chainId === 8453 };
   if (autoEnabled() && result.chainId === 8453 && result.board) {
     try {
       const flags = await automaticDeps.flags();
-      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, board: result.board! })), flags);
+      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, board: result.board! })), flags, severity);
       result = { ...result, entries: result.entries.map((entry, i) => {
         const verdict = moderation[i];
         return { ...entry, moderation: verdict, moderated: verdict.state === 'unavailable' ? null : verdict.state !== 'visible' };

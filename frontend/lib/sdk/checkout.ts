@@ -1,3 +1,4 @@
+import { moderationSeverity, type ModerationSeverity } from '../moderation/severity';
 import { createHash, randomBytes } from 'node:crypto';
 import { kv } from '@vercel/kv';
 import { isHash, type Address, type Hex } from 'viem';
@@ -12,6 +13,7 @@ import { conversionQuote, conversionStep, conversionDeps, verifyConversionReceip
 
 type PaymentAction = Extract<Action, { kind: 'create' | 'fund' }>;
 export interface CheckoutRecord {
+  severity?: ModerationSeverity;
   id: string; revision: number; createdAt: number; expiresAt: number; origin: string;
   readHash: string; writeHash: string; placement: Placement; action: PaymentAction;
   name: string; status: CheckoutStatus['status']; account?: Address; preparation?: PreparedAction;
@@ -59,6 +61,8 @@ export function checkoutAction(input: unknown): PaymentAction {
   return a;
 }
 export async function createCheckout(body: Record<string, unknown>, origin: string) : Promise<CheckoutSession> {
+  let severity: ModerationSeverity;
+  try { severity = moderationSeverity(body.severity); } catch { throw new SDKError('INVALID_SEVERITY', 'Invalid moderation severity.'); }
   const checkoutOriginOverride = hostedCheckoutOrigin();
   const p = placement(body.placement), action = checkoutAction(body.action);
   if (p.kind !== 'board' || p.chainId !== 8453) throw new SDKError('UNSUPPORTED_CHECKOUT', 'Hosted checkout supports Base boards.');
@@ -77,6 +81,7 @@ export async function createCheckout(body: Record<string, unknown>, origin: stri
   const readToken = randomBytes(32).toString('hex'), writeToken = randomBytes(32).toString('hex');
   const s: CheckoutRecord = { id: randomBytes(24).toString('hex'), revision: 0, origin: checkoutOrigin(origin), createdAt: Date.now(), expiresAt: Date.now() + 3600000,
     readHash: digest(readToken), writeHash: digest(writeToken), placement: p, action, name: c.name, status: 'created' };
+  s.severity = severity;
   await checkoutDeps.create(s);
   return { id: s.id, readToken, writeToken, expiresAt: s.expiresAt, ...(checkoutOriginOverride ? { checkoutOrigin: checkoutOriginOverride } : {}) };
 }
@@ -102,7 +107,7 @@ export async function checkoutRequest(operation: string, body: Record<string, un
     }
     return status(s);
   }
-  if (operation === 'read') return { ...status(s), placement: s.placement, action: s.action, name: s.name, origin: s.origin, hash: s.hash, conversion: s.conversion, funding: s.funding };
+  if (operation === 'read') return { ...status(s), placement: s.placement, action: s.action, name: s.name, origin: s.origin, hash: s.hash, conversion: s.conversion, funding: s.funding, severity: s.severity };
   if (operation === 'conversion-verify') {
     const step = s.conversion;
     if (!step || !['signing', 'submitted', 'confirmed', 'reverted'].includes(step.status)) throw new SDKError('INVALID_CHECKOUT_STATE', 'No conversion is pending.', 409);
@@ -184,7 +189,7 @@ export async function checkoutRequest(operation: string, body: Record<string, un
     if (s.account && s.account.toLowerCase() !== account.toLowerCase()) throw new SDKError('WALLET_CHANGED', 'Use the wallet already selected for this checkout.', 409);
     const currentBoard = await checkoutDeps.board(8453, (s.placement as Extract<Placement, { kind: 'board' }>).address);
     if (currentBoard.strategy !== 'sale' || !currentBoard.revnetEnabled || !currentBoard.token) throw new SDKError('REWARDS_UNAVAILABLE', 'This board no longer supports rewards checkout. Your ETH remains in your wallet.');
-    const preparation = await checkoutDeps.prepare(s.placement, account, s.action);
+    const preparation = await checkoutDeps.prepare(s.placement, account, s.action, s.severity);
     await save(s, { account, preparation, status: 'ready' });
     return preparation;
   }

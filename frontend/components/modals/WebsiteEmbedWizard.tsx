@@ -41,7 +41,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [step, setStep] = useState<Step>('questions')
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
-  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address })}#sdk-configuration`
+  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address, strategy: strategy === 'streaming' ? 'ForRent' : 'ForSale' })}#sdk-configuration`
   const formatPicker = <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px', color: TEXT2 }}>
     <legend style={{ marginBottom: 10 }}>Which integration does your app use?</legend>
     {(['react', 'vanilla'] as const).map(format => <label key={format} style={{ display: 'inline-flex', gap: 6, marginRight: 20, cursor: 'pointer' }}>
