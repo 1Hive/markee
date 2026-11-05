@@ -338,7 +338,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
   const [message, setMessage] = useState('')
-  const messageModeration = useMessageModeration(message, isOpen)
+  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: view !== 'edit' })
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -573,7 +573,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   if (!isOpen) return null
 
-  const busy = isPending || isConfirming
+  const busy = isPending || isConfirming || (view === 'edit' && messageModeration.checking)
   // Missing/invalid message and amount are validated on click (see handleBuyNew / handleAddFunds /
   // handleUpdateMessage, which each setError and bail) -- matches create-a-markee's pattern of
   // keeping the button clickable rather than disabling ahead of time. Insufficient balance is the
@@ -951,7 +951,10 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
               </div>
               <BtnTooltip reason={btnDisabledReason}>
                 <button
-                  onClick={() => setReviewOpen(true)}
+                  onClick={() => {
+                    if (view === 'edit') void handleUpdateMessage()
+                    else setReviewOpen(true)
+                  }}
                   disabled={btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
@@ -960,7 +963,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
                   }}
                 >
-                  Review Payment Info
+                  {view === 'edit' ? 'Save' : 'Review Payment Info'}
                 </button>
               </BtnTooltip>
               </>

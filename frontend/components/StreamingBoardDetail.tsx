@@ -427,7 +427,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   onSuccess?: () => void
 }) {
   const [message, setMessage] = useState('')
-  const messageModeration = useMessageModeration(message)
+  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
@@ -456,7 +456,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
 
   if (!isOpen || !markeeAddress) return null
 
-  const busy = isPending || isConfirming
+  const busy = messageModeration.checking || isPending || isConfirming
   const canSubmit = message.trim().length > 0 && !busy && !isSuccess
 
   async function handleSubmit() {

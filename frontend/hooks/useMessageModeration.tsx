@@ -9,7 +9,7 @@ export async function requestMessageCheck(message: string, signal?: AbortSignal)
   if (typeof result.enabled !== 'boolean' || !['pass', 'soft-flagged', 'unavailable'].includes(result.state)) throw new Error('Moderation check unavailable')
   return result
 }
-export function useMessageModeration(message: string, enabled = true) {
+export function useMessageModeration(message: string, enabled = true, { checkWhileTyping = true }: { checkWhileTyping?: boolean } = {}) {
   const [verdict, setVerdict] = useState<MessageCheck | null>(null)
   const [checking, setChecking] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -22,16 +22,17 @@ export function useMessageModeration(message: string, enabled = true) {
     const token = ++generation.current
     setVerdict(null); setChecking(false)
     pending.current?.(false); pending.current = null; setConfirming(false)
-    if (!enabled || !message.trim()) return
     const controller = new AbortController()
+    const cleanup = () => { controller.abort(); generation.current++; pending.current?.(false); pending.current = null }
+    if (!enabled || !message.trim() || !checkWhileTyping) return cleanup
     const timer = setTimeout(async () => {
       setChecking(true)
       try { const result = await requestMessageCheck(message, controller.signal); if (generation.current === token) setVerdict(result) }
       catch { if (!controller.signal.aborted && generation.current === token) setVerdict(unavailable()) }
       finally { if (generation.current === token) setChecking(false) }
     }, 400)
-    return () => { clearTimeout(timer); controller.abort(); generation.current++; pending.current?.(false); pending.current = null }
-  }, [message, enabled])
+    return () => { clearTimeout(timer); cleanup() }
+  }, [message, enabled, checkWhileTyping])
   const finish = (result: boolean) => { pending.current?.(result); pending.current = null; setConfirming(false) }
   async function guard(text: string): Promise<boolean> {
     const token = ++generation.current

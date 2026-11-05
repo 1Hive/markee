@@ -36,7 +36,7 @@ export function EditMessageModal({
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const [message, setMessage] = useState('')
-  const messageModeration = useMessageModeration(message, isOpen)
+  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
@@ -78,7 +78,7 @@ export function EditMessageModal({
 
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
   const txStep = isPending ? 'signing' : isConfirming ? 'pending' : isSuccess ? 'success' : null
-  const canSubmit = message.trim().length > 0 && !isPending && !isConfirming && !isSuccess && hasActiveWalletConnection && !isWrongChain
+  const canSubmit = message.trim().length > 0 && !messageModeration.checking && !isPending && !isConfirming && !isSuccess && hasActiveWalletConnection && !isWrongChain
 
   const handleSubmit = async () => {
     if (!await messageModeration.guard(message)) return
@@ -167,7 +167,7 @@ export function EditMessageModal({
                 disabled={!canSubmit}
                 style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: canSubmit ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap', flexShrink: 0, opacity: canSubmit ? 1 : 0.4, transition: 'opacity 140ms' }}
               >
-                Update Message
+                Save
               </button>
             </div>
           </>

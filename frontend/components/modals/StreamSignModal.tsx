@@ -563,12 +563,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // call StreamingBoardDetail's StreamMessageEditModal makes (Markee.setMessage is board-only).
   const [editingMessage, setEditingMessage] = useState(false)
   const [editMessageText, setEditMessageText] = useState('')
-  const editModeration = useMessageModeration(editMessageText, isOpen)
+  const editModeration = useMessageModeration(editMessageText, isOpen, { checkWhileTyping: false })
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
   const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
-  const editMessageBusy = editMessagePending || editMessageConfirming
+  const editMessageBusy = editModeration.checking || editMessagePending || editMessageConfirming
   async function handleSaveMessage() {
     if (!await editModeration.guard(editMessageText)) return
     if (!target || !editMessageText.trim()) return
