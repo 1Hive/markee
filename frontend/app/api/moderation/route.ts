@@ -113,12 +113,14 @@ export async function POST(req: NextRequest) {
     const items = await moderationWriteDeps.readItems(ids)
     const reviewedAt = Math.floor(Date.now() / 1000)
     const pipeline = moderationWriteDeps.pipeline()
+    let hasWrites = action !== 'approve'
     ids.forEach((id, i) => {
       // Approve only settles scopes where the message is still pending: never a flag, never a stub.
       const held = action === 'approve'
         ? scopes.get(id.toLowerCase())!.filter(scope => items[i]?.reviews[scope].status === 'pending')
         : scopes.get(id.toLowerCase())!
       if (action === 'approve' && held.length === 0) return
+      hasWrites = true
       if (action !== 'approve') held.forEach(scope => {
         if (action === 'flag') pipeline.sadd(FLAGGED_KEYS[scope], flagKey(id))
         else pipeline.srem(FLAGGED_KEYS[scope], ...flagKeyVariants(id))
@@ -159,7 +161,9 @@ export async function POST(req: NextRequest) {
     // Board flags are consumed by SDK snapshots. Move reads to a fresh cache namespace
     // in the same write batch so integrations do not wait for the stale snapshot TTL.
     if (action !== 'approve') pipeline.set('sdk:snapshots:generation', randomUUID())
-    await pipeline.exec()
+    // Repeated approval of an already settled/flagged item is a successful no-op.
+    // Upstash rejects an empty pipeline rather than returning an empty result.
+    if (hasWrites) await pipeline.exec()
 
     const { board, site } = await moderationWriteDeps.readAllFlagged()
     return NextResponse.json({

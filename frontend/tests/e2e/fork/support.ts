@@ -61,9 +61,10 @@ export async function openBuyModal(page: Page, board: string) {
 }
 
 // A new message on a For Sale board at the modal's default amount (enough to win).
-export async function buySale(page: Page, board: string, message: string) {
+export async function buySale(page: Page, board: string, message: string, amount?: string) {
   await openBuyModal(page, board)
   await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ max\)$/).fill(message)
+  if (amount !== undefined) await page.locator('input[inputmode="decimal"]').first().fill(amount)
   await page.getByRole('button', { name: 'Review Payment Info' }).click()
   await page.getByRole('button', { name: 'Confirm Payment' }).click()
   await expect(page.getByText('Success! Your message is live')).toBeVisible({ timeout: TX_TIMEOUT })
