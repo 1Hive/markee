@@ -15,6 +15,16 @@ const run = promisify(execFile)
 // so only its shape is checked; total time won is all chain time and is checked exactly.
 const WINNING_FOR = /Winning\s*for \d+[dhm]/
 
+async function clearListingCaches() {
+  // The shared listing cache moved into the SDK snapshot namespace. Preserve
+  // board:tophistory:* while removing both legacy and current listing snapshots.
+  const keys = [
+    ...await kv<string[]>(['KEYS', 'cache:*']),
+    ...await kv<string[]>(['KEYS', 'sdk:snapshots:v1:listings:*']),
+  ]
+  if (keys.length) await kv(['DEL', ...keys])
+}
+
 async function buyWinningSale(page: Page, message: string) {
   // These tests require #1; the modal's minimum/default bid need not beat the winner.
   // Read the fork rather than using live indexed prices for this historical chain.
@@ -22,6 +32,11 @@ async function buyWinningSale(page: Page, message: string) {
   const data = await rpc<`0x${string}`>('eth_call', [{ to: BOARDS.sale, data: encodeFunctionData({ abi, functionName: 'getTopMarkees', args: [1n] }) }, 'latest'])
   const [, totals] = decodeFunctionResult({ abi, functionName: 'getTopMarkees', data })
   await buySale(page, BOARDS.sale, message, formatEther((totals[0] ?? 0n) + parseEther('0.001')))
+  const result = await rpc<`0x${string}`>('eth_call', [{ to: BOARDS.sale, data: encodeFunctionData({ abi, functionName: 'getTopMarkees', args: [1n] }) }, 'latest'])
+  const [[winner]] = decodeFunctionResult({ abi, functionName: 'getTopMarkees', data: result })
+  const messageAbi = parseAbi(['function message() view returns (string)'])
+  const text = await rpc<`0x${string}`>('eth_call', [{ to: winner, data: encodeFunctionData({ abi: messageAbi, functionName: 'message' }) }, 'latest'])
+  expect(decodeFunctionResult({ abi: messageAbi, functionName: 'message', data: text })).toBe(message)
 }
 
 async function advanceHistory() {
@@ -34,8 +49,7 @@ async function advanceHistory() {
 // Like openBuyerHub, but clears only the cached listings: a full flushKV would also drop the history.
 async function openHubWithHistory(page: Page) {
   await advanceHistory()
-  const caches = await kv<string[]>(['KEYS', 'cache:*'])
-  if (caches.length) await kv(['DEL', ...caches])
+  await clearListingCaches()
   await page.goto('/account?section=buyer')
   await expect(page.locator('.acct-row').first()).toBeVisible({ timeout: TX_TIMEOUT })
 }
@@ -55,8 +69,7 @@ test('a winning message shows how long it has been winning', async ({ page }) =>
 test('once outbid, it shows its total time won', async ({ page }) => {
   await rpc('evm_increaseTime', [2 * 3600])
   // Fresh listings, so the buy modal's default amount clears the first message rather than tying it.
-  const caches = await kv<string[]>(['KEYS', 'cache:*'])
-  if (caches.length) await kv(['DEL', ...caches])
+  await clearListingCaches()
   await buyWinningSale(page, 'e2e win second')
   await openHubWithHistory(page)
   await expect(messageRow(page, 'e2e win first')).toContainText(/Won for 2h \d+m total/, { timeout: TX_TIMEOUT })
@@ -71,8 +84,7 @@ test('views count the board and its top message, on the dashboard and in Best Bu
   const [[top]] = decodeFunctionResult({ abi, functionName: 'getTopMarkees', data })
   await kv(['SET', `views:total:${BOARDS.sale.toLowerCase()}`, 5000])
   await kv(['SET', `views:total:${top.toLowerCase()}`, 250])
-  const caches = await kv<string[]>(['KEYS', 'cache:*'])
-  if (caches.length) await kv(['DEL', ...caches])
+  await clearListingCaches()
 
   await page.goto('/account?section=buyer')
   await expect(messageRow(page, 'e2e win second')).toContainText('5,250', { timeout: TX_TIMEOUT })
