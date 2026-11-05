@@ -40,6 +40,15 @@ type Step = 'questions' | 'prompt' | 'verifying' | 'verified'
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
   const [step, setStep] = useState<Step>('questions')
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
+  const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
+  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address })}#sdk-configuration`
+  const formatPicker = <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px', color: TEXT2 }}>
+    <legend style={{ marginBottom: 10 }}>Which integration does your app use?</legend>
+    {(['react', 'vanilla'] as const).map(format => <label key={format} style={{ display: 'inline-flex', gap: 6, marginRight: 20, cursor: 'pointer' }}>
+      <input type="radio" name="markee-code-format" checked={codeFormat === format} onChange={() => setCodeFormat(format)} style={{ accentColor: PINK }} />
+      {format === 'react' ? 'React / Next.js' : 'Vanilla JavaScript'}
+    </label>)}
+  </fieldset>
   const [siteUrl, setSiteUrl] = useState('')
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -201,15 +210,12 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
           <p>1. Install the latest SDK in your app and commit the updated lockfile.</p>
           {snippet('Install', 'npm install @markee_team/sdk@latest')}
           <p>2. Add the sign using your app’s framework. Clicking the sign opens the payment modal. This placement connects to your existing leaderboard; For Sale or For Rent is detected automatically.</p>
-          <details open>
-            <summary style={{ cursor: 'pointer', color: PINK, marginBottom: 10 }}>React 18 / 19 (including Next.js)</summary>
-            {snippet('React component', reactCode)}
-          </details>
-          <details>
-            <summary style={{ cursor: 'pointer', color: PINK, marginBottom: 10 }}>Vanilla JavaScript (with an npm bundler)</summary>
+          {formatPicker}
+          <p><a href={playgroundUrl} target="_blank" rel="noopener noreferrer" style={{ color: PINK }}>Open your leaderboard in the SDK playground ↗</a><br />Customize the theme and copy or download {codeFormat === 'react' ? 'React' : 'vanilla JavaScript'} code for this leaderboard.</p>
+          {codeFormat === 'react' ? snippet('React component', reactCode) : <>
             {snippet('Add to your HTML', '<div id="markee"></div>')}
             {snippet('JavaScript', vanillaCode)}
-          </details>
+          </>}
           <p>Replace the example site URL with your public HTTPS page. Match your app’s colors, font, and border radii through the SDK’s theme options. If your app already has a wallet, pass a wallet adapter to reuse its selected provider.</p>
           <p>No API URL, RPC provider key, or database credentials are required. Card checkout is available only when enabled by Markee.</p>
           <p>3. For client-rendered apps, add this marker to the HTML returned by your server (for example, Vite’s index.html). React server rendering already includes it.</p>
@@ -275,6 +281,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
         Install the npm package, add this leaderboard with React or vanilla JavaScript, then deploy and verify your site.
         The SDK handles the modal and automatically detects your leaderboard’s strategy.
       </p>}
+      {integration === 'sdk' && formatPicker}
       <button onClick={() => setStep('prompt')} style={primaryBtnStyle(true)}>
         {integration === 'ai' ? 'Generate prompt' : 'View SDK instructions'}
       </button>
