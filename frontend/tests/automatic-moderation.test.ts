@@ -9,8 +9,9 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { privateKeyToAccount } from 'viem/accounts'
 import { checkDraft, checkPublished, evaluateObserved, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, sharedOverrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
-import { falsePositiveMessage } from '../lib/moderation/automatic-message'
+import { approveMessage, falsePositiveMessage } from '../lib/moderation/automatic-message'
 import { POST } from '../app/api/moderation/false-positive/route'
+import { itemKey } from '../lib/moderation/server'
 
 const id = '0x1111111111111111111111111111111111111111'
 const board = '0x2222222222222222222222222222222222222222'
@@ -31,7 +32,7 @@ function storage(t: any) {
   t.mock.method(automaticDeps, 'mget', async (...keys: string[]) => keys.map(key => records.get(key) ?? null))
   t.mock.method(automaticDeps, 'flags', async () => ({ board: [], site: [] }))
   t.mock.method(automaticDeps, 'pipeline', () => {
-    const pipeline = { set(key: string, value: unknown) { records.set(key, value); return pipeline }, sadd(_key: string, value: string) { soft.add(value); return pipeline }, srem(_key: string, value: string) { soft.delete(value); return pipeline }, async exec() { return [] } }
+    const pipeline = { set(key: string, value: unknown) { records.set(key, value); return pipeline }, sadd(_key: string, value: string) { soft.add(value); return pipeline }, srem(_key: string, value: string) { soft.delete(value); return pipeline }, zrem() { return pipeline }, async exec() { return [] } }
     return pipeline
   })
   return { records, soft }
@@ -217,6 +218,57 @@ test('false-positive approval rejects unsigned, unauthorized, stale, altered and
   assert.equal(records.get(sharedOverrideKey(id, hash)).scope, 'all')
   const shared = (await checkPublished([id]))[0]
   assert.equal(shared.state, 'visible'); assert.equal(shared.siteState, 'visible')
+})
+
+test('queue approval is signed for exact text, overrides automatic moderation and settles only held pending scopes', async t => {
+  enable(t); const { records } = storage(t)
+  const moderator = privateKeyToAccount(`0x${'55'.repeat(32)}`)
+  const timestamp = Math.floor(Date.now() / 1000)
+  let text = 'shit'
+  const hash = contentHash(text)
+  const pending = { status: 'pending', reviewedBy: null, reviewedAt: null }
+  const item = { markee: id, board, message: text, name: '', author: moderator.address, kind: 'created', previousMessage: null, blockNumber: '1', at: timestamp, reviews: { board: pending, site: pending } }
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  t.mock.method(automaticAuthDeps, 'readItems', async () => [item])
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: text }])
+  const signature = await moderator.signMessage({ message: approveMessage(8453, id, hash, timestamp) })
+  const body = { chainId: 8453, markee: id, contentHash: hash, moderator: moderator.address, timestamp, scope: 'all', intent: 'approve', signature }
+  const req = (extra: object = {}) => new NextRequest('https://markee.xyz/api/moderation/false-positive', { method: 'POST', body: JSON.stringify({ ...body, ...extra }) })
+  assert.equal((await POST(req({ signature: undefined }))).status, 400)
+  assert.equal((await POST(req({ contentHash: contentHash('altered') }))).status, 401)
+  assert.equal((await POST(req({ intent: 'false-positive' }))).status, 401)
+  assert.equal((await POST(req({ timestamp: timestamp - 1000 }))).status, 401)
+  const otherSignature = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp, 'all') })
+  assert.equal((await POST(req({ signature: otherSignature }))).status, 401)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map(), boardMap: new Map() }))
+  assert.equal((await POST(req())).status, 403)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  text = 'Changed while signing'
+  assert.equal((await POST(req())).status, 409)
+  text = 'shit'
+  t.mock.method(automaticAuthDeps, 'readItems', async () => [{ ...item, message: 'Different queued text' }])
+  assert.equal((await POST(req())).status, 409)
+  assert.equal(records.has(sharedOverrideKey(id, hash)), false)
+  t.mock.method(automaticAuthDeps, 'readItems', async () => [item])
+  assert.equal((await POST(req())).status, 200)
+  assert.equal(records.get(itemKey(id)).reviews.board.status, 'approved')
+  assert.equal(records.get(itemKey(id)).reviews.site.status, 'pending')
+  const result = (await checkPublished([id]))[0]
+  assert.equal(result.state, 'visible'); assert.equal(result.siteState, 'visible')
+  text = 'merde'
+  assert.equal((await checkPublished([id]))[0].state, 'soft-flagged')
+  text = 'shit'
+  t.mock.method(automaticDeps, 'flags', async () => ({ board: [`8453:${id}`], site: [] }))
+  assert.equal((await checkPublished([id]))[0].state, 'manual-flagged')
+  // Human review also works for passing text, even with automatic checks disabled.
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  text = 'Hello gardens'
+  const passingHash = contentHash(text)
+  t.mock.method(automaticAuthDeps, 'readItems', async () => [{ ...item, message: text }])
+  const passingSignature = await moderator.signMessage({ message: approveMessage(8453, id, passingHash, timestamp) })
+  assert.equal((await POST(req({ contentHash: passingHash, signature: passingSignature }))).status, 200)
+  assert.equal(records.has(sharedOverrideKey(id, passingHash)), true)
 })
 
 test('draft and published HTTP boundaries reject invalid inputs and ignore caller-supplied published text', async t => {

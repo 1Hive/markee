@@ -98,6 +98,14 @@ Markee-site and SDK visibility. Legacy site-only approvals remain listed with â€
 so moderators can explicitly extend them with a fresh signature. SDK response shapes are unchanged;
 existing clients receive `moderated: false` for approved text.
 
+Queue **Approve** uses the same exact-text visibility override and also settles the moderator's
+pending review scopes atomically. It sends `intent: 'approve'` and `scope: 'all'`, signed with
+`markee-moderation:approve:v1` binding the chain, identifier, text hash, scope and timestamp.
+The server checks both current on-chain text and the queued revision; changed text requires
+refreshing and signing again. Passing messages can also be explicitly approved. Legacy approvals
+through `POST /api/moderation` keep their original review-only behavior because those signatures
+do not bind text and cannot safely authorize an automatic-moderation override.
+
 Soft/unavailable indexes are separate from manual sets. The existing scanner reconciles on-chain
 edits, including transactions outside the UI. Unfiltered legacy flag lists include the index and
 may lag edits until scanning; updated clients use content-aware checks. The flagged queue labels

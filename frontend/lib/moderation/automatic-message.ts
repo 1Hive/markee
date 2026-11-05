@@ -4,3 +4,8 @@ export function falsePositiveMessage(chainId: number, markee: string, hash: stri
   const version = scope === 'all' ? 'v2' : 'v1'
   return `markee-moderation:false-positive:${version}:${JSON.stringify([chainId, markee.toLowerCase(), hash, scope, timestamp])}`
 }
+
+// Queue approval explicitly approves this exact text on both display surfaces.
+export function approveMessage(chainId: number, markee: string, hash: string, timestamp: number): string {
+  return `markee-moderation:approve:v1:${JSON.stringify([chainId, markee.toLowerCase(), hash, 'all', timestamp])}`
+}
