@@ -544,7 +544,7 @@ export class MarkeeModal {
     else if (this.wallets) actions = btn('back', 'Back');
     else if (this.review) actions = btn('back', 'Back') + btn('send', this.review.action.kind === 'fund' || this.review.action.kind === 'stream' || this.review.action.kind === 'create' && BigInt(this.review.transaction.value) > 0n ? 'Confirm payment' : 'Confirm in wallet', 'primary');
     else if (this.authorization) actions = btn('back', 'Back') + btn('sign', 'Sign authorization', 'primary');
-    else if (this.pending) actions = btn('check', 'Check transaction', 'primary');
+    else if (this.pending) actions = btn('check', '<svg class="refresh-icon" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></svg>Refresh', 'primary refresh-action');
     else if (s && this.tab === 'main' && s.board) {
       const editing = this.form?.kind.startsWith('edit');
       const secondary = editing ? btn('back', 'Cancel') : s.strategy === 'rent' && BigInt(s.wallet?.flowRate ?? '0') > 0n ? btn('stop', 'Stop streaming', 'danger') : '';

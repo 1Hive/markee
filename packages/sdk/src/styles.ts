@@ -29,6 +29,7 @@ p{margin:8px 0 14px}
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .between{justify-content:space-between}
 .stack{display:grid;gap:12px}
+.refresh-action{display:inline-flex;align-items:center;justify-content:center;gap:8px}.refresh-icon{flex-shrink:0}
 .btn{border:1px solid var(--markee-border);border-radius:var(--markee-control-radius);background:var(--markee-surface);color:var(--markee-text);padding:10px 15px;font-weight:600;font-size:13px}
 .primary{background:var(--markee-primary);border-color:var(--markee-primary);color:var(--markee-primary-text)}
 .accent{background:var(--markee-accent);border-color:var(--markee-accent);color:var(--markee-accent-text)}
