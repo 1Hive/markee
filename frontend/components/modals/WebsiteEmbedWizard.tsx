@@ -5,6 +5,7 @@ import { CopyButton } from '@/components/board-detail/shared'
 import { TxSteps, TxRing } from '@/components/modals/StreamUI'
 import {
   buildEmbedPrompt,
+  EMBED_MODERATION_PRESETS,
   type EmbedStrategy,
 } from '@/lib/embedPrompt/fragments'
 import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
@@ -39,9 +40,10 @@ type Step = 'questions' | 'prompt' | 'verifying' | 'verified'
 
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
   const [step, setStep] = useState<Step>('questions')
+  const [severity, setSeverity] = useState<keyof typeof EMBED_MODERATION_PRESETS>('standard')
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
-  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address })}#sdk-configuration`
+  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address, severity, strategy: strategy === 'streaming' ? 'ForRent' : 'ForSale' })}#sdk-configuration`
   const formatPicker = <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px', color: TEXT2 }}>
     <legend style={{ marginBottom: 10 }}>Which integration does your app use?</legend>
     {(['react', 'vanilla'] as const).map(format => <label key={format} style={{ display: 'inline-flex', gap: 6, marginRight: 20, cursor: 'pointer' }}>
@@ -150,7 +152,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
 
   // ── Prompt ─────────────────────────────────────────────────────────────────
   if (step === 'prompt') {
-    const prompt = buildEmbedPrompt({ address, name, strategy })
+    const prompt = buildEmbedPrompt({ address, name, strategy, severity })
     const marker = `<span hidden data-markee-address="${address}"></span>`
     const reactCode = `'use client';
 import { MarkeeSign } from '@markee_team/sdk/react';
@@ -158,6 +160,7 @@ import { MarkeeSign } from '@markee_team/sdk/react';
 export default function SiteMarkee() {
   return <MarkeeSign
     placement={{ kind: 'board', chainId: 8453, address: '${address}' }}
+    moderation={{ severity: '${severity}' }}
     theme={{ mode: 'system' }}
     siteUrl="https://your-site.com"
   />;
@@ -166,6 +169,7 @@ export default function SiteMarkee() {
 
 const sign = createMarkeeSign(document.querySelector('#markee'), {
   placement: { kind: 'board', chainId: 8453, address: '${address}' },
+  moderation: { severity: '${severity}' },
   theme: { mode: 'system' },
   siteUrl: 'https://your-site.com',
 });
@@ -194,6 +198,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
           ← Integration steps
         </button>
 
+        <p style={{ color: TEXT2, fontSize: 13, margin: '0 0 16px' }}>Automatic moderation: <strong style={{ color: TEXT }}>{EMBED_MODERATION_PRESETS[severity].label}</strong>. {EMBED_MODERATION_PRESETS[severity].description}</p>
         {integration === 'ai' ? <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: '#030714', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 14px', borderBottom: `1px solid ${BORDER}` }}>
             <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>Paste into your coding assistant alongside your codebase</span>
@@ -218,6 +223,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
           </>}
           <p>Replace the example site URL with your public HTTPS page. Match your app’s colors, font, and border radii through the SDK’s theme options. If your app already has a wallet, pass a wallet adapter to reuse its selected provider.</p>
           <p>No API URL, RPC provider key, or database credentials are required. Card checkout is available only when enabled by Markee.</p>
+          <hr style={{ border: 0, borderTop: `1px solid ${BORDER}`, margin: '24px 0' }} />
           <p>3. For client-rendered apps, add this marker to the HTML returned by your server (for example, Vite’s index.html). React server rendering already includes it.</p>
           {snippet('Site verification marker', marker)}
           <p>4. Deploy your app, test the sign and modal, then verify the public page below.</p>
@@ -251,6 +257,22 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
   // ── Questions ──────────────────────────────────────────────────────────────
   return (
     <>
+      <fieldset id="embed-moderation-severity" aria-describedby="embed-moderation-description" style={{ border: 0, padding: 0, margin: '0 0 24px' }}>
+        <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>Automatic moderation severity</legend>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {(Object.keys(EMBED_MODERATION_PRESETS) as (keyof typeof EMBED_MODERATION_PRESETS)[]).map(value => {
+            const preset = EMBED_MODERATION_PRESETS[value]
+            return <label key={value} style={{ flex: '1 1 160px', cursor: 'pointer', padding: 14, border: `1px solid ${severity === value ? PINK : BORDER}`, borderRadius: 8, background: severity === value ? 'rgba(244,159,255,0.08)' : BG }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: TEXT, fontWeight: 700, fontSize: 14 }}>
+                <input type="radio" name="markee-moderation-severity" value={value} checked={severity === value} onChange={() => setSeverity(value)} style={{ accentColor: PINK }} />
+                {preset.label}
+              </span>
+              <span style={{ display: 'block', color: TEXT2, fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{preset.description}</span>
+            </label>
+          })}
+        </div>
+        <p id="embed-moderation-description" style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: '10px 0 0' }}>Manual flags still apply. Content stays hidden when moderation is unavailable.</p>
+      </fieldset>
       <fieldset style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
         <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>How would you like to integrate Markee?</legend>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>

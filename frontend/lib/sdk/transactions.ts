@@ -1,3 +1,4 @@
+import type { ModerationSeverity } from '../moderation/severity';
 import { checkDraft, autoEnabled } from '../moderation/automatic';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { decodeEventLog, encodeAbiParameters, encodeFunctionData, formatEther, toHex, zeroAddress, type Address, type Hex } from 'viem';
@@ -32,7 +33,7 @@ export function verifyEnvelope(id: string): Envelope {
   return value;
 }
 
-export async function prepare(p: Placement, account: Address, action: Action): Promise<PreparedAction> {
+export async function prepare(p: Placement, account: Address, action: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
   const resolved = await resolvePlacement(p);
   if (!resolved.board) throw new SDKError('INACTIVE_COMMUNITY', 'Activate the community Markee first.', 409);
   const c = await boardContext(resolved.chainId, resolved.board, p.kind === 'gardens-community');
@@ -152,7 +153,7 @@ export async function prepare(p: Placement, account: Address, action: Action): P
   const expiresAt = Date.now() + 5 * 60_000;
   const id = signEnvelope({ transaction, placement: p, action, expiresAt, token: c.token, board: c.board, issuedAt: Date.now() });
   lines.push(`Native ETH sent: ${formatEther(value)} ETH`, `Network: ${resolveClientChain(c.chainId).name}`, `Recipient: ${to}`);
-  return { id, expiresAt, placement: p, action, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}) } };
+  return { id, expiresAt, placement: p, action, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {

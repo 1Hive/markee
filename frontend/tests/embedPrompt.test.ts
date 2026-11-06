@@ -44,3 +44,16 @@ test('legacy moderation instructions hide content until a trustworthy flag list 
   assert.ok(prompt.includes('do not record views'))
   assert.ok(!prompt.includes('flagged: []'))
 })
+
+test('selected severity is an answered requirement applied to React, vanilla and direct client integrations', () => {
+  for (const severity of ['relaxed', 'standard', 'strict'] as const) {
+    const prompt = buildEmbedPrompt({ address, strategy: 'fixed', severity })
+    assert.ok(prompt.includes(`moderation = { severity: '${severity}' }`))
+    assert.ok(prompt.includes(`new MarkeeClient({ moderation: { severity: '${severity}' } }).snapshot(placement)`))
+    assert.ok(prompt.includes('on both the sign and modal and on any MarkeeClient instance'))
+    assert.ok(prompt.includes('pass it to both createMarkeeSign and createMarkee'))
+    assert.ok(prompt.includes('do not ask me to choose it again'))
+    assert.ok(prompt.includes('Manual flags and unavailable-state hiding still apply'))
+  }
+  assert.equal(buildEmbedPrompt({ address, strategy: 'fixed' }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'standard' }))
+})

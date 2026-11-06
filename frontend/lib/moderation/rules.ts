@@ -79,3 +79,12 @@ export function checkRules(message: string): RuleMatch[] {
   }
   return [...matches].map(code => ({ code, reason: RULE_REASONS[code] }))
 }
+
+/** Strict adds content restrictions, not a contextual safety classifier. */
+export function checkStrictRules(message: string): RuleMatch[] {
+  const text = ruleText(message)
+  const matches: RuleMatch[] = []
+  if (/https?:\/\/|www\./i.test(text) || [...text.matchAll(DOMAIN)].length) matches.push({ code: 'LINK', reason: 'This message contains a link or domain, which the strict preset hides.' })
+  if (paymentTarget(text)) matches.push({ code: 'PAYMENT_ADDRESS', reason: 'This message contains a wallet address or ENS name, which the strict preset hides.' })
+  return matches
+}

@@ -101,3 +101,24 @@ test('site registration sends placement and URL once without wallet or credentia
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(calls, 1);
 });
+
+test('configured moderation severity reaches draft, published snapshot, preparation, and view requests', async () => {
+  const requests: { url: string; body: any }[] = [];
+  const client = new MarkeeClient({ moderation: { severity: 'strict' }, wallet: { getProvider: async () => ({ request: async () => [account] }) }, fetch: async (url, init) => {
+    requests.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    return Response.json({ state: 'pass' });
+  } });
+  await client.checkMessage('hello');
+  await client.snapshot(preparation().placement);
+  await client.prepare(preparation().placement, { kind: 'edit-message', markee: other, message: 'hello' });
+  await client.recordView(other, 'hello');
+  assert.equal(requests[0].body.severity, 'strict');
+  assert.equal(new URL(requests[1].url).searchParams.get('severity'), 'strict');
+  assert.equal(requests[2].body.severity, 'strict');
+  assert.equal(requests[3].body.severity, 'strict');
+});
+
+test('a configured moderation policy never treats an unsupported check endpoint as passing', async () => {
+  const client = new MarkeeClient({ moderation: { severity: 'strict' }, fetch: async () => Response.json({ error: 'Not found' }, { status: 404 }) });
+  await assert.rejects(client.checkMessage('hello'), { status: 404 });
+});

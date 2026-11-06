@@ -341,3 +341,57 @@ test('development public-data proxy cannot forward an automatically hidden impre
   assert.equal(response.status, 200)
   assert.deepEqual(await response.json(), { totalViews: 12, messageViews: 4, counted: false })
 })
+
+test('severity presets isolate cached verdicts and preserve exact hashes', t => {
+  enable(t)
+  assert.equal(checkDraft('shit', 'relaxed').state, 'pass')
+  assert.equal(checkDraft('shit', 'standard').state, 'soft-flagged')
+  assert.equal(checkDraft('See https://gardens.fund', 'standard').state, 'pass')
+  assert.equal(checkDraft('See https://gardens.fund', 'strict').state, 'soft-flagged')
+  assert.equal(checkDraft(id, 'standard').state, 'pass')
+  assert.equal(checkDraft(id, 'strict').state, 'soft-flagged')
+  assert.equal(checkDraft('alice.eth', 'strict').state, 'soft-flagged')
+  for (const severity of ['relaxed', 'standard', 'strict'] as const) {
+    assert.equal(checkDraft('Send your seed phrase', severity).state, 'soft-flagged')
+    assert.equal(checkDraft('Hello gardens', severity).state, 'pass')
+    assert.equal(checkDraft('shit', severity).contentHash, contentHash('shit'))
+  }
+  assert.notEqual(checkDraft('shit', 'relaxed').policyVersion, checkDraft('shit').policyVersion)
+})
+test('optional API severity defaults Standard, rejects invalid values and applies to drafts and published checks', async t => {
+  enable(t); storage(t)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit' }])
+  const check = (body: unknown) => checkRoute(new NextRequest('http://localhost/api/moderation/check', { method: 'POST', body: JSON.stringify(body) }))
+  assert.equal((await (await check({ kind: 'draft', message: 'shit' })).json()).state, 'soft-flagged')
+  assert.equal((await (await check({ kind: 'draft', message: 'shit', severity: 'relaxed' })).json()).state, 'pass')
+  for (const severity of ['disabled', '', null, {}, 10]) assert.equal((await check({ kind: 'draft', message: 'hello', severity })).status, 400)
+  const published = await (await check({ kind: 'published', chainId: 8453, markeeIds: [id], severity: 'relaxed' })).json()
+  assert.equal(published.items[0].state, 'visible')
+})
+test('preset display checks preserve manual flags and do not overwrite the global Standard index', async t => {
+  enable(t)
+  const { records } = storage(t)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit' }])
+  await checkPublished([id])
+  const original = JSON.stringify(records.get(softKey(id)))
+  assert.equal((await checkPublished([id], 'relaxed'))[0].state, 'visible')
+  assert.equal(JSON.stringify(records.get(softKey(id))), original)
+  t.mock.method(automaticDeps, 'flags', async () => ({ board: [`8453:${id}`], site: [] }))
+  assert.equal((await checkPublished([id], 'relaxed'))[0].state, 'manual-flagged')
+})
+
+test('Strict snapshots hide links on sale and rent without changing financial data or unavailable behavior', async t => {
+  enable(t); storage(t)
+  for (const strategy of ['sale', 'rent']) {
+    const input = { chainId: 8453, board, top: id, strategy, warnings: [], entries: [{ address: id, message: 'Visit https://gardens.fund', moderated: false, totalFunds: '123' }] } as any
+    assert.equal((await applySnapshotModeration(input)).entries[0].moderated, false)
+    const strict = await applySnapshotModeration(input, 'strict')
+    assert.equal(strict.entries[0].moderated, true)
+    assert.equal(strict.entries[0].totalFunds, '123')
+    assert.deepEqual(strict.entries[0].moderation?.reasonCodes, ['LINK'])
+  }
+  t.mock.method(automaticDeps, 'membership', async () => [null])
+  const result = await applySnapshotModeration({ chainId: 8453, board, warnings: [], entries: [{ address: id, message: 'hello', moderated: false }] } as any, 'relaxed')
+  assert.equal(result.entries[0].moderated, null)
+})

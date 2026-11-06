@@ -1,15 +1,15 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import type { MessageCheck } from '../../packages/sdk/src/types'
+import type { MessageCheck, ModerationSeverity } from '../../packages/sdk/src/types'
 
-export async function requestMessageCheck(message: string, signal?: AbortSignal): Promise<MessageCheck> {
-  const response = await fetch('/api/moderation/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'draft', message }), signal })
+export async function requestMessageCheck(message: string, signal?: AbortSignal, severity?: ModerationSeverity): Promise<MessageCheck> {
+  const response = await fetch('/api/moderation/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'draft', message, ...(severity ? { severity } : {}) }), signal })
   if (!response.ok) throw new Error('Moderation check unavailable')
   const result = await response.json()
   if (typeof result.enabled !== 'boolean' || !['pass', 'soft-flagged', 'unavailable'].includes(result.state)) throw new Error('Moderation check unavailable')
   return result
 }
-export function useMessageModeration(message: string, enabled = true, { checkWhileTyping = true }: { checkWhileTyping?: boolean } = {}) {
+export function useMessageModeration(message: string, enabled = true, { checkWhileTyping = true, severity }: { checkWhileTyping?: boolean; severity?: ModerationSeverity } = {}) {
   const [verdict, setVerdict] = useState<MessageCheck | null>(null)
   const [checking, setChecking] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -27,18 +27,18 @@ export function useMessageModeration(message: string, enabled = true, { checkWhi
     if (!enabled || !message.trim() || !checkWhileTyping) return cleanup
     const timer = setTimeout(async () => {
       setChecking(true)
-      try { const result = await requestMessageCheck(message, controller.signal); if (generation.current === token) setVerdict(result) }
+      try { const result = await requestMessageCheck(message, controller.signal, severity); if (generation.current === token) setVerdict(result) }
       catch { if (!controller.signal.aborted && generation.current === token) setVerdict(unavailable()) }
       finally { if (generation.current === token) setChecking(false) }
     }, 400)
     return () => { clearTimeout(timer); cleanup() }
-  }, [message, enabled, checkWhileTyping])
+  }, [message, enabled, checkWhileTyping, severity])
   const finish = (result: boolean) => { pending.current?.(result); pending.current = null; setConfirming(false) }
   async function guard(text: string): Promise<boolean> {
     const token = ++generation.current
     setChecking(true)
     let result: MessageCheck
-    try { result = await requestMessageCheck(text) } catch { result = unavailable() }
+    try { result = await requestMessageCheck(text, undefined, severity) } catch { result = unavailable() }
     if (current.current !== text || token !== generation.current) { setChecking(false); return false }
     setVerdict(result); setChecking(false)
     if (!result.enabled || result.state === 'pass') return true
@@ -57,7 +57,7 @@ export function useMessageModeration(message: string, enabled = true, { checkWhi
     const buttons = document.createElement('div'); Object.assign(buttons.style, { display: 'flex', gap: '16px', marginTop: '20px' })
     const button = (label: string, click: () => void) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = click; Object.assign(b.style, { cursor: 'pointer', padding: '8px', border: '1px solid #777', borderRadius: '6px' }); buttons.append(b) }
     button('Edit message', () => finish(false))
-    button('Retry', () => { const token = generation.current; void requestMessageCheck(message).catch(unavailable).then(result => { if (token !== generation.current || current.current !== message) return; setVerdict(result); if (result.state === 'pass') finish(true) }) })
+    button('Retry', () => { const token = generation.current; void requestMessageCheck(message, undefined, severity).catch(unavailable).then(result => { if (token !== generation.current || current.current !== message) return; setVerdict(result); if (result.state === 'pass') finish(true) }) })
     button('Continue anyway', () => finish(true))
     dialog.append(title, note, buttons); document.body.append(dialog)
     dialog.addEventListener('cancel', event => { event.preventDefault(); finish(false) })
@@ -65,7 +65,7 @@ export function useMessageModeration(message: string, enabled = true, { checkWhi
     return () => { dialog.close(); dialog.remove(); previous?.focus() }
     // The dialog resolves the current pending request; refs validate the exact text on continuation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirming, message, reason])
+  }, [confirming, message, reason, severity])
   const ui = <>
     {checking && <p role="status" style={{ fontSize: 12 }}>Checking message…</p>}
     {verdict?.enabled && verdict.state !== 'pass' && <p role="status" style={{ color: 'var(--markee-warning, #c78b25)', fontSize: 12 }}>{reason} {verdict.state === 'soft-flagged' ? 'Your published message may be hidden. Edit it or continue anyway.' : 'Your message will stay hidden until moderation can be checked.'}</p>}

@@ -1,3 +1,4 @@
+export type ModerationSeverity = 'relaxed' | 'standard' | 'strict';
 export interface MessageCheck { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string; reasonCodes?: string[] }
 export interface EntryModeration { state: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'; contentHash: string; reason?: string; reasonCodes?: string[]; policyVersion: string }
 export type Address = `0x${string}`;
@@ -121,6 +122,8 @@ export interface MarkeeTheme {
   };
 }
 export interface SDKOptions {
+  /** Automatic moderation preset. Defaults to Standard; manual flags always apply. */
+  moderation?: { severity?: ModerationSeverity };
   /** Optional development override; defaults to the Markee-hosted API. */
   checkoutWindow?: 'tab' | 'redirect';
   apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;
