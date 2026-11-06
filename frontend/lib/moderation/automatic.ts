@@ -2,8 +2,8 @@ import 'server-only'
 import { createHash, randomUUID } from 'node:crypto'
 import { kv } from '@vercel/kv'
 import { Profanity } from '@2toad/profanity'
-import { checkRules, checkStrictRules } from './rules'
-import type { ModerationSeverity } from './severity'
+import { checkRules, checkStrictRules, checkSelectedRules } from './rules'
+import { isCustomPolicy, moderationRules, type ModerationSeverity } from './severity'
 import { parseAbi, type Address } from 'viem'
 import { underRateLimit } from '../rate-limit'
 import { trustedMembership } from './membership'
@@ -58,8 +58,10 @@ export function checkDraft(message: string, severity: ModerationSeverity = 'stan
   if (cached) return cached
   try {
     const matches = automaticDeps.rules(message)
-    if (severity !== 'relaxed' && automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
+    const rules = moderationRules(severity)
+    if (rules.profanity && automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
     if (severity === 'strict') matches.push(...checkStrictRules(message))
+    else if (isCustomPolicy(severity)) matches.push(...checkSelectedRules(message, rules))
     const result: AutoVerdict = { ...base, state: matches.length ? 'soft-flagged' : 'pass', ...(matches.length ? { reason: matches.map(m => m.reason).join(' '), reasonCodes: matches.map(m => m.code) } : {}) }
     if (verdictCache.size >= 2000) verdictCache.delete(verdictCache.keys().next().value!)
     verdictCache.set(key, result)

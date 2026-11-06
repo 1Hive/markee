@@ -6,9 +6,11 @@ import { CopyButton } from '@/components/board-detail/shared'
 import { TxSteps, TxRing } from '@/components/modals/StreamUI'
 import {
   buildEmbedPrompt,
-  EMBED_MODERATION_PRESETS,
+  embedModerationPolicy,
+  moderationOptionSource,
   type EmbedStrategy,
 } from '@/lib/embedPrompt/fragments'
+import type { ModerationRuleSet } from '@/lib/moderation/severity'
 import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER, DANGER } from '@/lib/design-tokens'
 
 // Only claim the public-page verification that the server actually performs.
@@ -28,14 +30,15 @@ const primaryBtnStyle = (enabled: boolean): React.CSSProperties => ({
   opacity: enabled ? 1 : 0.6, transition: 'opacity 140ms',
 })
 
-type Severity = keyof typeof EMBED_MODERATION_PRESETS
-
-// Short UI copy for the segmented control. The full preset descriptions stay in the prompt.
-const SEVERITY_HINTS: Record<Severity, string> = {
-  relaxed: 'Scam & phishing checks, without the profanity filter',
-  standard: 'Scam & phishing checks + profanity filter',
-  strict: 'Standard + blocks links, domains, wallets & ENS',
-}
+// The optional auto-moderation rules, in display order. Scams & phishing are always checked.
+const MODERATION_ROWS: { key: keyof ModerationRuleSet; label: string }[] = [
+  { key: 'profanity', label: 'Profanity' },
+  { key: 'links', label: 'All URLs' },
+  { key: 'addresses', label: 'Contract addresses' },
+  { key: 'ens', label: 'ENS names' },
+]
+// Standard: profanity on, content restrictions off.
+const DEFAULT_RULES: ModerationRuleSet = { profanity: true, links: false, addresses: false, ens: false }
 
 const PANEL_BG = '#030714'
 const ACTIVE_BG = 'rgba(248,151,254,0.14)'
@@ -45,7 +48,7 @@ const sectionLabel: React.CSSProperties = {
   fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase',
 }
 
-// ── Segmented control (tabs + moderation) ────────────────────────────────────
+// ── Segmented control (integration tabs) ─────────────────────────────────────
 function Segmented<T extends string>({ options, value, onChange, role, label }: {
   options: { value: T; label: React.ReactNode }[]
   value: T
@@ -99,7 +102,7 @@ type Step = 'setup' | 'verifying' | 'verified'
 
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
   const [step, setStep] = useState<Step>('setup')
-  const [severity, setSeverity] = useState<Severity>('standard')
+  const [rules, setRules] = useState<ModerationRuleSet>(DEFAULT_RULES)
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
   const [showModerationInfo, setShowModerationInfo] = useState(false)
@@ -204,17 +207,19 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   }
 
   // ── Setup ──────────────────────────────────────────────────────────────────
-  const prompt = buildEmbedPrompt({ address, name, strategy, severity })
+  const policy = embedModerationPolicy({ rules })
+  const moderationSource = moderationOptionSource(policy)
+  const prompt = buildEmbedPrompt({ address, name, strategy, rules })
   const marker = `<span hidden data-markee-address="${address}"></span>`
   const shortAddress = `${address.slice(0, 6)}…${address.slice(-5)}`
-  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address, severity, strategy: strategy === 'streaming' ? 'ForRent' : 'ForSale' })}#sdk-configuration`
+  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address, ...(policy.startsWith('custom:') ? { rules: (Object.keys(rules) as (keyof ModerationRuleSet)[]).filter(k => rules[k]).join(',') } : { severity: policy }), strategy: strategy === 'streaming' ? 'ForRent' : 'ForSale' })}#sdk-configuration`
   const reactCode = `'use client';
 import { MarkeeSign } from '@markee_team/sdk/react';
 
 export default function SiteMarkee() {
   return <MarkeeSign
     placement={{ kind: 'board', chainId: 8453, address: '${address}' }}
-    moderation={{ severity: '${severity}' }}
+    moderation={${moderationSource}}
     theme={{ mode: 'system' }}
     siteUrl="https://your-site.com"
   />;
@@ -224,7 +229,7 @@ import { createMarkeeSign } from '@markee_team/sdk';
 
 const sign = createMarkeeSign(document.querySelector('#markee'), {
   placement: { kind: 'board', chainId: 8453, address: '${address}' },
-  moderation: { severity: '${severity}' },
+  moderation: ${moderationSource},
   theme: { mode: 'system' },
   siteUrl: 'https://your-site.com',
 });
@@ -255,7 +260,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
 
   const moderation = (
     <div style={{ marginTop: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <span id="embed-moderation-label" style={sectionLabel}>Auto-moderation</span>
         <button
           type="button"
@@ -275,20 +280,50 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
         >
           i
         </button>
+        {showModerationInfo && (
+          <p id="embed-moderation-info" role="tooltip" style={{
+            position: 'absolute', top: 28, right: 0, zIndex: 2, width: 'min(300px, 100%)', margin: 0, padding: '10px 12px',
+            background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            color: TEXT2, fontSize: 12.5, lineHeight: 1.55,
+          }}>
+            Auto-moderation runs after a message is bought. Blocked messages are flagged automatically. Moderators can manually unflag messages, or buyers can edit their messages to get unflagged.
+          </p>
+        )}
       </div>
-      <Segmented
-        role="radiogroup"
-        label="Moderation severity"
-        value={severity}
-        onChange={setSeverity}
-        options={(Object.keys(EMBED_MODERATION_PRESETS) as Severity[]).map(v => ({ value: v, label: EMBED_MODERATION_PRESETS[v].label }))}
-      />
-      <p style={{ margin: '10px 0 0', color: TEXT2, fontSize: 13 }}>{SEVERITY_HINTS[severity]}</p>
-      {showModerationInfo && (
-        <p id="embed-moderation-info" style={{ margin: '6px 0 0', color: MUTED, fontSize: 12, lineHeight: 1.6 }}>
-          Auto-moderation runs after a message is bought. Blocked messages are flagged automatically. Moderators can manually unflag messages, or buyers can edit their messages to get unflagged.
-        </p>
-      )}
+      <div role="group" aria-labelledby="embed-moderation-label" style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'rgba(138,143,191,0.10)' }}>
+          <span style={{ color: TEXT, fontSize: 14, fontWeight: 700 }}>Scams &amp; phishing</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1.2, color: PINK }}>ALWAYS BLOCKED</span>
+        </div>
+        {MODERATION_ROWS.map(row => {
+          const blocked = rules[row.key]
+          return (
+            <div key={row.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 16px', borderTop: `1px solid ${BORDER}` }}>
+              <span id={`embed-moderation-${row.key}`} style={{ color: blocked ? TEXT : TEXT2, fontSize: 14, fontWeight: blocked ? 700 : 500 }}>{row.label}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span aria-hidden="true" style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1.2, color: blocked ? PINK : MUTED }}>{blocked ? 'BLOCKED' : 'ALLOWED'}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={blocked}
+                  aria-labelledby={`embed-moderation-${row.key}`}
+                  onClick={() => setRules(r => ({ ...r, [row.key]: !r[row.key] }))}
+                  style={{
+                    position: 'relative', width: 40, height: 22, borderRadius: 99, padding: 0, cursor: 'pointer', flexShrink: 0,
+                    background: blocked ? PINK : 'rgba(138,143,191,0.25)', border: `1px solid ${blocked ? PINK : 'rgba(138,143,191,0.45)'}`,
+                    transition: 'background 140ms, border-color 140ms',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2, left: blocked ? 20 : 2, width: 16, height: 16, borderRadius: 99,
+                    background: blocked ? BG : MUTED, transition: 'left 140ms',
+                  }} />
+                </button>
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 

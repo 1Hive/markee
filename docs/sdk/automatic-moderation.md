@@ -26,8 +26,9 @@ are unsuitable for an environment.
 
 ## Website rules
 
-One centrally managed policy applies to every enabled integration; there are no per-board settings
-in this release. The shared draft, published, scanner, SDK snapshot and website-embed paths use it.
+The rules below always run for every enabled integration and are not configurable. The shared
+draft, published, scanner, SDK snapshot and website-embed paths use them. Integrations can add the
+optional rules described in "Integration rules".
 
 - `SECRET_REQUEST`: requests to send, enter, or disclose seed/recovery phrases or private keys.
 - `CLAIM_SOLICITATION`: a reward/airdrop claim combined with a link or wallet-connection request.
@@ -58,6 +59,25 @@ a fresh verdict and never removes manual flags. Existing draft warnings retain C
 
 GitHub README synchronization, model classification, approval-required mode and per-board policy
 configuration are outside this release. Validate policy changes on staging before deploying them.
+
+## Integration rules
+
+An SDK integration can turn on optional rules in addition to the website rules above, either as a
+preset (`severity`) or individually (`rules`, SDK 0.1.0-beta.8 or later):
+
+- `profanity`: the profanity dictionaries (`PROFANITY`). On in Standard and Strict.
+- `links`: any URL or domain (`LINK`). ENS names don't count as links, so `ens` controls them
+  separately.
+- `addresses`: full or abbreviated EVM addresses (`WALLET_ADDRESS`).
+- `ens`: ENS names, validated with ENSIP-15 normalization (`ENS_NAME`).
+
+The server resolves `severity` and `rules` to one policy key: `relaxed`, `standard`, `strict`, or
+`custom:` followed by one bit per rule in the order profanity, links, addresses, ens (for example
+`custom:1001`). A selection equal to a preset uses the preset's key, so Strict keeps its existing
+`LINK`/`PAYMENT_ADDRESS` codes and cached verdicts. Each key has its own policy version, so cached
+verdicts never mix. Only Standard writes the global soft-flag index and moderation queue; every
+other selection is evaluated per request. Hosted checkout sessions store the resolved key, and the
+API accepts these keys back as `severity`.
 
 ## Public interfaces
 

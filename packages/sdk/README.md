@@ -358,21 +358,43 @@ record views for it. A moderator's false-positive exception on Markee applies on
 it does not change SDK visibility. Automatic moderation is enabled by default on Markee.
 Markee operators can explicitly disable it with `FLAG_AUTO_MODERATION=false`; host apps need no configuration.
 
-## Automatic moderation presets
+## Automatic moderation rules
 
-Both React components and `createMarkee`, `createMarkeeSign`, and `MarkeeClient` accept:
+Both React components and `createMarkee`, `createMarkeeSign`, and `MarkeeClient` accept a `moderation` option. Scams & phishing checks always run. Each other rule can be turned on or off individually:
 
 ```ts
-const moderation = { severity: 'standard' } as const;
+const moderation = {
+  rules: { profanity: true, links: false, addresses: false, ens: true },
+} as const;
 // <MarkeeSign placement={placement} moderation={moderation} />
 // <MarkeeModal placement={placement} moderation={moderation} ... />
 // new MarkeeClient({ moderation }).checkMessage('Your message');
 ```
 
-- `relaxed`: existing scam/phishing, concealed-link, and payment-solicitation rules; no profanity dictionary.
-- `standard` (default): current rules plus all supported profanity dictionaries.
-- `strict`: Standard plus any detected link/domain or wallet address/ENS name, even without payment instructions.
+| Rule | Blocks |
+| --- | --- |
+| Scams & phishing (always on) | Seed-phrase/private-key requests, reward-claim solicitations, promised multiplied returns, payment solicitations, shortened links, and lookalike domains of protected services |
+| `profanity` | All supported profanity dictionaries |
+| `links` | Any link or domain (ENS names are controlled by `ens`) |
+| `addresses` | Wallet and contract addresses, full or abbreviated (`0x1234…abcd`) |
+| `ens` | ENS names such as `name.eth` |
 
-These are dictionary/rule presets, not contextual AI classifications or guarantees of safety. They check message text only. Manual flags, exact-text moderator approvals, and unavailable-state hiding still apply. An integration's preset does not change Markee's own Standard policy or the shared moderation queue.
+Per-rule options require 0.1.0-beta.8 or later.
 
-`POST /api/moderation/check` and `/api/sdk/v1/moderation/check` accept an optional top-level `severity` with either `{ kind: 'draft', message }` or `{ kind: 'published', chainId: 8453, markeeIds }`. Omission preserves Standard behavior; invalid values return 400. Verdict caches include the preset policy version. The SDK forwards its setting for draft checks, snapshots, payment reviews, hosted checkout, and view validation. Existing clients need no changes.
+### Presets
+
+`severity` selects a preset, and remains supported:
+
+```ts
+const moderation = { severity: 'standard' } as const;
+```
+
+- `relaxed`: scams & phishing only; no profanity dictionary.
+- `standard` (default): scams & phishing plus profanity.
+- `strict`: Standard plus links/domains, wallet addresses and ENS names, even without payment instructions.
+
+When you set both, `rules` overrides the preset for the rules you list, and unlisted rules follow `severity`. For example, `{ severity: 'strict', rules: { links: false } }` blocks profanity, addresses and ENS names but allows links. A selection that matches a preset behaves exactly like that preset.
+
+These are dictionary and rule checks, not contextual AI classifications or guarantees of safety. They check message text only. Manual flags, exact-text moderator approvals, and unavailable-state hiding still apply. An integration's settings do not change Markee's own Standard policy or the shared moderation queue.
+
+`POST /api/moderation/check` and `/api/sdk/v1/moderation/check` accept an optional top-level `severity` and/or `rules` with either `{ kind: 'draft', message }` or `{ kind: 'published', chainId: 8453, markeeIds }`. `rules` is the complete comma-separated list of enabled optional rules, for example `"profanity,ens"`; an empty string enables none. When present it takes precedence over `severity`. Omitting both preserves Standard behavior, and invalid values return 400. Verdict caches include the policy version, so each rule selection is cached separately. The SDK forwards its settings for draft checks, snapshots, payment reviews, hosted checkout, and view validation. Servers that predate per-rule support ignore `rules` and apply `severity`. Existing clients need no changes.
