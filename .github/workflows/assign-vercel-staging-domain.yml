@@ -9,6 +9,17 @@ on:
       - frontend/**
       - .github/scripts/manage-vercel-staging-domain.mjs
   delete:
+  # Take a staging slot over for a branch (e.g. when all of them are taken).
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to deploy on the staging domain
+        required: true
+      slot:
+        description: Staging slot to take over (its current branch loses it)
+        required: true
+        type: choice
+        options: ['1', '2', '3']
 
 permissions:
   contents: read
@@ -21,23 +32,29 @@ concurrency:
 jobs:
   assign:
     if: >-
-      github.event_name == 'push' &&
-      !github.event.deleted &&
-      github.ref_name != 'main' &&
-      github.ref_name != 'dev'
+      github.event_name == 'workflow_dispatch' || (
+        github.event_name == 'push' &&
+        !github.event.deleted &&
+        github.ref_name != 'main' &&
+        github.ref_name != 'dev'
+      )
     runs-on: ubuntu-latest
+    env:
+      BRANCH_NAME: ${{ inputs.branch || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Assign the lowest available staging domain
+      - name: Assign a staging domain
         id: assign
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          BRANCH_NAME: ${{ github.ref_name }}
           SLOT_ACTION: assign
+          FORCE_SLOT: ${{ inputs.slot }}
+          # Only 1staging-3staging exist; never assign (or create) anything beyond them.
+          STAGING_SLOT_COUNT: ${{ vars.STAGING_SLOT_COUNT || '3' }}
         run: node .github/scripts/manage-vercel-staging-domain.mjs
 
       - name: Comment staging URL on open PRs
@@ -45,13 +62,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DOMAIN: ${{ steps.assign.outputs.assigned_domain }}
-          BRANCH: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          PR_NUMBER=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          PR_NUMBER=$(gh pr list --repo "$REPO" --head "$BRANCH_NAME" --state open --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ]; then
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "🚀 Staging: https://${DOMAIN}"
           fi
+
+      - name: Say so on the PR when every staging slot is taken
+        if: steps.assign.outputs.slots_full == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOLDERS: ${{ steps.assign.outputs.slot_holders }}
+          REPO: ${{ github.repository }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/assign-vercel-staging-domain.yml
+        run: |
+          MARKER='<!-- staging-slots-full -->'
+          PR_NUMBER=$(gh pr list --repo "$REPO" --head "$BRANCH_NAME" --state open --json number --jq '.[0].number')
+          if [ -z "$PR_NUMBER" ]; then exit 0; fi
+          # One comment per PR, not one per push.
+          if gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[].body' | grep -qF "$MARKER"; then exit 0; fi
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$MARKER
+          ⏸️ No staging deploy: every staging slot is taken (${HOLDERS}).
+
+          Delete a merged or stale branch (its slot frees up and the next push here picks it up), or take one over with [Run workflow](${WORKFLOW_URL}) using this branch and a slot number."
 
   release:
     if: >-
