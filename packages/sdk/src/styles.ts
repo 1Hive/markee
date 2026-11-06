@@ -66,6 +66,8 @@ ul{padding-left:20px;font-size:14px}
 .loading{padding:40px;text-align:center;color:var(--markee-muted)}
 .empty{padding:24px 8px;text-align:center}
 .spinner{display:inline-block;width:14px;height:14px;border-radius:100%;border:2px solid var(--markee-border);border-top-color:var(--markee-muted);animation:spin 1s linear infinite;margin-right:8px}
+@keyframes sign-dot{0%,80%,100%{opacity:.15}40%{opacity:1}}
+.sign-dots>span{animation:sign-dot 1.4s ease-in-out infinite both}.sign-dots>span:nth-child(2){animation-delay:.2s}.sign-dots>span:nth-child(3){animation-delay:.4s}
 @keyframes spin{to{transform:rotate(360deg)}
 }
 footer{flex-shrink:0;padding:14px 20px;border-top:1px solid var(--markee-border);background:var(--markee-background);color:var(--markee-muted);font-size:11px}

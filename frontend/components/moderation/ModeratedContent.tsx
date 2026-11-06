@@ -54,7 +54,13 @@ export function ModeratedContent({
 
   const automatic = usePublishedModeration(chainId, markeeId, message)
   const flagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'soft-flagged' || automatic.data?.siteState === 'manual-flagged'
-  if (automatic.unavailable) return <div role="status" className={className}>Message unavailable while moderation loads.</div>
+  if (automatic.unavailable) return (
+    <div role="status" aria-label="Loading message" className={className}>
+      <span className="font-jetbrains text-[#8A8FBF]">
+        This is a sign<span className="sign-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+      </span>
+    </div>
+  )
   const isAdmin = canModerate(boardAdmin, boardCreator)
 
   // Admins/board moderators always see content (with a subtle indicator)

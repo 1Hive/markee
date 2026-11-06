@@ -17,7 +17,7 @@ test('the sign uses the current winner and follows Markee moderation state', () 
 test('unknown moderation withholds message; flagged content is blurred and excluded from view tracking', () => {
   const unknown = signHtml({ ...snapshot, entries: [{ ...entry, moderated: null }] }, true);
   assert.doesNotMatch(unknown, /Current message|Author/);
-  assert.match(unknown, /Message unavailable while moderation loads/);
+  assert.match(unknown, /role="status" aria-label="Loading message">This is a sign<span class="sign-dots"/);
   const flagged = signHtml({ ...snapshot, entries: [{ ...entry, moderated: true }] }, true);
   assert.match(flagged, /class="message obscured" aria-hidden="true"/);
   assert.match(flagged, /This message has been flagged/);

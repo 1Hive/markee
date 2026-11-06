@@ -45,7 +45,9 @@ button.sign:hover .watermark img,button.sign:focus-visible .watermark img{opacit
 .rate{opacity:0;pointer-events:none;transition:opacity 200ms ease;position:absolute;z-index:3;bottom:-12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:8px;background:var(--markee-accent);color:var(--markee-accent-text);box-shadow:0 7px 20px color-mix(in srgb,var(--markee-accent) 35%,transparent);padding:4px 13px;font-family:ui-monospace,monospace;font-size:11px;font-weight:700;line-height:1.2}
 button.sign:hover .rate,button.sign:focus-visible .rate{opacity:1}
 @media(hover:none){button.sign .rate{opacity:1}}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@keyframes sign-dot{0%,80%,100%{opacity:.15}40%{opacity:1}}
+.sign-dots>span{animation:sign-dot 1.4s ease-in-out infinite both}.sign-dots>span:nth-child(2){animation-delay:.2s}.sign-dots>span:nth-child(3){animation-delay:.4s}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}.sign-dots>span{animation:none;opacity:.6}}
 `;
 
 /** @internal Pure renderer kept separate so hidden-content behavior can be verified. */
@@ -55,7 +57,7 @@ export function signHtml(snapshot: Snapshot | null, showAction: boolean, unavail
   const body = unavailable ? '<span class="notice" role="status">Markee sign is temporarily unavailable.</span>'
     : !snapshot ? '<span class="notice" role="status">Loading the Markee sign…</span>'
       : !entry ? '<span class="notice">The sign is waiting for its first message.</span>'
-        : visibility === 'unavailable' ? '<span class="notice" role="status">Message unavailable while moderation loads.</span>'
+        : visibility === 'unavailable' ? '<span class="notice" role="status" aria-label="Loading message">This is a sign<span class="sign-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>'
           : `<span class="message ${visibility === 'flagged' ? 'obscured' : ''}" ${visibility === 'flagged' ? 'aria-hidden="true"' : ''}>${escapeHtml(entry.message)}</span>${visibility === 'flagged' ? '<span class="veil" role="status">This message has been flagged.</span>' : ''}`;
   const views = entry?.views === null || entry?.views === undefined ? '' : `<span class="views" aria-label="${entry.views.toLocaleString()} views"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M1.3 8s2.4-4 6.7-4 6.7 4 6.7 4-2.4 4-6.7 4S1.3 8 1.3 8Z"/><circle cx="8" cy="8" r="2"/></svg>${entry.views.toLocaleString()}</span>`;
   const rate = showAction && snapshot && entry ? `<span class="rate">${formatEth(fundingPresets(snapshot).boost.toString())} ${snapshot.strategy === 'rent' ? 'ETH/mo' : 'ETH'} to change</span>` : '';

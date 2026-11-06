@@ -423,9 +423,10 @@ export class MarkeeModal {
     return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'activate' ? 'Activate this community’s Markee' : 'Claim community revenue'}</h2><p>A signed authorization lets Markee’s keeper execute this action. The server rechecks your current council role before submitting it.</p><div class="card stack">${['registryCommunity', 'recipient', 'leaderboardFactory'].filter(k => message[k]).map(k => `<div class="meta">${e(k)}<br><strong class="mono">${e(message[k])}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community council treasury. Bridged claims remain pending until destination delivery is confirmed.' : 'This creates the community board and its revenue vault on the Markee chain.'}</p>`;
   }
   private entryMessage(entry: Entry) {
-    return entry.moderated === false ? entry.message : entry.moderated ? entry.moderation?.state === 'soft-flagged' ? entry.moderation?.reason || 'This message is hidden by automatic moderation.' : 'This message is hidden by moderation.' : 'Message unavailable while moderation loads.';
+    return entry.moderated === false ? entry.message : entry.moderated ? entry.moderation?.state === 'soft-flagged' ? entry.moderation?.reason || 'This message is hidden by automatic moderation.' : 'This message is hidden by moderation.' : 'This is a sign…';
   }
   private entryMessageHtml(entry: Entry) {
+    if (entry.moderated === null || entry.moderated === undefined) return `<p class="message moderation-placeholder" role="status" aria-label="Loading message">This is a sign<span class="sign-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>`;
     return `<p class="message${entry.moderated === false ? '' : ' moderation-placeholder'}">${e(this.entryMessage(entry))}</p>`;
   }
   private entriesHtml() {
