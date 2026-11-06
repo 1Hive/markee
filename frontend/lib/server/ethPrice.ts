@@ -58,11 +58,33 @@ export async function fetchEthPriceUsd(): Promise<number> {
   throw new Error(`ETH price providers failed: ${errors.join('; ')}`)
 }
 
-/** KV-cached price; refreshes from the providers on a miss. Throws when no price is available. */
+// The KV cache is optional. The @vercel/kv proxy throws synchronously on property access when KV
+// isn't configured, before any promise exists, so each access is wrapped as a whole: a missing or
+// failing cache must never stop the price from being fetched and returned.
+async function readCachedPrice(): Promise<number | null> {
+  try {
+    const cached = await kv.get<number>(ETH_PRICE_KV_KEY)
+    return typeof cached === 'number' && Number.isFinite(cached) && cached > 0 ? cached : null
+  } catch (error) {
+    logger.warn('eth-price: cache read failed', { error: error instanceof Error ? error.message : String(error) })
+    return null
+  }
+}
+
+async function writeCachedPrice(usd: number): Promise<void> {
+  try {
+    await kv.set(ETH_PRICE_KV_KEY, usd, { ex: ETH_PRICE_TTL_SECONDS })
+  } catch (error) {
+    logger.warn('eth-price: cache write failed', { error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/** KV-cached price; refreshes from the providers on a miss or when KV is unavailable. Throws when no
+ *  price is available. */
 export async function getEthPriceUsd(): Promise<number> {
-  const cached = await kv.get<number>(ETH_PRICE_KV_KEY).catch(() => null)
-  if (typeof cached === 'number' && Number.isFinite(cached) && cached > 0) return cached
+  const cached = await readCachedPrice()
+  if (cached !== null) return cached
   const usd = await fetchEthPriceUsd()
-  await kv.set(ETH_PRICE_KV_KEY, usd, { ex: ETH_PRICE_TTL_SECONDS }).catch(() => {})
+  await writeCachedPrice(usd)
   return usd
 }

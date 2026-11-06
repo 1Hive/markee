@@ -9,7 +9,7 @@ import {
   EMBED_MODERATION_PRESETS,
   type EmbedStrategy,
 } from '@/lib/embedPrompt/fragments'
-import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
+import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER, DANGER } from '@/lib/design-tokens'
 
 // Only claim the public-page verification that the server actually performs.
 const CHECK_STEPS = [{ label: 'Verify Markee on your site', caption: 'VERIFYING YOUR SITE…' }]
@@ -104,6 +104,8 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
   const [showModerationInfo, setShowModerationInfo] = useState(false)
   const [promptCopied, setPromptCopied] = useState(false)
+  const [promptCopyFailed, setPromptCopyFailed] = useState(false)
+  const promptFallbackRef = useRef<HTMLTextAreaElement>(null)
   const [siteUrl, setSiteUrl] = useState('')
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -231,11 +233,20 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
 // sign.destroy();`
   const code = codeFormat === 'react' ? reactCode : vanillaCode
 
-  const copyPrompt = () => {
-    navigator.clipboard.writeText(prompt).then(() => {
+  // The AI tab doesn't display the prompt, so if the clipboard is unavailable (denied permission,
+  // non-HTTPS, sandboxed iframe) show it in a read-only box the user can select and copy by hand.
+  const copyPrompt = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(prompt)
+      setPromptCopyFailed(false)
       setPromptCopied(true)
       setTimeout(() => setPromptCopied(false), 1800)
-    }).catch(() => {})
+    } catch {
+      setPromptCopied(false)
+      setPromptCopyFailed(true)
+      requestAnimationFrame(() => promptFallbackRef.current?.select())
+    }
   }
 
   const panel: React.CSSProperties = { background: PANEL_BG, border: `1px solid ${BORDER}`, borderRadius: 10 }
@@ -245,13 +256,17 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
   const moderation = (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span id="embed-moderation-label" style={sectionLabel}>Moderation</span>
+        <span id="embed-moderation-label" style={sectionLabel}>Auto-moderation</span>
         <button
           type="button"
-          aria-label="About moderation"
+          aria-label="About auto-moderation"
           aria-expanded={showModerationInfo}
           aria-controls="embed-moderation-info"
           onClick={() => setShowModerationInfo(v => !v)}
+          onMouseEnter={() => setShowModerationInfo(true)}
+          onMouseLeave={() => setShowModerationInfo(false)}
+          onFocus={() => setShowModerationInfo(true)}
+          onBlur={() => setShowModerationInfo(false)}
           style={{
             width: 22, height: 22, borderRadius: 99, border: `1.5px solid ${showModerationInfo ? PINK : MUTED}`,
             background: 'transparent', color: showModerationInfo ? PINK : MUTED, cursor: 'pointer',
@@ -271,7 +286,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
       <p style={{ margin: '10px 0 0', color: TEXT2, fontSize: 13 }}>{SEVERITY_HINTS[severity]}</p>
       {showModerationInfo && (
         <p id="embed-moderation-info" style={{ margin: '6px 0 0', color: MUTED, fontSize: 12, lineHeight: 1.6 }}>
-          Automatic moderation hides messages that fail these checks. Manual flags still apply, and content stays hidden when moderation is unavailable.
+          Auto-moderation runs after a message is bought. Blocked messages are flagged automatically. Moderators can manually unflag messages, or buyers can edit their messages to get unflagged.
         </p>
       )}
     </div>
@@ -307,7 +322,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
               </li>
             ))}
           </ol>
-          <p style={{ margin: '12px 0 0 38px', color: MUTED, fontSize: 12.5 }}>Works with Claude Code, Cursor, Codex, ChatGPT…</p>
+          <p style={{ margin: '12px 0 0 38px', color: MUTED, fontSize: 12.5 }}>Works with Claude Code, Cursor, ChatGPT…</p>
           {moderation}
           <button
             type="button"
@@ -317,6 +332,26 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
             {promptCopied ? <Check size={16} /> : <Copy size={16} />}
             {promptCopied ? 'Copied!' : 'Copy Prompt'}
           </button>
+          {promptCopyFailed && (
+            <div style={{ marginTop: 14 }}>
+              <p role="alert" style={{ margin: '0 0 8px', color: DANGER, fontSize: 13 }}>
+                Couldn&apos;t copy to your clipboard. Select the prompt below and copy it manually.
+              </p>
+              <textarea
+                ref={promptFallbackRef}
+                readOnly
+                value={prompt}
+                aria-label="Embed prompt"
+                onFocus={e => e.currentTarget.select()}
+                rows={8}
+                style={{
+                  width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px',
+                  background: PANEL_BG, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT,
+                  fontFamily: MONO, fontSize: 12, lineHeight: 1.5,
+                }}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div role="tabpanel" style={{ marginTop: 22 }}>
