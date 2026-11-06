@@ -16,6 +16,7 @@ import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
 import { metaWriteDeps } from '@/lib/openinternet/meta-deps'
 import { metaFields, metaUpdateMessage } from '@/lib/openinternet/meta'
+import { normalizeHost } from '@/lib/views/host'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,7 +94,10 @@ export async function POST(request: Request) {
       const existingUrls: string[] = Array.isArray(existing.verifiedUrls)
         ? (existing.verifiedUrls as string[])
         : existing.verifiedUrl ? [existing.verifiedUrl as string] : []
-      const newUrls = existingUrls.filter(u => u !== removeVerifiedUrl)
+      // Sites are listed one per domain (lib/integrations/featured.ts onePerDomain), so removing one
+      // removes every verified page on its domain; otherwise the next page would take its place.
+      const removedHost = normalizeHost(removeVerifiedUrl)
+      const newUrls = existingUrls.filter(u => u !== removeVerifiedUrl && (removedHost === null || normalizeHost(u) !== removedHost))
       updated.verifiedUrls = newUrls
       updated.verifiedUrl = newUrls[0] ?? null
       if (newUrls.length === 0) updated.status = 'pending'

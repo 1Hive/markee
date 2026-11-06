@@ -11,6 +11,7 @@ import {
   type EmbedStrategy,
 } from '@/lib/embedPrompt/fragments'
 import type { ModerationRuleSet } from '@/lib/moderation/severity'
+import { alreadyVerifiedNote, useVerifiedSiteUrls, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
 import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER, DANGER } from '@/lib/design-tokens'
 
 // Only claim the public-page verification that the server actually performs.
@@ -110,6 +111,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [promptCopyFailed, setPromptCopyFailed] = useState(false)
   const promptFallbackRef = useRef<HTMLTextAreaElement>(null)
   const [siteUrl, setSiteUrl] = useState('')
+  const verifiedSiteUrls = useVerifiedSiteUrls(address)
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const runId = useRef(0)
@@ -482,6 +484,11 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
             Verify
           </button>
         </div>
+        {verifiedOnSameDomain(siteUrl, verifiedSiteUrls) && (
+          <p role="status" style={{ margin: '10px 0 0', color: TEXT2, fontSize: 12.5, lineHeight: 1.5 }}>
+            {alreadyVerifiedNote(siteUrl)} You can still verify to check this page shows your Markee.
+          </p>
+        )}
       </div>
     </>
   )

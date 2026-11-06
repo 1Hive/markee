@@ -16,6 +16,7 @@ import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
 import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
+import { alreadyVerifiedNote, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
 import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
@@ -193,15 +194,18 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
 }
 
 // Website integrations verify by fetching the page and finding the embed's data-markee-address.
-function VerifyUrl({ board, onVerified, onCancel }: { board: string; onVerified: () => void; onCancel: () => void }) {
+function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: string; verifiedUrls: string[]; onVerified: () => void; onCancel: () => void }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
   const normalized = url.trim() && !/^https?:\/\//i.test(url.trim()) ? `https://${url.trim()}` : url.trim()
+  // Another page on an already-verified domain would add nothing: sites are one per domain.
+  const alreadyVerified = verifiedOnSameDomain(url, verifiedUrls) !== null
+  const canVerify = !!normalized && !alreadyVerified
 
   const verify = async () => {
-    if (!normalized) return
+    if (!canVerify) return
     setBusy(true)
     setError(null)
     try {
@@ -228,17 +232,18 @@ function VerifyUrl({ board, onVerified, onCancel }: { board: string; onVerified:
           disabled={busy}
           value={url}
           onChange={e => { setUrl(e.target.value); setError(null) }}
-          onKeyDown={e => { if (e.key === 'Escape') onCancel(); if (e.key === 'Enter' && normalized) verify() }}
+          onKeyDown={e => { if (e.key === 'Escape') onCancel(); if (e.key === 'Enter' && canVerify) verify() }}
           placeholder="site.com/page"
           style={inputStyle}
         />
         {busy ? <WalletPending label="Checking…" /> : (
           <>
             <button onClick={onCancel} style={{ ...ghostBtn, border: 'none', padding: '0 6px', height: 32 }}>Cancel</button>
-            <button disabled={!normalized} onClick={verify} style={{ ...ghostBtn, height: 32, padding: '0 12px', opacity: normalized ? 1 : 0.4, cursor: normalized ? 'pointer' : 'not-allowed' }}>Verify</button>
+            <button disabled={!canVerify} onClick={verify} style={{ ...ghostBtn, height: 32, padding: '0 12px', opacity: canVerify ? 1 : 0.4, cursor: canVerify ? 'pointer' : 'not-allowed' }}>Verify</button>
           </>
         )}
       </div>
+      {alreadyVerified && <div role="status" style={{ fontSize: 12, color: TEXT2, marginTop: 8, lineHeight: 1.45 }}>{alreadyVerifiedNote(url)}</div>}
       {error && <div style={{ fontSize: 12, color: DANGER, marginTop: 8, lineHeight: 1.45 }}>{error}</div>}
     </div>
   )
@@ -266,7 +271,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
   const { data: integrationData, reload: reloadIntegrations } = useBoardIntegrations([lb.address])
   const info = integrationData?.[lb.address.toLowerCase()]
   // Featured first, then by views, the same order as the board's public page.
-  const integrations = orderIntegrations(integrationsOf(lb), i => i.key, info)
+  const integrations = orderIntegrations(integrationsOf(lb, info?.featured), i => i.key, info)
   const [verifying, setVerifying] = useState(false)
 
   useEffect(() => {
@@ -336,7 +341,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 onFeaturedChanged={reloadIntegrations}
               />
             ))}
-            {verifying && <VerifyUrl board={lb.address} onCancel={() => setVerifying(false)} onVerified={() => { setVerifying(false); onSuccess() }} />}
+            {verifying && <VerifyUrl board={lb.address} verifiedUrls={lb.verifiedUrls?.length ? lb.verifiedUrls : (lb as WebsiteLeaderboard).verifiedUrl ? [(lb as WebsiteLeaderboard).verifiedUrl!] : []} onCancel={() => setVerifying(false)} onVerified={() => { setVerifying(false); onSuccess() }} />}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button onClick={onAddToSite} style={pinkOutline}>Add to Your Site</button>
               {isOwner && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
