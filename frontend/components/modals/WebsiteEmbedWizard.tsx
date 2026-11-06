@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Check, Copy } from 'lucide-react'
 import { CopyButton } from '@/components/board-detail/shared'
 import { TxSteps, TxRing } from '@/components/modals/StreamUI'
 import {
@@ -27,6 +28,64 @@ const primaryBtnStyle = (enabled: boolean): React.CSSProperties => ({
   opacity: enabled ? 1 : 0.6, transition: 'opacity 140ms',
 })
 
+type Severity = keyof typeof EMBED_MODERATION_PRESETS
+
+// Short UI copy for the segmented control. The full preset descriptions stay in the prompt.
+const SEVERITY_HINTS: Record<Severity, string> = {
+  relaxed: 'Scam & phishing checks, without the profanity filter',
+  standard: 'Scam & phishing checks + profanity filter',
+  strict: 'Standard + blocks links, domains, wallets & ENS',
+}
+
+const PANEL_BG = '#030714'
+const ACTIVE_BG = 'rgba(248,151,254,0.14)'
+const ACTIVE_BORDER = 'rgba(248,151,254,0.5)'
+
+const sectionLabel: React.CSSProperties = {
+  fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase',
+}
+
+// ── Segmented control (tabs + moderation) ────────────────────────────────────
+function Segmented<T extends string>({ options, value, onChange, role, label }: {
+  options: { value: T; label: React.ReactNode }[]
+  value: T
+  onChange: (value: T) => void
+  role: 'tablist' | 'radiogroup'
+  label: string
+}) {
+  return (
+    <div
+      role={role}
+      aria-label={label}
+      style={{ display: 'flex', gap: 4, padding: 4, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10 }}
+    >
+      {options.map(option => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role={role === 'tablist' ? 'tab' : 'radio'}
+            aria-selected={role === 'tablist' ? active : undefined}
+            aria-checked={role === 'radiogroup' ? active : undefined}
+            onClick={() => onChange(option.value)}
+            style={{
+              flex: 1, padding: '8px 10px', borderRadius: 7, cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+              background: active ? ACTIVE_BG : 'transparent',
+              border: `1px solid ${active ? ACTIVE_BORDER : 'transparent'}`,
+              color: active ? PINK : TEXT2,
+              transition: 'background 140ms, color 140ms, border-color 140ms',
+            }}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main wizard ───────────────────────────────────────────────────────────────
 interface WebsiteEmbedWizardProps {
   address: string
@@ -36,34 +95,26 @@ interface WebsiteEmbedWizardProps {
   onDone?: () => void
 }
 
-type Step = 'questions' | 'prompt' | 'verifying' | 'verified'
+type Step = 'setup' | 'verifying' | 'verified'
 
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
-  const [step, setStep] = useState<Step>('questions')
-  const [severity, setSeverity] = useState<keyof typeof EMBED_MODERATION_PRESETS>('standard')
+  const [step, setStep] = useState<Step>('setup')
+  const [severity, setSeverity] = useState<Severity>('standard')
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
-  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address, severity, strategy: strategy === 'streaming' ? 'ForRent' : 'ForSale' })}#sdk-configuration`
-  const formatPicker = <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px', color: TEXT2 }}>
-    <legend style={{ marginBottom: 10 }}>Which integration does your app use?</legend>
-    {(['react', 'vanilla'] as const).map(format => <label key={format} style={{ display: 'inline-flex', gap: 6, marginRight: 20, cursor: 'pointer' }}>
-      <input type="radio" name="markee-code-format" checked={codeFormat === format} onChange={() => setCodeFormat(format)} style={{ accentColor: PINK }} />
-      {format === 'react' ? 'React / Next.js' : 'Vanilla JavaScript'}
-    </label>)}
-  </fieldset>
+  const [showModerationInfo, setShowModerationInfo] = useState(false)
+  const [promptCopied, setPromptCopied] = useState(false)
   const [siteUrl, setSiteUrl] = useState('')
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const runId = useRef(0)
 
   useEffect(() => {
-    if (step === 'questions') onHeaderChange?.({ label: 'Add Markee To Your Site', showBack: true })
-    else if (step === 'prompt') onHeaderChange?.({ label: 'Add Markee To Your Site', showBack: false })
+    if (step === 'setup') onHeaderChange?.({ label: 'Add Markee To Your Site', showBack: true })
     else if (step === 'verifying') onHeaderChange?.({ label: 'Verifying Your Site', showBack: false })
     else onHeaderChange?.({ label: 'Markee Added!', showBack: false })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
-
 
   async function runVerification() {
     const id = ++runId.current
@@ -106,7 +157,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   function handleRetry() {
     runId.current++
     setVerifyError(null)
-    setStep('prompt')
+    setStep('setup')
   }
 
   // ── Verifying / Verified ──────────────────────────────────────────────────
@@ -150,11 +201,12 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
     )
   }
 
-  // ── Prompt ─────────────────────────────────────────────────────────────────
-  if (step === 'prompt') {
-    const prompt = buildEmbedPrompt({ address, name, strategy, severity })
-    const marker = `<span hidden data-markee-address="${address}"></span>`
-    const reactCode = `'use client';
+  // ── Setup ──────────────────────────────────────────────────────────────────
+  const prompt = buildEmbedPrompt({ address, name, strategy, severity })
+  const marker = `<span hidden data-markee-address="${address}"></span>`
+  const shortAddress = `${address.slice(0, 6)}…${address.slice(-5)}`
+  const playgroundUrl = `https://markee-sdk-connectkit-example.vercel.app/?${new URLSearchParams({ integration: codeFormat, board: address, severity, strategy: strategy === 'streaming' ? 'ForRent' : 'ForSale' })}#sdk-configuration`
+  const reactCode = `'use client';
 import { MarkeeSign } from '@markee_team/sdk/react';
 
 export default function SiteMarkee() {
@@ -165,7 +217,8 @@ export default function SiteMarkee() {
     siteUrl="https://your-site.com"
   />;
 }`
-    const vanillaCode = `import { createMarkeeSign } from '@markee_team/sdk';
+  const vanillaCode = `// HTML: <div id="markee"></div>
+import { createMarkeeSign } from '@markee_team/sdk';
 
 const sign = createMarkeeSign(document.querySelector('#markee'), {
   placement: { kind: 'board', chainId: 8453, address: '${address}' },
@@ -176,137 +229,190 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
 
 // On page teardown:
 // sign.destroy();`
-    const codeStyle: React.CSSProperties = { margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.65 }
-    const snippet = (label: string, code: string) => (
-      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: '#030714', overflow: 'hidden', marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: `1px solid ${BORDER}` }}>
-          <span style={{ color: TEXT2, fontSize: 12 }}>{label}</span><CopyButton text={code} />
-        </div>
-        <pre style={{ ...codeStyle, padding: 14 }}>{code}</pre>
-      </div>
-    )
-    return (
-      <>
+  const code = codeFormat === 'react' ? reactCode : vanillaCode
+
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(prompt).then(() => {
+      setPromptCopied(true)
+      setTimeout(() => setPromptCopied(false), 1800)
+    }).catch(() => {})
+  }
+
+  const panel: React.CSSProperties = { background: PANEL_BG, border: `1px solid ${BORDER}`, borderRadius: 10 }
+  const linkStyle: React.CSSProperties = { color: PINK, fontSize: 13.5, fontWeight: 700, textDecoration: 'none' }
+  const hasUrl = !!siteUrl.trim()
+
+  const moderation = (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span id="embed-moderation-label" style={sectionLabel}>Moderation</span>
         <button
-          onClick={() => setStep('questions')}
+          type="button"
+          aria-label="About moderation"
+          aria-expanded={showModerationInfo}
+          aria-controls="embed-moderation-info"
+          onClick={() => setShowModerationInfo(v => !v)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none',
-            color: PINK, fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            padding: 0, marginBottom: 16,
+            width: 22, height: 22, borderRadius: 99, border: `1.5px solid ${showModerationInfo ? PINK : MUTED}`,
+            background: 'transparent', color: showModerationInfo ? PINK : MUTED, cursor: 'pointer',
+            fontFamily: 'Georgia, serif', fontSize: 12, lineHeight: 1, padding: 0,
           }}
         >
-          ← Integration steps
+          i
         </button>
+      </div>
+      <Segmented
+        role="radiogroup"
+        label="Moderation severity"
+        value={severity}
+        onChange={setSeverity}
+        options={(Object.keys(EMBED_MODERATION_PRESETS) as Severity[]).map(v => ({ value: v, label: EMBED_MODERATION_PRESETS[v].label }))}
+      />
+      <p style={{ margin: '10px 0 0', color: TEXT2, fontSize: 13 }}>{SEVERITY_HINTS[severity]}</p>
+      {showModerationInfo && (
+        <p id="embed-moderation-info" style={{ margin: '6px 0 0', color: MUTED, fontSize: 12, lineHeight: 1.6 }}>
+          Automatic moderation hides messages that fail these checks. Manual flags still apply, and content stays hidden when moderation is unavailable.
+        </p>
+      )}
+    </div>
+  )
 
-        <p style={{ color: TEXT2, fontSize: 13, margin: '0 0 16px' }}>Automatic moderation: <strong style={{ color: TEXT }}>{EMBED_MODERATION_PRESETS[severity].label}</strong>. {EMBED_MODERATION_PRESETS[severity].description}</p>
-        {integration === 'ai' ? <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, background: '#030714', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 14px', borderBottom: `1px solid ${BORDER}` }}>
-            <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>Paste into your coding assistant alongside your codebase</span>
-            <CopyButton text={prompt} />
+  return (
+    <>
+      <Segmented
+        role="tablist"
+        label="Integration method"
+        value={integration}
+        onChange={setIntegration}
+        options={[
+          { value: 'ai', label: '✦ Use AI' },
+          { value: 'sdk', label: '</> Install SDK' },
+        ]}
+      />
+
+      {integration === 'ai' ? (
+        <div role="tabpanel" style={{ marginTop: 22 }}>
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {['Paste the prompt into your coding assistant', 'Confirm placement, let it build & test', 'Deploy, then verify your page below'].map((text, i) => (
+              <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 12, color: TEXT, fontSize: 14.5 }}>
+                <span aria-hidden="true" style={{
+                  width: 26, height: 26, borderRadius: 99, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: `1.5px solid ${i === 0 ? PINK : 'rgba(138,143,191,0.45)'}`,
+                  color: i === 0 ? PINK : TEXT2, fontSize: 12, fontWeight: 700,
+                }}>
+                  {i + 1}
+                </span>
+                {text}
+              </li>
+            ))}
+          </ol>
+          <p style={{ margin: '12px 0 0 38px', color: MUTED, fontSize: 12.5 }}>Works with Claude Code, Cursor, Codex, ChatGPT…</p>
+          {moderation}
+          <button
+            type="button"
+            onClick={copyPrompt}
+            style={{ ...primaryBtnStyle(true), marginTop: 22, padding: '14px 22px', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            {promptCopied ? <Check size={16} /> : <Copy size={16} />}
+            {promptCopied ? 'Copied!' : 'Copy Prompt'}
+          </button>
+        </div>
+      ) : (
+        <div role="tabpanel" style={{ marginTop: 22 }}>
+          <div style={{ ...sectionLabel, marginBottom: 10 }}>1 · Install</div>
+          <div style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px 10px 16px' }}>
+            <code style={{ fontFamily: MONO, fontSize: 13.5, color: TEXT, overflowWrap: 'anywhere' }}>
+              <span style={{ color: PINK }}>$</span> npm i @markee_team/sdk
+            </code>
+            <CopyButton text="npm i @markee_team/sdk" />
           </div>
-          <div style={{ padding: '14px 16px', maxHeight: 220, overflowY: 'auto' }}>
-            <pre style={{ margin: 0, fontFamily: MONO, fontSize: 12.5, color: TEXT2, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.65 }}>
-              {prompt}
+
+          <div style={{ ...sectionLabel, margin: '20px 0 10px' }}>2 · Your Markee address</div>
+          <div style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px 10px 16px' }}>
+            <code title={address} style={{ fontFamily: MONO, fontSize: 13.5, color: TEXT }}>{shortAddress}</code>
+            <CopyButton text={address} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '20px 0 10px' }}>
+            <span style={sectionLabel}>3 · Add to your app</span>
+            <div role="radiogroup" aria-label="Code format" style={{ display: 'flex', gap: 4 }}>
+              {(['react', 'vanilla'] as const).map(format => {
+                const active = codeFormat === format
+                return (
+                  <button
+                    key={format}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setCodeFormat(format)}
+                    style={{
+                      fontFamily: MONO, fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                      border: 'none', cursor: 'pointer',
+                      background: active ? ACTIVE_BG : 'transparent', color: active ? PINK : TEXT2,
+                    }}
+                  >
+                    {format === 'react' ? 'React' : 'Vanilla JS'}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div style={{ ...panel, position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 10, right: 12 }}><CopyButton text={code} /></div>
+            <pre style={{
+              margin: 0, padding: '14px 16px', maxHeight: 220, overflow: 'auto',
+              fontFamily: MONO, fontSize: 12.5, color: TEXT2, lineHeight: 1.65, whiteSpace: 'pre',
+            }}>
+              {code}
             </pre>
           </div>
-        </div>
-
-        : <div style={{ color: TEXT2, fontSize: 13, lineHeight: 1.65 }}>
-          <p>1. Install the latest SDK in your app and commit the updated lockfile.</p>
-          {snippet('Install', 'npm install @markee_team/sdk@latest')}
-          <p>2. Add the sign using your app’s framework. Clicking the sign opens the payment modal. This placement connects to your existing leaderboard; For Sale or For Rent is detected automatically.</p>
-          {formatPicker}
-          <p><a href={playgroundUrl} target="_blank" rel="noopener noreferrer" style={{ color: PINK }}>Open your leaderboard in the SDK playground ↗</a><br />Customize the theme and copy or download {codeFormat === 'react' ? 'React' : 'vanilla JavaScript'} code for this leaderboard.</p>
-          {codeFormat === 'react' ? snippet('React component', reactCode) : <>
-            {snippet('Add to your HTML', '<div id="markee"></div>')}
-            {snippet('JavaScript', vanillaCode)}
-          </>}
-          <p>Replace the example site URL with your public HTTPS page. Match your app’s colors, font, and border radii through the SDK’s theme options. If your app already has a wallet, pass a wallet adapter to reuse its selected provider.</p>
-          <p>No API URL, RPC provider key, or database credentials are required. Card checkout is available only when enabled by Markee.</p>
-          <hr style={{ border: 0, borderTop: `1px solid ${BORDER}`, margin: '24px 0' }} />
-          <p>3. For client-rendered apps, add this marker to the HTML returned by your server (for example, Vite’s index.html). React server rendering already includes it.</p>
-          {snippet('Site verification marker', marker)}
-          <p>4. Deploy your app, test the sign and modal, then verify the public page below.</p>
-          <a href="https://www.npmjs.com/package/@markee_team/sdk" target="_blank" rel="noopener noreferrer" style={{ color: PINK }}>SDK documentation ↗</a>
-        </div>}
-
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
-            Once deployed
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, color: MUTED, fontSize: 12 }}>
+            <span>Client-rendered app (e.g. Vite)? Add the verification marker to your server HTML.</span>
+            <CopyButton text={marker} />
           </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', marginTop: 12 }}>
+            <a href="https://www.npmjs.com/package/@markee_team/sdk" target="_blank" rel="noopener noreferrer" style={linkStyle}>Full docs on npm ↗</a>
+            <a href={playgroundUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>Customize in playground ↗</a>
+          </div>
+          {moderation}
+        </div>
+      )}
+
+      {/* ── Deployed? Verify ── */}
+      <div style={{ margin: '26px -22px 0', padding: '22px 22px 0', borderTop: `1px solid ${BORDER}` }}>
+        <label htmlFor="embed-verify-url" style={{ ...sectionLabel, display: 'block', marginBottom: 12 }}>Deployed? Verify</label>
+        <div style={{ display: 'flex', gap: 10 }}>
           <input
+            id="embed-verify-url"
             type="url"
             value={siteUrl}
             onChange={e => setSiteUrl(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleVerifyClick() }}
-            placeholder="Site URL — e.g. https://yoursite.com"
+            placeholder="https://yoursite.com/page"
             style={{
-              width: '100%', boxSizing: 'border-box', background: BG, color: TEXT,
-              border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px',
-              fontFamily: MONO, fontSize: 13, outline: 'none', marginBottom: 12,
+              flex: 1, minWidth: 0, boxSizing: 'border-box', background: BG, color: TEXT,
+              border: `1px solid ${BORDER}`, borderRadius: 8, padding: '11px 14px',
+              fontFamily: MONO, fontSize: 13, outline: 'none',
             }}
           />
-          <button onClick={handleVerifyClick} disabled={!siteUrl.trim()} style={primaryBtnStyle(!!siteUrl.trim())}>
-            Verify Site
+          <button
+            type="button"
+            onClick={handleVerifyClick}
+            disabled={!hasUrl}
+            style={{
+              flexShrink: 0, borderRadius: 8, padding: '0 20px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+              cursor: hasUrl ? 'pointer' : 'not-allowed', opacity: hasUrl ? 1 : 0.6,
+              // Outline on the AI tab, where Copy Prompt is the primary action; filled on the SDK tab.
+              background: integration === 'sdk' ? PINK : 'transparent',
+              color: integration === 'sdk' ? BG : PINK,
+              border: `1.5px solid ${PINK}`,
+            }}
+          >
+            Verify
           </button>
         </div>
-      </>
-    )
-  }
-
-  // ── Questions ──────────────────────────────────────────────────────────────
-  return (
-    <>
-      <fieldset id="embed-moderation-severity" aria-describedby="embed-moderation-description" style={{ border: 0, padding: 0, margin: '0 0 24px' }}>
-        <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>Automatic moderation severity</legend>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {(Object.keys(EMBED_MODERATION_PRESETS) as (keyof typeof EMBED_MODERATION_PRESETS)[]).map(value => {
-            const preset = EMBED_MODERATION_PRESETS[value]
-            return <label key={value} style={{ flex: '1 1 160px', cursor: 'pointer', padding: 14, border: `1px solid ${severity === value ? PINK : BORDER}`, borderRadius: 8, background: severity === value ? 'rgba(244,159,255,0.08)' : BG }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: TEXT, fontWeight: 700, fontSize: 14 }}>
-                <input type="radio" name="markee-moderation-severity" value={value} checked={severity === value} onChange={() => setSeverity(value)} style={{ accentColor: PINK }} />
-                {preset.label}
-              </span>
-              <span style={{ display: 'block', color: TEXT2, fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{preset.description}</span>
-            </label>
-          })}
-        </div>
-        <p id="embed-moderation-description" style={{ color: MUTED, fontSize: 12, lineHeight: 1.6, margin: '10px 0 0' }}>Manual flags still apply. Content stays hidden when moderation is unavailable.</p>
-      </fieldset>
-      <fieldset style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
-        <legend style={{ color: TEXT2, fontSize: 14, marginBottom: 12 }}>How would you like to integrate Markee?</legend>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {([{ value: 'ai', label: 'Use AI', description: 'Generate a prompt for your coding assistant.' },
-            { value: 'sdk', label: 'Install the SDK', description: 'Follow the installation and code examples.' }] as const).map(option => (
-            <label key={option.value} style={{ flex: '1 1 220px', cursor: 'pointer', padding: 14, border: `1px solid ${integration === option.value ? PINK : BORDER}`, borderRadius: 8, background: integration === option.value ? 'rgba(244,159,255,0.08)' : BG }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: TEXT, fontWeight: 700, fontSize: 14 }}>
-                <input type="radio" name="markee-integration" value={option.value} checked={integration === option.value} onChange={() => setIntegration(option.value)} style={{ accentColor: PINK }} />
-                {option.label}
-              </span>
-              <span style={{ display: 'block', color: TEXT2, fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{option.description}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      {integration === 'ai' ? <>
-        <p style={{ margin: '0 0 16px', color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-          Your coding assistant will inspect your app, choose the React or vanilla JavaScript integration,
-          reuse your existing wallet setup, and match your app’s theme.
-        </p>
-        <ol style={{ margin: '0 0 20px', paddingLeft: 22, color: TEXT2, fontSize: 14, lineHeight: 1.8 }}>
-          <li>Copy the SDK prompt into your coding assistant with access to your codebase.</li>
-          <li>Confirm sign placement and any missing requirements. Let it implement and test the SDK.</li>
-          <li>Deploy your app, then return here with the public page URL to verify your Markee.</li>
-        </ol>
-        <p style={{ color: MUTED, fontSize: 12, marginBottom: 20 }}>Works with ChatGPT, Codex, Claude Code, Cursor, or any coding assistant.</p>
-      </> : <p style={{ margin: '0 0 20px', color: TEXT2, fontSize: 14, lineHeight: 1.6 }}>
-        Install the npm package, add this leaderboard with React or vanilla JavaScript, then deploy and verify your site.
-        The SDK handles the modal and automatically detects your leaderboard’s strategy.
-      </p>}
-      {integration === 'sdk' && formatPicker}
-      <button onClick={() => setStep('prompt')} style={primaryBtnStyle(true)}>
-        {integration === 'ai' ? 'Generate prompt' : 'View SDK instructions'}
-      </button>
+      </div>
     </>
   )
 }
