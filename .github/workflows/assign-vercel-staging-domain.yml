@@ -19,6 +19,7 @@ on:
         description: Staging slot to take over (its current branch loses it)
         required: true
         type: choice
+        # Keep in sync with STAGING_SLOT_COUNT (repo variable, default 3) below: one option per slot.
         options: ['1', '2', '3']
 
 permissions:

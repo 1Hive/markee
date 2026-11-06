@@ -17,6 +17,10 @@ interface IMarkeeRentLeaderboard {
 /// @notice Superfluid native-asset SuperToken (ETHx).
 interface ISuperETH {
     function balanceOf(address account) external view returns (uint256);
+    function realtimeBalanceOfNow(address account)
+        external
+        view
+        returns (int256 availableBalance, uint256 deposit, uint256 owedDeposit, uint256 timestamp);
     function downgradeToETH(uint256 wad) external;
 }
 
@@ -72,12 +76,12 @@ interface IJBTerminalMinimal {
 ///        (exactly what Markee's own Claim button does), credits the matching beneficiary share, unwraps
 ///        it to ETH and pays the Juicebox project with that backer as the token beneficiary.
 ///      - Funds no backer can be credited for (e.g. rent claimed through Markee's own Claim button before
-///        a sync) are not lost: `sweepSurplus` moves anything left unallocated for SWEEP_DELAY into the
-///        project's balance (no tokens issued), while attached or after detaching.
-///      - Keeper: call `sync(backers)` daily and `sweepSurplus(backers)` weekly, with every backer of the
-///        board (from the leaderboard's `BackerUpdated` events). A sweep can only take what stayed
-///        unallocated after every sync of the week, so a caller who leaves backers out of a
-///        `sweepSurplus` cannot sweep their rent once the keeper has synced everyone.
+///        a sync) are not lost: `sweepSurplus` moves them into the project's balance (no tokens issued).
+///        While attached it keeps back a reserve that covers every backer's unsynced rent, computed from
+///        the leaderboard's own holdings, so the amount swept never depends on who calls it or with
+///        which backers.
+///      - Keeper: call `sync(backers)` daily and `sweepSurplus(backers)` weekly, with the board's backers
+///        (from the leaderboard's `BackerUpdated` events).
 ///
 /// @dev Trust model: no owner, no admin, no upgradability, all configuration immutable. Callers of
 ///      `sync` / `payOwed` / `sweepSurplus` choose only *when* things happen, never *where* funds go:
@@ -88,8 +92,8 @@ interface IJBTerminalMinimal {
 ///      - If a backer's rent is settled on the leaderboard by someone other than this contract (e.g. the
 ///        Markee Claim button) before a `sync`, that slice's project tokens can no longer be attributed.
 ///        It is never over-credited; its ETH reaches the project through `sweepSurplus`.
-///      - Rent must be synced within SWEEP_DELAY of accruing (a daily keeper is plenty); rent left unsynced
-///        for a whole week can be swept to the project without issuing tokens for it.
+///      - While attached, a sweep keeps back `reserve()`, the share of everything the leaderboard holds
+///        (including backers' buffer deposits). That standing reserve is swept once detached.
 ///      - If the share ratio changes (a factory percentage change reaching the streams) between two syncs
 ///        of a backer, that backer's rent from the interval is credited at the newer ratio. Credits never
 ///        exceed funds held; anything under-credited is swept to the project.
@@ -103,12 +107,9 @@ interface IJBTerminalMinimal {
 ///        that purchase reverts with `DirectEthNotAccepted` instead of silently issuing no tokens.
 contract MarkeeJuiceboxForwarder {
     /// @notice Release label. BETA: experimental, unaudited, not part of Markee's production product.
-    string public constant VERSION = "0.2.0-beta";
+    string public constant VERSION = "0.3.0-beta";
     /// @notice Juicebox's native-token sentinel (ETH).
     address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
-    /// @notice How long funds must stay unallocated before `sweepSurplus` can move them to the project
-    ///         while this contract is still the beneficiary.
-    uint256 public constant SWEEP_DELAY = 7 days;
     /// @notice Gas each backer's settle + credit + pay runs with, in isolation. Well above an honest
     ///         backer's needs (~1M), so a backer that fails within it is skipped instead of reverting the
     ///         whole batch. A sync must be sent with at least this much gas available per backer.
@@ -136,10 +137,6 @@ contract MarkeeJuiceboxForwarder {
     mapping(address => uint256) public owedOf;
     /// @notice Sum of all `owedOf`.
     uint256 public totalOwed;
-    /// @notice Unallocated funds recorded by the last `sweepSurplus`, sweepable once SWEEP_DELAY passes.
-    uint256 public sweepMarkAmount;
-    /// @notice When that record was taken (0 = none yet).
-    uint256 public sweepMarkTime;
     /// @notice Last observed share ratio (beneficiary rate : retained rate). Used when the live ratio is
     ///         undefined (no #1 sign); starts at the factory percentage.
     uint256 public ratioNum;
@@ -156,7 +153,6 @@ contract MarkeeJuiceboxForwarder {
     event PaymentFailed(address indexed backer, uint256 amount, bytes reason);
     event BackerSkipped(address indexed backer, bytes reason);
     event SurplusSwept(uint256 amount);
-    event SurplusMarked(uint256 amount, uint256 sweepableAt);
     event ShareRatioUpdated(uint256 beneficiaryRate, uint256 retainedRate);
     event BackerExcluded(address indexed account);
 
@@ -168,7 +164,6 @@ contract MarkeeJuiceboxForwarder {
     error Reentrancy();
     error InsufficientGas();
     error OnlySelf();
-    error SweepNotReady(uint256 sweepableAt);
 
     modifier nonReentrant() {
         if (_status == _ENTERED) revert Reentrancy();
@@ -217,8 +212,7 @@ contract MarkeeJuiceboxForwarder {
     ///      the leaderboard settle, and the backer is skipped with `BackerSkipped`; the rest still sync.
     ///      Each backer is credited with exactly what the leaderboard settled (pending before minus
     ///      pending after), so duplicates, zero balances and failed MARKEE payouts (which the leaderboard
-    ///      restores) can never be double-credited. Also caps the pending sweep record at what is still
-    ///      unallocated afterwards (see `sweepSurplus`).
+    ///      restores) can never be double-credited.
     function sync(address[] calldata backers) external nonReentrant {
         if (LEADERBOARD.beneficiaryAddress() != address(this)) revert NotBeneficiary();
         _processAll(backers, true);
@@ -231,33 +225,21 @@ contract MarkeeJuiceboxForwarder {
     }
 
     /// @notice Move funds no backer can be credited for into the project's balance (no tokens issued).
-    /// @dev While this contract is the beneficiary: first syncs `backers` (pass every backer of the board,
-    ///      as for `sync`), so what is still unallocated afterwards is genuinely unattributable. Then, once
-    ///      SWEEP_DELAY has passed since the previous call, sweeps the amount that call recorded as
-    ///      unallocated, as far as it is still unallocated, and records the current unallocated amount for
-    ///      the next sweep. The first call only records. Calling early reverts with `SweepNotReady` and does
-    ///      not move the clock, so nobody can postpone a sweep.
-    ///      Every `sync` lowers the record to what is still unallocated after it, and nothing ever raises
-    ///      it. A sync of every backer leaves only genuinely unattributable funds unallocated, so after the
-    ///      keeper's next full sync a record taken with an incomplete list shrinks to the stranded amount,
-    ///      and the sweep cannot take rent of backers who were left out of either `sweepSurplus` call.
-    ///      Only rent that no sync touched for the whole week can be swept without issuing tokens; the ETH
-    ///      still goes to the project. Once detached, nothing more can be attributed, so all unallocated
-    ///      funds are swept immediately (`backers` is ignored).
+    /// @dev While this contract is the beneficiary: first syncs `backers` (optional; it only makes the sweep
+    ///      larger by crediting them first), then sweeps what is unallocated beyond `reserve()`. The reserve
+    ///      is the share of everything the leaderboard holds, which bounds the unsynced rent of every
+    ///      backer, listed or not. So the amount swept never depends on the caller or their list, and a
+    ///      sweep can never take rent a later sync would credit. Callable any time; anything still held
+    ///      back is swept by a later call once synced.
+    ///      Once detached, nothing more can be attributed, so all unallocated funds are swept (`backers` is
+    ///      ignored).
     /// @return swept Amount added to the project's balance.
     function sweepSurplus(address[] calldata backers) external nonReentrant returns (uint256 swept) {
-        bool attached = LEADERBOARD.beneficiaryAddress() == address(this);
-
-        if (!attached) {
-            swept = _unallocated();
-        } else {
-            uint256 readyAt = sweepMarkTime == 0 ? 0 : sweepMarkTime + SWEEP_DELAY;
-            if (block.timestamp < readyAt) revert SweepNotReady(readyAt);
+        if (LEADERBOARD.beneficiaryAddress() == address(this)) {
             _processAll(backers, true);
-            if (sweepMarkTime != 0) {
-                uint256 free = _unallocated();
-                swept = sweepMarkAmount < free ? sweepMarkAmount : free;
-            }
+            swept = _sweepable();
+        } else {
+            swept = _unallocated();
         }
 
         if (swept > 0) {
@@ -266,15 +248,6 @@ contract MarkeeJuiceboxForwarder {
             if (terminal == address(0)) revert NoTerminal();
             IJBTerminalMinimal(terminal).addToBalanceOf{value: swept}(PROJECT_ID, NATIVE_TOKEN, swept, false, memo, "");
             emit SurplusSwept(swept);
-        }
-
-        if (attached) {
-            sweepMarkAmount = _unallocated();
-            sweepMarkTime = block.timestamp;
-            emit SurplusMarked(sweepMarkAmount, block.timestamp + SWEEP_DELAY);
-        } else {
-            sweepMarkAmount = 0;
-            sweepMarkTime = 0;
         }
     }
 
@@ -337,10 +310,18 @@ contract MarkeeJuiceboxForwarder {
         return _unallocated();
     }
 
-    /// @notice When the next `sweepSurplus` can sweep while attached (0 = no record yet: the next call
-    ///         only records).
-    function sweepableAt() external view returns (uint256) {
-        return sweepMarkTime == 0 ? 0 : sweepMarkTime + SWEEP_DELAY;
+    /// @notice What `sweepSurplus` would move to the project right now, before syncing any backers.
+    function sweepable() external view returns (uint256) {
+        if (LEADERBOARD.beneficiaryAddress() != address(this)) return _unallocated();
+        return _sweepable();
+    }
+
+    /// @notice Funds an attached sweep keeps back for backers' unsynced rent: the share of everything the
+    ///         leaderboard holds (ETHx including its stream deposits, plus ETH). Every backer's unsettled
+    ///         rent is held there, so this bounds what future syncs can still credit from rent already
+    ///         accrued. It is deliberately generous (it also covers backers' buffer deposits).
+    function reserve() external view returns (uint256) {
+        return _reserve();
     }
 
     /// @notice The beneficiary-side share that corresponds to `settledRent` of MARKEE-side rent, at the
@@ -387,14 +368,23 @@ contract MarkeeJuiceboxForwarder {
                 emit BackerSkipped(backer, reason);
             }
         }
+    }
 
-        // The sweep record can only shrink: after a sync of every backer, what is still unallocated is
-        // exactly what no backer can be credited for, so a record inflated by an incomplete list is cut
-        // back to that.
-        if (settle && sweepMarkTime != 0) {
-            uint256 stillFree = _unallocated();
-            if (stillFree < sweepMarkAmount) sweepMarkAmount = stillFree;
-        }
+    function _sweepable() internal view returns (uint256) {
+        uint256 free = _unallocated();
+        uint256 kept = _reserve();
+        return free > kept ? free - kept : 0;
+    }
+
+    function _reserve() internal view returns (uint256) {
+        (int256 available, uint256 deposit,,) = ETHX.realtimeBalanceOfNow(address(LEADERBOARD));
+        uint256 holdings = (available > 0 ? uint256(available) : 0) + deposit + address(LEADERBOARD).balance;
+        (uint256 num, uint256 den) = _ratio();
+        // A paused beneficiary stream reads as a zero ratio, but rent accrued earlier was priced at the last
+        // ratio seen, so reserve at that one.
+        if (num == 0) (num, den) = (ratioNum, ratioDen);
+        if (den == 0) return holdings; // cannot price it: keep everything back
+        return _share(holdings, num, den);
     }
 
     /// @dev Live share ratio from the streams: (beneficiary rate, top rate minus it), exactly what the

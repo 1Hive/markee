@@ -160,25 +160,20 @@ test("the app's Claim button still works with the forwarder as beneficiary", asy
   expect(await fwdRead<bigint>('unallocated')).toBeGreaterThan(0n)
 })
 
-test('the weekly sweep moves the unattributable slice into the project', async () => {
+test('the sweep moves the unattributable slice into the project', async () => {
   // Left over from the Claim in the previous test: no backer can get tokens for it, but the project
-  // still gets the ETH. The first sweep (with the keeper's backer list) records; a week later it sweeps.
+  // still gets the ETH. Anyone can sweep at any time; a reserve covering backers' unsynced rent is kept.
   const stranded = await fwdRead<bigint>('unallocated')
-  expect(stranded).toBeGreaterThan(0n)
-  const sweep = () =>
-    send(E2E_OTHER, { to: forwarder.address, data: encodeFunctionData({ abi: forwarder.abi, functionName: 'sweepSurplus', args: [[E2E_ACCOUNT]] }) })
+  const sweepable = await fwdRead<bigint>('sweepable')
+  expect(sweepable).toBeGreaterThan(0n)
+  expect(sweepable).toBeLessThanOrEqual(stranded)
 
-  await sweep()
-  expect(await fwdRead<bigint>('sweepMarkAmount')).toBeGreaterThan(0n)
-
-  await advance(7 * 86_400 + 60)
   const projectBefore = await read<bigint>(JB_TERMINAL_STORE, storeAbi, 'balanceOf', [JB_TERMINAL, JB_PROJECT, NATIVE])
-  const projectTokensBefore = await jbBalance(E2E_ACCOUNT, JB_PROJECT)
-  await sweep() // also syncs the listed backer first, so their week of rent is credited, not swept
+  await send(E2E_OTHER, { to: forwarder.address, data: encodeFunctionData({ abi: forwarder.abi, functionName: 'sweepSurplus', args: [[E2E_ACCOUNT]] }) })
   const projectAfter = await read<bigint>(JB_TERMINAL_STORE, storeAbi, 'balanceOf', [JB_TERMINAL, JB_PROJECT, NATIVE])
 
-  expect(projectAfter - projectBefore).toBeGreaterThanOrEqual(stranded)
-  expect(await jbBalance(E2E_ACCOUNT, JB_PROJECT)).toBeGreaterThan(projectTokensBefore)
+  // Syncing the listed backer first can only shrink the reserve, so at least the previewed amount moves.
+  expect(projectAfter - projectBefore).toBeGreaterThanOrEqual(sweepable)
   expect(await fwdRead<bigint>('totalOwed')).toBe(0n)
 })
 

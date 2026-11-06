@@ -215,7 +215,7 @@ contract MarkeeJuiceboxForwarderTest is Test {
         assertEq(fwd.PROJECT_ID(), JB_PROJECT);
         assertEq(fwd.memo(), "Markee For Rent");
         assertEq(board.beneficiaryAddress(), address(fwd));
-        assertEq(fwd.VERSION(), "0.2.0-beta");
+        assertEq(fwd.VERSION(), "0.3.0-beta");
         assertEq(fwd.ratioNum(), 6200);
         assertEq(fwd.ratioDen(), 3800);
     }
@@ -464,17 +464,17 @@ contract MarkeeJuiceboxForwarderTest is Test {
         uint256 owed = fwd.owedOf(alice);
         assertGt(owed, 0);
 
-        // While attached, the first sweep only records; it never touches owed credits.
-        uint256 heldBefore = _held();
-        assertEq(fwd.sweepSurplus(_none()), 0, "first attached sweep should only record");
-        assertEq(_held(), heldBefore);
+        // While attached, a sweep never touches owed credits.
+        fwd.sweepSurplus(_none());
+        assertGe(_held(), owed, "attached sweep took owed credits");
+        assertEq(fwd.owedOf(alice), owed);
 
         board.setBeneficiaryAddress(initialBeneficiary);
         assertEq(CFA.getFlowrate(ETHX, address(board), address(fwd)), 0, "stream should move off forwarder");
 
-        fwd.sweepSurplus(_none()); // detached: everything unallocated goes, without waiting
+        assertEq(fwd.sweepable(), fwd.unallocated(), "detached: no reserve");
+        fwd.sweepSurplus(_none()); // detached: everything unallocated goes
         assertEq(_held(), owed, "sweep must leave exactly the owed credits");
-        assertEq(fwd.sweepMarkTime(), 0, "detaching clears the record");
         fwd.payOwed(_one(alice));
         assertEq(_held(), 0);
         assertGt(_jb(alice), 0);
@@ -551,7 +551,7 @@ contract MarkeeJuiceboxForwarderTest is Test {
         return JB_STORE.balanceOf(JB_TERMINAL, JB_PROJECT, address(0xEEEe));
     }
 
-    function test_sweepWhileAttached_movesStrandedFundsWeekly_andKeepsSyncing() public {
+    function test_sweep_movesStrandedFunds_keepsReserve_andKeepsSyncing() public {
         address alice = _backer("alice");
         _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
         _warp(5 days);
@@ -560,72 +560,57 @@ contract MarkeeJuiceboxForwarderTest is Test {
         uint256 stranded = fwd.unallocated();
         assertGt(stranded, 0);
 
-        // Week 0: the first sweep (with the keeper's backer list) only records.
-        assertEq(fwd.sweepSurplus(_one(alice)), 0);
-        assertEq(fwd.sweepMarkAmount(), stranded, "record should be exactly the stranded slice");
-        assertEq(fwd.sweepableAt(), vm.getBlockTimestamp() + 7 days);
+        // Right after the Claim nothing is unsynced, so all but the reserve (which covers the board's
+        // holdings, here mostly alice's buffer deposit) is sweepable.
+        uint256 reserve = fwd.reserve();
+        assertGt(reserve, 0);
+        assertLt(reserve, stranded, "reserve should be small next to 5 days of rent");
+        assertEq(fwd.sweepable(), stranded - reserve);
 
-        // A daily keeper keeps issuing tokens during the week; the stranded slice is never credited.
-        uint256 tokens;
-        for (uint256 d = 0; d < 7; d++) {
-            _warp(1 days);
-            fwd.sync(_one(alice));
-            assertGt(_jb(alice), tokens, "daily sync stopped issuing tokens");
-            tokens = _jb(alice);
-        }
-        assertEq(fwd.totalOwed(), 0);
-
-        // Week 1: the stranded slice goes to the project's balance; synced backers lose nothing.
         uint256 projectBefore = _projectBalance();
         uint256 swept = fwd.sweepSurplus(_one(alice));
-        assertApproxEqAbs(swept, stranded, 1e9, "should sweep the recorded stranded slice");
-        assertLe(swept, stranded);
+        assertEq(swept, stranded - reserve);
         assertEq(_projectBalance() - projectBefore, swept, "project balance did not receive the sweep");
         assertEq(fwd.totalOwed(), 0);
 
-        // Next day's sync still credits the full share (nothing it needed was swept).
-        _warp(1 days);
-        uint256 expected = fwd.shareOf(board.pendingSettlement(alice));
-        uint256 heldBefore = _held();
-        fwd.sync(_one(alice));
-        assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "sync after a sweep was short-changed");
-        assertGt(_jb(alice), tokens);
-        assertEq(fwd.owedOf(alice), 0);
+        // Daily syncs still credit the full share: nothing they needed was swept.
+        uint256 tokens = _jb(alice);
+        for (uint256 d = 0; d < 3; d++) {
+            _warp(1 days);
+            uint256 expected = fwd.shareOf(board.pendingSettlement(alice));
+            uint256 heldBefore = _held();
+            fwd.sync(_one(alice));
+            assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "sync after a sweep was short-changed");
+            assertGt(_jb(alice), tokens);
+            tokens = _jb(alice);
+        }
+        // The rest stays held back as the standing reserve until there is less on the board to cover.
+        assertLe(fwd.sweepSurplus(_one(alice)), reserve);
     }
 
-    function test_sweepWhileAttached_cannotRunEarlyOrPostponeTheClock() public {
+    function test_sweep_withNoStrandedFunds_sweepsNothing_andSyncsListedBackers() public {
+        // Rent accrued but not yet synced is not stranded: it is inside the reserve.
         address alice = _backer("alice");
         _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
-        _warp(2 days);
-        vm.prank(alice);
-        board.settle(_one(alice));
-
-        fwd.sweepSurplus(_none());
-        uint256 readyAt = fwd.sweepableAt();
-
-        _warp(3 days);
-        vm.expectRevert(abi.encodeWithSelector(MarkeeJuiceboxForwarder.SweepNotReady.selector, readyAt));
-        vm.prank(makeAddr("griefer"));
-        fwd.sweepSurplus(_none());
-        assertEq(fwd.sweepableAt(), readyAt, "an early call must not move the clock");
-
-        _warp(4 days);
-        assertGt(fwd.sweepSurplus(_one(alice)), 0);
-    }
-
-    function test_sweepWhileAttached_syncsListedBackersFirst() public {
-        // Rent accrued but not yet synced is not stranded: the sweep syncs the listed backers before
-        // measuring, so their share is credited to them rather than swept.
-        address alice = _backer("alice");
-        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
-        fwd.sweepSurplus(_none()); // record (nothing unallocated yet)
         _warp(8 days);
 
-        uint256 credit = fwd.pendingCredit(alice);
-        assertGt(credit, 0);
-        uint256 swept = fwd.sweepSurplus(_one(alice));
-        assertEq(swept, 0, "unsynced but attributable rent was swept");
+        assertGt(fwd.pendingCredit(alice), 0);
+        assertEq(fwd.sweepable(), 0, "unsynced rent counted as sweepable");
+        assertEq(fwd.sweepSurplus(_none()), 0, "unsynced rent was swept");
+        assertEq(fwd.sweepSurplus(_one(alice)), 0);
         assertGt(_jb(alice), 0, "listed backer should have been synced and paid");
+    }
+
+    function test_sweep_isPermissionlessAndCallableAnyTime() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(5 days);
+        vm.prank(alice);
+        board.settle(_one(alice));
+        vm.prank(makeAddr("anyone"));
+        assertGt(fwd.sweepSurplus(_none()), 0);
+        vm.prank(makeAddr("anyoneElse"));
+        assertEq(fwd.sweepSurplus(_none()), 0, "a second sweep in the same block found more");
     }
 
     // ─── Fee receiver and misbehaving backers ───────────────────────────────────
@@ -764,50 +749,45 @@ contract MarkeeJuiceboxForwarderTest is Test {
         assertTrue(fwd.isExcluded(makeAddr("newFeeReceiver")), "new receiver should be noted too");
     }
 
-    /// @dev A griefer calls sweepSurplus with an incomplete list at both ends of the week. The keeper's
-    ///      full syncs in between cap the record at the truly stranded amount, so the omitted backer's
-    ///      rent is never swept and they still get all their project tokens.
-    function test_sweep_incompleteListsCannotSweepAnOmittedBackersRent() public {
+    /// @dev yolo-maxi's scenario: with no keeper at all, a griefer calls sweepSurplus with an incomplete
+    ///      list, repeatedly and a week apart. The omitted backer's unsynced rent stays inside the reserve,
+    ///      so it is never swept and they still get all their project tokens.
+    function test_sweep_incompleteListsCannotSweepAnOmittedBackersRent_evenWithoutAKeeper() public {
         address m = _newMarkee("alpha");
         address alice = _backer("alice");
         address bob = _backer("bob");
         _open(alice, m, _rate(0.02 ether));
         _open(bob, m, _rate(0.06 ether));
-        _warp(1 days);
-        fwd.sync(_two(alice, bob));
-
-        _warp(1 days);
+        _warp(10 days);
         vm.prank(alice);
-        board.settle(_one(alice)); // Claim button: alice's last day becomes stranded
+        board.settle(_one(alice)); // Claim button: alice's 10 days become stranded
+        uint256 stranded = _held() - fwd.pendingCredit(bob);
 
         address griefer = makeAddr("griefer");
-        vm.prank(griefer);
-        fwd.sweepSurplus(_one(alice)); // leaves bob out: his unsynced day is in the record
-        uint256 inflated = fwd.sweepMarkAmount();
-
-        _warp(1 days);
-        fwd.sync(_two(alice, bob)); // keeper
-        uint256 stranded = fwd.unallocated();
-        assertEq(fwd.sweepMarkAmount(), stranded, "keeper sync should cap the record");
-        assertLt(stranded * 2, inflated, "bob's unsynced rent was not in the inflated record");
-
-        // Bob is then left unsynced for several days, and the griefer leaves him out again at maturity.
-        for (uint256 d = 0; d < 6; d++) {
-            _warp(1 days);
-            fwd.sync(_one(alice));
+        uint256 totalSwept;
+        for (uint256 w = 0; w < 3; w++) {
+            vm.prank(griefer);
+            totalSwept += fwd.sweepSurplus(_one(alice)); // bob is never listed, and nobody syncs him
+            _warp(7 days);
         }
-        uint256 bobShare = fwd.shareOf(board.pendingSettlement(bob));
-        assertGt(bobShare, inflated, "bob should have a large unsynced balance at maturity");
-
         vm.prank(griefer);
-        uint256 swept = fwd.sweepSurplus(_one(alice));
-        assertLe(swept, stranded, "swept more than was stranded");
-        assertApproxEqAbs(swept, stranded, 1e9);
+        totalSwept += fwd.sweepSurplus(_one(alice));
 
-        uint256 heldBefore = _held();
+        // Bob, unsynced for 31 days, still gets his full share.
         uint256 expected = fwd.shareOf(board.pendingSettlement(bob));
+        assertGt(expected, 0);
+        uint256 heldBefore = _held();
         fwd.sync(_one(bob));
-        assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "bob was short-changed by the sweep");
+        assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "bob was short-changed by the sweeps");
         assertEq(fwd.owedOf(bob), 0);
+        assertGt(_jb(bob), 0);
+
+        // The stranded slice reaches the project, minus the standing reserve (released on detach).
+        fwd.sync(_two(alice, bob));
+        totalSwept += fwd.sweepSurplus(_none());
+        assertGt(totalSwept, 0);
+        assertLe(totalSwept, stranded, "swept more than was stranded");
+        assertApproxEqAbs(totalSwept + fwd.unallocated(), stranded, 1e9);
+        assertLe(fwd.unallocated(), fwd.reserve(), "held back more than the reserve");
     }
 }
