@@ -125,17 +125,18 @@ test('policy upgrades recheck old indexed flags instead of silently dropping the
   assert.deepEqual(await softRecords(), [])
   assert.equal(soft.has(id), false)
 })
-test('all twelve dictionaries are enabled; native language fixtures, Unicode, boundaries and known dictionary limitations', t => {
+test('only the English dictionary is enabled; Unicode, boundaries, and everyday words the other lists flagged', t => {
   enable(t)
-  assert.deepEqual([...AUTO_LANGUAGES].sort(), ['ar','de','en','es','fr','hi','it','ja','ko','pt','ru','zh'])
-  for (const message of ['shit', 'merde', 'mierda', 'scheiße', 'cazzo', 'porra', 'блядь', 'الوغد', 'बिच', '他妈的', 'ファック', 'SHIT', 'ｓｈｉｔ', 'hello merde mierda']) assert.equal(checkDraft(message).state, 'soft-flagged', message)
+  assert.deepEqual([...AUTO_LANGUAGES], ['en'])
+  for (const message of ['shit', 'SHIT', 'ｓｈｉｔ', 'fuck this', 'hello shit']) assert.equal(checkDraft(message).state, 'soft-flagged', message)
   for (const message of ['classical music', 'Scunthorpe', 'assistance', 'Hello gardens']) assert.equal(checkDraft(message).state, 'pass', message)
-  // Upstream Korean/Japanese dictionaries include mistranslated neutral terms and miss native profanity.
-  // These are rollout limitations, not evidence of reliable contextual safety coverage.
-  assert.equal(checkDraft('장바구니').state, 'soft-flagged')
-  assert.equal(checkDraft('ログイン').state, 'soft-flagged')
-  assert.equal(checkDraft('씨발').state, 'pass')
-  assert.equal(checkDraft('くそ').state, 'pass')
+  // Everyday words the machine-translated lists matched (Portuguese "no"/"t"/"5"/"bar", French "les",
+  // Chinese, Russian, Hindi, Korean, Japanese) are no longer flagged.
+  for (const message of ["don't take no for an answer", "can't stop won't stop", 'Top 5 bar in town', 'les amis', '中国 爱 电话', 'вес душ', 'माँ', '장바구니', 'ログイン']) {
+    assert.equal(checkDraft(message).state, 'pass', message)
+  }
+  // Non-English profanity is not detected automatically; manual moderation still applies.
+  assert.equal(checkDraft('merde').state, 'pass')
 })
 test('soft flags recover on edit; manual flags win; site exceptions never reveal SDK content', async t => {
   enable(t); const { records, soft } = storage(t)
@@ -146,7 +147,7 @@ test('soft flags recover on edit; manual flags win; site exceptions never reveal
   records.set(overrideKey(id, approvedHash), { scope: 'site' })
   const approved = await evaluateObserved(id, 'shit', board, manual)
   assert.equal(approved.state, 'soft-flagged'); assert.equal(approved.siteState, 'visible')
-  assert.equal((await evaluateObserved(id, 'merde', board, manual)).siteState, 'soft-flagged')
+  assert.equal((await evaluateObserved(id, 'bullshit', board, manual)).siteState, 'soft-flagged')
   assert.equal((await evaluateObserved(id, 'Hello gardens', board, manual)).state, 'visible')
   assert.equal(soft.has(id), false)
   assert.equal((await evaluateObserved(id, 'Hello gardens', board, { board: true, site: false })).state, 'manual-flagged')
@@ -162,7 +163,7 @@ test('shared exceptions restore both surfaces for exact text, preserve manual fl
   assert.equal(soft.has(id), false)
   assert.equal((await evaluateObserved(id, 'shit', board, { board: true, site: false })).state, 'manual-flagged')
   assert.equal((await evaluateObserved(id, 'shit', board, { board: false, site: true })).siteState, 'manual-flagged')
-  assert.equal((await evaluateObserved(id, 'merde', board, { board: false, site: false })).state, 'soft-flagged')
+  assert.equal((await evaluateObserved(id, 'bullshit', board, { board: false, site: false })).state, 'soft-flagged')
   records.set(sharedOverrideKey(id, hash), { scope: 'all', contentHash: contentHash('other') })
   assert.equal((await evaluateObserved(id, 'shit', board, { board: false, site: false })).state, 'soft-flagged')
 })
@@ -178,7 +179,7 @@ test('engine and storage outages are unavailable, never passing; manual flags sk
 })
 test('published checks read authoritative server text and honor manual flags', async t => {
   enable(t); storage(t)
-  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'merde' }])
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'bullshit' }])
   assert.equal((await checkPublished([id]))[0].state, 'soft-flagged')
   t.mock.method(automaticDeps, 'flags', async () => ({ board: [`8453:${id}`], site: [] }))
   assert.equal((await checkPublished([id]))[0].state, 'manual-flagged')
@@ -259,7 +260,7 @@ test('queue approval is signed for exact text, overrides automatic moderation an
   assert.equal(records.get(itemKey(id)).reviews.site.status, 'pending')
   const result = (await checkPublished([id]))[0]
   assert.equal(result.state, 'visible'); assert.equal(result.siteState, 'visible')
-  text = 'merde'
+  text = 'bullshit'
   assert.equal((await checkPublished([id]))[0].state, 'soft-flagged')
   text = 'shit'
   t.mock.method(automaticDeps, 'flags', async () => ({ board: [`8453:${id}`], site: [] }))

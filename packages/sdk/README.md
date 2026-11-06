@@ -374,7 +374,7 @@ const moderation = {
 | Rule | Blocks |
 | --- | --- |
 | Scams & phishing (always on) | Seed-phrase/private-key requests, reward-claim solicitations, promised multiplied returns, payment solicitations, shortened links, and lookalike domains of protected services |
-| `profanity` | All supported profanity dictionaries |
+| `profanity` | The English profanity dictionary |
 | `links` | Any link or domain (ENS names are controlled by `ens`) |
 | `addresses` | Wallet and contract addresses, full or abbreviated (`0x1234…abcd`) |
 | `ens` | ENS names such as `name.eth` |

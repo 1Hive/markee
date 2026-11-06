@@ -6,9 +6,9 @@ Empty or unrecognized values keep moderation enabled.
 No AI credentials, model server, or SDK integrator configuration is needed. Set this on the Markee
 backend, never in a host app. Preview and production can be enabled independently.
 
-The policy is `website-rules-v1+profanity-3.3.0-v1`: deterministic website rules plus pinned
-`@2toad/profanity@3.3.0`. The dictionary checker checks message text only with all twelve packaged
-dictionaries, Unicode-aware whole-word boundaries, and NFKC
+The policy is `website-rules-v1+profanity-3.3.0-en-v2`: deterministic website rules plus pinned
+`@2toad/profanity@3.3.0`. The dictionary checker checks message text only with the package's English
+dictionary, Unicode-aware whole-word boundaries, and NFKC
 normalization for matching. Hashes cover exact original UTF-8 text; the original message is never
 rewritten. Names are still subject to manual moderation. This detects dictionary matches, not
 general contextual threats or hate. The additional rules detect specific solicitation patterns, not
@@ -16,13 +16,15 @@ every scam. An engine interface allows a future OpenAI Moderation adapter.
 
 ## Package quality and limitations
 
-Dictionary quality should be assessed with native-language fixtures. Tests found neutral translated
-words in the Japanese and Korean lists (including
-“login” and “shopping cart”) and missing common Japanese/Korean profanity. Whole-word matching
-also has limitations in unsegmented scripts. All twelve lists are loaded as requested, but that
-is not evidence of reliable coverage in twelve languages. Tests preserve these known limitations
-rather than claiming they are successfully detected. Use the explicit opt-out if these limitations
-are unsuitable for an environment.
+Only the English list is enabled. The package's other eleven lists are machine-translated and flag
+everyday words: Portuguese includes "no" and "t" (which matches don't, can't and won't), "5" and
+"bar"; French includes "les"; the Chinese, Russian, Hindi, Japanese and Korean lists include words
+such as 中国 (China), 爱 (love), вес (weight), माँ (mother), "login" and "shopping cart". They were
+enabled under policy `website-rules-v1+profanity-3.3.0-v1` and removed in `-en-v2`; the version change
+makes indexed flags from the old lists get rechecked. Non-English profanity is therefore not detected
+automatically and relies on manual moderation. Add a language only with native-language fixtures
+that show it doesn't flag ordinary text. Use the explicit opt-out if these limitations are
+unsuitable for an environment.
 
 ## Website rules
 

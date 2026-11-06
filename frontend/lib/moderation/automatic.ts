@@ -9,8 +9,11 @@ import { underRateLimit } from '../rate-limit'
 import { trustedMembership } from './membership'
 import { getModerationClient, readAllFlagged, flagKey, authorizedScopes, readItems } from './server'
 
-export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-v1'
-export const AUTO_LANGUAGES = ['ar', 'zh', 'en', 'fr', 'de', 'hi', 'it', 'ja', 'ko', 'pt', 'ru', 'es']
+export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-en-v2'
+// English only: the package's other lists are machine-translated and flag everyday words (Portuguese
+// "no" and "t", which matches don't/can't; French "les"; Chinese 中国 and 爱; Russian вес). A new
+// policy version makes indexed flags from the old lists get rechecked rather than kept.
+export const AUTO_LANGUAGES = ['en']
 export const AUTO_REASON = 'This message matched the profanity filter.'
 export const autoEnabled = () => process.env.FLAG_AUTO_MODERATION?.trim().toLowerCase() !== 'false'
 export const contentHash = (message: string) => createHash('sha256').update(message, 'utf8').digest('hex')
