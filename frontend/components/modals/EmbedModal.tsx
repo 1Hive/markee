@@ -5,6 +5,7 @@ import { Globe2, Github as GithubIconLucide } from 'lucide-react'
 import { EmbedPanel } from '@/components/board-detail/shared'
 import { WebsiteEmbedWizard } from '@/components/modals/WebsiteEmbedWizard'
 import type { EmbedStrategy } from '@/lib/embedPrompt/fragments'
+import styles from './EmbedModal.module.css'
 import { MONO, BG, BG2, PINK, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 
 type Platform = 'website' | 'github'
@@ -53,6 +54,8 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
 
   if (!isOpen || !leaderboard) return null
 
+  const websiteSetup = step === 'embed' && platform === 'website'
+
   return (
     <div
       onClick={onClose}
@@ -65,9 +68,11 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
     >
       <div
         onClick={e => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-labelledby="embed-modal-heading"
+        className={websiteSetup ? styles.website : undefined}
         style={{
-          width: '100%', maxWidth: 720,
-          background: BG2, borderRadius: 16,
+          width: '100%', maxWidth: websiteSetup ? 640 : 720,
+          background: websiteSetup ? '#09091f' : BG2, borderRadius: websiteSetup ? 24 : 16,
           border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           fontFamily: 'Manrope, system-ui, sans-serif',
@@ -77,17 +82,18 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
         }}
       >
         {/* ── Header ── */}
-        <div style={{
+        <div className={websiteSetup ? styles.header : undefined} style={{
           padding: '18px 22px', borderBottom: `1px solid ${BORDER}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+          <div id="embed-modal-heading" style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
             <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
             {header.label}
           </div>
           <button
             onClick={onClose}
+            aria-label="Close integration modal"
             style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}
           >
             ×
@@ -95,7 +101,7 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
         </div>
 
         {/* ── Body ── */}
-        <div style={{ padding: '22px 22px 26px', overflowY: 'auto', flex: 1 }}>
+        <div className={websiteSetup ? styles.body : undefined} style={{ padding: '22px 22px 26px', overflowY: 'auto', flex: 1 }}>
           {step === 'platform' ? (
             <>
               <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 14 }}>
