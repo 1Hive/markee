@@ -26,10 +26,16 @@ Backers are identified by the leaderboard's own per-backer ledger, i.e. the addr
 smart-wallet backers (e.g. Coinbase Smart Wallet) receive project tokens at their smart wallet, the same address
 that receives MARKEE.
 
-Keeping it running: `sync` is not automatic (a Superfluid stream gives the receiver no per-payment callback).
-Run a cron that periodically calls `sync` with the board's backers (from the leaderboard's
-`BackerUpdated(backer, markee, flowRate, newAggregate)` events). Callers cannot redirect funds or tokens; they only
-choose when the sync happens.
+Keeping it running: `sync` is not automatic (a Superfluid stream gives the receiver no per-payment callback). Run a
+keeper with the board's backers (from the leaderboard's `BackerUpdated(backer, markee, flowRate, newAggregate)`
+events):
+
+- **Daily:** `sync(backers)`. Issues project tokens for the rent accrued since the last sync.
+- **Weekly:** `sweepSurplus(backers)`. Moves anything that couldn't be attributed (see "Claim before sync" below)
+  into the project's balance, so the project always receives all of the ETH.
+
+Callers cannot redirect funds or tokens; they only choose when things happen. Send each call with at least
+**5.1M gas per backer** available (`BACKER_GAS`, about 1M is actually used); gas estimation handles this.
 
 ## Deploy and attach (Base)
 
@@ -53,7 +59,8 @@ choose when the sync happens.
 |---|---|---|
 | `sync(address[] backers)` | anyone | Settle MARKEE, credit the beneficiary share, pay the project. Reverts unless this contract is currently the beneficiary. |
 | `payOwed(address[] backers)` | anyone | Retry payments that failed (project paused, no ETH terminal). Works after detaching too. |
-| `sweepSurplus()` | anyone | Only once this contract is **no longer** the beneficiary: adds everything above outstanding credits to the project's balance via `addToBalanceOf` (no tokens issued). |
+| `sweepSurplus(address[] backers)` | anyone | Adds funds no backer can be credited for to the project's balance via `addToBalanceOf` (no tokens issued). **While attached:** syncs `backers` first, then sweeps what the previous call recorded as unallocated (if still unallocated) once 7 days (`SWEEP_DELAY`) have passed, and records the current amount for next time. The first call only records; an early call reverts with `SweepNotReady` and cannot move the clock. **Once detached:** sweeps everything unallocated immediately. |
+| `sweepableAt()` | view | When the next attached sweep can run (0 = the next call only records). |
 | `pendingCredit(backer)` | view | What a sync would credit now, plus anything already owed. |
 | `unallocated()` | view | Funds held that are not owed to anyone. |
 | `owedOf(backer)`, `totalOwed` | view | Credits waiting for a successful payment. |
@@ -65,21 +72,25 @@ choose when the sync happens.
 - Each slice of rent is credited at most once: duplicates in `backers`, repeated syncs, and MARKEE payouts that the
   leaderboard fails and restores all credit zero.
 - Solvency: credits are capped by unallocated funds, so `totalOwed ≤ funds held` always.
+- No ETH is ever stranded: whatever can't be credited to a backer reaches the project through `sweepSurplus`.
 - A failed Juicebox payment never reverts the sync. The MARKEE settlement still happens and the credit stays owed.
-- **Except when gas ran out.** Both payouts are wrapped in try/catch, so a gas limit that is too low (including one
-  picked by gas estimation) could otherwise make a sync "succeed" while settling or paying nothing. If a payout
-  fails with almost no gas left, `sync` reverts with `InsufficientGas`, so wallets, crons and estimators have to
-  supply enough gas for the payments to go through. Budget roughly 1M gas per backer.
+- **One backer can't block the others.** Each backer runs in its own call with `BACKER_GAS`. If it fails (e.g. a
+  backer contract that burns gas when the leaderboard pays it directly), everything for that backer is rolled back,
+  including the leaderboard settle, and `BackerSkipped(backer, reason)` is emitted. The rest of the batch syncs.
+- **Too little gas reverts instead of half-succeeding.** A call without `BACKER_GAS` available for the next backer
+  reverts with `InsufficientGas`, so wallets, crons and gas estimators always supply enough for every payout.
+- The leaderboard's platform fee receiver is never credited: its leaderboard balance can include fees the
+  leaderboard put back after a failed fee payment, which the backers who paid that rent were already credited for.
 
 ## Known limitations
 
 - **Claim before sync.** If a backer's MARKEE is settled by anyone other than this contract (e.g. Markee's Claim
-  button) before a `sync`, the beneficiary share for that period can no longer be attributed. It is never
-  over-credited; it stays in the contract as unallocated funds, which later credits can draw on. Frequent syncs keep
-  the gap small. Anyone can also trigger this deliberately by calling `leaderboard.settle` for backers; that costs
-  them gas and only reduces those backers' project tokens, and the ETH still ends up with the project.
-- **Unallocated funds while attached** cannot be told apart from rent that hasn't been synced yet, so they stay in
-  the contract until it is detached, after which `sweepSurplus` moves them to the project.
+  button) before a `sync`, the project tokens for that period can no longer be attributed. It is never
+  over-credited, and the weekly `sweepSurplus` moves its ETH to the project. Anyone can trigger this deliberately by
+  calling `leaderboard.settle` for backers; that costs them gas and only reduces those backers' project tokens.
+- **Sync within a week.** Rent must be synced within `SWEEP_DELAY` (7 days) of accruing. A sweep syncs the backers
+  it is given first, but rent of a backer left out of both the daily syncs and the weekly sweep for over a week can
+  be swept to the project without issuing tokens for it. A daily keeper with the full backer list avoids this.
 - **Percentage changes.** Credits use the factory's current `percentToBeneficiary`. If the Markee Cooperative changes
   it, rent accrued before the change is credited at the new ratio (bounded by the solvency cap).
 - **`minReturnedTokens` is 0** and no pay metadata is passed. Juicebox projects with a buyback hook use their own

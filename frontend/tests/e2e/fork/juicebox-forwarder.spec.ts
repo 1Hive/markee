@@ -14,6 +14,9 @@ isolateChain()
 const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '0x37f420fdE5c98e611EB7cb9b74ef579D84697039') as Address
 const JB_DIRECTORY: Address = '0x5AfF29060E023e6FB87BE5596652B33c65Af535B'
 const JB_TOKENS: Address = '0x1f80d8f057eE36b4C2656D107E4e4558B71bA7D9'
+const JB_TERMINAL: Address = '0x130f5Dd2bD8805443Cf41755253D778a75a67f53'
+const JB_TERMINAL_STORE: Address = '0x7497ae014A60561925B51C0A3B4adE7460B9927C'
+const NATIVE: Address = '0x000000000000000000000000000000000000EEEe'
 const CFA_FORWARDER: Address = '0xcfA132E353cB4E398080B9700609bb008eceB125'
 const ETHX: Address = '0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93'
 // Stands in for the Juicebox project a sign owner would pay (NANA; accepts ETH on Base v6).
@@ -30,6 +33,7 @@ const boardAbi = parseAbi([
   'function pendingSettlement(address) view returns (uint256)',
 ])
 const tokensAbi = parseAbi(['function totalBalanceOf(address holder, uint256 projectId) view returns (uint256)'])
+const storeAbi = parseAbi(['function balanceOf(address terminal, uint256 projectId, address token) view returns (uint256)'])
 const cfaAbi = parseAbi(['function getFlowrate(address token, address sender, address receiver) view returns (int96)'])
 
 // Compiles the forwarder from the repo with the same Foundry the fork job installs. It has no imports,
@@ -155,3 +159,26 @@ test("the app's Claim button still works with the forwarder as beneficiary", asy
   expect(await fwdRead<bigint>('totalOwed')).toBe(0n)
   expect(await fwdRead<bigint>('unallocated')).toBeGreaterThan(0n)
 })
+
+test('the weekly sweep moves the unattributable slice into the project', async () => {
+  // Left over from the Claim in the previous test: no backer can get tokens for it, but the project
+  // still gets the ETH. The first sweep (with the keeper's backer list) records; a week later it sweeps.
+  const stranded = await fwdRead<bigint>('unallocated')
+  expect(stranded).toBeGreaterThan(0n)
+  const sweep = () =>
+    send(E2E_OTHER, { to: forwarder.address, data: encodeFunctionData({ abi: forwarder.abi, functionName: 'sweepSurplus', args: [[E2E_ACCOUNT]] }) })
+
+  await sweep()
+  expect(await fwdRead<bigint>('sweepMarkAmount')).toBeGreaterThan(0n)
+
+  await advance(7 * 86_400 + 60)
+  const projectBefore = await read<bigint>(JB_TERMINAL_STORE, storeAbi, 'balanceOf', [JB_TERMINAL, JB_PROJECT, NATIVE])
+  const projectTokensBefore = await jbBalance(E2E_ACCOUNT, JB_PROJECT)
+  await sweep() // also syncs the listed backer first, so their week of rent is credited, not swept
+  const projectAfter = await read<bigint>(JB_TERMINAL_STORE, storeAbi, 'balanceOf', [JB_TERMINAL, JB_PROJECT, NATIVE])
+
+  expect(projectAfter - projectBefore).toBeGreaterThanOrEqual(stranded)
+  expect(await jbBalance(E2E_ACCOUNT, JB_PROJECT)).toBeGreaterThan(projectTokensBefore)
+  expect(await fwdRead<bigint>('totalOwed')).toBe(0n)
+})
+

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import { Test } from "forge-std/Test.sol";
+import { Vm } from "forge-std/Vm.sol";
 import { ISuperfluid, ISuperToken } from
     "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 import { ISuperApp } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperApp.sol";
@@ -45,6 +46,35 @@ interface IJBTokensT {
     function totalBalanceOf(address holder, uint256 projectId) external view returns (uint256);
 }
 
+interface IJBTerminalStoreT {
+    function balanceOf(address terminal, uint256 projectId, address token) external view returns (uint256);
+}
+
+interface IFactoryAdminT {
+    function setRevNetEnabled(bool enabled) external;
+    function setPlatformFeeReceiver(address receiver) external;
+}
+
+/// @dev A backer that is a contract and burns all its gas whenever it receives ETH, e.g. when the
+///      leaderboard settles it directly (RevNet disabled).
+contract GasBurningBacker {
+    receive() external payable {
+        while (true) {}
+    }
+
+    function open(address board, address ethx, address cfa, address gda, address pool, address markee, int96 rate)
+        external
+        payable
+    {
+        (bool ok,) = ethx.call{ value: msg.value }(abi.encodeWithSignature("upgradeByETH()"));
+        require(ok, "wrap");
+        IERC20(ethx).approve(board, type(uint256).max);
+        StreamingLeaderboard(payable(board)).depositBuffer(address(this), uint256(uint96(rate)) * 14400);
+        IGDAForwarderT(gda).connectPool(ISuperfluidPool(pool), "");
+        ICFAForwarderT(cfa).createFlow(ISuperToken(ethx), address(this), board, rate, abi.encode(markee));
+    }
+}
+
 interface IJBDirectoryT {
     function primaryTerminalOf(uint256 projectId, address token) external view returns (address);
 }
@@ -68,6 +98,7 @@ contract MarkeeJuiceboxForwarderTest is Test {
     address constant JB_DIRECTORY = 0x5AfF29060E023e6FB87BE5596652B33c65Af535B;
     IJBTokensT constant JB_TOKENS = IJBTokensT(0x1f80d8f057eE36b4C2656D107E4e4558B71bA7D9);
     address constant JB_TERMINAL = 0x130f5Dd2bD8805443Cf41755253D778a75a67f53;
+    IJBTerminalStoreT constant JB_STORE = IJBTerminalStoreT(0x7497ae014A60561925B51C0A3B4adE7460B9927C);
     uint256 constant MARKEE_REVNET_PROJECT = 7;
     /// The Juicebox project the forwarder pays (stands in for Jango's project). Accepts ETH at the fork block.
     uint256 constant JB_PROJECT = 1;
@@ -145,6 +176,10 @@ contract MarkeeJuiceboxForwarderTest is Test {
     function _one(address a) internal pure returns (address[] memory arr) {
         arr = new address[](1);
         arr[0] = a;
+    }
+
+    function _none() internal pure returns (address[] memory) {
+        return new address[](0);
     }
 
     function _two(address a, address b) internal pure returns (address[] memory arr) {
@@ -423,14 +458,17 @@ contract MarkeeJuiceboxForwarderTest is Test {
         uint256 owed = fwd.owedOf(alice);
         assertGt(owed, 0);
 
-        vm.expectRevert(MarkeeJuiceboxForwarder.StillBeneficiary.selector);
-        fwd.sweepSurplus();
+        // While attached, the first sweep only records; it never touches owed credits.
+        uint256 heldBefore = _held();
+        assertEq(fwd.sweepSurplus(_none()), 0, "first attached sweep should only record");
+        assertEq(_held(), heldBefore);
 
         board.setBeneficiaryAddress(initialBeneficiary);
         assertEq(CFA.getFlowrate(ETHX, address(board), address(fwd)), 0, "stream should move off forwarder");
 
-        fwd.sweepSurplus();
+        fwd.sweepSurplus(_none()); // detached: everything unallocated goes, without waiting
         assertEq(_held(), owed, "sweep must leave exactly the owed credits");
+        assertEq(fwd.sweepMarkTime(), 0, "detaching clears the record");
         fwd.payOwed(_one(alice));
         assertEq(_held(), 0);
         assertGt(_jb(alice), 0);
@@ -487,7 +525,7 @@ contract MarkeeJuiceboxForwarderTest is Test {
         _warp(30 days);
 
         uint256 successes;
-        for (uint256 g = 300_000; g <= 3_000_000; g += 100_000) {
+        for (uint256 g = 500_000; g <= 9_000_000; g += 500_000) {
             uint256 snap = vm.snapshotState();
             (bool ok,) = address(fwd).call{ gas: g }(abi.encodeCall(fwd.sync, (_one(alice))));
             if (ok) {
@@ -499,5 +537,152 @@ contract MarkeeJuiceboxForwarderTest is Test {
             vm.revertToState(snap);
         }
         assertGt(successes, 0, "no gas limit in range was enough");
+    }
+
+    // ─── Weekly sweep while attached ────────────────────────────────────────────
+
+    function _projectBalance() internal view returns (uint256) {
+        return JB_STORE.balanceOf(JB_TERMINAL, JB_PROJECT, address(0xEEEe));
+    }
+
+    function test_sweepWhileAttached_movesStrandedFundsWeekly_andKeepsSyncing() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(5 days);
+        vm.prank(alice);
+        board.settle(_one(alice)); // Claim button: this slice can no longer be attributed
+        uint256 stranded = fwd.unallocated();
+        assertGt(stranded, 0);
+
+        // Week 0: the first sweep (with the keeper's backer list) only records.
+        assertEq(fwd.sweepSurplus(_one(alice)), 0);
+        assertEq(fwd.sweepMarkAmount(), stranded, "record should be exactly the stranded slice");
+        assertEq(fwd.sweepableAt(), vm.getBlockTimestamp() + 7 days);
+
+        // A daily keeper keeps issuing tokens during the week; the stranded slice is never credited.
+        uint256 tokens;
+        for (uint256 d = 0; d < 7; d++) {
+            _warp(1 days);
+            fwd.sync(_one(alice));
+            assertGt(_jb(alice), tokens, "daily sync stopped issuing tokens");
+            tokens = _jb(alice);
+        }
+        assertEq(fwd.totalOwed(), 0);
+
+        // Week 1: the stranded slice goes to the project's balance; synced backers lose nothing.
+        uint256 projectBefore = _projectBalance();
+        uint256 swept = fwd.sweepSurplus(_one(alice));
+        assertApproxEqAbs(swept, stranded, 1e9, "should sweep the recorded stranded slice");
+        assertLe(swept, stranded);
+        assertEq(_projectBalance() - projectBefore, swept, "project balance did not receive the sweep");
+        assertEq(fwd.totalOwed(), 0);
+
+        // Next day's sync still credits the full share (nothing it needed was swept).
+        _warp(1 days);
+        uint256 expected = fwd.shareOf(board.pendingSettlement(alice));
+        uint256 heldBefore = _held();
+        fwd.sync(_one(alice));
+        assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "sync after a sweep was short-changed");
+        assertGt(_jb(alice), tokens);
+        assertEq(fwd.owedOf(alice), 0);
+    }
+
+    function test_sweepWhileAttached_cannotRunEarlyOrPostponeTheClock() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(2 days);
+        vm.prank(alice);
+        board.settle(_one(alice));
+
+        fwd.sweepSurplus(_none());
+        uint256 readyAt = fwd.sweepableAt();
+
+        _warp(3 days);
+        vm.expectRevert(abi.encodeWithSelector(MarkeeJuiceboxForwarder.SweepNotReady.selector, readyAt));
+        vm.prank(makeAddr("griefer"));
+        fwd.sweepSurplus(_none());
+        assertEq(fwd.sweepableAt(), readyAt, "an early call must not move the clock");
+
+        _warp(4 days);
+        assertGt(fwd.sweepSurplus(_one(alice)), 0);
+    }
+
+    function test_sweepWhileAttached_syncsListedBackersFirst() public {
+        // Rent accrued but not yet synced is not stranded: the sweep syncs the listed backers before
+        // measuring, so their share is credited to them rather than swept.
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        fwd.sweepSurplus(_none()); // record (nothing unallocated yet)
+        _warp(8 days);
+
+        uint256 credit = fwd.pendingCredit(alice);
+        assertGt(credit, 0);
+        uint256 swept = fwd.sweepSurplus(_one(alice));
+        assertEq(swept, 0, "unsynced but attributable rent was swept");
+        assertGt(_jb(alice), 0, "listed backer should have been synced and paid");
+    }
+
+    // ─── Fee receiver and misbehaving backers ───────────────────────────────────
+
+    function test_platformFeeReceiver_isNeverCredited() public {
+        address feeBacker = _backer("feeReceiver");
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setPlatformFeeReceiver(feeBacker);
+        _open(feeBacker, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(10 days);
+        assertGt(board.pendingSettlement(feeBacker), 0);
+        assertEq(fwd.pendingCredit(feeBacker), 0, "view should not promise the fee receiver a credit");
+
+        fwd.sync(_one(feeBacker));
+        assertEq(fwd.owedOf(feeBacker), 0);
+        assertEq(_jb(feeBacker), 0, "fee receiver must not get project tokens");
+        assertGt(board.pendingSettlement(feeBacker), 0, "the forwarder should not settle the fee receiver");
+    }
+
+    function test_gasBurningBacker_isSkipped_othersStillSync() public {
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setRevNetEnabled(false); // settle pays backers ETH directly
+
+        address m = _newMarkee("alpha");
+        address alice = _backer("alice");
+        _open(alice, m, _rate(0.02 ether));
+        GasBurningBacker burner = new GasBurningBacker();
+        int96 r = _rate(0.02 ether);
+        burner.open{ value: 1 ether }(
+            address(board), address(ETHX), address(CFA), address(GDA), address(board.poolOf(m)), m, r
+        );
+        _warp(10 days);
+        uint256 burnerPending = board.pendingSettlement(address(burner));
+        assertGt(burnerPending, 0);
+
+        address[] memory batch = _two(address(burner), alice);
+        vm.recordLogs();
+        fwd.sync{ gas: 15_000_000 }(batch);
+
+        assertGt(_jb(alice), 0, "honest backer blocked by a gas-burning one");
+        assertEq(fwd.owedOf(address(burner)), 0);
+        assertEq(board.pendingSettlement(address(burner)), burnerPending, "burner's settle should be rolled back");
+        bytes32 skippedTopic = keccak256("BackerSkipped(address,bytes)");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool skipped;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter == address(fwd) && logs[i].topics[0] == skippedTopic) skipped = true;
+        }
+        assertTrue(skipped, "BackerSkipped not emitted");
+    }
+
+    function test_syncWithTooLittleGas_revertsInsteadOfSkipping() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(5 days);
+        (bool ok, bytes memory ret) = address(fwd).call{ gas: 3_000_000 }(abi.encodeCall(fwd.sync, (_one(alice))));
+        assertFalse(ok, "sync must not run a backer with less than BACKER_GAS");
+        assertEq(bytes4(ret), MarkeeJuiceboxForwarder.InsufficientGas.selector);
+        assertGt(board.pendingSettlement(alice), 0, "nothing should have been settled");
+    }
+
+    function test_processBacker_onlySelf() public {
+        vm.expectRevert(MarkeeJuiceboxForwarder.OnlySelf.selector);
+        fwd.processBacker(makeAddr("x"), 6200, 1 ether, true);
     }
 }
