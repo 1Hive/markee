@@ -5,6 +5,7 @@ import { Script, console2 } from "forge-std/Script.sol";
 import { MarkeeJuiceboxForwarder } from "../contracts/integrations/juicebox/MarkeeJuiceboxForwarder.sol";
 
 /// @notice Deploys a MarkeeJuiceboxForwarder for one Markee For Rent sign and one Juicebox v6 project.
+///         BETA: experimental and unaudited, not part of Markee's production product (see the README).
 ///
 /// Env:
 ///   LEADERBOARD    the For Rent sign's StreamingLeaderboard address (required)
@@ -34,5 +35,6 @@ contract DeployMarkeeJuiceboxForwarder is Script {
         console2.log("MarkeeJuiceboxForwarder:", address(forwarder));
         console2.log("  leaderboard:", leaderboard);
         console2.log("  JB project:", projectId);
+        console2.log("  version:", forwarder.VERSION(), "(BETA: experimental, unaudited)");
     }
 }

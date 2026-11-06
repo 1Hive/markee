@@ -5,7 +5,7 @@ import { join, resolve } from 'path'
 import { decodeFunctionResult, encodeDeployData, encodeFunctionData, parseAbi, type Abi, type Address, type Hex } from 'viem'
 import { E2E_ACCOUNT, E2E_OTHER, TX_TIMEOUT, isolateChain, rpc } from './support'
 
-// MarkeeJuiceboxForwarder (contracts/integrations/juicebox) as a For Rent sign's beneficiary, with the
+// MarkeeJuiceboxForwarder (contracts/integrations/juicebox; beta, not part of the production product) as a For Rent sign's beneficiary, with the
 // app unchanged: create the sign and stream through the app's own modals, deploy and attach the
 // forwarder on the fork, then check that anyone's sync() pays the Juicebox project and issues its
 // tokens to the backer, and that the app's Claim button keeps working beside it.

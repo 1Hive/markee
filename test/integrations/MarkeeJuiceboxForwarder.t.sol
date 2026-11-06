@@ -53,6 +53,8 @@ interface IJBTerminalStoreT {
 interface IFactoryAdminT {
     function setRevNetEnabled(bool enabled) external;
     function setPlatformFeeReceiver(address receiver) external;
+    function setPercentToBeneficiary(uint256 percent) external;
+    function percentToPlatformFeeReceiver() external view returns (uint256);
 }
 
 /// @dev A backer that is a contract and burns all its gas whenever it receives ETH, e.g. when the
@@ -213,6 +215,9 @@ contract MarkeeJuiceboxForwarderTest is Test {
         assertEq(fwd.PROJECT_ID(), JB_PROJECT);
         assertEq(fwd.memo(), "Markee For Rent");
         assertEq(board.beneficiaryAddress(), address(fwd));
+        assertEq(fwd.VERSION(), "0.2.0-beta");
+        assertEq(fwd.ratioNum(), 6200);
+        assertEq(fwd.ratioDen(), 3800);
     }
 
     function test_constructor_rejectsBadConfig() public {
@@ -240,7 +245,8 @@ contract MarkeeJuiceboxForwarderTest is Test {
         _warp(30 days);
 
         uint256 pending = board.pendingSettlement(alice);
-        uint256 share = pending * 6200 / 3800;
+        uint256 share = fwd.shareOf(pending);
+        assertApproxEqRel(share, pending * 6200 / 3800, 1e12, "live ratio should match the 62% setting");
         uint256 expectedCredit = share < _held() ? share : _held(); // capped by funds received
         assertApproxEqRel(expectedCredit, share, 1e12, "cap should only trim rounding dust");
         assertGt(pending, 0, "nothing accrued");
@@ -683,6 +689,125 @@ contract MarkeeJuiceboxForwarderTest is Test {
 
     function test_processBacker_onlySelf() public {
         vm.expectRevert(MarkeeJuiceboxForwarder.OnlySelf.selector);
-        fwd.processBacker(makeAddr("x"), 6200, 1 ether, true);
+        fwd.processBacker(makeAddr("x"), 6200, 3800, 1 ether, true);
+    }
+
+    // ─── Review fixes: percentage changes, fee receiver rotation, incomplete sweep lists ──
+
+    /// @dev A factory percentage change only reaches the streams at the board's next flow event, and the
+    ///      leaderboard accrues backers from the live streams. Credits must follow the streams, so a
+    ///      change cannot re-price rent that accrued at the old split.
+    function test_percentChange_creditsAtTheRatioTheStreamsActuallyPaid() public {
+        address m = _newMarkee("alpha");
+        address alice = _backer("alice");
+        _open(alice, m, _rate(0.02 ether));
+        _warp(10 days);
+
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setPercentToBeneficiary(5000);
+        _warp(5 days); // no flow event yet: the board still streams and accrues at 62/38
+
+        uint256 received = _held();
+        assertApproxEqRel(fwd.pendingCredit(alice), received, 1e12, "credit re-priced at the new percentage");
+        fwd.sync(_one(alice));
+        assertApproxEqRel(received - _held(), received, 1e12, "alice short-changed");
+        assertGt(_jb(alice), 0);
+        assertApproxEqRel(fwd.ratioNum() * 3800, fwd.ratioDen() * 6200, 1e12, "ratio should still be 62:38");
+
+        // A new backer's stream is a flow event: the beneficiary stream moves to 50%.
+        address bob = _backer("bob");
+        _open(bob, m, _rate(0.02 ether));
+        _warp(10 days);
+        uint256 heldBefore = _held();
+        uint256 expected = fwd.pendingCredit(alice) + fwd.pendingCredit(bob);
+        fwd.sync(_two(alice, bob));
+        assertApproxEqRel(fwd.ratioNum(), fwd.ratioDen(), 1e12, "ratio should now be 50:50");
+        assertApproxEqRel(heldBefore - _held(), expected, 1e12);
+        assertApproxEqRel(expected, heldBefore, 1e9, "credits should consume what the new split streamed");
+    }
+
+    /// @dev Regression: a failed fee payment is put back on the fee receiver's leaderboard balance. After
+    ///      the factory rotates the receiver, that balance must still never be credited as backer rent.
+    function test_feeReceiverRotation_restoredFeeIsNeverCredited() public {
+        address oldFee = makeAddr("oldFeeReceiver");
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setPlatformFeeReceiver(oldFee);
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(10 days);
+
+        // Make only the aggregated fee pay fail (the MARKEE RevNet pay naming oldFee as recipient).
+        uint256 amt = board.pendingSettlement(alice);
+        uint256 fee = amt * IFactoryAdminT(address(factory)).percentToPlatformFeeReceiver() / BPS;
+        assertGt(fee, 0);
+        vm.mockCallRevert(
+            JB_TERMINAL,
+            abi.encodeWithSelector(PAY_SELECTOR, MARKEE_REVNET_PROJECT, address(0xEEEe), fee, oldFee),
+            "fee pay failed"
+        );
+        fwd.sync(_one(alice));
+        vm.clearMockedCalls();
+        assertGt(_jb(alice), 0, "alice should have been credited in full");
+        assertEq(board.claimable(oldFee), fee, "the failed fee should be back on the old receiver");
+        assertTrue(fwd.isExcluded(oldFee));
+
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setPlatformFeeReceiver(makeAddr("newFeeReceiver"));
+
+        assertEq(fwd.pendingCredit(oldFee), 0, "view should not promise the old receiver a credit");
+        uint256 unallocatedBefore = fwd.unallocated();
+        fwd.sync(_one(oldFee));
+        assertEq(fwd.owedOf(oldFee), 0, "restored fee credited as rent");
+        assertEq(_jb(oldFee), 0);
+        assertEq(fwd.unallocated(), unallocatedBefore);
+        assertEq(board.pendingSettlement(oldFee), fee, "the forwarder should not settle the old receiver");
+        assertTrue(fwd.isExcluded(makeAddr("newFeeReceiver")), "new receiver should be noted too");
+    }
+
+    /// @dev A griefer calls sweepSurplus with an incomplete list at both ends of the week. The keeper's
+    ///      full syncs in between cap the record at the truly stranded amount, so the omitted backer's
+    ///      rent is never swept and they still get all their project tokens.
+    function test_sweep_incompleteListsCannotSweepAnOmittedBackersRent() public {
+        address m = _newMarkee("alpha");
+        address alice = _backer("alice");
+        address bob = _backer("bob");
+        _open(alice, m, _rate(0.02 ether));
+        _open(bob, m, _rate(0.06 ether));
+        _warp(1 days);
+        fwd.sync(_two(alice, bob));
+
+        _warp(1 days);
+        vm.prank(alice);
+        board.settle(_one(alice)); // Claim button: alice's last day becomes stranded
+
+        address griefer = makeAddr("griefer");
+        vm.prank(griefer);
+        fwd.sweepSurplus(_one(alice)); // leaves bob out: his unsynced day is in the record
+        uint256 inflated = fwd.sweepMarkAmount();
+
+        _warp(1 days);
+        fwd.sync(_two(alice, bob)); // keeper
+        uint256 stranded = fwd.unallocated();
+        assertEq(fwd.sweepMarkAmount(), stranded, "keeper sync should cap the record");
+        assertLt(stranded * 2, inflated, "bob's unsynced rent was not in the inflated record");
+
+        // Bob is then left unsynced for several days, and the griefer leaves him out again at maturity.
+        for (uint256 d = 0; d < 6; d++) {
+            _warp(1 days);
+            fwd.sync(_one(alice));
+        }
+        uint256 bobShare = fwd.shareOf(board.pendingSettlement(bob));
+        assertGt(bobShare, inflated, "bob should have a large unsynced balance at maturity");
+
+        vm.prank(griefer);
+        uint256 swept = fwd.sweepSurplus(_one(alice));
+        assertLe(swept, stranded, "swept more than was stranded");
+        assertApproxEqAbs(swept, stranded, 1e9);
+
+        uint256 heldBefore = _held();
+        uint256 expected = fwd.shareOf(board.pendingSettlement(bob));
+        fwd.sync(_one(bob));
+        assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "bob was short-changed by the sweep");
+        assertEq(fwd.owedOf(bob), 0);
     }
 }

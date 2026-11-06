@@ -1,4 +1,10 @@
-# MarkeeJuiceboxForwarder
+# MarkeeJuiceboxForwarder (beta)
+
+> [!WARNING]
+> **Beta: experimental and unaudited. Not part of Markee's production product.** This integration is published for
+> teams who want to build on it. Markee does not operate, monitor or support deployments of it, and its interface
+> may change between versions (`VERSION()` returns the release, currently `0.2.0-beta`). Review the code and use it
+> at your own risk.
 
 Pays a Markee **For Rent** sign's beneficiary share into a **Juicebox v6** project, and issues the project's tokens to
 the same backers who receive MARKEE for that rent.
@@ -13,9 +19,11 @@ the same backers who receive MARKEE for that rent.
 
 1. A For Rent sign's `StreamingLeaderboard` streams the beneficiary share (62% by default) of the #1 message's rent
    to its `beneficiaryAddress` as ETHx. Point that at this forwarder.
-2. The remaining share (38% by default) accrues per backer on the leaderboard for MARKEE (`pendingSettlement`).
-   Both shares come from the same rent, so a backer's slice of the ETHx this contract received is
-   `settledMarkeeRent × pct / (10000 − pct)`.
+2. The rest of the rent accrues per backer on the leaderboard for MARKEE (`pendingSettlement`). The leaderboard
+   accrues it from what it actually retains, the #1 sign's rate minus the live beneficiary stream, so a backer's
+   slice of the ETHx this contract received is `settledMarkeeRent × beneficiaryRate / (topRate − beneficiaryRate)`.
+   The forwarder reads both rates live (`shareRatio()`), so it follows the streams exactly like the leaderboard does,
+   including after a factory percentage change, which only reaches the streams at the board's next flow event.
 3. Anyone calls `sync(backers)`. For each backer, the forwarder:
    1. settles their MARKEE on the leaderboard (the same call as Markee's Claim button),
    2. credits the matching beneficiary share, measured from what the leaderboard actually settled,
@@ -33,6 +41,9 @@ events):
 - **Daily:** `sync(backers)`. Issues project tokens for the rent accrued since the last sync.
 - **Weekly:** `sweepSurplus(backers)`. Moves anything that couldn't be attributed (see "Claim before sync" below)
   into the project's balance, so the project always receives all of the ETH.
+
+Sync every backer in one call where you can. A sweep can only take what stayed unallocated after every sync of the
+week, and a sync of every backer leaves exactly the unattributable funds unallocated.
 
 Callers cannot redirect funds or tokens; they only choose when things happen. Send each call with at least
 **5.1M gas per backer** available (`BACKER_GAS`, about 1M is actually used); gas estimation handles this.
@@ -61,6 +72,9 @@ Callers cannot redirect funds or tokens; they only choose when things happen. Se
 | `payOwed(address[] backers)` | anyone | Retry payments that failed (project paused, no ETH terminal). Works after detaching too. |
 | `sweepSurplus(address[] backers)` | anyone | Adds funds no backer can be credited for to the project's balance via `addToBalanceOf` (no tokens issued). **While attached:** syncs `backers` first, then sweeps what the previous call recorded as unallocated (if still unallocated) once 7 days (`SWEEP_DELAY`) have passed, and records the current amount for next time. The first call only records; an early call reverts with `SweepNotReady` and cannot move the clock. **Once detached:** sweeps everything unallocated immediately. |
 | `sweepableAt()` | view | When the next attached sweep can run (0 = the next call only records). |
+| `sweepMarkAmount()` | view | The most the next attached sweep can take. Every `sync` lowers it to what is still unallocated afterwards; nothing raises it. |
+| `shareRatio()` | view | The (beneficiary rate, retained rate) ratio a sync would use now. |
+| `isExcluded(account)` | view | True for every address seen as the platform fee receiver; never credited. |
 | `pendingCredit(backer)` | view | What a sync would credit now, plus anything already owed. |
 | `unallocated()` | view | Funds held that are not owed to anyone. |
 | `owedOf(backer)`, `totalOwed` | view | Credits waiting for a successful payment. |
@@ -79,8 +93,14 @@ Callers cannot redirect funds or tokens; they only choose when things happen. Se
   including the leaderboard settle, and `BackerSkipped(backer, reason)` is emitted. The rest of the batch syncs.
 - **Too little gas reverts instead of half-succeeding.** A call without `BACKER_GAS` available for the next backer
   reverts with `InsufficientGas`, so wallets, crons and gas estimators always supply enough for every payout.
-- The leaderboard's platform fee receiver is never credited: its leaderboard balance can include fees the
-  leaderboard put back after a failed fee payment, which the backers who paid that rent were already credited for.
+- **Platform fee receivers are never credited**, including former ones. A fee receiver's leaderboard balance can
+  include fees the leaderboard put back after a failed fee payment, which the backers who paid that rent were
+  already credited for. The forwarder records the current receiver on every sync and sweep (`isExcluded`), so a
+  receiver stays excluded after the factory rotates it.
+- **An incomplete backer list can't sweep anyone's rent.** Anyone can call `sweepSurplus` with any list, but the
+  record it takes is lowered by every later `sync`. Once the keeper has synced every backer during the week, the
+  record is at most the truly stranded amount, so the sweep can't take rent of backers left out of either sweep
+  call. Only rent that no sync touched for a whole week can be swept without issuing tokens.
 
 ## Known limitations
 
@@ -88,15 +108,25 @@ Callers cannot redirect funds or tokens; they only choose when things happen. Se
   button) before a `sync`, the project tokens for that period can no longer be attributed. It is never
   over-credited, and the weekly `sweepSurplus` moves its ETH to the project. Anyone can trigger this deliberately by
   calling `leaderboard.settle` for backers; that costs them gas and only reduces those backers' project tokens.
-- **Sync within a week.** Rent must be synced within `SWEEP_DELAY` (7 days) of accruing. A sweep syncs the backers
-  it is given first, but rent of a backer left out of both the daily syncs and the weekly sweep for over a week can
-  be swept to the project without issuing tokens for it. A daily keeper with the full backer list avoids this.
-- **Percentage changes.** Credits use the factory's current `percentToBeneficiary`. If the Markee Cooperative changes
-  it, rent accrued before the change is credited at the new ratio (bounded by the solvency cap).
+- **Sync within a week.** If no sync of every backer happens for a whole week (e.g. the keeper is down), a sweep
+  called with an incomplete list can take rent of the backers it leaves out, without issuing tokens for it. The ETH
+  still goes to the project. A daily keeper with the full backer list avoids this. If you batch a large board over
+  several calls, the record can include a few seconds' to minutes' accrual from between the batches.
+- **Ratio changes between syncs.** When a percentage change reaches the streams, a backer's rent from the interval
+  since their last sync is credited at the new ratio. With a daily keeper that's at most a day of rent, once per
+  change. Credits never exceed funds held, and anything under-credited is swept to the project.
+- **Fee receiver rotations between calls.** A receiver is recorded only while it holds the role during a call to this
+  contract. One that held it only between two calls (less than a day with a daily keeper) and had a fee payment fail
+  in that window is not recorded.
 - **`minReturnedTokens` is 0** and no pay metadata is passed. Juicebox projects with a buyback hook use their own
-  pricing logic. Small, frequent syncs limit exposure.
-- **Rounding.** The leaderboard rounds the beneficiary flow rate down, so the percentage-based share overshoots the
-  stream by roughly 1e-10. The solvency cap trims that dust.
+  pricing logic. Small, frequent syncs limit exposure. There is deliberately no fixed minimum: with no admin to
+  change it, a minimum the project's price later falls below would make every payment fail forever.
+- **Juicebox v6 terminal interface.** The terminal is resolved from `JBDirectory` at pay time and called with the v6
+  `pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)` signature. A future terminal with
+  different semantics would need a new forwarder.
+- **Superfluid CFAv1Forwarder.** The live beneficiary rate is read from Superfluid's CFAv1Forwarder at
+  `0xcfA132E353cB4E398080B9700609bb008eceB125` (the same address on every Superfluid network).
+- **Rounding.** Shares are rounded down; the solvency cap trims any dust overshoot.
 
 ## Tests
 
