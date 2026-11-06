@@ -268,7 +268,13 @@ at the next sync, whenever that is.
   sync is credited at the new ratio. With a daily keeper that's at most a day of rent, once per change. Credits
   never exceed funds held, and anything under-credited is swept to the project.
 - **Fee receiver rotations between calls.** A receiver is recorded only if it holds the role during a call to this
-  contract. One that held it only between two calls, and had a fee payment fail in that window, isn't recorded.
+  contract. Nothing on-chain records past receivers, so this can't be derived. The gap needs three things: a
+  receiver held the role only between two forwarder calls, an external settle (e.g. the Claim button) had its
+  fee payment fail in that window, and the receiver was rotated before the next forwarder call. Then a sync of
+  that old receiver can be credited up to the failed fee's share. That issues project tokens to the old receiver
+  for part of a slice the external settle had already stranded, which would otherwise be swept with no tokens. No
+  backer is under-credited, because the sweep reserve covers the old receiver's balance too, and the ETH still goes
+  only to the project. Calling `sync` (even with an empty list) right after a fee receiver change closes the gap.
 - **`minReturnedTokens` is 0**, and no pay metadata is passed. Projects with a buyback hook use their own pricing.
   Small, frequent syncs limit exposure. There's deliberately no fixed minimum: with no admin to change it, a
   minimum that the project's price later fell below would make every payment fail forever.

@@ -99,7 +99,10 @@ interface IJBTerminalMinimal {
 ///        exceed funds held; anything under-credited is swept to the project.
 ///      - Any address seen as the platform fee receiver is never credited (its leaderboard balance can
 ///        hold fees put back after a failed fee payment), even after the factory rotates the receiver.
-///        A receiver that held the role only between two calls to this contract is not seen.
+///        A receiver that held the role only between two calls to this contract is not seen (no on-chain
+///        state records past receivers). If one of its fee payments failed meanwhile, a sync of it can be
+///        credited up to that fee's share: project tokens for a slice an external settle had already
+///        stranded. No backer is under-credited and the ETH still goes only to the project.
 ///      - Credits assume this contract was the leaderboard's beneficiary for the whole period being
 ///        settled. When attaching to a sign that already has backers, settle all of them in the same
 ///        transaction that sets this contract as beneficiary.

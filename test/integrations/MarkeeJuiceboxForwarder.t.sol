@@ -790,4 +790,64 @@ contract MarkeeJuiceboxForwarderTest is Test {
         assertApproxEqAbs(totalSwept + fwd.unallocated(), stranded, 1e9);
         assertLe(fwd.unallocated(), fwd.reserve(), "held back more than the reserve");
     }
+
+    /// @dev Reviewer's remaining scenario: an external settle (Markee's Claim button) fails its fee payment,
+    ///      the fee is restored to the receiver, and governance rotates the receiver before the forwarder
+    ///      ever runs, so the old receiver is not excluded. Its restored fee can then be credited, but only
+    ///      out of the slice the external settle stranded (which the sweep reserve keeps back): no backer
+    ///      is under-credited, no ETH leaves for anywhere but the project, and the credit is bounded by the
+    ///      fee's share. The only effect is project tokens for that already-stranded slice going to the old
+    ///      receiver instead of no one.
+    function test_unseenRotatedFeeReceiver_creditBoundedByStrandedSlice_noBackerShortChanged() public {
+        address oldFee = makeAddr("oldFeeReceiver");
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setPlatformFeeReceiver(oldFee);
+        address m = _newMarkee("alpha");
+        address alice = _backer("alice");
+        address bob = _backer("bob");
+        _open(alice, m, _rate(0.02 ether));
+        _open(bob, m, _rate(0.06 ether));
+        _warp(10 days);
+
+        // External settle of alice whose aggregated fee payment fails.
+        uint256 amt = board.pendingSettlement(alice);
+        uint256 fee = amt * IFactoryAdminT(address(factory)).percentToPlatformFeeReceiver() / BPS;
+        vm.mockCallRevert(
+            JB_TERMINAL,
+            abi.encodeWithSelector(PAY_SELECTOR, MARKEE_REVNET_PROJECT, address(0xEEEe), fee, oldFee),
+            "fee pay failed"
+        );
+        vm.prank(alice);
+        board.settle(_one(alice));
+        vm.clearMockedCalls();
+        assertEq(board.claimable(oldFee), fee);
+        uint256 aliceStranded = fwd.shareOf(amt);
+
+        vm.prank(admin);
+        IFactoryAdminT(address(factory)).setPlatformFeeReceiver(makeAddr("newFeeReceiver"));
+        assertFalse(fwd.isExcluded(oldFee), "the forwarder never saw the old receiver");
+
+        // A sweep in between cannot take what the old receiver's restored fee could claim.
+        fwd.sweepSurplus(_none());
+
+        // Bob is credited in full regardless.
+        uint256 bobExpected = fwd.shareOf(board.pendingSettlement(bob));
+        uint256 heldBefore = _held();
+        fwd.sync(_one(bob));
+        assertApproxEqAbs(heldBefore - _held(), bobExpected, 1e9, "bob short-changed");
+
+        // The old receiver's credit is bounded by its fee's share, i.e. a part of alice's stranded slice.
+        heldBefore = _held();
+        fwd.sync(_one(oldFee));
+        uint256 oldFeeCredit = heldBefore - _held();
+        assertLe(oldFeeCredit, fwd.shareOf(fee) + 1e9);
+        assertLt(oldFeeCredit, aliceStranded);
+
+        // Later rent is unaffected: both backers are credited in full again.
+        _warp(1 days);
+        uint256 expected = fwd.shareOf(board.pendingSettlement(alice)) + fwd.shareOf(board.pendingSettlement(bob));
+        heldBefore = _held();
+        fwd.sync(_two(alice, bob));
+        assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "later rent short-changed");
+    }
 }
