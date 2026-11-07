@@ -5,7 +5,7 @@ import { join, resolve } from 'path'
 import { decodeFunctionResult, encodeDeployData, encodeFunctionData, parseAbi, type Abi, type Address, type Hex } from 'viem'
 import { E2E_ACCOUNT, E2E_OTHER, TX_TIMEOUT, isolateChain, rpc } from './support'
 
-// MarkeeJuiceboxForwarder (contracts/integrations/juicebox) as a For Rent sign's beneficiary, with the
+// MarkeeJuiceboxForwarder (contracts/integrations/juicebox; beta, not part of the production product) as a For Rent sign's beneficiary, with the
 // app unchanged: create the sign and stream through the app's own modals, deploy and attach the
 // forwarder on the fork, then check that anyone's sync() pays the Juicebox project and issues its
 // tokens to the backer, and that the app's Claim button keeps working beside it.
@@ -14,6 +14,9 @@ isolateChain()
 const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '0x37f420fdE5c98e611EB7cb9b74ef579D84697039') as Address
 const JB_DIRECTORY: Address = '0x5AfF29060E023e6FB87BE5596652B33c65Af535B'
 const JB_TOKENS: Address = '0x1f80d8f057eE36b4C2656D107E4e4558B71bA7D9'
+const JB_TERMINAL: Address = '0x130f5Dd2bD8805443Cf41755253D778a75a67f53'
+const JB_TERMINAL_STORE: Address = '0x7497ae014A60561925B51C0A3B4adE7460B9927C'
+const NATIVE: Address = '0x000000000000000000000000000000000000EEEe'
 const CFA_FORWARDER: Address = '0xcfA132E353cB4E398080B9700609bb008eceB125'
 const ETHX: Address = '0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93'
 // Stands in for the Juicebox project a sign owner would pay (NANA; accepts ETH on Base v6).
@@ -30,6 +33,7 @@ const boardAbi = parseAbi([
   'function pendingSettlement(address) view returns (uint256)',
 ])
 const tokensAbi = parseAbi(['function totalBalanceOf(address holder, uint256 projectId) view returns (uint256)'])
+const storeAbi = parseAbi(['function balanceOf(address terminal, uint256 projectId, address token) view returns (uint256)'])
 const cfaAbi = parseAbi(['function getFlowrate(address token, address sender, address receiver) view returns (int96)'])
 
 // Compiles the forwarder from the repo with the same Foundry the fork job installs. It has no imports,
@@ -155,3 +159,21 @@ test("the app's Claim button still works with the forwarder as beneficiary", asy
   expect(await fwdRead<bigint>('totalOwed')).toBe(0n)
   expect(await fwdRead<bigint>('unallocated')).toBeGreaterThan(0n)
 })
+
+test('the sweep moves the unattributable slice into the project', async () => {
+  // Left over from the Claim in the previous test: no backer can get tokens for it, but the project
+  // still gets the ETH. Anyone can sweep at any time; a reserve covering backers' unsynced rent is kept.
+  const stranded = await fwdRead<bigint>('unallocated')
+  const sweepable = await fwdRead<bigint>('sweepable')
+  expect(sweepable).toBeGreaterThan(0n)
+  expect(sweepable).toBeLessThanOrEqual(stranded)
+
+  const projectBefore = await read<bigint>(JB_TERMINAL_STORE, storeAbi, 'balanceOf', [JB_TERMINAL, JB_PROJECT, NATIVE])
+  await send(E2E_OTHER, { to: forwarder.address, data: encodeFunctionData({ abi: forwarder.abi, functionName: 'sweepSurplus', args: [[E2E_ACCOUNT]] }) })
+  const projectAfter = await read<bigint>(JB_TERMINAL_STORE, storeAbi, 'balanceOf', [JB_TERMINAL, JB_PROJECT, NATIVE])
+
+  // Syncing the listed backer first can only shrink the reserve, so at least the previewed amount moves.
+  expect(projectAfter - projectBefore).toBeGreaterThanOrEqual(sweepable)
+  expect(await fwdRead<bigint>('totalOwed')).toBe(0n)
+})
+
