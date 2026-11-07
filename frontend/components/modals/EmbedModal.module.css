@@ -1,0 +1,12 @@
+.website .header { padding: 28px 32px !important; }
+.website .body { padding: 24px 32px 30px !important; }
+@media (max-width: 520px) {
+  .website .header { padding: 22px 20px !important; }
+  .website .body { padding: 20px 20px 30px !important; }
+}
+.website .header > div { font-size: 16px !important; font-weight: 700; letter-spacing: 2px !important; }
+.website .header > button { font-size: 28px !important; }
+.website .body > button { font-size: 15px !important; margin-bottom: 24px !important; }
+@media (max-width: 520px) {
+  .website .header > div { font-size: 12px !important; letter-spacing: 1px !important; }
+}
