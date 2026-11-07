@@ -19,6 +19,8 @@ import { formatUsd } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { PendingPaymentNotice } from '@/components/tx/PendingPaymentNotice'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 
@@ -162,7 +164,8 @@ export function StreamActivateModal({
   }, [isSuccess, isOpen])
 
   const { trust: boardTrust } = useBoardTrust(isOpen ? board : undefined)
-  const handleActivate = () => boardTrust !== 'trusted' ? undefined : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
+  const pendingStreams = usePendingTxsFor(activeAddress, board)
+  const handleActivate = () => boardTrust !== 'trusted' || (phase === 'idle' && pendingStreams.length) ? undefined : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
 
   if (!isOpen) return null
 
@@ -205,7 +208,8 @@ export function StreamActivateModal({
   // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH", surfacing
   // as "Fund the stream for longer" even for a wallet that genuinely holds ETH).
   const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
-  const btnDisabled = boardTrust !== 'trusted' || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
+  const streamPaymentPending = phase === 'idle' && !isPending && !isConfirming && pendingStreams.length > 0
+  const btnDisabled = boardTrust !== 'trusted' || streamPaymentPending || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
 
   const footer = !txActive ? (
     reviewOpen ? (
@@ -338,6 +342,7 @@ export function StreamActivateModal({
             </div>
           )}
 
+          {streamPaymentPending && <PendingPaymentNotice pending={pendingStreams} />}
           {error && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{error}</div>}
         </div>
       )}

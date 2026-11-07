@@ -44,6 +44,8 @@ import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, St
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { formatLiveEth } from '@/hooks/useLiveBalance'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -720,9 +722,13 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     setEditingMessage(false); setEditMessageText(''); setEditMessageError(null); setEditMessageTxHash(undefined)
   }, [isOpen, initialView])
 
+  const pendingStreams = usePendingTxsFor(activeAddress, board)
+  const busyRef = useRef(false)
+  const streamPendingRef = useRef(false)
+
   useEffect(() => {
     if (!isOpen) return
-    const handleEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    const handleEscape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busyRef.current) onClose() }
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
   }, [isOpen, onClose])
@@ -733,8 +739,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     : boardTrust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
     : boardTrust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
     : 'Checking this Markee board…'
-  const handleBuyNew = async () => { if (boardBlockedReason) return; if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim()) }
-  const handleFund = () => boardBlockedReason ? undefined : backsOther
+  const handleBuyNew = async () => { if (boardBlockedReason || streamPendingRef.current) return; if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim()) }
+  const handleFund = () => boardBlockedReason || streamPendingRef.current ? undefined : backsOther
     ? moveFlow.moveStream(calc, { belowMin, minMonthlyEth })
     : openFlow.openStream(calc, { belowMin, minMonthlyEth })
   const handleUpdateRate = () => rateFlow.updateRate(
@@ -793,13 +799,17 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
           ? (moveFlow.approving || moveFlow.submitting || moveFlow.isPending || moveFlow.isConfirming)
           : (openFlow.approving || openFlow.submitting || openFlow.isPending || openFlow.isConfirming))
       : (rateFlow.approving || rateFlow.submitting || rateFlow.isPending || rateFlow.isConfirming)
+  busyRef.current = busy
+  const streamPaymentPending = !busy && view !== 'manage' && pendingStreams.length > 0
+  streamPendingRef.current = streamPaymentPending
   const activeError = view === 'list' ? createFlow.error : view === 'fund' ? (backsOther ? moveFlow.error : openFlow.error) : rateFlow.error
 
   const blocksOnBalance = view === 'fund' ? insufficientBalance : view === 'list' ? insufficientBalance : false
   const fundReadsLoading = view === 'fund' && !(backsOther ? moveFlow.readsReady : openFlow.readsReady)
-  const btnDisabled = busy || activeIsSuccess || blocksOnBalance || fundReadsLoading || !!boardBlockedReason
+  const btnDisabled = busy || activeIsSuccess || blocksOnBalance || fundReadsLoading || !!boardBlockedReason || streamPaymentPending
   const btnDisabledReason = busy ? 'Transaction in progress'
     : boardBlockedReason ? boardBlockedReason
+    : streamPaymentPending ? PENDING_PAYMENT_REASON
     : fundReadsLoading ? 'Loading on-chain data…'
     : blocksOnBalance ? "You don't have enough ETH for this"
     : null
@@ -843,7 +853,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   return (
     <>
     <div
-      onClick={() => { if ((!hasUserEdited || busy || activeIsSuccess) && !cancelBusy && !editMessageBusy) onClose() }}
+      onClick={() => { if (!busy && (!hasUserEdited || activeIsSuccess) && !cancelBusy && !editMessageBusy) onClose() }}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(6,10,42,0.8)', backdropFilter: 'blur(8px)',
@@ -1004,6 +1014,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       />
                     </div>
 
+                    {streamPaymentPending && <div style={{ margin: '0 0 14px' }}><PendingPaymentNotice pending={pendingStreams} /></div>}
                     {activeError && (
                       <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{activeError}</p>
                     )}
@@ -1286,6 +1297,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                 )
               )}
 
+              {view === 'fund' && streamPaymentPending && <div style={{ margin: '0 0 14px' }}><PendingPaymentNotice pending={pendingStreams} /></div>}
               {view !== 'list' && activeError && !reviewOpen && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{activeError}</p>
               )}
