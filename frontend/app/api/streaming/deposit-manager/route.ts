@@ -44,6 +44,15 @@ export interface DepositManagerStream {
   rateRaw: string
 }
 
+export interface DepositManagerDeposit {
+  boardAddress: string
+  boardName: string
+  depositRaw: string
+  reclaimableRaw: string
+}
+
+const BUFFER_PERIOD = 14_400n
+
 function getClient() {
   return createPublicClient({
     chain: base,
@@ -70,7 +79,7 @@ export async function GET(request: NextRequest) {
     const bust = new URL(request.url).searchParams.get('bust') === '1'
     const cacheKey = `cache:streaming:deposit-manager:${wallet}`
     if (!bust) {
-      const cached = await kv.get<{ ethxBalanceRaw: string; streams: DepositManagerStream[] }>(cacheKey)
+      const cached = await kv.get<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; deposits?: DepositManagerDeposit[] }>(cacheKey)
       if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
     }
 
@@ -91,13 +100,15 @@ export async function GET(request: NextRequest) {
     const client = getClient()
     const walletAddr = wallet as `0x${string}`
 
-    const [ethxBalanceResult, ...backerResults] = await Promise.all([
+    const [ethxBalanceResult, backerResultsList, depositResults] = await Promise.all([
       client.readContract({ address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddr] }).catch(() => 0n),
-      ...(streamingBoards.length > 0 ? [chunkedMulticall(client, streamingBoards.map(l => ({
+      streamingBoards.length > 0 ? chunkedMulticall(client, streamingBoards.map(l => ({
         address: l.address as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'backerMarkee' as const, args: [walletAddr] as const,
-      })) as Parameters<typeof client.multicall>[0]['contracts'])] : []),
+      })) as Parameters<typeof client.multicall>[0]['contracts']) : Promise.resolve([]),
+      streamingBoards.length > 0 ? chunkedMulticall(client, streamingBoards.map(l => ({
+        address: l.address as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'backerDeposit' as const, args: [walletAddr] as const,
+      })) as Parameters<typeof client.multicall>[0]['contracts']) : Promise.resolve([]),
     ])
-    const backerResultsList = backerResults[0] ?? []
 
     const backed = streamingBoards
       .map((l, i) => ({ l, backer: backerResultsList[i]?.result as `0x${string}` | undefined }))
@@ -139,11 +150,32 @@ export async function GET(request: NextRequest) {
       }).filter(s => s.rank > 0) // dropped if the markee fell off the returned top-N window
     }
 
-    const payload = { ethxBalanceRaw: (ethxBalanceResult as bigint).toString(), streams }
+    const heldBoards = streamingBoards
+      .map((l, i) => ({ l, deposit: (depositResults[i]?.result as bigint | undefined) ?? 0n, backer: backerResultsList[i]?.result as string | undefined }))
+      .filter(x => x.deposit > 0n)
+    const heldRates = heldBoards.length > 0 ? await chunkedMulticall(client, heldBoards.map(({ l }) => ({
+      address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI, functionName: 'getFlowrate' as const, args: [ETHX, walletAddr, l.address as `0x${string}`] as const,
+    })) as Parameters<typeof client.multicall>[0]['contracts']) : []
+    const deposits: DepositManagerDeposit[] = []
+    heldBoards.forEach(({ l, deposit, backer }, i) => {
+      const streaming = !!backer && backer !== '0x0000000000000000000000000000000000000000'
+      const rateRead = heldRates[i]
+      if (streaming && rateRead?.status !== 'success') return
+      const rate = streaming ? (rateRead!.result as bigint) : 0n
+      const required = rate > 0n ? rate * BUFFER_PERIOD : 0n
+      deposits.push({
+        boardAddress: l.address,
+        boardName: l.leaderboardName || l.name || 'Streaming board',
+        depositRaw: deposit.toString(),
+        reclaimableRaw: (deposit > required ? deposit - required : 0n).toString(),
+      })
+    })
+
+    const payload = { ethxBalanceRaw: (ethxBalanceResult as bigint).toString(), streams, deposits }
     await kv.set(cacheKey, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[streaming/deposit-manager] error:', err)
-    return NextResponse.json({ ethxBalanceRaw: '0', streams: [] }, { status: 500, headers: NO_CACHE })
+    return NextResponse.json({ ethxBalanceRaw: '0', streams: [], deposits: [] }, { status: 500, headers: NO_CACHE })
   }
 }

@@ -188,21 +188,23 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
       }
       const { markee: markeeAddress, pool } = createdRef.current
 
-      const [cfaAgreement, gdaAgreement, currentAllowance] = await Promise.all([
+      const [cfaAgreement, gdaAgreement, currentAllowance, heldDeposit] = await Promise.all([
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID] }),
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID] }),
         publicClient.readContract({ address: ETHX, abi: erc20Abi, functionName: 'allowance', args: [address, board] }),
+        publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: [address] }),
       ])
+      const depositTopUp = calc.buffer > (heldDeposit as bigint) ? calc.buffer - (heldDeposit as bigint) : 0n
       if (!mountedRef.current) return
 
       // ── Tx 2: Approve (if needed) ────────────────────────────────────────
-      if ((currentAllowance as bigint) < calc.buffer) {
+      if (depositTopUp > 0n && (currentAllowance as bigint) < depositTopUp) {
         setPhase('approving')
         const approveHash = await writeContractAsync({
           address: ETHX,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [board, calc.buffer],
+          args: [board, depositTopUp],
           chainId: CANONICAL_CHAIN.id,
         })
         if (!mountedRef.current) return
@@ -219,7 +221,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         markee: markeeAddress,
         backer: address,
         ratePerSec: calc.ratePerSec,
-        buffer: calc.buffer,
+        buffer: depositTopUp,
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: pool as Address,

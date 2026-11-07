@@ -540,7 +540,7 @@ Your existing \`backerDeposit\` survives the delete (deposits are tracked per-ba
 
 - **Stop:** drive the flow rate to \`0\` via the CFAv1Forwarder's \`setFlowrate(ethx, board, 0)\` (equivalent to \`deleteFlow\`). This is the "Cancel Stream" / "Cancel Bid" action in the Manage view below.
 - **ETHx -> ETH:** ETHx's own \`downgradeToETH(amount)\` unwraps a backer's ETHx balance back to ETH (the Deposit Manager's "Withdraw"); \`upgradeByETH()\` (payable) wraps ETH into ETHx ("Deposit").
-- **Buffer:** \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise). markee.xyz doesn't expose this as a button, so it's optional here too.`
+- **Buffer:** \`withdrawDeposit()\` on the board reclaims buffer no longer needed (everything once no stream is open; the surplus above \`rate * BUFFER_PERIOD\` otherwise). markee.xyz offers it as Reclaim in the Deposit Manager, so it's optional here.`
 }
 
 /** @deprecated Use buildEmbedPrompt for SDK integrations. */

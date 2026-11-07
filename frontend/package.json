@@ -14,6 +14,7 @@
     "test:beneficiary": "tsx --test tests/beneficiary.test.ts",
     "test:board-registry": "tsx --test tests/boardRegistry.test.ts",
     "test:tx-tracking": "tsx --test tests/txTracking.test.ts",
+    "test:streaming-deposit": "tsx --test tests/streamingDeposit.test.ts",
     "test:review-regressions": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/review-regressions.test.ts",
     "test:moderation": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/moderationQueue.test.ts tests/moderation-route.test.ts tests/automatic-moderation.test.ts tests/moderation-security.test.ts tests/moderation-rules.test.ts tests/moderated-author.test.ts",
     "test:email-notifications": "tsx --test tests/emailNotifications.test.ts",
