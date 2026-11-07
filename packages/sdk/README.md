@@ -272,8 +272,9 @@ Then implement the agreed scope:
 4. If a host wallet exists, pass its selected EIP-1193 provider through the wallet
    adapter. For ConnectKit/wagmi use the active connector. Resolve connect after
    selection, reject cancellation, and do not silently switch wallet providers.
-   Otherwise omit wallet. Without a connected app account, the modal shows only
-   Pay, opening Markee-hosted checkout for supported boards. Do not install
+   Otherwise omit wallet. Without a connected app account, the modal's Review Payment
+   button opens Markee-hosted checkout on supported For Sale boards, and connects a
+   wallet first on For Rent and other boards. Do not install
    Privy or collect card details in the host app.
 5. Apply theme options (including radius, cardRadius, and controlRadius) while
    preserving the built-in modal layout. Handle onEvent
@@ -291,9 +292,9 @@ bridging is not available. Transactions and card funding use real funds.
 
 ## Pay by card without an app wallet
 
-Without a connected app wallet, the modal shows **Pay** as its only payment action
-and hides wallet balances and wallet-management sections. For Sale boards on Base
-with MARKEE rewards support this flow
+Without a connected app wallet, the modal shows **Review Payment** as its only payment
+action and hides wallet balances and wallet-management sections. On For Sale boards
+on Base with MARKEE rewards, it opens Markee-hosted checkout. This flow is available
 when the Markee backend enables hosted checkout. No Privy provider, payment keys or
 API configuration is needed in the integrating app. Omit the `wallet` adapter.
 
@@ -306,19 +307,25 @@ server-side receipt verification. Card funding alone is not a successful payment
 The checkout can resume after closing or refreshing. If a wallet submission has an
 unknown result, it asks the user to check the existing transaction instead of
 sending again. On browsers that block popups, it navigates to Markee in the same
-tab. Reopen Pay after returning to recover the confirmed result.
+tab. Reopen Review Payment after returning to recover the confirmed result.
 
 Card availability, fees, minimum purchase amounts and identity checks depend on
 the funding provider and user eligibility. Any unused USDC or ETH remains in the
 user's wallet. Conversion uses a capped approval and maximum 1% slippage, with
 wallet confirmation and Markee-sponsored conversion gas. For Rent, incoming
 bridging and automatic rewards forwarding to a different wallet are outside this
-checkout flow. If hosted checkout is unavailable, Pay is disabled with an
-availability message; the modal does not fall back to asking for a wallet.
+checkout flow. If hosted checkout is unavailable on an eligible board, Review Payment is
+disabled with an availability message; the modal does not fall back to asking for a
+wallet there.
+
+For Rent boards (and boards without hosted checkout) need a wallet, because renting
+streams ETHx from it. Without a connected app wallet, Review Payment connects one first,
+using the `wallet` adapter when provided or else the browser wallets the SDK discovers,
+then continues to the payment review.
 
 ### Reuse a Markee login
 
-Pay opens a temporary browser tab on Markee, where the existing Privy session is
+Hosted checkout opens a temporary browser tab on Markee, where the existing Privy session is
 restored before showing sign-in. The SDK does not copy login tokens into the host
 app. The tab closes after the host verifies the payment. If tabs are blocked,
 checkout falls back to a same-tab redirect. To always redirect, pass

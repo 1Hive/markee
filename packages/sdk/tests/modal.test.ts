@@ -29,22 +29,53 @@ test('moderation notices use distinct styling while approved messages keep the n
   assert.match(modal.entryMessageHtml({ message: 'Private text', moderated: null }), /class="message moderation-placeholder" role="status" aria-label="Loading message">This is a sign<span class="sign-dots"/);
   assert.match(modal.entryMessageHtml({ message: '<Public text>', moderated: false }), /class="message">&lt;Public text&gt;<\/p>/);
 });
-test('wallet-free checkout has a single Pay action and no connected-wallet controls', () => {
+test('wallet-free checkout has a single Review Payment action and no connected-wallet controls', () => {
   const modal = view(null);
   const footer = modal.footerHtml();
   assert.equal((footer.match(/<button/g) || []).length, 1);
-  assert.match(footer, />Pay<\/button>/);
-  assert.doesNotMatch(footer, /Connect wallet|Review payment|Pay by card/);
+  assert.match(footer, /data-cmd="card" >Review Payment<\/button>/);
+  assert.doesNotMatch(footer, /Connect wallet|connect-review|Pay by card/);
   assert.doesNotMatch(modal.fundingHtml(), /Balance|Connect to see|Wallet &amp; rewards|Wallet & rewards|tab:wallet/);
 });
-test('unavailable hosted checkout keeps Pay disabled instead of offering a wallet connection', () => {
-  assert.match(view(null, false).footerHtml(), /data-cmd="card" disabled>Pay/);
-  assert.doesNotMatch(view(null, false).footerHtml(), /data-cmd="connect"/);
+test('unavailable hosted checkout keeps its button disabled instead of offering a wallet connection', () => {
+  assert.match(view(null, false).footerHtml(), /data-cmd="card" disabled>Review Payment/);
+  assert.doesNotMatch(view(null, false).footerHtml(), /data-cmd="connect/);
 });
 test('connected app wallet retains its balance and payment review', () => {
   assert.match(view(address).fundingHtml(), /Balance 1 ETH/);
   assert.match(view(address).fundingHtml(), /tab:wallet/);
-  assert.match(view(address).footerHtml(), /Review payment info/);
+  assert.match(view(address).footerHtml(), />Review Payment<\/button>/);
+});
+
+function rentView(account: string | null) {
+  const modal = view(account) as unknown as { snapshot: Record<string, unknown>; footerHtml(): string; fundingHtml(): string; reviewHtml(): string; review: unknown };
+  // The minimum from the screenshot: 0.000999999997884 ETH/mo (a per-second rate times a month).
+  Object.assign(modal.snapshot, { strategy: 'rent', minimum: '999999997884000', wallet: account ? { eth: '1000000000000000000', ethx: '0', flowRate: '0', runwaySeconds: null } : null });
+  return modal;
+}
+test('For Rent without a wallet connects one from Review Payment instead of a disabled Pay', () => {
+  const footer = rentView(null).footerHtml();
+  assert.match(footer, /data-cmd="connect-review"[^>]*>Review Payment<\/button>/);
+  assert.doesNotMatch(footer, /disabled|data-cmd="card"/);
+  assert.match(footer, /Powered by Markee · <a href="https:\/\/www\.markee\.xyz\/markee\/0x1111111111111111111111111111111111111111"[^>]*>View in App ↗<\/a>/);
+});
+test('the For Rent funding card rounds the minimum and shows the app’s ETHx details', () => {
+  const html = rentView(null).fundingHtml();
+  assert.match(html, /Minimum 0\.001 ETH\/mo/);
+  assert.doesNotMatch(html, /0\.000999999997884|ETH funds your ETHx balance|Unspent rent|Shortcuts use/);
+  assert.match(html, /Paid in ETHx<span class="info-tip"[^>]*title="Markee uses Superfluid for payment streaming\./);
+  const connected = rentView(address).fundingHtml();
+  assert.match(connected, /ETH Balance 1/);
+  assert.match(connected, /Deposit manager →/);
+});
+test('the For Rent explanation appears on the payment review', () => {
+  const modal = rentView(address);
+  modal.review = {
+    action: { kind: 'stream', markee: address, monthlyAmount: '2000000000000000' },
+    transaction: { from: address, to: address, chainId: 8453, value: '0x0' },
+    review: { title: 'Start your rental stream', lines: [], estimatedGasCost: '1', reward: '' },
+  };
+  assert.match(modal.reviewHtml(), /Unspent rent is refunded while your message is not the winner\. You can stop streaming at any time\./);
 });
 
 test('payment review follows the compact Gardens summary without hiding transaction facts', () => {

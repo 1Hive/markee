@@ -11,6 +11,16 @@ import type { Action, Address, AdminOperation, AdminResult, Authorization, EIP11
 export interface ModalOptions { placement: Placement; onClose?: () => void; theme?: MarkeeTheme }
 type FormState = { kind: 'fund' | 'stream' | 'edit-message' | 'edit-name'; entry: Entry };
 const exact = (raw: string) => { const n = BigInt(raw); return `${n / 10n ** 18n}.${(n % 10n ** 18n).toString().padStart(18, '0')}`.replace(/\.?0+$/, '') || '0'; };
+/** Wei rounded up to two significant figures, so a displayed minimum is never below the real one. */
+const minimumDisplay = (raw: string) => {
+  const n = BigInt(raw);
+  if (n <= 0n) return '0';
+  const digits = n.toString().length;
+  if (digits <= 2) return exact(raw);
+  const unit = 10n ** BigInt(digits - 2);
+  return exact((((n + unit - 1n) / unit) * unit).toString());
+};
+const infoTip = (text: string) => `<span class="info-tip" role="img" tabindex="0" title="${e(text)}" aria-label="${e(text)}">ⓘ</span>`;
 const btn = (cmd: string, label: string, cls = '', attrs = '') => `<button type="button" class="btn ${cls}" data-cmd="${cmd}" ${attrs}>${label}</button>`;
 const link = (url: string, label: string) => /^https:\/\//.test(url) ? `<a href="${e(url)}" target="_blank" rel="noopener noreferrer">${e(label)} ↗</a>` : '';
 
@@ -301,6 +311,10 @@ export class MarkeeModal {
     }
     void this.task(async () => {
       if (cmd === 'connect') await this.connect();
+      else if (cmd === 'connect-review') {
+        await this.connect();
+        if (this.account) this.root.querySelector<HTMLFormElement>('form#markee-action')?.requestSubmit();
+      }
       else if (cmd.startsWith('wallet:')) { await this.client.connect(this.wallets![Number(cmd.slice(7))].provider); this.wallets = undefined; await this.reload(); }
       else if (cmd === 'refresh') await this.reload();
       else if (cmd === 'more') await this.reload(this.snapshot?.nextOffset ?? undefined);
@@ -385,7 +399,7 @@ export class MarkeeModal {
   }
   private field(name: string, label: string, initial = '', hint = '', textarea = false) {
     const limit = name === 'message' ? this.snapshot?.maxMessageBytes : name === 'name' ? this.snapshot?.maxNameBytes : undefined;
-    const attrs = `${name === 'name' ? '' : 'required'} ${limit === undefined ? '' : `data-byte-limit="${limit}"`} aria-describedby="${name}-hint"`;
+    const attrs = `${name === 'name' ? '' : 'required'} ${limit === undefined ? '' : `data-byte-limit="${limit}"`}${hint ? ` aria-describedby="${name}-hint"` : ''}`;
     return `<div class="field"><label for="${name}">${label}${limit === undefined ? '' : `<span class="field-count" aria-hidden="true" data-count-for="${name}"></span>`}</label>${textarea ? `<textarea id="${name}" name="${name}" ${attrs} placeholder="Your message on the sign">${e(initial)}</textarea>` : `<input id="${name}" name="${name}" ${name === 'amount' ? 'inputmode="decimal"' : ''} value="${e(initial)}" ${attrs}>`}${name === 'message' ? '<p class="moderation-warning moderation-warning-inline" data-message-check role="status"></p>' : ''}${hint ? `<small id="${name}-hint">${hint}</small>` : ''}</div>`;
   }
   private reviewHtml() {
@@ -416,7 +430,7 @@ export class MarkeeModal {
     const calloutText = action.kind === 'stream' ? 'Anyone can overtake your message. The refund pool offsets rent while you are not winning; you can stop the stream at any time.' : review.review.reward;
     const explorer = review.transaction.chainId === 8453 ? 'https://basescan.org' : review.transaction.chainId === 11155111 ? 'https://sepolia.etherscan.io' : null;
     const addressRow = (label: string, address?: string | null) => `<div class="review-row"><span>${e(label)}</span>${address ? explorer ? `<a class="review-address mono" href="${explorer}/address/${e(address)}" target="_blank" rel="noopener noreferrer" title="${e(address)}" aria-label="${e(label)}: ${e(address)} (opens in new tab)">${e(shortAddress(address))}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3 10 14M10 3H3v18h18v-7"/></svg></a>` : `<strong class="mono">${e(shortAddress(address))}</strong>` : '<strong>Unavailable</strong>'}</div>`;
-    return `<div class="payment-review">${review.review.moderation?.enabled && review.review.moderation.state !== 'pass' ? `<p class="moderation-warning moderation-warning-inline" role="alert">${e(review.review.moderation.reason || 'Moderation check unavailable')} Your published message may be hidden.</p>` : ''}${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section><details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${addressRow('Community split beneficiary', this.snapshot?.beneficiary)}${addressRow('Leaderboard contract', this.snapshot?.board)}${addressRow('Connected wallet', review.transaction.from)}${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
+    return `<div class="payment-review">${review.review.moderation?.enabled && review.review.moderation.state !== 'pass' ? `<p class="moderation-warning moderation-warning-inline" role="alert">${e(review.review.moderation.reason || 'Moderation check unavailable')} Your published message may be hidden.</p>` : ''}${message ? `<section class="review-message" aria-label="Markee message"><p class="message">${e(message)}</p></section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section>${this.snapshot?.strategy === 'rent' ? '<p class="meta review-note">Unspent rent is refunded while your message is not the winner. You can stop streaming at any time. Shortcuts use the loaded ranking; positions can change.</p>' : ''}<details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${addressRow('Community split beneficiary', this.snapshot?.beneficiary)}${addressRow('Leaderboard contract', this.snapshot?.board)}${addressRow('Connected wallet', review.transaction.from)}${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
@@ -433,8 +447,11 @@ export class MarkeeModal {
     const s = this.snapshot!;
     const ranked = [...s.entries].sort((a, b) => BigInt(a.score) > BigInt(b.score) ? -1 : BigInt(a.score) < BigInt(b.score) ? 1 : 0);
     const entries = [...ranked.filter(entry => entry.owner.toLowerCase() === this.account?.toLowerCase()), ...ranked.filter(entry => entry.owner.toLowerCase() !== this.account?.toLowerCase())];
-    const appUrl = s.board && [8453, 11155111].includes(s.chainId) ? `https://${s.chainId === 8453 ? 'www' : '2staging'}.markee.xyz/markee/${s.board}` : '';
-    return `<section class="leaderboard" aria-label="Markee leaderboard"><div class="row between">${btn('leaderboard', `<span class="chevron" aria-hidden="true">${this.leaderboardOpen ? '⌃' : '⌄'}</span> Leaderboard`, 'text-button', `aria-expanded="${this.leaderboardOpen}" aria-controls="markee-leaderboard"`)}${link(appUrl, 'Open in Markee')}</div>${this.leaderboardOpen ? `<div class="leaderboard-list" id="markee-leaderboard">${entries.map(entry => {
+    // Matches the Markee app: the empty seed Markee every board starts with is not a message. markeeCount
+    // includes it, so count the loaded entries when the whole board is loaded, and subtract the seed otherwise.
+    const blank = (entry: Entry) => entry.moderated === false && !entry.message.trim() && !entry.name?.trim();
+    const count = s.nextOffset === null ? s.entries.filter(entry => !blank(entry)).length : Math.max(0, s.count - 1);
+    return `<section class="leaderboard" aria-label="Markee leaderboard">${btn('leaderboard', `<span>Leaderboard</span><span class="leaderboard-meta"><span class="pill count-badge">${count.toLocaleString()} ${count === 1 ? 'message' : 'messages'}</span><span class="chevron" aria-hidden="true">${this.leaderboardOpen ? '⌃' : '⌄'}</span></span>`, 'leaderboard-toggle', `aria-expanded="${this.leaderboardOpen}" aria-controls="markee-leaderboard"`)}${this.leaderboardOpen ? `<div class="leaderboard-list" id="markee-leaderboard">${entries.map(entry => {
       const own = entry.owner.toLowerCase() === this.account?.toLowerCase();
       const top = entry.address.toLowerCase() === s.top?.toLowerCase();
       const selected = entry.address.toLowerCase() === this.form?.entry.address.toLowerCase();
@@ -457,12 +474,12 @@ export class MarkeeModal {
     const defaultAmount = BigInt(s.minimum) > presets.minimum ? BigInt(s.minimum) : presets.minimum;
     const initial = current > defaultAmount ? current : defaultAmount;
     const minimum = !rent && entry ? 1n : BigInt(s.minimum);
-    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${exact(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div><div class="funding-tools">${this.account ? btn('tab:wallet', rent ? 'Deposit manager →' : 'Wallet & rewards →', 'text-button') : ''}<span class="meta">${rent ? w?.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days remaining` : w ? `${formatEth(w.ethx)} ETHx available` : 'ETH funds your ETHx balance' : 'One-time payment'}</span></div></section><p class="meta funding-hint">${rent ? 'Unspent rent is refunded while your message is not the winner. You can stop streaming at any time.' : entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`;
+    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${minimumDisplay(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${rent ? `<span data-wallet-balance>${w ? BigInt(w.ethx) > 0n ? `ETHx Balance ${formatEth(w.ethx)}` : `ETH Balance ${formatEth(w.eth)}` : 'Paid in ETHx'}${infoTip('Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.')}</span>` : this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div>${rent ? this.account && w ? `<div class="funding-tools">${btn('tab:wallet', 'Deposit manager →', 'text-button')}<span class="meta runway">${w.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days${infoTip('How long your message can stream for based on your ETHx balance. To add more, go to the Deposit manager.')}` : `${formatEth(w.ethx)} ETHx${infoTip('If your ETHx balance doesn’t cover this rate, your first transaction deposits ETH as ETHx. Go to the Deposit manager to deposit a different amount.')}`}</span></div>` : '' : `<div class="funding-tools">${this.account ? btn('tab:wallet', 'Wallet & rewards →', 'text-button') : ''}<span class="meta">One-time payment</span></div>`}</section>${rent ? '' : `<p class="meta funding-hint">${entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`}`;
   }
   private formHtml() {
     const s = this.snapshot!, form = this.form;
-    if (form?.kind.startsWith('edit')) return `<form id="markee-action" data-form="entry"><section class="message-card"><div class="eyebrow">Your Markee</div>${form.kind === 'edit-message' ? this.field('message', 'Markee message', form.entry.message, `${s.maxMessageBytes} UTF-8 bytes maximum.`, true) : this.field('name', 'Your name (optional)', form.entry.name, `${s.maxNameBytes} UTF-8 bytes maximum.`)}</section></form>`;
-    return `<form id="markee-action" data-form="${form ? 'entry' : 'create'}">${form ? this.selectedMessageHtml(form.entry) : `<section class="message-card editor-card">${this.field('message', 'Markee message', '', `${s.maxMessageBytes} UTF-8 bytes maximum.`, true)}${this.field('name', 'Your name (optional)', '', `${s.maxNameBytes} UTF-8 bytes maximum.`)}</section>`}${this.fundingHtml(form?.entry)}${!form && s.strategy === 'rent' ? '<p class="note">First create your message, then review and confirm its stream. Your chosen rate is kept for the next step.</p>' : ''}</form>`;
+    if (form?.kind.startsWith('edit')) return `<form id="markee-action" data-form="entry"><section class="message-card"><div class="eyebrow">Your Markee</div>${form.kind === 'edit-message' ? this.field('message', 'Markee message', form.entry.message, '', true) : this.field('name', 'Your name (optional)', form.entry.name)}</section></form>`;
+    return `<form id="markee-action" data-form="${form ? 'entry' : 'create'}">${form ? this.selectedMessageHtml(form.entry) : `<section class="message-card editor-card">${this.field('message', 'Markee message', '', '', true)}${this.field('name', 'Your name (optional)')}</section>`}${this.fundingHtml(form?.entry)}</form>`;
   }
   private updateFields() {
     for (const field of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-byte-limit]')) {
@@ -502,7 +519,7 @@ export class MarkeeModal {
         }
       }
       const minimum = this.snapshot.strategy === 'sale' && this.form ? 1n : BigInt(this.snapshot.minimum);
-      amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${exact(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
+      amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${minimumDisplay(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
       this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum));
       this.root.querySelector('[data-cmd="preset:boost"]')?.setAttribute('aria-pressed', String(value === presets.boost));
     }
@@ -549,13 +566,16 @@ export class MarkeeModal {
     else if (s && this.tab === 'main' && s.board) {
       const editing = this.form?.kind.startsWith('edit');
       const secondary = editing ? btn('back', 'Cancel') : s.strategy === 'rent' && BigInt(s.wallet?.flowRate ?? '0') > 0n ? btn('stop', 'Stop streaming', 'danger') : '';
-      if (!this.account) actions = btn('card', 'Pay', 'primary', !this.checkoutChecked || !this.cardAvailable || !this.hostedEligible() ? 'disabled' : '');
+      if (!this.account) actions = this.hostedEligible()
+        ? btn('card', 'Review Payment', 'primary', !this.checkoutChecked || !this.cardAvailable ? 'disabled' : '')
+        : btn('connect-review', 'Review Payment', 'primary', 'title="Connect a wallet to continue"');
       else {
         alignPaymentActions = this.cardAvailable && this.hostedEligible() && !editing;
-        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<span class="review-action"><button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : !this.form && s.strategy === 'rent' ? 'Review creation' : 'Review payment info'}</button><span id="balance-tooltip" class="balance-tooltip" role="tooltip" hidden>You don’t have enough ETH for this payment.</span></span>`;
+        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<span class="review-action"><button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : 'Review Payment'}</button><span id="balance-tooltip" class="balance-tooltip" role="tooltip" hidden>You don’t have enough ETH for this payment.</span></span>`;
       }
     } else if (s) actions = btn('tab:main', 'Back to Markee');
-    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}><div class="footer-actions">${actions}</div>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community accumulated revenue', 'text-button') : ''}</div>`}</footer>`;
+    const appUrl = s?.board && [8453, 11155111].includes(s.chainId) ? `https://${s.chainId === 8453 ? 'www' : '2staging'}.markee.xyz/markee/${s.board}` : '';
+    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${appUrl ? ` · ${link(appUrl, 'View in App')}` : ''}${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community accumulated revenue', 'text-button') : ''}</div>`}<div class="footer-actions">${actions}</div></footer>`;
   }
   private render() {
     if (this.closed) return;
@@ -576,9 +596,9 @@ export class MarkeeModal {
     else if (this.pending) body = `<h2>Waiting for confirmation</h2><p>Your transaction was sent. You can close this modal and come back to check it.</p><p class="meta mono">${e(this.pending.hash)}</p><p class="note">Do not send a second payment while this transaction is pending.</p>`;
     else if (!s.board || this.tab === 'community') body = this.communityHtml();
     else if (this.tab === 'wallet') body = this.walletHtml();
-    else body = `${this.form?.kind.startsWith('edit') ? '' : this.entriesHtml()}${this.formHtml()}${!this.account ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.hostedEligible() ? 'Pay in Markee is not supported for this board yet.' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
+    else body = `${this.form?.kind.startsWith('edit') ? '' : this.entriesHtml()}${this.formHtml()}${!this.account && this.hostedEligible() ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
     const result = this.result ? `<div class="${this.result.status === 'reverted' || this.result.settlement === 'deferred' ? 'error' : 'success'}">${this.result.status === 'reverted' ? 'Transaction reverted. No action was completed.' : this.result.settlement === 'deferred' ? 'The transaction confirmed, but reward settlement was deferred. Your claim remains available.' : `Transaction confirmed.${this.result.tokensReceived && BigInt(this.result.tokensReceived) > 0n ? ` ${formatEth(this.result.tokensReceived, 2)} MARKEE delivered to your wallet.` : ''}`} ${link(this.result.explorerUrl, 'View receipt')}</div>` : '';
-    this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1><p class="header-caption">${e(s?.name || 'Markee')}${s ? ` · ${s.strategy === 'rent' ? 'For rent' : 'For sale'}${s.chainId === 8453 ? ' · Base' : s.chainId === 11155111 ? ' · Sepolia testnet' : ''}` : ''}</p></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy || (!s && !this.error)}"><div role="status" aria-live="polite">${this.busy ? `<p class="meta"><span class="spinner"></span>${e(this.busyMessage)}</p>` : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
+    this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy || (!s && !this.error)}"><div role="status" aria-live="polite">${this.busy ? `<p class="meta"><span class="spinner"></span>${e(this.busyMessage)}</p>` : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
     if (this.busy) this.root.querySelectorAll<HTMLButtonElement>('button:not([data-cmd="close"])').forEach(b => { b.disabled = true; });
     const draft = this.drafts.get(this.draftKey());
     if (draft) for (const field of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input,textarea,select')) {
