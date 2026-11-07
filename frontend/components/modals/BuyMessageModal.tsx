@@ -14,6 +14,7 @@ import { formatTransactionError, formatReceiptError, logTransactionError } from 
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { isZeroAddress } from '@/lib/beneficiary'
 import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -182,6 +183,8 @@ export function BuyMessageModal({
   const { data: beneficiaryAddress } = useReadContract({
     address: strategyAddress, abi: BeneficiaryAddressABI, functionName: 'beneficiaryAddress', chainId: CANONICAL_CHAIN.id,
   })
+  const noBeneficiaryReason = typeof beneficiaryAddress === 'string' && isZeroAddress(beneficiaryAddress)
+    ? 'This board has no beneficiary, so a payment would be stuck. Ask its admin to set one first.' : null
 
   // ── Preset amount calculations ──────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
@@ -344,6 +347,7 @@ export function BuyMessageModal({
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreateMarkee = async () => {
+    if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
@@ -364,6 +368,7 @@ export function BuyMessageModal({
   }
 
   const handleAddFunds = async () => {
+    if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
@@ -397,12 +402,14 @@ export function BuyMessageModal({
   const canSwitchTabs = !isPending && !isConfirming
   const isOwner = userMarkee && activeAddress && userMarkee.owner.toLowerCase() === activeAddress.toLowerCase()
 
+  const beneficiaryBlocks = activeTab !== 'updateMessage' && !!noBeneficiaryReason
   const btnDisabled =
-    isPending || isConfirming || isSuccess ||
+    isPending || isConfirming || isSuccess || beneficiaryBlocks ||
     (activeTab !== 'updateMessage' && insufficientBalance) ||
     ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())
   const btnDisabledReason = !btnDisabled || isSuccess ? null
     : (isPending || isConfirming) ? 'Transaction in progress'
+    : beneficiaryBlocks ? noBeneficiaryReason
     : (activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null

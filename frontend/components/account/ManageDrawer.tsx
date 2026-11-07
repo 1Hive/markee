@@ -9,6 +9,7 @@ import type { Abi } from 'viem'
 import { ArrowUpRight, ExternalLink, Eye, EyeOff, Info, Link2 } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
+import { beneficiaryError, isZeroAddress } from '@/lib/beneficiary'
 import { BoardModerators } from '@/components/moderation'
 import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -371,7 +372,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                     onSuccess={saved('Minimum price updated')}
                   />
                 )}
-                <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" onSuccess={saved('Beneficiary updated')} />
+                <AdminSettingRow label="Beneficiary" contractAddress={contractAddress} abi={abi} getterName="beneficiaryAddress" setterName="setBeneficiaryAddress" inputType="address" validate={beneficiaryError} onSuccess={saved('Beneficiary updated')} />
                 {settings.limits && (
                   <>
                     <AdminSettingRow
@@ -394,6 +395,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
             <section style={{ padding: '18px 28px', borderTop: `1px solid ${BORDER}` }}>
               <AdminSettingRow
                 label="Transfer Admin" contractAddress={contractAddress} abi={adminAbi} getterName="admin" setterName={settings.setAdmin} inputType="address"
+                validate={v => isZeroAddress(v) ? 'The zero address cannot be an admin. Enter a wallet you control.' : null}
                 dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it."
                 acknowledge="I understand I'll lose all admin access to this Markee"
                 onSuccess={saved('Admin transferred')}
