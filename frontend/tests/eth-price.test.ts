@@ -11,13 +11,13 @@ let providerRequests = 0
 let kvRequests = 0
 const realFetch = globalThis.fetch
 globalThis.fetch = (async (input: RequestInfo | URL) => {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-  if (url.startsWith(KV_URL)) {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+  if (url.hostname === new URL(KV_URL).hostname) {
     kvRequests++
     throw new TypeError('fetch failed')
   }
   providerRequests++
-  if (url.includes('coingecko')) return Response.json({ ethereum: { usd: PRICE } })
+  if (url.hostname === 'api.coingecko.com') return Response.json({ ethereum: { usd: PRICE } })
   return new Response('unexpected', { status: 500 })
 }) as typeof fetch
 
