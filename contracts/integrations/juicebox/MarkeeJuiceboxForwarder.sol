@@ -347,7 +347,9 @@ contract MarkeeJuiceboxForwarder {
         if (settle) {
             _noteFeeReceiver();
             (num, den) = _ratio();
-            if (num != ratioNum || den != ratioDen) {
+            // Only a live, nonzero ratio is remembered: a paused beneficiary stream reads as zero, and
+            // storing that would also zero the sweep reserve's fallback for rent accrued before the pause.
+            if (num > 0 && (num != ratioNum || den != ratioDen)) {
                 (ratioNum, ratioDen) = (num, den);
                 emit ShareRatioUpdated(num, den);
             }

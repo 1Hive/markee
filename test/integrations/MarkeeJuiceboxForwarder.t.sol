@@ -850,4 +850,32 @@ contract MarkeeJuiceboxForwarderTest is Test {
         fwd.sync(_two(alice, bob));
         assertApproxEqAbs(heldBefore - _held(), expected, 1e9, "later rent short-changed");
     }
+
+    /// @dev Code review: a paused beneficiary stream (rate 0 while a message holds #1) must not overwrite the
+    ///      remembered ratio, or the sweep reserve would drop to zero and sweep backers' earlier rent.
+    function test_pausedBeneficiaryStream_keepsRatioAndReserve() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(5 days);
+        fwd.sync(_one(alice));
+        uint256 num = fwd.ratioNum();
+        uint256 den = fwd.ratioDen();
+        assertGt(num, 0);
+
+        _warp(1 days); // alice accrues rent at the normal ratio
+        vm.mockCall(
+            address(CFA),
+            abi.encodeWithSelector(ICFAForwarderT.getFlowrate.selector, ETHX, address(board), address(fwd)),
+            abi.encode(int96(0))
+        );
+        fwd.sync(_none());
+        assertEq(fwd.ratioNum(), num, "a paused stream overwrote the remembered ratio");
+        assertEq(fwd.ratioDen(), den);
+        assertGt(fwd.reserve(), 0, "reserve must still cover alice's unsynced rent");
+        // Alice's unsynced day, priced at the remembered ratio, must survive a sweep.
+        uint256 aliceShare = board.pendingSettlement(alice) * num / den;
+        fwd.sweepSurplus(_none());
+        assertGe(fwd.unallocated() + 1e9, aliceShare, "sweep took alice's unsynced rent");
+        vm.clearMockedCalls();
+    }
 }

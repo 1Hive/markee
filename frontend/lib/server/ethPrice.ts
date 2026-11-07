@@ -36,7 +36,8 @@ const PROVIDERS: PriceProvider[] = [
 
 async function fetchPrice(provider: PriceProvider): Promise<number> {
   const response = await fetch(provider.url, {
-    next: { revalidate: ETH_PRICE_TTL_SECONDS },
+    // KV is the one cache (ETH_PRICE_TTL_SECONDS); a second fetch-cache layer would stack its age on top.
+    cache: 'no-store',
     signal: AbortSignal.timeout(5_000),
   })
   if (!response.ok) throw new Error(`${provider.name} ${response.status}`)
@@ -81,10 +82,32 @@ async function writeCachedPrice(usd: number): Promise<void> {
 
 /** KV-cached price; refreshes from the providers on a miss or when KV is unavailable. Throws when no
  *  price is available. */
+// One provider refresh at a time per instance: concurrent cache misses share it.
+let refreshing: Promise<number> | null = null
+
 export async function getEthPriceUsd(): Promise<number> {
   const cached = await readCachedPrice()
   if (cached !== null) return cached
-  const usd = await fetchEthPriceUsd()
-  await writeCachedPrice(usd)
-  return usd
+  refreshing ??= (async () => {
+    try {
+      const usd = await fetchEthPriceUsd()
+      await writeCachedPrice(usd)
+      return usd
+    } finally {
+      refreshing = null
+    }
+  })()
+  return refreshing
+}
+
+/** The price if it's cached or arrives within `waitMs`, else null, so a page isn't held up by slow
+ *  providers. A refresh still running keeps going and caches the price when it lands. */
+export async function getEthPriceUsdWithin(waitMs = 1_500): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), waitMs) })
+  try {
+    return await Promise.race([getEthPriceUsd().catch(() => null), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
 }
