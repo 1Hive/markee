@@ -47,7 +47,11 @@ export async function GET() {
 
   try {
     const data = await fetch(`${internalOrigin()}/api/ecosystem/leaderboards`, { cache: 'no-store', headers: internalHeaders() })
-      .then(r => r.ok ? r.json() : null)
+      .then(async r => {
+        if (r.ok) return r.json()
+        console.warn('[marketplace/best-buys] listing unavailable', { status: r.status })
+        return null
+      })
     const boards: ListedBoard[] = (data?.leaderboards ?? []).filter((lb: ListedBoard) =>
       BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage)
     if (boards.length === 0) return NextResponse.json({ buys: [] }, { headers: NO_CACHE })

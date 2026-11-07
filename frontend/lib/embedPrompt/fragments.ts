@@ -1,4 +1,4 @@
-import type { ModerationSeverity } from '../moderation/severity'
+import { moderationPolicy, moderationRules, RULE_ORDER, type ModerationPreset, type ModerationRuleSet, type ModerationSeverity } from '../moderation/severity'
 
 // Legacy manual-integration fragments below are retained for compatibility.
 // New integrations use buildEmbedPrompt, which detects framework/wallet/strategy.
@@ -23,10 +23,36 @@ export const EMBED_MODERATION_PRESETS = {
   relaxed: { label: 'Relaxed', description: 'Scam and phishing checks, without the profanity filter.' },
   standard: { label: 'Standard', description: 'Current safety rules plus the profanity filter.' },
   strict: { label: 'Strict', description: 'Standard plus links, domains, wallet addresses, and ENS names.' },
-} satisfies Record<ModerationSeverity, { label: string; description: string }>
+} satisfies Record<ModerationPreset, { label: string; description: string }>
+
+/** Labels for the individually selectable rules (Scams & phishing are always checked). */
+export const EMBED_MODERATION_RULES: Record<keyof ModerationRuleSet, string> = {
+  profanity: 'profanity',
+  links: 'links and domains',
+  addresses: 'wallet and contract addresses',
+  ens: 'ENS names',
+}
+
+/** The minimum SDK release that understands `moderation.rules`. */
+export const SDK_RULES_VERSION = '0.1.0-beta.8'
+
+/** The selected moderation as SDK option source: a preset when the rules match one, else explicit rules. */
+export function moderationOptionSource(policy: ModerationSeverity): string {
+  if (policy === 'relaxed' || policy === 'standard' || policy === 'strict') return `{ severity: '${policy}' }`
+  const rules = moderationRules(policy)
+  return `{ rules: { ${RULE_ORDER.map(name => `${name}: ${rules[name]}`).join(', ')} } }`
+}
+
+/** Resolves the wizard's toggles (or a preset) to a policy key. */
+export function embedModerationPolicy(input: { severity?: ModerationSeverity; rules?: ModerationRuleSet }): ModerationSeverity {
+  if (!input.rules) return input.severity ?? 'standard'
+  return moderationPolicy(undefined, RULE_ORDER.filter(name => input.rules![name]).join(','))
+}
 
 export interface BuildEmbedPromptInput {
   severity?: ModerationSeverity;
+  /** Individually selected rules; takes precedence over severity. */
+  rules?: ModerationRuleSet;
   address: string
   name?: string
   /** @deprecated Retained for callers; the SDK detects the board strategy. */
@@ -806,7 +832,20 @@ Don't import Markee's own color palette. Before building the modal, read this si
 }
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
-export function buildEmbedPrompt({ address, name, severity = 'standard' }: BuildEmbedPromptInput): string {
+function moderationSummary(policy: ModerationSeverity): string {
+  if (policy === 'relaxed' || policy === 'standard' || policy === 'strict') {
+    return `${EMBED_MODERATION_PRESETS[policy].label}. ${EMBED_MODERATION_PRESETS[policy].description}`
+  }
+  const rules = moderationRules(policy)
+  const on = RULE_ORDER.filter(name => rules[name]).map(name => EMBED_MODERATION_RULES[name])
+  const off = RULE_ORDER.filter(name => !rules[name]).map(name => EMBED_MODERATION_RULES[name])
+  return `Scam and phishing checks always run${on.length ? `, and messages with ${on.join(', ')} are also blocked` : ''}.${off.length ? ` Allowed: ${off.join(', ')}.` : ''} Individual rules need @markee_team/sdk ${SDK_RULES_VERSION} or later; if the installed release does not list moderation.rules in its types, stop and tell me instead of substituting a preset.`
+}
+
+export function buildEmbedPrompt({ address, name, severity, rules }: BuildEmbedPromptInput): string {
+  const policy = embedModerationPolicy({ severity, rules })
+  const moderation = moderationOptionSource(policy)
+  const custom = !(policy === 'relaxed' || policy === 'standard' || policy === 'strict')
   return `Integrate @markee_team/sdk@latest into this app using the existing leaderboard below. Follow this flow: inspect the codebase, resolve missing requirements, implement the SDK, test, deploy, and verify the public page.
 
 First inspect package.json, entry points, existing components, wallet providers, and design tokens. Detect React/Next.js versus vanilla JavaScript or another framework yourself. Detect the existing wallet library and reuse it. Do not ask me to choose a framework, wallet library, or coding agent.
@@ -814,10 +853,10 @@ First inspect package.json, entry points, existing components, wallet providers,
 The leaderboard is already created${name ? ` (${JSON.stringify(name)})` : ''}:
 https://www.markee.xyz/markee/${address}
 Use placement = { kind: 'board', chainId: 8453, address: '${address}' }.
-Verify it with new MarkeeClient({ moderation: { severity: '${severity}' } }).snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
+Verify it with new MarkeeClient({ moderation: ${moderation} }).snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
 
-Automatic moderation has already been selected: ${EMBED_MODERATION_PRESETS[severity].label}. ${EMBED_MODERATION_PRESETS[severity].description}
-Use moderation = { severity: '${severity}' } on both the sign and modal and on any MarkeeClient instance. For vanilla JavaScript, pass it to both createMarkeeSign and createMarkee. Keep this exact preset; do not ask me to choose it again. Manual flags and unavailable-state hiding still apply; this configures the integration without changing Markee's own Standard policy.
+Automatic moderation has already been selected: ${moderationSummary(policy)}
+Use moderation = ${moderation} on both the sign and modal and on any MarkeeClient instance. For vanilla JavaScript, pass it to both createMarkeeSign and createMarkee. Keep this exact ${custom ? 'rule selection' : 'preset'}; do not ask me to choose it again. Manual flags and unavailable-state hiding still apply; this configures the integration without changing Markee's own Standard policy.
 
 Ask only unanswered requirements:
 - Where should the sign appear and what should open the modal?

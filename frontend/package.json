@@ -12,13 +12,14 @@
     "test:review-regressions": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/review-regressions.test.ts",
     "test:moderation": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/moderationQueue.test.ts tests/moderation-route.test.ts tests/automatic-moderation.test.ts tests/moderation-security.test.ts tests/moderation-rules.test.ts tests/moderated-author.test.ts",
     "test:email-notifications": "tsx --test tests/emailNotifications.test.ts",
+    "test:eth-price": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/eth-price.test.ts",
     "test:e2e": "playwright test",
     "start": "next start",
     "lint": "next lint",
     "test:sdk": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/sdk.test.ts tests/sdk-cache.test.ts tests/sdk-sites.test.ts tests/sdk-checkout.test.ts tests/sdk-conversion.test.ts tests/checkout-alerts.test.ts",
     "test:sdk:fork": "tsx --test --test-concurrency=1 tests/sdk-fork.test.ts tests/sdk-community-fork.test.ts",
     "test:e2e:fork": "playwright test -c playwright.fork.config.ts",
-    "test:rpc": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/rpc-efficiency.test.ts tests/listing-reader.test.ts && node --test tests/fork-proxy.test.mjs"
+    "test:rpc": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/rpc-efficiency.test.ts tests/listing-reader.test.ts tests/integration-domains.test.ts && node --test tests/fork-proxy.test.mjs"
   },
   "dependencies": {
     "@2toad/profanity": "3.3.0",
@@ -30,6 +31,7 @@
     "@stripe/crypto": "1.1.3",
     "@tanstack/react-query": "^5.56.0",
     "@vercel/analytics": "^1.4.1",
+    "@vercel/functions": "3.10.1",
     "@vercel/kv": "^2.0.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",

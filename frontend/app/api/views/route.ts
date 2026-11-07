@@ -1,4 +1,4 @@
-import { moderationSeverity, type ModerationSeverity } from '@/lib/moderation/severity'
+import { moderationPolicy, type ModerationSeverity } from '@/lib/moderation/severity'
 import { autoEnabled, checkPublished, contentHash } from '@/lib/moderation/automatic'
 // app/api/views/route.ts
 import { kv } from '@vercel/kv'
@@ -155,8 +155,9 @@ export async function POST(req: NextRequest) {
     const validMessage = typeof parsed?.message === 'string' && parsed.message.length > 0 && Buffer.byteLength(parsed.message) <= 4096
     const validUrl = parsed?.url === undefined || (typeof parsed.url === 'string' && parsed.url.length <= 2048)
     if (!validAddress || !validMessage || !validUrl) return NextResponse.json({ error: 'Invalid address or message' }, { status: 400, headers: corsHeaders(origin) })
-    try { moderationSeverity(parsed?.severity) } catch { return NextResponse.json({ error: 'Invalid moderation severity' }, { status: 400, headers: corsHeaders(origin) }) }
-    body = parsed as typeof body
+    let severity: ModerationSeverity
+    try { severity = moderationPolicy(parsed?.severity, parsed?.rules) } catch { return NextResponse.json({ error: 'Invalid moderation severity or rules' }, { status: 400, headers: corsHeaders(origin) }) }
+    body = { ...(parsed as typeof body), severity }
   } catch (error) {
     return NextResponse.json({ error: error instanceof RequestBodyTooLargeError ? 'Request body is too large.' : 'Invalid JSON request.' }, { status: error instanceof RequestBodyTooLargeError ? 413 : 400, headers: corsHeaders(origin) })
   }

@@ -47,14 +47,14 @@ For an isolated local worktree without database credentials, put `MARKEE_SDK_PUB
 
 ## API contract
 
-Base path: `/api/sdk/v1`. Amounts/rates/block numbers are decimal strings. Addresses and hashes use `0x`. Prepared-action expiry is epoch **milliseconds**; authorization/bridge quote deadlines are epoch **seconds**. Exported SDK types are the canonical application-level contract.
+Base path: `/api/sdk/v1`. `severity` (`relaxed`, `standard` or `strict`) and `rules` (comma-separated enabled optional rules: `profanity`, `links`, `addresses`, `ens`) select automatic moderation; see `docs/sdk/automatic-moderation.md`. Amounts/rates/block numbers are decimal strings. Addresses and hashes use `0x`. Prepared-action expiry is epoch **milliseconds**; authorization/bridge quote deadlines are epoch **seconds**. Exported SDK types are the canonical application-level contract.
 
 | Method/path | Request | Result |
 | --- | --- | --- |
-| `GET snapshot` | JSON-encoded `placement`; optional `account`, `offset` | Board, strategy, limits, top/ranked top, entries, views/moderation, metadata, wallet balances/rates, community permissions |
-| `POST prepare` | `{ placement, account, action }` | Server-signed preparation, wallet transaction, review and estimated gas cost |
+| `GET snapshot` | JSON-encoded `placement`; optional `account`, `offset`, `severity`, `rules` | Board, strategy, limits, top/ranked top, entries, views/moderation, metadata, wallet balances/rates, community permissions |
+| `POST prepare` | `{ placement, account, action, severity?, rules? }` | Server-signed preparation, wallet transaction, review and estimated gas cost |
 | `POST verify` | `{ id, hash }` | Pending/confirmed/reverted, created message, actual token transfers and settlement outcome |
-| `POST views` | `{ address, message, url? }` | Existing visitor-IP deduped view accounting; call directly from the visitor browser |
+| `POST views` | `{ address, message, url?, severity?, rules? }` | Existing visitor-IP deduped view accounting; call directly from the visitor browser |
 | `GET community` | `chainId`, `community` | Current community integration/revenue |
 | `GET community/quote` | `chainId`, `community` | Claim amount, fees, expected destination amount and outbound bridge protocol |
 | `POST community/activate` | `{ action: 'challenge', chainId, community, account }`, then `{ action: 'verify', nonce, signature }` | Typed-data challenge, then durable operation status/result |

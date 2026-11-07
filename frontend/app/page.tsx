@@ -150,7 +150,7 @@ function SkeletonStatCell() {
   )
 }
 
-function MetricsRow({ stats, loaded }: { stats: { markees: number; messages: number; usd: number; views: number }; loaded: boolean }) {
+function MetricsRow({ stats, loaded }: { stats: { markees: number; messages: number; usd: number | null; views: number }; loaded: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -168,7 +168,7 @@ function MetricsRow({ stats, loaded }: { stats: { markees: number; messages: num
 
   const markees = useCountUp(stats.markees, started)
   const messages = useCountUp(stats.messages, started)
-  const usd = useCountUp(stats.usd, started)
+  const usd = useCountUp(stats.usd ?? 0, started)
   const views = useCountUp(stats.views, started)
   const narrow = useNarrow()
   const f = (v: number) => narrow
@@ -181,7 +181,7 @@ function MetricsRow({ stats, loaded }: { stats: { markees: number; messages: num
         <>
           <StatCell n={f(markees)} label="active Markees" color="#F897FE" dot="#F897FE" />
           <StatCell n={f(messages)} label="messages bought" color="#EDEEFF" dot="#EDEEFF" />
-          <StatCell n={`$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
+          <StatCell n={stats.usd === null ? '—' : `$${f(usd)}`} label="total funds raised" color="#1DB227" dot="#1DB227" />
           <StatCell n={f(views)} label="views" color="#7B6AF4" dot="#7B6AF4" />
         </>
       ) : (
@@ -338,15 +338,23 @@ export default function Home() {
   const { views: fixedViews, trackView: trackFixedView } = useFixedViews(fixedMarkees)
   const [modalMarkee, setModalMarkee] = useState<FixedMarkee | null>(null)
   const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}` } | null>(null)
-  const ethPrice = useEthPrice()
+  const clientEthPrice = useEthPrice()
 
-  // Ecosystem stats for the metrics row + per-platform stats for platform cards
-  const [ecoStats, setEcoStats] = useState({ domains: 0, markees: 0, messages: 0, usd: 0, views: 0 })
+  // Ecosystem stats for the metrics row + per-platform stats for platform cards.
+  // The listing and network views load in parallel, and the listing API prices the totals
+  // server-side, so all four metrics appear together (no $0 while the price loads).
+  const [listingEthPrice, setListingEthPrice] = useState<number | null>(null)
+  const ethPrice = listingEthPrice ?? clientEthPrice
+  const [ecoTotals, setEcoTotals] = useState({ domains: 0, markees: 0, messages: 0, totalEth: 0, serverUsd: null as number | null, views: 0 })
   const [ecoStatsLoaded, setEcoStatsLoaded] = useState(false)
-  const [platformStats, setPlatformStats] = useState<Record<string, { markees: number; usd: number }>>({})
+  const [platformEth, setPlatformEth] = useState<Record<string, { markees: number; eth: number }>>({})
   const [top5Eco, setTop5Eco] = useState<any[]>([])
   const [top5EcoLoading, setTop5EcoLoading] = useState(true)
   useEffect(() => {
+    const viewsPromise = fetch('/api/views?network=1')
+      .then(r => r.ok ? r.json() : null)
+      .then((vData: { total?: number } | null) => vData?.total ?? 0)
+      .catch(() => 0)
     fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
@@ -356,11 +364,11 @@ export default function Home() {
         // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude gamed
         setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))
         setTop5EcoLoading(false)
+        if (typeof data.ethPriceUsd === 'number' && data.ethPriceUsd > 0) setListingEthPrice(data.ethPriceUsd)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
           0
         )
-        const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
 
         // Per-platform stats for the Raise Funding section cards
         const pAcc: Record<string, { markees: number; eth: number }> = {
@@ -375,37 +383,30 @@ export default function Home() {
             pAcc[p].eth += parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
           }
         }
-        setPlatformStats({
-          website:    { markees: pAcc.website.markees,    usd: ethPrice ? Math.round(pAcc.website.eth    * ethPrice) : 0 },
-          github:     { markees: pAcc.github.markees,     usd: ethPrice ? Math.round(pAcc.github.eth     * ethPrice) : 0 },
-          superfluid: { markees: pAcc.superfluid.markees, usd: ethPrice ? Math.round(pAcc.superfluid.eth * ethPrice) : 0 },
-        })
+        setPlatformEth(pAcc)
 
-        // Fetch network-wide total views (all markees, not just top per leaderboard)
-        let totalViews = 0
-        try {
-          const vRes = await fetch('/api/views?network=1')
-          if (vRes.ok) {
-            const vData: { total: number } = await vRes.json()
-            totalViews = vData.total ?? 0
-          }
-        } catch {}
+        // Network-wide total views (all markees, not just top per leaderboard)
+        const totalViews = await viewsPromise
 
-        const usd = data.totalPlatformFundsUsd
-          ?? (ethPrice ? Math.round(totalEth * ethPrice) : 0)
-
-        setEcoStats({
+        setEcoTotals({
           domains: leaderboards.length,
           markees: active.length,
           messages,
-          usd,
+          totalEth: parseFloat(data.totalPlatformFunds ?? '0'),
+          serverUsd: typeof data.totalPlatformFundsUsd === 'number' ? data.totalPlatformFundsUsd : null,
           views: totalViews,
         })
         setEcoStatsLoaded(true)
       })
       .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ethPrice])
+  }, [])
+  const ecoStats = {
+    ...ecoTotals,
+    usd: ecoTotals.serverUsd ?? (ethPrice ? Math.round(ecoTotals.totalEth * ethPrice) : null),
+  }
+  const platformStats: Record<string, { markees: number; usd: number }> = Object.fromEntries(
+    Object.entries(platformEth).map(([k, v]) => [k, { markees: v.markees, usd: ethPrice ? Math.round(v.eth * ethPrice) : 0 }]),
+  )
 
   // Track views for hero reader signs
   useEffect(() => {

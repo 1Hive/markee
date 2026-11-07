@@ -272,8 +272,9 @@ Then implement the agreed scope:
 4. If a host wallet exists, pass its selected EIP-1193 provider through the wallet
    adapter. For ConnectKit/wagmi use the active connector. Resolve connect after
    selection, reject cancellation, and do not silently switch wallet providers.
-   Otherwise omit wallet. Without a connected app account, the modal shows only
-   Pay, opening Markee-hosted checkout for supported boards. Do not install
+   Otherwise omit wallet. Without a connected app account, the modal's Review Payment
+   button opens Markee-hosted checkout on supported For Sale boards, and connects a
+   wallet first on For Rent and other boards. Do not install
    Privy or collect card details in the host app.
 5. Apply theme options (including radius, cardRadius, and controlRadius) while
    preserving the built-in modal layout. Handle onEvent
@@ -291,9 +292,9 @@ bridging is not available. Transactions and card funding use real funds.
 
 ## Pay by card without an app wallet
 
-Without a connected app wallet, the modal shows **Pay** as its only payment action
-and hides wallet balances and wallet-management sections. For Sale boards on Base
-with MARKEE rewards support this flow
+Without a connected app wallet, the modal shows **Review Payment** as its only payment
+action and hides wallet balances and wallet-management sections. On For Sale boards
+on Base with MARKEE rewards, it opens Markee-hosted checkout. This flow is available
 when the Markee backend enables hosted checkout. No Privy provider, payment keys or
 API configuration is needed in the integrating app. Omit the `wallet` adapter.
 
@@ -306,19 +307,25 @@ server-side receipt verification. Card funding alone is not a successful payment
 The checkout can resume after closing or refreshing. If a wallet submission has an
 unknown result, it asks the user to check the existing transaction instead of
 sending again. On browsers that block popups, it navigates to Markee in the same
-tab. Reopen Pay after returning to recover the confirmed result.
+tab. Reopen Review Payment after returning to recover the confirmed result.
 
 Card availability, fees, minimum purchase amounts and identity checks depend on
 the funding provider and user eligibility. Any unused USDC or ETH remains in the
 user's wallet. Conversion uses a capped approval and maximum 1% slippage, with
 wallet confirmation and Markee-sponsored conversion gas. For Rent, incoming
 bridging and automatic rewards forwarding to a different wallet are outside this
-checkout flow. If hosted checkout is unavailable, Pay is disabled with an
-availability message; the modal does not fall back to asking for a wallet.
+checkout flow. If hosted checkout is unavailable on an eligible board, Review Payment is
+disabled with an availability message; the modal does not fall back to asking for a
+wallet there.
+
+For Rent boards (and boards without hosted checkout) need a wallet, because renting
+streams ETHx from it. Without a connected app wallet, Review Payment connects one first,
+using the `wallet` adapter when provided or else the browser wallets the SDK discovers,
+then continues to the payment review.
 
 ### Reuse a Markee login
 
-Pay opens a temporary browser tab on Markee, where the existing Privy session is
+Hosted checkout opens a temporary browser tab on Markee, where the existing Privy session is
 restored before showing sign-in. The SDK does not copy login tokens into the host
 app. The tab closes after the host verifies the payment. If tabs are blocked,
 checkout falls back to a same-tab redirect. To always redirect, pass
@@ -358,21 +365,43 @@ record views for it. A moderator's false-positive exception on Markee applies on
 it does not change SDK visibility. Automatic moderation is enabled by default on Markee.
 Markee operators can explicitly disable it with `FLAG_AUTO_MODERATION=false`; host apps need no configuration.
 
-## Automatic moderation presets
+## Automatic moderation rules
 
-Both React components and `createMarkee`, `createMarkeeSign`, and `MarkeeClient` accept:
+Both React components and `createMarkee`, `createMarkeeSign`, and `MarkeeClient` accept a `moderation` option. Scams & phishing checks always run. Each other rule can be turned on or off individually:
 
 ```ts
-const moderation = { severity: 'standard' } as const;
+const moderation = {
+  rules: { profanity: true, links: false, addresses: false, ens: true },
+} as const;
 // <MarkeeSign placement={placement} moderation={moderation} />
 // <MarkeeModal placement={placement} moderation={moderation} ... />
 // new MarkeeClient({ moderation }).checkMessage('Your message');
 ```
 
-- `relaxed`: existing scam/phishing, concealed-link, and payment-solicitation rules; no profanity dictionary.
-- `standard` (default): current rules plus all supported profanity dictionaries.
-- `strict`: Standard plus any detected link/domain or wallet address/ENS name, even without payment instructions.
+| Rule | Blocks |
+| --- | --- |
+| Scams & phishing (always on) | Seed-phrase/private-key requests, reward-claim solicitations, promised multiplied returns, payment solicitations, shortened links, and lookalike domains of protected services |
+| `profanity` | The English profanity dictionary |
+| `links` | Any link or domain (ENS names are controlled by `ens`) |
+| `addresses` | Wallet and contract addresses, full or abbreviated (`0x1234…abcd`) |
+| `ens` | ENS names such as `name.eth` |
 
-These are dictionary/rule presets, not contextual AI classifications or guarantees of safety. They check message text only. Manual flags, exact-text moderator approvals, and unavailable-state hiding still apply. An integration's preset does not change Markee's own Standard policy or the shared moderation queue.
+Per-rule options require 0.1.0-beta.8 or later.
 
-`POST /api/moderation/check` and `/api/sdk/v1/moderation/check` accept an optional top-level `severity` with either `{ kind: 'draft', message }` or `{ kind: 'published', chainId: 8453, markeeIds }`. Omission preserves Standard behavior; invalid values return 400. Verdict caches include the preset policy version. The SDK forwards its setting for draft checks, snapshots, payment reviews, hosted checkout, and view validation. Existing clients need no changes.
+### Presets
+
+`severity` selects a preset, and remains supported:
+
+```ts
+const moderation = { severity: 'standard' } as const;
+```
+
+- `relaxed`: scams & phishing only; no profanity dictionary.
+- `standard` (default): scams & phishing plus profanity.
+- `strict`: Standard plus links/domains, wallet addresses and ENS names, even without payment instructions.
+
+When you set both, `rules` overrides the preset for the rules you list, and unlisted rules follow `severity`. For example, `{ severity: 'strict', rules: { links: false } }` blocks profanity, addresses and ENS names but allows links. A selection that matches a preset behaves exactly like that preset.
+
+These are dictionary and rule checks, not contextual AI classifications or guarantees of safety. They check message text only. Manual flags, exact-text moderator approvals, and unavailable-state hiding still apply. An integration's settings do not change Markee's own Standard policy or the shared moderation queue.
+
+`POST /api/moderation/check` and `/api/sdk/v1/moderation/check` accept an optional top-level `severity` and/or `rules` with either `{ kind: 'draft', message }` or `{ kind: 'published', chainId: 8453, markeeIds }`. `rules` is the complete comma-separated list of enabled optional rules, for example `"profanity,ens"`; an empty string enables none. When present it takes precedence over `severity`. Omitting both preserves Standard behavior, and invalid values return 400. Verdict caches include the policy version, so each rule selection is cached separately. The SDK forwards its settings for draft checks, snapshots, payment reviews, hosted checkout, and view validation. Servers that predate per-rule support ignore `rules` and apply `severity`. Existing clients need no changes.

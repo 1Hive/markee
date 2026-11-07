@@ -62,6 +62,9 @@ jobs:
       - name: Email notification message format
         run: npm run test:email-notifications
 
+      - name: ETH price without KV
+        run: npm run test:eth-price
+
       - name: Check e2e target
         id: e2e
         run: echo "url=${{ secrets.STAGING_URL }}" >> "$GITHUB_OUTPUT"

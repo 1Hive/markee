@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildEmbedPrompt, moderationFragment, type EmbedStrategy, type EmbedWallet } from '../lib/embedPrompt/fragments'
+import { buildEmbedPrompt, moderationFragment, SDK_RULES_VERSION, type EmbedStrategy, type EmbedWallet } from '../lib/embedPrompt/fragments'
 
 const address = '0x0000000000000000000000000000000000000001'
 for (const strategy of ['fixed', 'streaming'] as EmbedStrategy[]) {
@@ -56,4 +56,22 @@ test('selected severity is an answered requirement applied to React, vanilla and
     assert.ok(prompt.includes('Manual flags and unavailable-state hiding still apply'))
   }
   assert.equal(buildEmbedPrompt({ address, strategy: 'fixed' }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'standard' }))
+})
+
+test('individually selected rules emit rules only for custom combinations; preset-equal toggles keep severity', () => {
+  const off = { profanity: false, links: false, addresses: false, ens: false }
+  // Toggles that match a preset produce exactly the preset prompt (works with every published SDK).
+  assert.equal(buildEmbedPrompt({ address, strategy: 'fixed', rules: { ...off, profanity: true } }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'standard' }))
+  assert.equal(buildEmbedPrompt({ address, strategy: 'fixed', rules: off }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'relaxed' }))
+  assert.equal(buildEmbedPrompt({ address, strategy: 'fixed', rules: { profanity: true, links: true, addresses: true, ens: true } }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'strict' }))
+
+  const prompt = buildEmbedPrompt({ address, strategy: 'fixed', rules: { ...off, profanity: true, ens: true } })
+  const rules = '{ rules: { profanity: true, links: false, addresses: false, ens: true } }'
+  assert.ok(prompt.includes(`moderation = ${rules}`))
+  assert.ok(prompt.includes(`new MarkeeClient({ moderation: ${rules} }).snapshot(placement)`))
+  assert.ok(prompt.includes('messages with profanity, ENS names are also blocked'))
+  assert.ok(prompt.includes('Allowed: links and domains, wallet and contract addresses.'))
+  assert.ok(prompt.includes(`@markee_team/sdk ${SDK_RULES_VERSION} or later`))
+  assert.ok(prompt.includes('Keep this exact rule selection'))
+  assert.ok(!prompt.includes("severity: '"))
 })

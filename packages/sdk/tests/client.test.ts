@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MarkeeClient } from '../src/client';
+import { MarkeeClient, moderationParams } from '../src/client';
 import { parseEth, escapeHtml } from '../src/amount';
 import type { Address, EIP1193Provider, PreparedAction } from '../src/types';
 
@@ -116,6 +116,32 @@ test('configured moderation severity reaches draft, published snapshot, preparat
   assert.equal(new URL(requests[1].url).searchParams.get('severity'), 'strict');
   assert.equal(requests[2].body.severity, 'strict');
   assert.equal(requests[3].body.severity, 'strict');
+});
+
+test('configured moderation rules reach draft, published snapshot, preparation, and view requests', async () => {
+  const requests: { url: string; body: any }[] = [];
+  const client = new MarkeeClient({ moderation: { rules: { profanity: false, ens: true } }, wallet: { getProvider: async () => ({ request: async () => [account] }) }, fetch: async (url, init) => {
+    requests.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    return Response.json({ state: 'pass' });
+  } });
+  await client.checkMessage('hello');
+  await client.snapshot(preparation().placement);
+  await client.prepare(preparation().placement, { kind: 'edit-message', markee: other, message: 'hello' });
+  await client.recordView(other, 'hello');
+  // Unset rules follow Standard: links and addresses off; profanity explicitly off, ENS on.
+  assert.equal(requests[0].body.rules, 'ens');
+  assert.equal(requests[0].body.severity, undefined, 'no severity unless configured');
+  assert.equal(new URL(requests[1].url).searchParams.get('rules'), 'ens');
+  assert.equal(requests[2].body.rules, 'ens');
+  assert.equal(requests[3].body.rules, 'ens');
+});
+
+test('moderation rules default unset rules from the severity preset, and are omitted when none are set', () => {
+  assert.deepEqual(moderationParams({ severity: 'strict', rules: { links: false } }), { severity: 'strict', rules: 'profanity,addresses,ens' });
+  assert.deepEqual(moderationParams({ severity: 'relaxed', rules: { addresses: true } }), { severity: 'relaxed', rules: 'addresses' });
+  assert.deepEqual(moderationParams({ rules: { profanity: false, links: false, addresses: false, ens: false } }), { rules: '' });
+  assert.deepEqual(moderationParams({ severity: 'strict', rules: {} }), { severity: 'strict' });
+  assert.deepEqual(moderationParams(undefined), {});
 });
 
 test('a configured moderation policy never treats an unsupported check endpoint as passing', async () => {

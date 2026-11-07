@@ -32,6 +32,35 @@ test('a first sighting is queued as a new message in both scopes', () => {
   assert.equal(item.previousMessage, null)
 })
 
+test('the empty seed Markee a new board starts with is never queued', () => {
+  const seed = { ...obs(''), name: '' }
+  const item = observeMessage(null, seed, fresh)!
+  assert.deepEqual(statuses(item), ['approved', 'approved'])
+  assert.equal(isPendingIn(item, BOTH), false)
+  assert.equal(observeMessage(item, seed, fresh), null, 'no rewrite once settled')
+  // Whitespace only is still nothing to review; a flag on it is kept.
+  assert.deepEqual(statuses(observeMessage(null, { ...obs('  \n '), name: ' ' }, fresh)!), ['approved', 'approved'])
+  assert.deepEqual(statuses(observeMessage(null, seed, { flagged: { board: true, site: false }, preexisting: false })!), ['flagged', 'approved'])
+  // A name alone is still reviewed.
+  assert.deepEqual(statuses(observeMessage(null, { ...obs(''), name: 'alice' }, fresh)!), ['pending', 'pending'])
+})
+
+test('an already-queued empty message is settled, and real text written later is queued', () => {
+  const seed = { ...obs(''), name: '' }
+  const stale: ModerationItem = { ...seed, kind: 'created', previousMessage: null, previousName: null,
+    reviews: { board: { status: 'pending', reviewedBy: null, reviewedAt: null }, site: { status: 'pending', reviewedBy: null, reviewedAt: null } } }
+  const settled = observeMessage(stale, seed, fresh)!
+  assert.ok(settled, 'a stale pending empty item must be rewritten')
+  assert.equal(isPendingIn(settled, BOTH), false)
+  const written = observeMessage(settled, { ...obs('gm', '200'), name: '' }, fresh)!
+  assert.deepEqual(statuses(written), ['pending', 'pending'])
+  assert.equal(written.kind, 'created', 'text on the seed Markee is a new message')
+  assert.equal(written.previousMessage, null)
+  // A flag already on the seed Markee carries over to its first message, as for any first sighting.
+  const flaggedFirst = observeMessage(settled, { ...obs('spam', '200'), name: '' }, { flagged: { board: false, site: true }, preexisting: false })!
+  assert.deepEqual(statuses(flaggedFirst), ['pending', 'flagged'])
+})
+
 test('a first sighting keeps each scope\'s existing flag', () => {
   const item = observeMessage(null, obs('spam'), { flagged: { board: false, site: true }, preexisting: true })!
   assert.deepEqual(statuses(item), ['approved', 'flagged'])

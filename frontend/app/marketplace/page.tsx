@@ -172,7 +172,7 @@ function SkeletonStatCell() {
   )
 }
 
-function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: number; usd: number; views: number }; loaded: boolean }) {
+function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: number; usd: number | null; views: number }; loaded: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   useEffect(() => {
@@ -187,7 +187,7 @@ function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: n
 
   const markees  = useCountUp(stats.markees,  started)
   const messages = useCountUp(stats.messages, started)
-  const usd      = useCountUp(stats.usd,      started)
+  const usd      = useCountUp(stats.usd ?? 0, started)
   const views    = useCountUp(stats.views,    started)
   const narrow   = useNarrow()
   const fmt = (v: number) => narrow ? new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v) : v.toLocaleString()
@@ -199,7 +199,7 @@ function MetricsStrip({ stats, loaded }: { stats: { markees: number; messages: n
           <>
             <StatCell n={fmt(markees)}   label="active Markees"     color={PINK}  dot={PINK}  />
             <StatCell n={fmt(messages)}  label="messages bought"    color={TEXT}  dot={TEXT}  />
-            <StatCell n={`$${fmt(usd)}`} label="total funds raised" color={GREEN} dot={GREEN} />
+            <StatCell n={stats.usd === null ? '—' : `$${fmt(usd)}`} label="total funds raised" color={GREEN} dot={GREEN} />
             <StatCell n={fmt(views)}     label="views"              color={PURP}  dot={PURP}  />
           </>
         ) : (
@@ -640,13 +640,17 @@ function RowActionButton({ label, onClick }: { label: string; onClick: () => voi
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
-  const ethPrice = useEthPrice()
+  const clientEthPrice = useEthPrice()
+  // The listing API prices totals server-side; prefer its price so USD labels and the
+  // metrics strip render with the listing instead of waiting on a second price request.
+  const [listingEthPrice, setListingEthPrice] = useState<number | null>(null)
+  const ethPrice = listingEthPrice ?? clientEthPrice
 
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([])
   const [loading, setLoading]           = useState(true)
   const [viewsMap, setViewsMap]         = useState<Map<string, number>>(new Map())
   const [viewsLoading, setViewsLoading] = useState(true)
-  const [ecoStats, setEcoStats]         = useState({ markees: 0, messages: 0, usd: 0 })
+  const [ecoTotals, setEcoTotals]       = useState({ markees: 0, messages: 0, totalEth: 0, serverUsd: null as number | null })
 
   // Wallet's rank on every board, fetched in bulk (not per-row) so sorting by rank can happen before
   // pagination -- see app/api/marketplace/positions.
@@ -682,18 +686,25 @@ export default function MarketplacePage() {
         if (!data) return
         const lbs: Leaderboard[] = data.leaderboards ?? []
         setLeaderboards(lbs)
+        if (typeof data.ethPriceUsd === 'number' && data.ethPriceUsd > 0) setListingEthPrice(data.ethPriceUsd)
 
         const active   = lbs.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         const messages = active.reduce((sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)), 0)
-        const totalEth = parseFloat(data.totalPlatformFunds ?? '0')
-        const usd = data.totalPlatformFundsUsd
-          ?? (ethPrice ? Math.round(totalEth * ethPrice) : 0)
-        setEcoStats({ markees: active.length, messages, usd })
+        setEcoTotals({
+          markees: active.length,
+          messages,
+          totalEth: parseFloat(data.totalPlatformFunds ?? '0'),
+          serverUsd: typeof data.totalPlatformFundsUsd === 'number' ? data.totalPlatformFundsUsd : null,
+        })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ethPrice])
+  }, [])
+  const ecoStats = {
+    markees: ecoTotals.markees,
+    messages: ecoTotals.messages,
+    usd: ecoTotals.serverUsd ?? (ethPrice ? Math.round(ecoTotals.totalEth * ethPrice) : null),
+  }
 
   // Batch-fetch views for all top markees
   useEffect(() => {
@@ -794,11 +805,13 @@ export default function MarketplacePage() {
     : 0
 
   const [networkViews, setNetworkViews] = useState(0)
+  const [networkViewsLoaded, setNetworkViewsLoaded] = useState(false)
   useEffect(() => {
     fetch('/api/views?network=1')
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setNetworkViews(data.total ?? 0) })
       .catch(() => {})
+      .finally(() => setNetworkViewsLoaded(true))
   }, [])
   const totalViews = networkViews
 
@@ -810,7 +823,7 @@ export default function MarketplacePage() {
       {featured && <FeaturedHero lb={featured} views={featuredViews} viewsLoading={viewsLoading} ethPrice={ethPrice} />}
 
       {/* ── Metrics strip ── */}
-      <MetricsStrip stats={{ ...ecoStats, views: totalViews }} loaded={!loading} />
+      <MetricsStrip stats={{ ...ecoStats, views: totalViews }} loaded={!loading && networkViewsLoaded} />
 
       {/* ── Leaderboard table ── */}
       <section style={{ padding: '34px 40px 90px', maxWidth: 1240, margin: '0 auto' }}>

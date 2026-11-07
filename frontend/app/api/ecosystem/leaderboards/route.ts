@@ -9,13 +9,13 @@
 // everything regardless of verification status.
 
 import { NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
 import { formatEther } from 'viem'
 import { imputeEffectiveRate } from '@/lib/strategy'
 import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { cachedListing } from '@/lib/leaderboards/cached'
+import { getEthPriceUsdWithin } from '@/lib/server/ethPrice'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +49,11 @@ async function loadListing(request: Request) {
 
     // Add bypass header so internal fetches work on protected preview deployments
     const headers = internalHeaders()
+
+    // Price the totals server-side, in parallel with the listing fetches, so clients
+    // get every metric in one response instead of waiting on a separate price call.
+    // Never let slow price providers hold up the listing: without a price in time, USD totals are omitted.
+    const ethPricePromise = getEthPriceUsdWithin()
 
     // Fetch all platform APIs in parallel
     const [oiRes, githubRes, sfRes, fsRes] = await Promise.all([
@@ -159,7 +164,7 @@ async function loadListing(request: Request) {
     )
 
     const totalPlatformFunds = formatEther(totalFundsWei)
-    const ethPriceUsd = await kv.get<number>('cache:eth-price-usd') ?? null
+    const ethPriceUsd = await ethPricePromise
     const totalPlatformFundsUsd = ethPriceUsd
       ? Math.round(parseFloat(totalPlatformFunds) * ethPriceUsd)
       : null
@@ -168,6 +173,7 @@ async function loadListing(request: Request) {
       leaderboards,
       totalPlatformFunds,
       totalPlatformFundsUsd,
+      ethPriceUsd,
       counts: {
         website: oiLeaderboards.length,
         github: githubLeaderboards.length,
