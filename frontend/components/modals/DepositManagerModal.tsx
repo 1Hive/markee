@@ -6,7 +6,8 @@
 // and from a button on /account -- entirely wallet-scoped, so it takes no board/markee props.
 
 import { useCallback, useEffect, useState } from 'react'
-import { useAccount, useBalance, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -80,7 +81,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
 
   const { writeContractAsync, isPending, reset: resetWrite } = useWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
   const busy = isPending || isConfirming
 
   useEffect(() => {

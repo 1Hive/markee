@@ -3,7 +3,8 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { useWriteContract, useSwitchChain } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { useAccount } from 'wagmi'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -40,7 +41,7 @@ export function EditMessageModal({
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash })
 
   useEffect(() => {
     if (!isOpen) return

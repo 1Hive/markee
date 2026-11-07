@@ -5,7 +5,8 @@
 // StreamSignModal call the same working implementation instead of two copies that can drift.
 
 import { useState, useEffect, useRef } from 'react'
-import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { erc20Abi, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -31,7 +32,7 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
-    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+    useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const openRef = useRef(isOpen)
   openRef.current = isOpen

@@ -519,11 +519,12 @@ export function TxSteps({ steps }: { steps: { label: string; done: boolean; acti
 }
 
 // The in-flight / success body: ring + headline + supporting line.
-export function TxProgress({ isSuccess, headline, detail, steps }: {
+export function TxProgress({ isSuccess, headline, detail, steps, explorerUrl }: {
   isSuccess: boolean
   headline: string
   detail?: string
   steps?: { label: string; done: boolean; active: boolean }[]
+  explorerUrl?: string
 }) {
   return (
     <div style={{ padding: steps ? '40px 22px 40px' : '56px 22px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
@@ -535,6 +536,9 @@ export function TxProgress({ isSuccess, headline, detail, steps }: {
         </div>
         {detail && (
           <div style={{ fontSize: 13, color: MUTED, maxWidth: 340, lineHeight: 1.5 }}>{detail}</div>
+        )}
+        {explorerUrl && (
+          <a href={explorerUrl} target="_blank" rel="noreferrer" style={{ fontFamily: MONO, fontSize: 12, color: PINK }}>View on Basescan ↗</a>
         )}
       </div>
     </div>

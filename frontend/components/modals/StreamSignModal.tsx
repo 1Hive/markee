@@ -10,7 +10,8 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 // since there's no message-text-edit capability for streaming markees.
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useAccount, useReadContract, useSwitchChain, useBalance, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract, useSwitchChain, useBalance, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { formatEther, erc20Abi, type Address, type Hex } from 'viem'
 import { Eye, Pencil } from 'lucide-react'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -486,7 +487,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [cancelTxHash, setCancelTxHash] = useState<Hex | undefined>(undefined)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const { writeContractAsync: writeCancel, isPending: cancelPending } = useWriteContract()
-  const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useWaitForTransactionReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useTrackedReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
   async function handleCancel() {
     setCancelError(null)
     try {
@@ -568,7 +569,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useTrackedReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
   const editMessageBusy = editModeration.checking || editMessagePending || editMessageConfirming
   async function handleSaveMessage() {
     if (!await editModeration.guard(editMessageText)) return

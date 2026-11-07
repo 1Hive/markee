@@ -6,7 +6,8 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 // and the Your Messages table (every message the wallet owns or has funded).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAccount, useBalance, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { type Address, type Hex } from 'viem'
 import { ChevronDown } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -63,7 +64,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
   const { data: walletBalance } = useBalance({ address: address as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { writeContractAsync, isPending } = useWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
@@ -267,7 +268,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const { switchChain } = useSwitchChain()
   const { writeContractAsync, isPending } = useWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
   const messageModeration = useMessageModeration(draft.trim(), true, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)
