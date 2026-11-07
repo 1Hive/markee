@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MarkeeModal } from '../src/modal';
+import { MarkeeModal, boardMessageCount } from '../src/modal';
 
 test('cancelling the wallet request preserves the review and enables retry', async () => {
   const modal = Object.create(MarkeeModal.prototype);
@@ -195,4 +195,20 @@ test('Review Payment explains when no wallet was connected, and continues to the
   await connected.modal.connectAndReview();
   await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(connected.submitted(), 1, 'continues to the review after connecting');
+});
+test('a rejected wallet prompt does not later open a review by itself', async () => {
+  const modal = Object.create(MarkeeModal.prototype);
+  Object.assign(modal, { account: null, reviewAfterConnect: false, connect: async () => { throw { code: 4001 }; } });
+  await assert.rejects(modal.connectAndReview());
+  assert.equal(modal.reviewAfterConnect, false);
+});
+
+test('the message count excludes the empty seed Markee and survives browsing later pages', () => {
+  const entry = (message: string, moderated: boolean | null = false) => ({ message, name: '', moderated });
+  // Whole board on the first page: count non-blank entries.
+  assert.equal(boardMessageCount({ entries: [entry('gm'), entry('hi'), entry('')], nextOffset: null, count: 3 } as never), 2);
+  // Moderation not loaded yet (text withheld): fall back to markeeCount minus the seed.
+  assert.equal(boardMessageCount({ entries: [entry('', null), entry('', null), entry('', null)], nextOffset: null, count: 3 } as never), 2);
+  // More pages: markeeCount minus the seed.
+  assert.equal(boardMessageCount({ entries: [entry('gm')], nextOffset: 20, count: 45 } as never), 44);
 });
