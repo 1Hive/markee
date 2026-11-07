@@ -1,6 +1,6 @@
 'use client';
 import { createElement, useEffect, useRef, type ReactNode } from 'react';
-import { MarkeeClient } from './client.js';
+import { MarkeeClient, moderationParams } from './client.js';
 import { createMarkee } from './modal.js';
 import { createMarkeeSign, type MarkeeSignOptions } from './sign.js';
 import type { Placement, SDKOptions } from './types.js';
@@ -11,6 +11,7 @@ export function MarkeeModal(props: MarkeeModalProps) {
   const current = useRef(props); current.current = props;
   const instanceRef = useRef<ReturnType<typeof createMarkee>>();
   const placementKey = JSON.stringify(props.placement);
+  const moderationKey = JSON.stringify(moderationParams(props.moderation));
   useEffect(() => {
     if (!props.siteUrl) return;
     const client = new MarkeeClient({ apiUrl: props.apiUrl, fetch: props.fetch, siteUrl: props.siteUrl,
@@ -31,7 +32,7 @@ export function MarkeeModal(props: MarkeeModalProps) {
     let disposing = false;
     instance.open({ placement: props.placement, onClose: () => { if (!disposing) current.current.onClose(); } });
     return () => { disposing = true; instance.close(); instanceRef.current = undefined; };
-  }, [props.open, props.apiUrl, props.fetch, props.checkoutWindow, props.moderation?.severity, !!props.wallet, placementKey]);
+  }, [props.open, props.apiUrl, props.fetch, props.checkoutWindow, moderationKey, !!props.wallet, placementKey]);
   useEffect(() => { instanceRef.current?.setTheme(props.theme); }, [props.theme]);
   return props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null;
 }
@@ -47,6 +48,7 @@ export function MarkeeSign(props: MarkeeSignProps) {
   const current = useRef(props); current.current = props;
   const instance = useRef<ReturnType<typeof createMarkeeSign>>();
   const placementKey = JSON.stringify(props.placement);
+  const moderationKey = JSON.stringify(moderationParams(props.moderation));
   useEffect(() => {
     if (!container.current) return;
     const sign = createMarkeeSign(container.current, { ...current.current, wallet: current.current.wallet ? {
@@ -59,7 +61,7 @@ export function MarkeeSign(props: MarkeeSignProps) {
     });
     instance.current = sign;
     return () => { sign.destroy(); instance.current = undefined; };
-  }, [placementKey, props.apiUrl, props.fetch, props.showAction, props.moderation?.severity, props.refreshIntervalMs, props.siteUrl, !!props.wallet, !!props.onOpen]);
+  }, [placementKey, props.apiUrl, props.fetch, props.showAction, moderationKey, props.refreshIntervalMs, props.siteUrl, !!props.wallet, !!props.onOpen]);
   useEffect(() => { instance.current?.setTheme(props.theme); }, [props.theme]);
   return createElement('div', { ref: container, className: props.className },
     props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null);

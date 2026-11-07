@@ -88,3 +88,22 @@ export function checkStrictRules(message: string): RuleMatch[] {
   if (paymentTarget(text)) matches.push({ code: 'PAYMENT_ADDRESS', reason: 'This message contains a wallet address or ENS name, which the strict preset hides.' })
   return matches
 }
+
+/**
+ * Individually selected content restrictions (per-integration rules). Unlike the Strict preset,
+ * links exclude ENS names so each rule can be toggled on its own.
+ */
+export function checkSelectedRules(message: string, rules: { links: boolean; addresses: boolean; ens: boolean }): RuleMatch[] {
+  const text = ruleText(message)
+  const matches: RuleMatch[] = []
+  if (rules.links && (/https?:\/\/|www\./i.test(text) || [...text.matchAll(DOMAIN)].some(m => !m[0].toLowerCase().endsWith('.eth')))) {
+    matches.push({ code: 'LINK', reason: 'This message contains a link or domain, which this site does not allow.' })
+  }
+  if (rules.addresses && (/\b0x[0-9a-f]{40}(?![0-9a-f])/i.test(text) || /\b0x[0-9a-f]{4,38}(?:\.{2,3}|…)[0-9a-f]{4,38}(?![0-9a-f])/i.test(text))) {
+    matches.push({ code: 'WALLET_ADDRESS', reason: 'This message contains a wallet or contract address, which this site does not allow.' })
+  }
+  if (rules.ens && ensTarget(text)) {
+    matches.push({ code: 'ENS_NAME', reason: 'This message contains an ENS name, which this site does not allow.' })
+  }
+  return matches
+}

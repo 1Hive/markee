@@ -1,6 +1,26 @@
 import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
 import { errorMessage } from './errors.js';
-import type { MessageCheck, Action, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
+import type { MessageCheck, Action, ModerationOptions, ModerationSeverity, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
+
+const MODERATION_RULES = ['profanity', 'links', 'addresses', 'ens'] as const;
+const PRESET_RULES: Record<ModerationSeverity, readonly string[]> = { relaxed: [], standard: ['profanity'], strict: MODERATION_RULES };
+
+/**
+ * Request fields for the moderation options: `severity` as given, plus `rules` as the complete
+ * comma-separated list of enabled optional rules when any rule is set. Rules left unset follow the
+ * severity preset (Standard by default). Servers without per-rule support ignore `rules` and apply
+ * `severity`.
+ */
+export function moderationParams(moderation?: ModerationOptions): { severity?: ModerationSeverity; rules?: string } {
+  const out: { severity?: ModerationSeverity; rules?: string } = {};
+  if (moderation?.severity) out.severity = moderation.severity;
+  const rules = moderation?.rules;
+  if (rules && MODERATION_RULES.some(name => typeof rules[name] === 'boolean')) {
+    const base = PRESET_RULES[moderation?.severity ?? 'standard'] ?? PRESET_RULES.standard;
+    out.rules = MODERATION_RULES.filter(name => typeof rules[name] === 'boolean' ? rules[name] : base.includes(name)).join(',');
+  }
+  return out;
+}
 
 /** Markee-hosted API used by integrations unless overridden for local development. */
 export const DEFAULT_MARKEE_API_URL = PRODUCTION_API_URL;
@@ -96,7 +116,7 @@ export class MarkeeClient {
   }
   async snapshot(placement: Placement, account?: Address | null, offset?: number, signal?: AbortSignal): Promise<Snapshot> {
     const params = new URLSearchParams({ placement: JSON.stringify(placement) });
-    if (this.options.moderation?.severity) params.set('severity', this.options.moderation.severity);
+    for (const [key, value] of Object.entries(moderationParams(this.options.moderation))) params.set(key, value);
     if (account) params.set('account', account);
     if (offset !== undefined) params.set('offset', String(offset));
     return this.request(`snapshot?${params}`, undefined, signal);
@@ -104,7 +124,7 @@ export class MarkeeClient {
   async prepare(placement: Placement, action: Action): Promise<PreparedAction> {
     const account = await this.account();
     if (!account) throw new MarkeeError('Connect your wallet first.', 'NOT_CONNECTED');
-    return this.request('prepare', { placement, account, action, ...(this.options.moderation?.severity ? { severity: this.options.moderation.severity } : {}) });
+    return this.request('prepare', { placement, account, action, ...moderationParams(this.options.moderation) });
   }
   private async ensureWallet(account: Address, chainId: number): Promise<EIP1193Provider> {
     const provider = await this.provider();
@@ -244,10 +264,11 @@ export class MarkeeClient {
     return this.request(`community/status?${new URLSearchParams({ protocol, transactionHash: hash, fromChainId: String(fromChainId), toChainId: String(toChainId) })}`);
   }
   async checkMessage(message: string): Promise<MessageCheck> {
-    try { return await this.request('moderation/check', { kind: 'draft', message, ...(this.options.moderation?.severity ? { severity: this.options.moderation.severity } : {}) }); }
-    catch (error) { if (!this.options.moderation?.severity && error instanceof MarkeeError && error.status === 404) return { enabled: false, state: 'pass', contentHash: '', engine: '', policyVersion: '' }; throw error; }
+    const moderation = moderationParams(this.options.moderation);
+    try { return await this.request('moderation/check', { kind: 'draft', message, ...moderation }); }
+    catch (error) { if (!Object.keys(moderation).length && error instanceof MarkeeError && error.status === 404) return { enabled: false, state: 'pass', contentHash: '', engine: '', policyVersion: '' }; throw error; }
   }
   recordView(address: Address, message: string, url?: string): Promise<{ counted: boolean; totalViews: number }> {
-    return this.request('views', { address, message, url, ...(this.options.moderation?.severity ? { severity: this.options.moderation.severity } : {}) });
+    return this.request('views', { address, message, url, ...moderationParams(this.options.moderation) });
   }
 }

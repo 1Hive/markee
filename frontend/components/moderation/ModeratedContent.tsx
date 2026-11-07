@@ -53,8 +53,18 @@ export function ModeratedContent({
   const [revealed, setRevealed] = useState<string | null>(null)
 
   const automatic = usePublishedModeration(chainId, markeeId, message)
-  const flagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'soft-flagged' || automatic.data?.siteState === 'manual-flagged'
-  if (automatic.unavailable) return <div role="status" className={className}>Message unavailable while moderation loads.</div>
+  const manuallyFlagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'manual-flagged'
+  // An automatic flag is separate from the moderator's flag (the shield only toggles the latter), so it gets
+  // its own label and reason; a moderator clears it with a false-positive approval in the queue.
+  const autoFlagged = !manuallyFlagged && automatic.data?.siteState === 'soft-flagged'
+  const flagged = manuallyFlagged || autoFlagged
+  if (automatic.unavailable) return (
+    <div role="status" aria-label="Loading message" className={className}>
+      <span className="font-jetbrains text-[#8A8FBF]">
+        This is a sign<span className="sign-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+      </span>
+    </div>
+  )
   const isAdmin = canModerate(boardAdmin, boardCreator)
 
   // Admins/board moderators always see content (with a subtle indicator)
@@ -64,8 +74,11 @@ export function ModeratedContent({
       <div className={`relative ${className}`}>
         {children}
         {flagged && isAdmin && (
-          <div className="absolute top-1 right-1 text-[10px] bg-red-500/80 text-white px-1.5 py-0.5 rounded font-medium">
-            Flagged
+          <div
+            className={`absolute top-1 right-1 text-[10px] text-white px-1.5 py-0.5 rounded font-medium ${autoFlagged ? 'bg-amber-600/80' : 'bg-red-500/80'}`}
+            title={autoFlagged ? `Automatically flagged: ${automatic.data?.reason ?? 'matched an auto-moderation rule'}` : 'Flagged by a moderator'}
+          >
+            {autoFlagged ? 'Auto-flagged' : 'Flagged'}
           </div>
         )}
       </div>

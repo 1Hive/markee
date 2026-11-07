@@ -144,6 +144,10 @@ export function normalizeItem(raw: ModerationItem | null): ModerationItem | null
   return { ...raw, reviews: { board: review, site: { ...review } } }
 }
 
+// A Markee with no message and no name has nothing to review: the empty seed Markee every factory deploys
+// with a new board, or text cleared to nothing. It is never pending; a stale pending record of one is settled.
+export const isBlankMessage = (o: { message: string; name?: string | null }) => !o.message.trim() && !(o.name ?? '').trim()
+
 // Approval covers specific text and name, so any change to either owes a fresh review in every scope. An item
 // still owed a review keeps the text a moderator last saw, not the intermediate one nobody reviewed.
 // Text that was already live before the queue existed starts out approved.
@@ -152,12 +156,15 @@ export function observeMessage(
   obs: MessageObservation,
   { flagged, preexisting }: { flagged: Record<ModerationScope, boolean>; preexisting: boolean },
 ): ModerationItem | null {
-  if (prev && prev.message === obs.message && prev.name === obs.name) return null
-  const owed = prev && isPendingIn(prev, SCOPES)
-  const previousMessage = prev ? (owed ? prev.previousMessage : prev.message) : null
-  const previousName = prev ? (owed ? prev.previousName ?? prev.name : prev.name) : null
+  const blank = isBlankMessage(obs)
+  if (prev && prev.message === obs.message && prev.name === obs.name && !(blank && isPendingIn(prev, SCOPES))) return null
+  // Text written on a blank (seed) Markee is a new message, not an edit of nothing.
+  const before = prev && !isBlankMessage(prev) ? prev : null
+  const owed = before && isPendingIn(before, SCOPES)
+  const previousMessage = before ? (owed ? before.previousMessage : before.message) : null
+  const previousName = before ? (owed ? before.previousName ?? before.name : before.name) : null
   const review = (scope: ModerationScope): ScopeReview => ({
-    status: prev ? 'pending' : flagged[scope] ? 'flagged' : preexisting ? 'approved' : 'pending',
+    status: blank ? (flagged[scope] ? 'flagged' : 'approved') : prev ? 'pending' : flagged[scope] ? 'flagged' : preexisting ? 'approved' : 'pending',
     reviewedBy: null,
     reviewedAt: null,
   })

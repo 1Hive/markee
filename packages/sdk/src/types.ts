@@ -1,4 +1,20 @@
 export type ModerationSeverity = 'relaxed' | 'standard' | 'strict';
+/**
+ * Optional automatic moderation rules. Scams & phishing are always checked. Omitted rules
+ * follow `severity` (Standard by default): Standard enables profanity only, Strict enables
+ * all four, Relaxed none.
+ */
+export interface ModerationRules {
+  /** Profanity dictionaries. */
+  profanity?: boolean;
+  /** Any link or domain (ENS names are controlled by `ens`). */
+  links?: boolean;
+  /** Wallet and contract addresses, full or abbreviated (0x1234…abcd). */
+  addresses?: boolean;
+  /** ENS names such as name.eth. */
+  ens?: boolean;
+}
+export interface ModerationOptions { severity?: ModerationSeverity; rules?: ModerationRules }
 export interface MessageCheck { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string; reasonCodes?: string[] }
 export interface EntryModeration { state: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'; contentHash: string; reason?: string; reasonCodes?: string[]; policyVersion: string }
 export type Address = `0x${string}`;
@@ -122,8 +138,8 @@ export interface MarkeeTheme {
   };
 }
 export interface SDKOptions {
-  /** Automatic moderation preset. Defaults to Standard; manual flags always apply. */
-  moderation?: { severity?: ModerationSeverity };
+  /** Automatic moderation preset and/or individual rules. Defaults to Standard; manual flags always apply. */
+  moderation?: ModerationOptions;
   /** Optional development override; defaults to the Markee-hosted API. */
   checkoutWindow?: 'tab' | 'redirect';
   apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;

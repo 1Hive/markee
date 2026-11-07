@@ -76,6 +76,25 @@ test('metadata route preserves safe v1 and verifies v2 clearing authorization be
   assert.deepEqual(writes[2], { ...existing, ...clear })
 })
 
+test('removing a verified site removes every page on its domain, and nothing else', async t => {
+  const account = privateKeyToAccount(`0x${'11'.repeat(32)}`)
+  const timestamp = Math.floor(Date.now() / 1000)
+  const board = account.address.toLowerCase()
+  const existing = { status: 'verified', verifiedUrls: ['https://frogandgoose.space/', 'https://www.frogandgoose.space/signin', 'https://other.org/'] }
+  const writes: Record<string, unknown>[] = []
+  t.mock.method(metaWriteDeps, 'readBoardOwners', async () => [[board]])
+  t.mock.method(metaWriteDeps, 'get', async () => existing)
+  t.mock.method(metaWriteDeps, 'set', async (_key: string, value: Record<string, unknown>) => { writes.push(value); return 'OK' })
+  t.mock.method(metaWriteDeps, 'del', async () => 1)
+  const update = { removeVerifiedUrl: 'https://frogandgoose.space/' }
+  const signature = await account.signMessage({ message: metaUpdateMessage(8453, board, update, timestamp) })
+  const response = await updateMeta(new Request('https://markee.xyz/api/openinternet/meta', { method: 'POST', body: JSON.stringify({ leaderboardAddress: board, owner: account.address, timestamp, signature, signatureVersion: 2, ...update }) }))
+  assert.equal(response.status, 200)
+  assert.deepEqual(writes[0].verifiedUrls, ['https://other.org/'])
+  assert.equal(writes[0].verifiedUrl, 'https://other.org/')
+  assert.equal(writes[0].status, 'verified')
+})
+
 test('published SDK view requests remain compatible with the changed API', async t => {
   const modulePath = process.env.MARKEE_PUBLISHED_SDK_MODULE
   if (!modulePath) { t.skip('Set MARKEE_PUBLISHED_SDK_MODULE to the installed published dist/index.js'); return }

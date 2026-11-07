@@ -6,7 +6,7 @@ import { getGithubToken, fetchRepoTraffic } from '@/lib/github/traffic'
 import { getModerationClient } from '@/lib/moderation/server'
 import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
 import { lastSiteViewKey, normalizeHost } from '@/lib/views/host'
-import { fileIntegrationKey, urlIntegrationKey, type BoardIntegrations } from '@/lib/integrations/featured'
+import { fileIntegrationKey, onePerDomain, urlIntegrationKey, type BoardIntegrations } from '@/lib/integrations/featured'
 
 // The owner's pick, as an integration key. Absent means "most viewed".
 export const featuredKvKey = (board: string) => `board:featured:${board.toLowerCase()}`
@@ -40,7 +40,7 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
   ])
   const urlsOf = boards.map((_, i) => {
     const meta = metas[i]
-    return meta?.verifiedUrls?.length ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : []
+    return onePerDomain(meta?.verifiedUrls?.length ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [], choices[i])
   })
   const filesOf = files.map(fs => fs.filter(f => f.verified))
 

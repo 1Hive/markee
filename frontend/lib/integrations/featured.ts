@@ -2,6 +2,8 @@
 // (its public page, the Marketplace, the dashboard). The owner can pick one; otherwise it's the
 // integration with the most views. /api/boards/integrations works it out, so every page agrees.
 
+import { normalizeHost } from '@/lib/views/host'
+
 export const fileIntegrationKey = (f: { repoFullName: string; filePath: string }) => `f:${f.repoFullName}/${f.filePath}`
 export const urlIntegrationKey = (url: string) => `u:${url}`
 
@@ -38,6 +40,19 @@ export function viewReportingTip(state: ViewReporting, last?: number | null): st
 // Signed by a board owner to pick its featured integration (key) or go back to most viewed (null).
 export function featuredIntegrationMessage(chainId: number | string, board: string, key: string | null, timestamp: number): string {
   return `markee-featured:${chainId}:${board.toLowerCase()}:${key ?? 'most-viewed'}:${timestamp}`
+}
+
+// One verified URL per domain. Embed views are counted per domain (lib/views/host.ts), so every page on
+// a domain would show the same count; the domain is listed once instead. The owner's featured page
+// represents its domain when it is one of them; otherwise the first verified page does. Order follows
+// each domain's first verified page.
+export function onePerDomain(urls: string[], featured?: string | null): string[] {
+  const byHost = new Map<string, string>()
+  for (const url of urls) {
+    const host = normalizeHost(url) ?? url
+    if (!byHost.has(host) || urlIntegrationKey(url) === featured) byHost.set(host, url)
+  }
+  return [...byHost.values()]
 }
 
 // Featured first, then by views; ties keep the given order.
