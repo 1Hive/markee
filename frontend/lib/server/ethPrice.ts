@@ -1,5 +1,6 @@
 import 'server-only'
 import { kv } from '@vercel/kv'
+import { waitUntil } from '@vercel/functions'
 import { logger } from '@/lib/server/logger'
 
 // Shared ETH/USD price, cached in KV so the listing API can price totals without
@@ -101,12 +102,15 @@ export async function getEthPriceUsd(): Promise<number> {
 }
 
 /** The price if it's cached or arrives within `waitMs`, else null, so a page isn't held up by slow
- *  providers. A refresh still running keeps going and caches the price when it lands. */
+ *  providers. A refresh still running is handed to waitUntil, so on Vercel the function stays alive
+ *  until it caches the price instead of being frozen once the response is sent. */
 export async function getEthPriceUsdWithin(waitMs = 1_500): Promise<number | null> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), waitMs) })
+  const price = getEthPriceUsd().catch(() => null)
+  waitUntil(price)
   try {
-    return await Promise.race([getEthPriceUsd().catch(() => null), timeout])
+    return await Promise.race([price, timeout])
   } finally {
     clearTimeout(timer)
   }

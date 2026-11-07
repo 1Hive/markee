@@ -153,7 +153,8 @@ export class MarkeeModal {
         this.initialSelection = true;
         const entry = data.entries.find(entry => entry.address.toLowerCase() === data.wallet?.backedMarkee?.toLowerCase())
           ?? data.entries.find(entry => entry.owner.toLowerCase() === account.toLowerCase());
-        if (entry && !this.form && !this.drafts.get('create')?.message) this.form = { kind: data.strategy === 'rent' ? 'stream' : 'fund', entry };
+        // Not when Review Payment connected the wallet: the review continues with the form the visitor filled in.
+        if (entry && !this.form && !this.reviewAfterConnect && !this.drafts.get('create')?.message) this.form = { kind: data.strategy === 'rent' ? 'stream' : 'fund', entry };
       }
       if (this.options.placement.kind === 'gardens-community') this.adminResult = this.client.communityReceipt(this.options.placement) || undefined;
       this.pending = account ? this.client.pending(this.options.placement, account) : undefined;
@@ -380,9 +381,13 @@ export class MarkeeModal {
       }
     });
   };
+  /** Without a wallet, submitting does what the footer's Review Payment does: hosted checkout, or (For Rent) connect then review. */
+  private submitWithoutWallet() {
+    this.root.querySelector<HTMLButtonElement>('[data-cmd="card"]:not(:disabled), [data-cmd="connect-review"]')?.click();
+  }
   private onSubmit = (event: Event) => {
     event.preventDefault(); if (this.busy) return;
-    if (!this.account) { this.root.querySelector<HTMLButtonElement>('[data-cmd="card"]:not(:disabled)')?.click(); return; }
+    if (!this.account) { this.submitWithoutWallet(); return; }
     this.captureDraft();
     const form = event.target as HTMLFormElement;
     const fields = new FormData(form);

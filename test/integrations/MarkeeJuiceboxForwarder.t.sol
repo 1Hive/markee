@@ -878,4 +878,35 @@ contract MarkeeJuiceboxForwarderTest is Test {
         assertGe(fwd.unallocated() + 1e9, aliceShare, "sweep took alice's unsynced rent");
         vm.clearMockedCalls();
     }
+
+    /// Syncing while the beneficiary stream is paused credits the backer's earlier rent at the remembered
+    /// ratio instead of settling it at zero and losing their project tokens.
+    function test_pausedBeneficiaryStream_syncStillCreditsEarlierRent() public {
+        address alice = _backer("alice");
+        _open(alice, _newMarkee("alpha"), _rate(0.02 ether));
+        _warp(5 days);
+        fwd.sync(_one(alice));
+        uint256 num = fwd.ratioNum();
+        uint256 den = fwd.ratioDen();
+
+        _warp(1 days); // alice accrues rent at the normal ratio; the forwarder receives its share
+        vm.mockCall(
+            address(CFA),
+            abi.encodeWithSelector(ICFAForwarderT.getFlowrate.selector, ETHX, address(board), address(fwd)),
+            abi.encode(int96(0))
+        );
+        uint256 pending = board.pendingSettlement(alice);
+        assertGt(pending, 0);
+        uint256 share = pending * num / den;
+        (uint256 liveNum, uint256 liveDen) = fwd.shareRatio();
+        assertEq(liveNum, num, "paused stream should report the remembered ratio");
+        assertEq(liveDen, den);
+        assertApproxEqRel(fwd.pendingCredit(alice), share, 1e12, "view should price the pause at the remembered ratio");
+
+        uint256 tokensBefore = _jb(alice);
+        fwd.sync(_one(alice));
+        assertEq(board.pendingSettlement(alice), 0, "leaderboard not settled");
+        assertGt(_jb(alice), tokensBefore, "alice's earlier rent earned no project tokens");
+        vm.clearMockedCalls();
+    }
 }

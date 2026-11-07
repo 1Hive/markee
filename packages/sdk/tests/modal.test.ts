@@ -212,3 +212,35 @@ test('the message count excludes the empty seed Markee and survives browsing lat
   // More pages: markeeCount minus the seed.
   assert.equal(boardMessageCount({ entries: [entry('gm')], nextOffset: 20, count: 45 } as never), 44);
 });
+
+test('submitting without a wallet uses Review Payment: hosted checkout, or connect then review on For Rent', () => {
+  for (const [buttons, expected] of [[['connect-review'], 'connect-review'], [['card'], 'card']] as const) {
+    const clicked: string[] = [];
+    const modal = Object.create(MarkeeModal.prototype);
+    Object.assign(modal, { root: { querySelector: (selector: string) => {
+      const cmd = buttons.find(name => selector.includes(`[data-cmd="${name}"]`));
+      return cmd ? { click: () => { clicked.push(cmd); } } : null;
+    } } });
+    (modal as { submitWithoutWallet(): void }).submitWithoutWallet();
+    assert.deepEqual(clicked, [expected]);
+  }
+});
+
+test('connecting from Review Payment keeps the form instead of opening the wallet\'s own Markee', async () => {
+  const account = '0x1111111111111111111111111111111111111111';
+  const own = { address: '0x2222222222222222222222222222222222222222', owner: account, message: 'mine', name: '', moderated: false };
+  const snapshot = { strategy: 'rent', entries: [own], nextOffset: null, count: 2, wallet: null };
+  for (const reviewAfterConnect of [false, true]) {
+    const modal = Object.create(MarkeeModal.prototype);
+    Object.assign(modal, {
+      epoch: 0, closed: false, form: undefined, initialSelection: false, reviewAfterConnect,
+      drafts: new Map(), abort: new AbortController(), options: { placement: { kind: 'leaderboard' } },
+      render: () => {},
+      client: { account: async () => account, snapshot: async () => snapshot, pending: () => undefined, pendingAuthorization: () => null },
+    });
+    await (modal as { reload(): Promise<void> }).reload();
+    const form = (modal as { form?: { entry: unknown } }).form;
+    if (reviewAfterConnect) assert.equal(form, undefined, 'the create form must stay for the review');
+    else assert.equal(form?.entry, own, 'a plain connect opens the wallet\'s own Markee');
+  }
+});
