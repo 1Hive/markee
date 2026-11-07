@@ -368,7 +368,6 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                   <AdminSettingRow
                     label="Minimum Price" contractAddress={contractAddress} abi={abi} getterName={settings.minPrice} setterName={settings.setMinPrice} inputType="uint256"
                     unit={settings.unit} ethPrice={ethPrice} warnIf={isStreaming ? minPriceWarning : undefined}
-                    validate={v => Number.isFinite(Number(v)) && Number(v) > 0 ? null : settings.unit === 'ethPerMonth' ? 'Enter ETH per month' : 'Enter an amount in ETH'}
                     onSuccess={saved('Minimum price updated')}
                   />
                 )}
