@@ -110,6 +110,8 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [promptCopied, setPromptCopied] = useState(false)
   const [promptCopyFailed, setPromptCopyFailed] = useState(false)
   const promptFallbackRef = useRef<HTMLTextAreaElement>(null)
+  // A copy result belongs to the prompt it copied: changing the rules or tab starts over.
+  useEffect(() => { setPromptCopied(false); setPromptCopyFailed(false) }, [rules, integration])
   const [siteUrl, setSiteUrl] = useState('')
   const verifiedSiteUrls = useVerifiedSiteUrls(address)
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)

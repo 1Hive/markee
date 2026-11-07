@@ -176,3 +176,23 @@ test('wallet events preserve the reviewed payment while confirmation is pending'
   assert.equal(modal.review, undefined);
   assert.equal(reloads, 1);
 });
+test('Review Payment explains when no wallet was connected, and continues to the review when one was', async () => {
+  const make = (account: string | null, wallets?: unknown[]) => {
+    const modal = Object.create(MarkeeModal.prototype);
+    let submitted = 0;
+    Object.assign(modal, { account: null, reviewAfterConnect: false,
+      connect: async () => { modal.account = account; modal.wallets = wallets; },
+      root: { querySelector: () => ({ requestSubmit: () => { submitted++; } }) } });
+    return { modal: modal as { connectAndReview(): Promise<void>; reviewAfterConnect: boolean }, submitted: () => submitted };
+  };
+  const none = make(null);
+  await assert.rejects(none.modal.connectAndReview(), /No wallet connected\. Connect a wallet to rent this sign\./);
+  assert.equal(none.modal.reviewAfterConnect, false);
+  const picker = make(null, [{ name: 'A' }, { name: 'B' }]);
+  await picker.modal.connectAndReview();
+  assert.equal(picker.modal.reviewAfterConnect, true, 'choosing a wallet in the picker continues to the review');
+  const connected = make('0x1111111111111111111111111111111111111111');
+  await connected.modal.connectAndReview();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(connected.submitted(), 1, 'continues to the review after connecting');
+});

@@ -12,7 +12,7 @@ export interface ModalOptions { placement: Placement; onClose?: () => void; them
 type FormState = { kind: 'fund' | 'stream' | 'edit-message' | 'edit-name'; entry: Entry };
 const exact = (raw: string) => { const n = BigInt(raw); return `${n / 10n ** 18n}.${(n % 10n ** 18n).toString().padStart(18, '0')}`.replace(/\.?0+$/, '') || '0'; };
 /** Wei rounded up to two significant figures, so a displayed minimum is never below the real one. */
-const minimumDisplay = (raw: string) => {
+const ceilToTwoSignificant = (raw: string) => {
   const n = BigInt(raw);
   if (n <= 0n) return '0';
   const digits = n.toString().length;
@@ -157,6 +157,22 @@ export class MarkeeModal {
     try { await work(); } catch (error) { this.fail(error); }
     finally { this.busy = false; this.busyMessage = 'Working…'; this.render(); }
   }
+  private reviewAfterConnect = false;
+  /** Review Payment without a wallet (For Rent): connect one, then continue to the review. */
+  private async connectAndReview() {
+    this.reviewAfterConnect = true;
+    await this.connect();
+    if (this.account) this.continueToReview();
+    // The wallet picker (several wallets) continues on selection; otherwise say why nothing happened.
+    else if (!this.wallets) { this.reviewAfterConnect = false; throw new Error('No wallet connected. Connect a wallet to rent this sign.'); }
+  }
+  /** After Review Payment connected a wallet, carry on to the review once the form is back on screen. */
+  private continueToReview() {
+    if (!this.reviewAfterConnect) return;
+    this.reviewAfterConnect = false;
+    // After the current task finishes and re-renders: a submit while busy would be ignored.
+    setTimeout(() => this.root.querySelector<HTMLFormElement>('form#markee-action')?.requestSubmit(), 0);
+  }
   private async connect() {
     if (!this.client.options.wallet) {
       const wallets = await discoverWallets();
@@ -245,7 +261,7 @@ export class MarkeeModal {
     if (cmd === 'create') { this.tab = 'main'; this.form = undefined; this.review = undefined; this.render(); return; }
     if (cmd.startsWith('tab:')) { this.tab = cmd.slice(4); this.review = undefined; this.authorization = undefined; this.render(); return; }
     if (cmd === 'back') {
-      if (this.review || this.authorization || this.wallets) { this.review = undefined; this.authorization = undefined; this.wallets = undefined; }
+      if (this.review || this.authorization || this.wallets) { this.review = undefined; this.authorization = undefined; this.wallets = undefined; this.reviewAfterConnect = false; }
       else if (this.tab !== 'main') this.tab = 'main';
       else if (this.form?.kind.startsWith('edit')) this.form = { kind: this.snapshot!.strategy === 'rent' ? 'stream' : 'fund', entry: this.form.entry };
       else this.form = undefined;
@@ -311,11 +327,8 @@ export class MarkeeModal {
     }
     void this.task(async () => {
       if (cmd === 'connect') await this.connect();
-      else if (cmd === 'connect-review') {
-        await this.connect();
-        if (this.account) this.root.querySelector<HTMLFormElement>('form#markee-action')?.requestSubmit();
-      }
-      else if (cmd.startsWith('wallet:')) { await this.client.connect(this.wallets![Number(cmd.slice(7))].provider); this.wallets = undefined; await this.reload(); }
+      else if (cmd === 'connect-review') await this.connectAndReview();
+      else if (cmd.startsWith('wallet:')) { await this.client.connect(this.wallets![Number(cmd.slice(7))].provider); this.wallets = undefined; await this.reload(); if (this.account) this.continueToReview(); }
       else if (cmd === 'refresh') await this.reload();
       else if (cmd === 'more') await this.reload(this.snapshot?.nextOffset ?? undefined);
       else if (cmd === 'send' && this.review) {
@@ -474,7 +487,7 @@ export class MarkeeModal {
     const defaultAmount = BigInt(s.minimum) > presets.minimum ? BigInt(s.minimum) : presets.minimum;
     const initial = current > defaultAmount ? current : defaultAmount;
     const minimum = !rent && entry ? 1n : BigInt(s.minimum);
-    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${minimumDisplay(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${rent ? `<span data-wallet-balance>${w ? BigInt(w.ethx) > 0n ? `ETHx Balance ${formatEth(w.ethx)}` : `ETH Balance ${formatEth(w.eth)}` : 'Paid in ETHx'}${infoTip('Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.')}</span>` : this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div>${rent ? this.account && w ? `<div class="funding-tools">${btn('tab:wallet', 'Deposit manager →', 'text-button')}<span class="meta runway">${w.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days${infoTip('How long your message can stream for based on your ETHx balance. To add more, go to the Deposit manager.')}` : `${formatEth(w.ethx)} ETHx${infoTip('If your ETHx balance doesn’t cover this rate, your first transaction deposits ETH as ETHx. Go to the Deposit manager to deposit a different amount.')}`}</span></div>` : '' : `<div class="funding-tools">${this.account ? btn('tab:wallet', 'Wallet & rewards →', 'text-button') : ''}<span class="meta">One-time payment</span></div>`}</section>${rent ? '' : `<p class="meta funding-hint">${entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`}`;
+    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${ceilToTwoSignificant(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${rent ? `<span data-wallet-balance>${w ? BigInt(w.ethx) > 0n ? `ETHx Balance ${formatEth(w.ethx)}` : `ETH Balance ${formatEth(w.eth)}` : 'Paid in ETHx'}${infoTip('Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.')}</span>` : this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div>${rent ? this.account && w ? `<div class="funding-tools">${btn('tab:wallet', 'Deposit manager →', 'text-button')}<span class="meta runway">${w.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days${infoTip('How long your message can stream for based on your ETHx balance. To add more, go to the Deposit manager.')}` : `${formatEth(w.ethx)} ETHx${infoTip('If your ETHx balance doesn’t cover this rate, your first transaction deposits ETH as ETHx. Go to the Deposit manager to deposit a different amount.')}`}</span></div>` : '' : `<div class="funding-tools">${this.account ? btn('tab:wallet', 'Wallet & rewards →', 'text-button') : ''}<span class="meta">One-time payment</span></div>`}</section>${rent ? '' : `<p class="meta funding-hint">${entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`}`;
   }
   private formHtml() {
     const s = this.snapshot!, form = this.form;
@@ -519,7 +532,7 @@ export class MarkeeModal {
         }
       }
       const minimum = this.snapshot.strategy === 'sale' && this.form ? 1n : BigInt(this.snapshot.minimum);
-      amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${minimumDisplay(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
+      amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${ceilToTwoSignificant(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
       this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum));
       this.root.querySelector('[data-cmd="preset:boost"]')?.setAttribute('aria-pressed', String(value === presets.boost));
     }
