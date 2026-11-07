@@ -14,6 +14,7 @@ import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/s
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { StrategyPreviewCard } from '@/components/StrategyPreviewCard'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
+import { beneficiaryError, isPayableBeneficiary } from '@/lib/beneficiary'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -215,7 +216,7 @@ function WebsiteSetupFields({ values, setValue, touched }: {
 }) {
   const mono = 'var(--font-jetbrains-mono)'
   const nameOk = !!(values.siteName?.trim())
-  const beneOk = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
+  const beneMessage = beneficiaryError(values.beneficiary)
   const errCss: React.CSSProperties = { fontFamily: mono, fontSize: 12, color: '#F87171', marginTop: 6 }
   const fieldBase: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '13px 14px', color: C.text, fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'Manrope, system-ui, sans-serif' }
   const labelCss: React.CSSProperties = { display: 'block', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 8 }
@@ -234,7 +235,7 @@ function WebsiteSetupFields({ values, setValue, touched }: {
           <span style={labelCss}>Beneficiary address</span>
           <input value={values.beneficiary ?? ''} onChange={e => setValue('beneficiary', e.target.value)} placeholder="0x... (receives ETH on Base Network)" style={{ ...fieldBase, fontFamily: mono }} />
         </label>
-        {touched && !beneOk && <p style={{ ...errCss, margin: '6px 0 0' }}>Enter a valid 0x wallet address.</p>}
+        {touched && beneMessage && <p style={{ ...errCss, margin: '6px 0 0' }}>{beneMessage}</p>}
       </div>
     </div>
   )
@@ -394,7 +395,7 @@ function CreateWizardInner() {
   const stepKey = stepKeys[step] ?? 'setup'
 
   const fieldsComplete = useMemo(() => {
-    const b = /^0x[0-9a-fA-F]{40}$/.test(values.beneficiary ?? '')
+    const b = isPayableBeneficiary(values.beneficiary)
     return !!(values.siteName?.trim() && b)
   }, [values])
 
@@ -409,7 +410,8 @@ function CreateWizardInner() {
       return
     }
     const bene = values.beneficiary?.trim() ?? ''
-    if (!/^0x[0-9a-fA-F]{40}$/.test(bene)) { setTxError('Enter a valid beneficiary address.'); return }
+    const beneProblem = beneficiaryError(bene)
+    if (beneProblem) { setTxError(beneProblem); return }
     const name = values.siteName?.trim() || 'My Markee'
     resetWrite()
     try {

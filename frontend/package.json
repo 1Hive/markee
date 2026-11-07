@@ -11,6 +11,7 @@
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "test:eth-amount": "tsx --test tests/ethAmount.test.ts",
     "test:billboard": "tsx --test tests/billboardText.test.ts tests/githubBillboard.test.ts",
+    "test:beneficiary": "tsx --test tests/beneficiary.test.ts",
     "test:review-regressions": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/review-regressions.test.ts",
     "test:moderation": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/moderationQueue.test.ts tests/moderation-route.test.ts tests/automatic-moderation.test.ts tests/moderation-security.test.ts tests/moderation-rules.test.ts tests/moderated-author.test.ts",
     "test:email-notifications": "tsx --test tests/emailNotifications.test.ts",
