@@ -11,10 +11,11 @@
 
 import { useEffect, useState } from 'react'
 import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
-import { formatEther, isAddress, parseEther, type Abi } from 'viem'
+import { formatEther, isAddress, type Abi } from 'viem'
 import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatReceiptError } from '@/lib/transactionErrors'
+import { farFromCurrentWarning, parseEthAmountInput } from '@/lib/leaderboard/ethAmount'
 import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 
 export interface AdminSettingRowProps {
@@ -95,9 +96,11 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
 
   const isWrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
   const typed = value.trim()
+  const ethAmount = unit && typed ? parseEthAmountInput(typed, unit === 'ethPerMonth' ? 'ETH per month' : 'ETH') : null
   const inputError = !typed ? null
     : inputType === 'address' && !isAddress(typed) ? 'Enter a full wallet address (0x + 40 characters).'
-    : validate?.(typed) ?? null
+    : ethAmount?.error ?? validate?.(typed) ?? null
+  const typedWarning = ethAmount?.wei != null && typeof current === 'bigint' ? farFromCurrentWarning(ethAmount.wei, current) : null
   const busy = isPending || isConfirming
   const suffix = unit === 'ethPerMonth' ? 'ETH / mo' : unit === 'eth' ? 'ETH' : inputType === 'uint256' ? 'chars' : null
 
@@ -120,7 +123,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
     if (invalid) { setLocalError(invalid); return }
     let arg: unknown = value.trim()
     try {
-      if (inputType === 'uint256') arg = unit ? parseEther(value.trim()) : BigInt(value.trim())
+      if (inputType === 'uint256') arg = ethAmount?.wei ?? BigInt(value.trim())
       if (inputType === 'bool') arg = value.trim() === 'true'
     } catch {
       setLocalError(unit ? 'Enter an amount in ETH.' : 'Enter a whole number.')
@@ -248,6 +251,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
         </span>
       </div>
       {editing && warning && dangerous === 'warn' && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{warning}</div>}
+      {editing && !inputError && typedWarning && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{typedWarning}</div>}
       {editing && inputError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{inputError}</div>}
       {!editing && viewWarning && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{viewWarning}</div>}
       {localError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{localError}</div>}
