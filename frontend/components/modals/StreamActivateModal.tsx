@@ -18,6 +18,7 @@ import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { formatUsd } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
+import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 
@@ -160,7 +161,8 @@ export function StreamActivateModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess, isOpen])
 
-  const handleActivate = () => activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
+  const { trust: boardTrust } = useBoardTrust(isOpen ? board : undefined)
+  const handleActivate = () => boardTrust !== 'trusted' ? undefined : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
 
   if (!isOpen) return null
 
@@ -203,7 +205,7 @@ export function StreamActivateModal({
   // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH", surfacing
   // as "Fund the stream for longer" even for a wallet that genuinely holds ETH).
   const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
-  const btnDisabled = !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
+  const btnDisabled = boardTrust !== 'trusted' || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
 
   const footer = !txActive ? (
     reviewOpen ? (

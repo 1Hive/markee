@@ -3,7 +3,7 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain, usePublicClient } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { Eye } from 'lucide-react'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -17,6 +17,7 @@ import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { isZeroAddress } from '@/lib/beneficiary'
+import { isBoardCreatedMarkee, useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -337,6 +338,12 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
   const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress)
     ? 'This board has no beneficiary, so a payment would be stuck. Ask its admin to set one first.' : null
+  const { trust } = useBoardTrust(isOpen ? leaderboardAddress : undefined)
+  const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN_ID })
+  const boardBlockedReason = trust === 'trusted' ? null
+    : trust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
+    : trust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
+    : 'Checking this Markee board…'
 
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
@@ -495,6 +502,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const handleBuyNew = async () => {
     if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
+    if (boardBlockedReason || !meta) { setError(boardBlockedReason ?? 'Could not load this Markee board.'); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
@@ -512,16 +520,27 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     }
   }
 
-  const handleAddFunds = () => {
+  const handleAddFunds = async () => {
     if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
     if (!target) return
+    if (boardBlockedReason || !meta) { setError(boardBlockedReason ?? 'Could not load this Markee board.'); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
-      writeContract({ address: (target.pricingStrategy || leaderboardAddress) as `0x${string}`, abi: TopDawgPartnerStrategyABI, functionName: 'addFunds', args: [target.address as `0x${string}`], value: parseEther(amount), chainId: CANONICAL_CHAIN.id })
+      if (!publicClient || !await isBoardCreatedMarkee(publicClient, strategyAddress, target.address as `0x${string}`)) {
+        setError('This message was not created by this board, so it cannot be funded here.')
+        return
+      }
+    } catch (err) {
+      logTransactionError(err, 'MarkeeSignModal.verifyMarkee')
+      setError('Could not verify this message. Check your connection and try again.')
+      return
+    }
+    try {
+      writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'addFunds', args: [target.address as `0x${string}`], value: parseEther(amount), chainId: CANONICAL_CHAIN.id })
     } catch (err) {
       logTransactionError(err, 'MarkeeSignModal.addFunds')
       setError(formatTransactionError(err))
@@ -537,7 +556,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
     setError(null)
     try {
-      writeContract({ address: (target.pricingStrategy || leaderboardAddress) as `0x${string}`, abi: TopDawgPartnerStrategyABI, functionName: 'updateMessage', args: [target.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
+      writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'updateMessage', args: [target.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
     } catch (err) {
       logTransactionError(err, 'MarkeeSignModal.updateMessage')
       setError(formatTransactionError(err))
@@ -586,8 +605,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // Editing a message is free -- a leftover `amount` from a previous view shouldn't block it.
   const blocksOnBalance = insufficientBalance && view !== 'edit'
   const beneficiaryBlocks = view !== 'edit' && !!noBeneficiaryReason
-  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks
-  const btnDisabledReason = busy ? 'Transaction in progress' : beneficiaryBlocks ? noBeneficiaryReason : blocksOnBalance ? "You don't have enough ETH for this" : null
+  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || !!boardBlockedReason
+  const btnDisabledReason = busy ? 'Transaction in progress' : boardBlockedReason ?? (beneficiaryBlocks ? noBeneficiaryReason : blocksOnBalance ? "You don't have enough ETH for this" : null)
 
   const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'

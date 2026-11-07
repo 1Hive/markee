@@ -17,6 +17,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { useLeaderboardDetail } from '@/lib/contracts/useLeaderboardDetail'
 import type { LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { StreamingBoardDetail } from '@/components/StreamingBoardDetail'
+import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
   fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
@@ -169,12 +170,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
       {isLoading ? (
         <BoardDetailSkeleton />
       ) : !meta ? (
-        // Truly not found
-        <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
-          <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Leaderboard not found</h1>
-          <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>We couldn't find a Markee leaderboard at that address.</p>
-          <Link href="/marketplace" style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>← Back to Marketplace</Link>
-        </section>
+        <BoardUnavailable onRetry={() => { void refetchLeaderboard() }} />
       ) : !topMarkee ? (
         // Leaderboard exists but no messages yet
         <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
@@ -398,6 +394,36 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   )
 }
 
+function BoardNotFound() {
+  return (
+    <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
+      <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Leaderboard not found</h1>
+      <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>We couldn&apos;t find a Markee leaderboard at that address.</p>
+      <Link href="/marketplace" style={{ display: 'inline-block', background: PINK, color: BG, fontWeight: 700, padding: '12px 22px', borderRadius: 10, textDecoration: 'none', fontFamily: MONO, fontSize: 14 }}>← Back to Marketplace</Link>
+    </section>
+  )
+}
+
+function BoardUnavailable({ onRetry }: { onRetry: () => void }) {
+  return (
+    <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
+      <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Couldn&apos;t load this Markee</h1>
+      <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>The network didn&apos;t answer. Nothing has been charged.</p>
+      <button onClick={onRetry} style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 22px', fontWeight: 700, fontFamily: MONO, fontSize: 14, cursor: 'pointer' }}>Try again</button>
+    </section>
+  )
+}
+
+function BoardGateShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ minHeight: '100vh', background: BG }}>
+      <Header activePage="marketplace" />
+      {children}
+      <Footer />
+    </div>
+  )
+}
+
 // A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed report "1.3.0".
 const VERSION_ABI = [
   { inputs: [], name: 'VERSION', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function' },
@@ -408,13 +434,18 @@ const VERSION_ABI = [
 export default function MarkeeDetailPage() {
   const params = useParams()
   const leaderboardAddress = params.address as string
+  const { trust, refetch: refetchTrust } = useBoardTrust(leaderboardAddress)
   const { data: version } = useReadContract({
     address: leaderboardAddress as `0x${string}`,
     abi: VERSION_ABI,
     functionName: 'VERSION',
     chainId: CANONICAL_CHAIN_ID,
-    query: { enabled: /^0x[0-9a-fA-F]{40}$/.test(leaderboardAddress ?? '') },
+    query: { enabled: trust === 'trusted' },
   })
+
+  if (trust === 'loading') return <BoardGateShell><BoardDetailSkeleton /></BoardGateShell>
+  if (trust === 'untrusted') return <BoardGateShell><BoardNotFound /></BoardGateShell>
+  if (trust === 'unavailable') return <BoardGateShell><BoardUnavailable onRetry={() => { void refetchTrust() }} /></BoardGateShell>
 
   if (typeof version === 'string' && version.startsWith('streaming')) {
     return <StreamingBoardDetail board={leaderboardAddress as `0x${string}`} />
