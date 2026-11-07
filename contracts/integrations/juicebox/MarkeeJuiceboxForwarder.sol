@@ -153,6 +153,8 @@ contract MarkeeJuiceboxForwarder {
 
     event Credited(address indexed backer, uint256 settledRent, uint256 credit);
     event Paid(address indexed backer, uint256 amount, uint256 beneficiaryTokenCount);
+    /// @notice `amount` is the ETH this attempt tried to pay, which can be less than the backer's full
+    ///         credit when the forwarder holds less. The whole credit stays in `owedOf` for a retry.
     event PaymentFailed(address indexed backer, uint256 amount, bytes reason);
     event BackerSkipped(address indexed backer, bytes reason);
     event SurplusSwept(uint256 amount);

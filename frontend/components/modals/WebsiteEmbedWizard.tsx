@@ -381,7 +381,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
                 readOnly
                 value={prompt}
                 aria-label="Embed prompt"
-                onFocus={e => e.currentTarget.select()}
+                onFocus={e => { const box = e.currentTarget; box.select(); box.setSelectionRange(0, box.value.length) }}
                 rows={8}
                 style={{
                   width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px',
