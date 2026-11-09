@@ -8,6 +8,7 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { type Address, type Hex } from 'viem'
 import { ChevronDown } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -39,10 +40,6 @@ export interface StreamSnapshot {
   at: number
 }
 
-const WITHDRAW_DEPOSIT_ABI = [
-  { type: 'function', name: 'withdrawDeposit', stateMutability: 'nonpayable', inputs: [], outputs: [] },
-] as const
-
 function ReclaimDeposit({ deposit, onDone }: { deposit: DepositManagerDeposit; onDone: () => void }) {
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -70,7 +67,7 @@ function ReclaimDeposit({ deposit, onDone }: { deposit: DepositManagerDeposit; o
     if (wrongChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
     setError(null)
     try {
-      setHash(await writeContractAsync({ address: deposit.boardAddress as Address, abi: WITHDRAW_DEPOSIT_ABI, functionName: 'withdrawDeposit', chainId: CANONICAL_CHAIN.id }))
+      setHash(await writeContractAsync({ address: deposit.boardAddress as Address, abi: StreamingLeaderboardABI, functionName: 'withdrawDeposit', chainId: CANONICAL_CHAIN.id }))
     } catch (e) {
       if (!isUserRejection(e)) setError(formatTransactionError(e))
     }

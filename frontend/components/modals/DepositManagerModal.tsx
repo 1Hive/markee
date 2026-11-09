@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -28,10 +29,6 @@ import { getTxUrl } from '@/lib/explorer'
 const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
 const RED = '#FF8E8E'
-
-const WITHDRAW_DEPOSIT_ABI = [
-  { type: 'function', name: 'withdrawDeposit', stateMutability: 'nonpayable', inputs: [], outputs: [] },
-] as const
 
 export interface DepositManagerDeposit {
   boardAddress: string
@@ -200,7 +197,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
     if (!isCorrectChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
     try {
       setAction('reclaim'); setReclaimingBoard(board.toLowerCase())
-      const hash = await writeContractAsync({ address: board as Address, abi: WITHDRAW_DEPOSIT_ABI, functionName: 'withdrawDeposit', chainId: CANONICAL_CHAIN.id })
+      const hash = await writeContractAsync({ address: board as Address, abi: StreamingLeaderboardABI, functionName: 'withdrawDeposit', chainId: CANONICAL_CHAIN.id })
       setTxHash(hash)
     } catch (e: unknown) {
       setAction(null); setReclaimingBoard(null)
