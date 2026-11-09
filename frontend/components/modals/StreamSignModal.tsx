@@ -627,6 +627,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     const monthlyWei = parseEthInput(monthly)
     const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
+    // A move wraps its deposit top-up separately (fundTotalValue below), so it ignores the held deposit here.
     const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n, view === 'fund' && backsOther ? 0n : (heldDeposit as bigint | undefined) ?? 0n)
     return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue }
   }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei, view, backsOther, heldDeposit])

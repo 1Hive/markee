@@ -12,7 +12,7 @@ import { kv } from '@vercel/kv'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
-import { STREAMING_BASE, CFA_FORWARDER_ABI } from '@/lib/superfluid/streaming'
+import { STREAMING_BASE, CFA_FORWARDER_ABI, BUFFER_PERIOD } from '@/lib/superfluid/streaming'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -50,8 +50,6 @@ export interface DepositManagerDeposit {
   depositRaw: string
   reclaimableRaw: string
 }
-
-const BUFFER_PERIOD = 14_400n
 
 function getClient() {
   return createPublicClient({

@@ -190,9 +190,9 @@ const ETHX_AUTO_WRAP_SMALL_BALANCE_THRESHOLD = 2_000_000_000_000_000n // 0.002 E
 const ETHX_AUTO_WRAP_SMALL_BALANCE_PCT = 90n
 
 // The CFA requires the backer's own wallet balance to clear the flow's buffer too, on top of what
-// the board's depositBuffer pulls out of it -- so "already enough" means the existing balance clears
-// more than 2x the buffer, not just enough to cover the pull. Below that, default to wrapping 3
-// months' worth of ETH at this rate, capped at what's actually spendable.
+// the board's depositBuffer pulls out of it (only the shortfall over a deposit the board already
+// holds) -- so "already enough" means the existing balance clears that pull plus one buffer. Below
+// that, default to wrapping 3 months' worth of ETH at this rate, capped at what's actually spendable.
 export function depositShortfall(ratePerSec: bigint, heldDeposit: bigint): bigint {
   const buffer = bufferFor(ratePerSec)
   return buffer > heldDeposit ? buffer - heldDeposit : 0n
