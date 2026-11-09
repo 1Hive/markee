@@ -25,17 +25,13 @@ import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
+import type { DepositManagerDeposit } from '@/app/api/streaming/deposit-manager/route'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
 const RED = '#FF8E8E'
 
-export interface DepositManagerDeposit {
-  boardAddress: string
-  boardName: string
-  depositRaw: string
-  reclaimableRaw: string
-}
+export type { DepositManagerDeposit }
 
 export interface DepositManagerStream {
   boardAddress: string
