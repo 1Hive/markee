@@ -1283,6 +1283,11 @@ contract StreamingLeaderboardTest is Test {
         _notJailed();
         assertEq(board.pendingSettlement(top), pendingBefore, "accrual changed on beneficiary close");
 
+        vm.warp(block.timestamp + 1 days);
+        assertApproxEqAbs(
+            board.pendingSettlement(top) - pendingBefore, _r(_rate(0.1 ether)) * 1 days, 1e6, "full rate not accrued after close"
+        );
+
         vm.prank(top);
         CFA.deleteFlow(ETHX, top, address(board), "");
         address[] memory backers = new address[](1);
