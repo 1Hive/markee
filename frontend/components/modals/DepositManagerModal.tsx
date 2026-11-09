@@ -360,7 +360,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                     <input
                       inputMode="decimal"
                       value={amount}
-                      onChange={e => { setAmount(sanitizeDecimalInput(e.target.value)); if (actionError) setActionError(null) }}
+                      onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setAmount(v); if (actionError) setActionError(null) }}
                       placeholder={action === 'deposit' ? 'Amount to deposit (ETH)' : 'Amount to withdraw (ETHx)'}
                       disabled={busy}
                       style={{
