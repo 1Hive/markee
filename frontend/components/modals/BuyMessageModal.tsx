@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
+import { TopDawgStrategyABI, TopDawgPartnerStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -14,7 +14,7 @@ import { formatTransactionError, formatReceiptError, logTransactionError } from 
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
-import { isZeroAddress } from '@/lib/beneficiary'
+import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
@@ -26,10 +26,6 @@ const FAST_TX_GAS_RESERVE = parseEther('0.0002')
 
 const REV_NET_ENABLED_ABI = [
   { inputs: [], name: 'revNetEnabled', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
-] as const
-
-const BENEFICIARY_ABI = [
-  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -191,10 +187,9 @@ export function BuyMessageModal({
   })
   const revNetEnabled = revNetEnabledData ?? false
   const { data: beneficiaryAddress } = useReadContract({
-    address: strategyAddress, abi: BENEFICIARY_ABI, functionName: 'beneficiaryAddress', chainId: CANONICAL_CHAIN.id,
+    address: strategyAddress, abi: BeneficiaryAddressABI, functionName: 'beneficiaryAddress', chainId: CANONICAL_CHAIN.id,
   })
-  const noBeneficiaryReason = typeof beneficiaryAddress === 'string' && isZeroAddress(beneficiaryAddress)
-    ? 'This board has no beneficiary, so a payment would be stuck. Ask its admin to set one first.' : null
+  const noBeneficiaryReason = typeof beneficiaryAddress === 'string' && isZeroAddress(beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
 
   // ── Preset amount calculations ──────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
