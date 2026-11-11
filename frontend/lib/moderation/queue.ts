@@ -164,7 +164,8 @@ export function observeMessage(
   const previousMessage = before ? (owed ? before.previousMessage : before.message) : null
   const previousName = before ? (owed ? before.previousName ?? before.name : before.name) : null
   const review = (scope: ModerationScope): ScopeReview => ({
-    status: blank ? (flagged[scope] ? 'flagged' : 'approved') : prev ? 'pending' : flagged[scope] ? 'flagged' : preexisting ? 'approved' : 'pending',
+    // A blank (seed) Markee had nothing reviewed, so its first text is judged like a first sighting.
+    status: blank ? (flagged[scope] ? 'flagged' : 'approved') : before ? 'pending' : flagged[scope] ? 'flagged' : preexisting ? 'approved' : 'pending',
     reviewedBy: null,
     reviewedAt: null,
   })

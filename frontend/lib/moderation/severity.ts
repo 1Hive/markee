@@ -38,6 +38,7 @@ export function moderationSeverity(value: unknown): ModerationSeverity {
 export function moderationPolicy(severity: unknown, rules?: unknown): ModerationSeverity {
   const base = moderationSeverity(severity)
   if (rules === undefined || rules === null) return base
+  // The longest valid list, all four rules, is 29 characters; 64 leaves room for spaces and rejects junk early.
   if (typeof rules !== 'string' || rules.length > 64) throw new Error('Invalid moderation rules')
   const names = rules.split(',').map(name => name.trim()).filter(Boolean)
   if (names.some(name => !(RULE_ORDER as readonly string[]).includes(name))) throw new Error('Invalid moderation rules')
