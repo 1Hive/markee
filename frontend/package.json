@@ -10,7 +10,7 @@
     "test:keeper": "tsx --test tests/keeper.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "test:eth-amount": "tsx --test tests/ethAmount.test.ts",
-    "test:billboard": "tsx --test tests/billboardText.test.ts tests/githubBillboard.test.ts",
+    "test:billboard": "tsx --test tests/billboardText.test.ts tests/githubBillboard.test.ts tests/concurrency.test.ts",
     "test:beneficiary": "tsx --test tests/beneficiary.test.ts",
     "test:board-registry": "tsx --test tests/boardRegistry.test.ts",
     "test:tx-tracking": "tsx --test tests/txTracking.test.ts",
