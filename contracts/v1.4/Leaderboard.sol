@@ -250,9 +250,12 @@ contract Leaderboard is IPricingStrategy {
         }
     }
 
+    /// @notice A page of the registry. An offset past the end returns an empty array, and the page is
+    ///         clamped to the registry length, so paginating clients can stop on an empty result.
     function getMarkees(uint256 offset, uint256 limit) external view returns (address[] memory result) {
-        uint256 end = offset + limit;
-        if (end > markees.length) end = markees.length;
+        uint256 length = markees.length;
+        if (offset >= length) return result;
+        uint256 end = limit > length - offset ? length : offset + limit;
         result = new address[](end - offset);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = markees[i];

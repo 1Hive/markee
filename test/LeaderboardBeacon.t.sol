@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.23;
 
-import { Test } from "forge-std/Test.sol";
+import { Test, Vm } from "forge-std/Test.sol";
 
 import { Leaderboard } from "../contracts/v1.4/Leaderboard.sol";
 import { Leaderboard as LeaderboardV13 } from "../contracts/v1.3/Leaderboard.sol";
@@ -42,6 +42,16 @@ contract ExternalMarkee {
 contract LeaderboardV2Probe is Leaderboard {
     function probeVersion() external pure returns (string memory) {
         return "1.4-probe";
+    }
+}
+
+contract SilentFallbackImplementation is Leaderboard {
+    fallback() external {}
+}
+
+contract NonContractBeaconImplementation is Leaderboard {
+    function boardBeacon() external pure returns (address) {
+        return address(0xb0a2d);
     }
 }
 
@@ -162,6 +172,103 @@ contract LeaderboardBeaconTest is Test {
         assertEq(LeaderboardV2Probe(address(successor)).probeVersion(), "1.4-probe");
         assertEq(successor.admin(), legacyAdmin, "storage lost across upgrade");
         assertEq(successor.markeeCount(), 3);
+    }
+
+    function test_v14_rescheduleUpgradeCancelsThePendingOne() public {
+        address first = address(new LeaderboardV2Probe());
+        address second = address(new LeaderboardV2Probe());
+
+        vm.prank(coop);
+        beacon.scheduleUpgrade(first);
+        vm.warp(block.timestamp + UPGRADE_DELAY - 1);
+
+        vm.expectEmit(true, false, false, false, address(beacon));
+        emit BoardBeacon.UpgradeCancelled(first);
+        vm.expectEmit(true, false, false, true, address(beacon));
+        emit BoardBeacon.UpgradeScheduled(second, block.timestamp + UPGRADE_DELAY);
+        vm.prank(coop);
+        beacon.scheduleUpgrade(second);
+
+        assertEq(beacon.pendingImplementation(), second);
+        vm.warp(block.timestamp + 1);
+        vm.expectRevert(BoardBeacon.UpgradeNotReady.selector);
+        beacon.executeUpgrade();
+        vm.warp(block.timestamp + UPGRADE_DELAY);
+        beacon.executeUpgrade();
+        assertEq(beacon.implementation(), second);
+    }
+
+    function test_v14_firstScheduleEmitsNoCancellation() public {
+        address v2 = address(new LeaderboardV2Probe());
+        vm.recordLogs();
+        vm.prank(coop);
+        beacon.scheduleUpgrade(v2);
+        vm.prank(coop);
+        beacon.scheduleGuardianChange(alice);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 2);
+        assertEq(logs[0].topics[0], BoardBeacon.UpgradeScheduled.selector);
+        assertEq(logs[1].topics[0], BoardBeacon.GuardianChangeScheduled.selector);
+    }
+
+    function test_v14_rescheduleGuardianChangeCancelsThePendingOne() public {
+        vm.prank(coop);
+        beacon.scheduleGuardianChange(alice);
+        vm.warp(block.timestamp + UPGRADE_DELAY - 1);
+
+        vm.expectEmit(true, false, false, false, address(beacon));
+        emit BoardBeacon.GuardianChangeCancelled(alice);
+        vm.expectEmit(true, false, false, true, address(beacon));
+        emit BoardBeacon.GuardianChangeScheduled(bob, block.timestamp + UPGRADE_DELAY);
+        vm.prank(coop);
+        beacon.scheduleGuardianChange(bob);
+
+        vm.warp(block.timestamp + 1);
+        vm.expectRevert(BoardBeacon.GuardianChangeNotReady.selector);
+        beacon.executeGuardianChange();
+        vm.warp(block.timestamp + UPGRADE_DELAY);
+        beacon.executeGuardianChange();
+        assertEq(beacon.guardian(), bob);
+    }
+
+    function test_v14_rejectsForwardersOfAnyBeacon() public {
+        LeaderboardBeacon other =
+            new LeaderboardBeacon(leaderboardImplementation, coop, guardian, UPGRADE_DELAY, _pausableSelectors());
+        address otherForwarder = address(new BeaconForwarder(IBoardRouter(address(other)), false));
+
+        vm.startPrank(coop);
+        vm.expectRevert(BoardBeacon.ImplementationIsForwarder.selector);
+        beacon.scheduleUpgrade(forwarder);
+        vm.expectRevert(BoardBeacon.ImplementationIsForwarder.selector);
+        beacon.scheduleUpgrade(otherForwarder);
+        vm.expectRevert(BoardBeacon.ImplementationIsForwarder.selector);
+        beacon.scheduleUpgrade(address(beacon));
+        vm.stopPrank();
+    }
+
+    function test_v14_acceptsImplementationsThatOnlyLookLikeForwarders() public {
+        address silent = address(new SilentFallbackImplementation());
+        address nonContract = address(new NonContractBeaconImplementation());
+
+        vm.startPrank(coop);
+        beacon.scheduleUpgrade(silent);
+        assertEq(beacon.pendingImplementation(), silent);
+        beacon.scheduleUpgrade(nonContract);
+        assertEq(beacon.pendingImplementation(), nonContract);
+        vm.stopPrank();
+    }
+
+    function test_v14_getMarkeesPaginatesPastTheEnd() public {
+        Leaderboard successor = _migrate();
+        uint256 count = successor.markeeCount();
+
+        assertEq(successor.getMarkees(0, type(uint256).max).length, count);
+        assertEq(successor.getMarkees(1, type(uint256).max).length, count - 1);
+        assertEq(successor.getMarkees(count - 1, 10).length, 1);
+        assertEq(successor.getMarkees(count, 10).length, 0);
+        assertEq(successor.getMarkees(count + 5, 10).length, 0);
+        assertEq(successor.getMarkees(type(uint256).max, type(uint256).max).length, 0);
+        assertEq(successor.getMarkees(0, 0).length, 0);
     }
 
     function test_v14_pauseBlocksPaymentsOnly() public {

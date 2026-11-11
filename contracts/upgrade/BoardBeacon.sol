@@ -104,8 +104,11 @@ abstract contract BoardBeacon {
 
     // ─── Timelocked upgrades ──────────────────────────────────────────────────
 
+    /// @notice Replaces any pending upgrade, emitting UpgradeCancelled for it and restarting the delay.
     function scheduleUpgrade(address _newImplementation) external onlyAdmin {
         _validateImplementation(_newImplementation);
+        address replaced = pendingImplementation;
+        if (replaced != address(0)) emit UpgradeCancelled(replaced);
         pendingImplementation = _newImplementation;
         upgradeReadyAt = block.timestamp + UPGRADE_DELAY;
         emit UpgradeScheduled(_newImplementation, upgradeReadyAt);
@@ -162,7 +165,10 @@ abstract contract BoardBeacon {
 
     // ─── Roles ────────────────────────────────────────────────────────────────
 
+    /// @notice Replaces any pending guardian change, emitting GuardianChangeCancelled for it and
+    ///         restarting the delay.
     function scheduleGuardianChange(address _newGuardian) external onlyAdmin {
+        if (guardianReadyAt != 0) emit GuardianChangeCancelled(pendingGuardian);
         pendingGuardian = _newGuardian;
         guardianReadyAt = block.timestamp + UPGRADE_DELAY;
         emit GuardianChangeScheduled(_newGuardian, guardianReadyAt);
@@ -213,11 +219,17 @@ abstract contract BoardBeacon {
 
     /// @dev A forwarder (or this beacon) as the implementation would make every board delegate into
     ///      itself until it runs out of gas, which also jails every streaming board on its next close.
+    ///      A forwarder is recognised by boardBeacon() returning exactly one ABI word holding the address
+    ///      of a contract, so a fallback that merely does not revert is not mistaken for one. Forwarders of
+    ///      any beacon are rejected, not only this one's, since two beacons each routing to the other's
+    ///      forwarder would loop the same way.
     function _validateImplementation(address _implementation) internal view virtual {
         if (_implementation.code.length == 0) revert ImplementationNotContract();
         if (_implementation == address(this)) revert ImplementationIsForwarder();
-        (bool answersBeacon,) = _implementation.staticcall(abi.encodeWithSignature("boardBeacon()"));
-        if (answersBeacon) revert ImplementationIsForwarder();
+        (bool ok, bytes memory data) = _implementation.staticcall(abi.encodeWithSignature("boardBeacon()"));
+        if (!ok || data.length != 32) return;
+        uint256 word = abi.decode(data, (uint256));
+        if (word >> 160 == 0 && address(uint160(word)).code.length != 0) revert ImplementationIsForwarder();
     }
 
     function _assertPausable(bytes4 _selector) internal view virtual {}
