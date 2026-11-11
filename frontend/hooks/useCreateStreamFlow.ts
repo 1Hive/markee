@@ -17,6 +17,7 @@ import {
   CFA_FORWARDER_ABI, buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
+import { clearCreated, loadCreated, planCreateStep, saveCreated, type CreatedMarkee } from '@/lib/superfluid/createResume'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -35,26 +36,6 @@ async function waitForPool(
     if (pool && pool.toLowerCase() !== ZERO_ADDRESS) return pool
   }
   throw new Error('Pool not ready after 18 s — please try again.')
-}
-
-interface CreatedMarkee { markee: Address; pool: Address; owner: string; message: string }
-
-const resumeKey = (board: string, owner: string) => `markee:stream-create:v1:${board.toLowerCase()}:${owner.toLowerCase()}`
-
-function loadCreated(board: string, owner: string): CreatedMarkee | null {
-  try {
-    const saved = JSON.parse(localStorage.getItem(resumeKey(board, owner)) || 'null') as CreatedMarkee | null
-    return saved && /^0x[0-9a-fA-F]{40}$/.test(saved.markee) && /^0x[0-9a-fA-F]{40}$/.test(saved.pool) && typeof saved.message === 'string'
-      ? { ...saved, owner: owner.toLowerCase() } : null
-  } catch { return null }
-}
-
-function saveCreated(board: string, created: CreatedMarkee) {
-  try { localStorage.setItem(resumeKey(board, created.owner), JSON.stringify(created)) } catch { /* Resume falls back to this session only. */ }
-}
-
-function clearCreated(board: string, owner: string) {
-  try { localStorage.removeItem(resumeKey(board, owner)) } catch { /* Nothing to clear. */ }
 }
 
 const MARKEE_CREATED_ABI = [
@@ -139,7 +120,8 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
       const owner = address.toLowerCase()
       if (createdRef.current?.owner !== owner) createdRef.current = loadCreated(board, owner)
       const stepCtx = { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id }
-      if (createdRef.current && createdRef.current.message !== message) {
+      const createStep = planCreateStep(createdRef.current, message)
+      if (createdRef.current && createStep === 'update') {
         setPhase('creating')
         const editHash = await writeContractAsync({
           address: board,

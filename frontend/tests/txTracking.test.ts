@@ -3,6 +3,8 @@ import test from 'node:test'
 import { DROPPED_AFTER_MS, UNKNOWN_AFTER_MS, nextTracking, type ReceiptTracking } from '../lib/tx/receiptOutcome'
 import { addPendingTx, pendingFor, readPendingTxs, removePendingTx, PENDING_TX_KEY } from '../lib/tx/pendingStore'
 import { formatTransactionError, isWalletTimeoutError, WALLET_TIMEOUT_MESSAGE } from '../lib/transactionErrors'
+import { createTrackedCache } from '../lib/tx/trackedCache'
+import { loadCreated, planCreateStep, resumeKey, saveCreated, type CreatedMarkee } from '../lib/superfluid/createResume'
 
 const start: ReceiptTracking = { outcome: 'confirming' }
 
@@ -37,7 +39,11 @@ function withStorage(run: () => void) {
   const g = globalThis as Record<string, unknown>
   const previous = g.window
   g.window = {
-    localStorage: { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v) } },
+    localStorage: {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => { data.set(k, v) },
+      removeItem: (k: string) => { data.delete(k) },
+    },
     dispatchEvent: () => true,
   }
   try { run() } finally { g.window = previous }
@@ -78,4 +84,60 @@ test('wallet timeouts get their own message and are not rejections', () => {
   assert.equal(isWalletTimeoutError(timeout), true)
   assert.equal(formatTransactionError(timeout), WALLET_TIMEOUT_MESSAGE)
   assert.equal(isWalletTimeoutError(new Error('User rejected the request.')), false)
+})
+
+test('tracked receipts survive while pending and are evicted once resolved and unwatched', () => {
+  const cache = createTrackedCache<ReceiptTracking>(t => t.outcome !== 'confirming' && t.outcome !== 'unknown')
+  cache.retain('a')
+  cache.set('a', { outcome: 'confirming' })
+  cache.release('a')
+  assert.equal(cache.get('a')?.outcome, 'confirming')
+  cache.retain('a')
+  cache.retain('a')
+  cache.set('a', { outcome: 'confirmed' })
+  cache.release('a')
+  assert.equal(cache.get('a')?.outcome, 'confirmed')
+  cache.release('a')
+  assert.equal(cache.get('a'), undefined)
+  cache.set('b', { outcome: 'unknown' })
+  assert.equal(cache.get('b')?.outcome, 'unknown')
+  cache.set('b', { outcome: 'dropped' })
+  assert.equal(cache.size(), 0)
+})
+
+const board = `0x${'1'.repeat(40)}`
+const owner = `0x${'2'.repeat(40)}`
+const created: CreatedMarkee = { markee: `0x${'3'.repeat(40)}`, pool: `0x${'4'.repeat(40)}`, owner, message: 'first' }
+
+test('a stream resume reuses, edits, or creates based on the saved markee', () => {
+  withStorage(() => {
+    assert.equal(planCreateStep(loadCreated(board, owner), 'first'), 'create')
+    saveCreated(board, created)
+    assert.equal(planCreateStep(loadCreated(board, owner.toUpperCase().replace('0X', '0x')), 'first'), 'reuse')
+    assert.equal(planCreateStep(loadCreated(board, owner), 'second'), 'update')
+    assert.equal(planCreateStep(loadCreated(board, `0x${'5'.repeat(40)}`), 'first'), 'create')
+  })
+})
+
+test('an unconfirmed message edit keeps the saved message so a retry edits again instead of creating', () => {
+  withStorage(() => {
+    saveCreated(board, created)
+    const beforeEdit = loadCreated(board, owner)
+    assert.equal(planCreateStep(beforeEdit, 'second'), 'update')
+    const afterReopen = loadCreated(board, owner)
+    assert.equal(afterReopen?.markee, created.markee)
+    assert.equal(planCreateStep(afterReopen, 'second'), 'update')
+    saveCreated(board, { ...afterReopen!, message: 'second' })
+    assert.equal(planCreateStep(loadCreated(board, owner), 'second'), 'reuse')
+  })
+})
+
+test('a corrupt saved markee starts a fresh create', () => {
+  const data = withStorage(() => {
+    window.localStorage.setItem(resumeKey(board, owner), JSON.stringify({ ...created, pool: 'nope' }))
+    assert.equal(loadCreated(board, owner), null)
+    window.localStorage.setItem(resumeKey(board, owner), '{')
+    assert.equal(planCreateStep(loadCreated(board, owner), 'first'), 'create')
+  })
+  assert.ok(data.has(resumeKey(board, owner)))
 })
