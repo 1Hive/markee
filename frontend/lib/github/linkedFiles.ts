@@ -84,7 +84,7 @@ export type GithubFileFetchResult =
 // body, so a crafted value (query strings, "..", extra slashes) must not reshape the outbound
 // api.github.com path. A name that isn't exactly two non-empty segments can't be a real repo,
 // which is why the fetch below reports it as not_found.
-function encodedRepoPath(repoFullName: string): string | null {
+export function encodedRepoPath(repoFullName: string): string | null {
   const [owner, repo, ...rest] = repoFullName.split('/')
   if (!owner || !repo || rest.length > 0) return null
   return `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
