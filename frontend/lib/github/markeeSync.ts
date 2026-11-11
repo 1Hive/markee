@@ -1,9 +1,9 @@
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther, isAddress, parseAbi } from 'viem'
-import { FACTORIES } from '@/lib/contracts/addresses'
+import { BASE_STREAMING_FACTORY, FACTORIES } from '@/lib/contracts/addresses'
 import { base } from 'viem/chains'
 import { billboardLine } from '@/lib/github/billboardText'
-import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, encodedFilePath } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, encodedFilePath, encodedRepoPath } from '@/lib/github/linkedFiles'
 
 // ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
 // Emoji and CJK characters occupy 2 columns; everything else occupies 1.
@@ -188,7 +188,7 @@ ${endDelimiter(leaderboardAddress)}`
 
 const FACTORY_ABI = parseAbi(['function isFactoryLeaderboard(address) view returns (bool)'])
 const BOARD_FACTORIES = [...new Set(
-  [...Object.values(FACTORIES), '0x37f420fdE5c98e611EB7cb9b74ef579D84697039', process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '']
+  [...Object.values(FACTORIES), BASE_STREAMING_FACTORY, process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '']
     .filter(a => isAddress(a)).map(a => a.toLowerCase()),
 )] as `0x${string}`[]
 
@@ -234,7 +234,7 @@ export function billboardSignature(state: BillboardState): string {
 
 export interface SyncOutcome { status: number; body: Record<string, unknown> }
 
-export async function syncMarkeeFile(normalizedAddress: `0x${string}`): Promise<SyncOutcome> {
+export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownState?: BillboardState): Promise<SyncOutcome> {
   console.log(`[update-markee-file] triggered for ${normalizedAddress}`)
 
   const linkedFiles = await getLinkedFiles(normalizedAddress)
@@ -246,7 +246,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`): Promise<
 
   let state: BillboardState
   try {
-    state = await readBillboardState(normalizedAddress)
+    state = knownState ?? await readBillboardState(normalizedAddress)
   } catch (err) {
     console.error('[update-markee-file] chain read error:', err)
     return { status: 500, body: { error: 'Chain read failed' } }
@@ -279,9 +279,15 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`): Promise<
       continue
     }
 
+    const repoPath = encodedRepoPath(file.repoFullName)
+    if (!repoPath) {
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Invalid repository name' })
+      continue
+    }
+
     try {
       const fileRes = await fetch(
-        `https://api.github.com/repos/${file.repoFullName}/contents/${encodedFilePath(file.filePath)}`,
+        `https://api.github.com/repos/${repoPath}/contents/${encodedFilePath(file.filePath)}`,
         { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' } }
       )
       if (!fileRes.ok) {
@@ -338,7 +344,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`): Promise<
       }
 
       const putRes = await fetch(
-        `https://api.github.com/repos/${file.repoFullName}/contents/${encodedFilePath(file.filePath)}`,
+        `https://api.github.com/repos/${repoPath}/contents/${encodedFilePath(file.filePath)}`,
         {
           method: 'PUT',
           headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
