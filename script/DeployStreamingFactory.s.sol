@@ -32,7 +32,7 @@ contract DeployStreamingFactory is Script {
     function run() external returns (StreamingLeaderboardFactory factory) {
         vm.startBroadcast();
         address markeeImplementation = address(new Markee());
-        address leaderboardImplementation = address(new StreamingLeaderboard(ISuperfluid(HOST), ISuperToken(ETHX)));
+        address leaderboardImplementation = address(new StreamingLeaderboard(ISuperfluid(HOST), ISuperToken(ETHX), vm.envOr("MIGRATOR", address(0))));
         factory = new StreamingLeaderboardFactory(
             ISuperfluid(HOST),
             ISuperToken(ETHX),

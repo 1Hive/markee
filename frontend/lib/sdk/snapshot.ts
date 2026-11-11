@@ -42,8 +42,8 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
   const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
   const r = <T>(fn: string, args: readonly unknown[] = []) => read<T>(client, board, boardABI, fn, args, blockNumber);
   const [version, factory] = await Promise.all([r<string>('VERSION'), r<Address>('factory')]);
-  const strategy: 'sale' | 'rent' | null = version === 'streaming-1.0.0' ? 'rent' : version === '1.3.0' ? 'sale' : null;
-  if (!strategy) throw new SDKError('UNSUPPORTED_BOARD', 'This SDK supports Markee v1.3 For Sale and streaming v1 boards.', 422);
+  const strategy: 'sale' | 'rent' | null = version === 'streaming-1.0.0' || version === 'streaming-1.1.0' ? 'rent' : version === '1.3.0' || version === '1.4.0' ? 'sale' : null;
+  if (!strategy) throw new SDKError('UNSUPPORTED_BOARD', 'This SDK supports Markee v1.3/v1.4 For Sale and streaming v1 boards.', 422);
   const factories = [chainId === 8453 ? '0x861D9897eC47421aAFB6321Ee219E88ab485121f' : '',
     chainId === 8453 ? '0x37f420fdE5c98e611EB7cb9b74ef579D84697039' : '',
     process.env[`MARKEE_SDK_FACTORIES_${chainId}`] || '',

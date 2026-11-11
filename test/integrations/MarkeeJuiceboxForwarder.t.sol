@@ -124,7 +124,7 @@ contract MarkeeJuiceboxForwarderTest is Test {
         vm.createSelectFork(vm.envString("BASE_RPC_URL"), vm.envOr("FORK_BLOCK", DEFAULT_FORK_BLOCK));
         assertEq(IJBDirectoryT(JB_DIRECTORY).primaryTerminalOf(JB_PROJECT, address(0xEEEe)), JB_TERMINAL);
 
-        address boardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        address boardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
         address markeeImpl = address(new Markee());
         factory = new StreamingLeaderboardFactory(
             ISuperfluid(HOST), ETHX, boardImpl, markeeImpl, JB_TERMINAL, MARKEE_REVNET_PROJECT, address(0), admin

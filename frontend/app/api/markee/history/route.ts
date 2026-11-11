@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed
-    // report "1.3.0" (see StreamingBoardDetail.tsx) -- only read on-chain when the caller doesn't
+    // report "1.3.0" or "1.4.0" (see StreamingBoardDetail.tsx) -- only read on-chain when the caller doesn't
     // already know (e.g. the For Sale page never passes ?strategy, the For Rent page always does).
     let isStreaming = strategyParam === 'streaming'
     if (!strategyParam) {

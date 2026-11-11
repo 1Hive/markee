@@ -398,7 +398,7 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   )
 }
 
-// A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed report "1.3.0".
+// A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed report "1.3.0" or "1.4.0".
 const VERSION_ABI = [
   { inputs: [], name: 'VERSION', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function' },
 ] as const
