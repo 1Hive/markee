@@ -16,7 +16,7 @@ import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
-import { isZeroAddress } from '@/lib/beneficiary'
+import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -335,8 +335,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const ethPrice = useEthPrice()
 
   const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
-  const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress)
-    ? 'This board has no beneficiary, so a payment would be stuck. Ask its admin to set one first.' : null
+  const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
 
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
