@@ -18,7 +18,7 @@ import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
-import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, viewReporting, type BoardIntegrations } from '@/lib/integrations/featured'
+import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, onePerDomain, viewReporting, type BoardIntegrations } from '@/lib/integrations/featured'
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
@@ -340,12 +340,12 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
   // independent, address-keyed integrations) -- so both are fetched and rendered together, unioned
   // and sorted by views, rather than picking one type based on the board's platform tag.
   const files = (entry?.linkedFiles ?? []).filter(f => f.verified)
-  const urls = entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : []
-
   // Views and the featured pick come from one place, so this agrees with the Marketplace and the
   // dashboard (lib/integrations/featured.ts).
   const { data: integrationData } = useBoardIntegrations(boardAddress ? [boardAddress] : [])
   const info = boardAddress ? integrationData?.[boardAddress.toLowerCase()] : undefined
+  // One row per domain: views are counted per domain, so several pages would repeat one count.
+  const urls = onePerDomain(entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : [], info?.featured)
   const viewsLoaded = integrationData !== null
 
   if (!entry) {
@@ -451,7 +451,7 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
               style={dropdownRowStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, overflow: 'hidden' }}>
-                <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clean(item.url)}</span>
+                <span style={{ fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{host(item.url)}</span>
                 <ExternalLink size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
               </span>
               <SiteViews info={info} itemKey={item.key} views={item.views} loaded={item.viewsLoaded} />

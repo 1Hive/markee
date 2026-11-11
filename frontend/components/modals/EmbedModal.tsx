@@ -66,7 +66,8 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 720,
+          // The website setup is a single-column flow designed at ~480px; the GitHub panel needs more room.
+          width: '100%', maxWidth: step === 'embed' && platform === 'website' ? 480 : 720,
           background: BG2, borderRadius: 16,
           border: `1px solid ${BORDER}`,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',

@@ -1,4 +1,4 @@
-import { moderationSeverity, type ModerationSeverity } from '../moderation/severity';
+import { moderationPolicy, type ModerationSeverity } from '../moderation/severity';
 import { createHash, randomBytes } from 'node:crypto';
 import { kv } from '@vercel/kv';
 import { isHash, type Address, type Hex } from 'viem';
@@ -62,7 +62,7 @@ export function checkoutAction(input: unknown): PaymentAction {
 }
 export async function createCheckout(body: Record<string, unknown>, origin: string) : Promise<CheckoutSession> {
   let severity: ModerationSeverity;
-  try { severity = moderationSeverity(body.severity); } catch { throw new SDKError('INVALID_SEVERITY', 'Invalid moderation severity.'); }
+  try { severity = moderationPolicy(body.severity, body.rules); } catch { throw new SDKError('INVALID_SEVERITY', 'Invalid moderation severity or rules.'); }
   const checkoutOriginOverride = hostedCheckoutOrigin();
   const p = placement(body.placement), action = checkoutAction(body.action);
   if (p.kind !== 'board' || p.chainId !== 8453) throw new SDKError('UNSUPPORTED_CHECKOUT', 'Hosted checkout supports Base boards.');

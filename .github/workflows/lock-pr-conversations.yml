@@ -10,7 +10,8 @@ on:
 
 permissions:
   issues: write
-  pull-requests: read
+  # Locking a pull request's conversation needs pull-requests: write (issues: write alone returns 403).
+  pull-requests: write
 
 concurrency:
   group: lock-pr-conversations

@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
+import { useQueryClient } from '@tanstack/react-query'
 import { ADMIN_ADDRESSES, MODERATION_API } from '@/lib/moderation/config'
 import { reviewMessage } from '@/lib/moderation/queue'
 
@@ -85,6 +86,7 @@ export function useModeration() {
 export function ModerationProvider({ children }: { children: ReactNode }) {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
+  const queryClient = useQueryClient()
   const [boardFlagged, setBoardFlagged] = useState<Set<string>>(new Set())
   const [siteFlagged, setSiteFlagged] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
@@ -208,6 +210,9 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         }
 
         replaceFlagged(await res.json())
+        // Published checks (the Flagged badge) also report manual flags; refresh them now rather than
+        // on their 30-second interval.
+        void queryClient.invalidateQueries({ queryKey: ['message-moderation'] })
         return action === 'flag'
       } catch (err) {
         console.error('[moderation] toggleFlag error:', err)
@@ -217,7 +222,7 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
         return currentlyFlagged
       }
     },
-    [address, isAdminUser, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged, toKey]
+    [address, isAdminUser, canModerate, canUnflag, ownsBoard, flaggedSet, boardFlagged, siteFlagged, signMessageAsync, replaceFlagged, toKey, queryClient]
   )
 
   return (

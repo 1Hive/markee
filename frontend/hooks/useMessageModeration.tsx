@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import type { MessageCheck, ModerationSeverity } from '../../packages/sdk/src/types'
+import type { MessageCheck } from '../../packages/sdk/src/types'
+import type { ModerationSeverity } from '@/lib/moderation/severity'
 
 export async function requestMessageCheck(message: string, signal?: AbortSignal, severity?: ModerationSeverity): Promise<MessageCheck> {
   const response = await fetch('/api/moderation/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'draft', message, ...(severity ? { severity } : {}) }), signal })

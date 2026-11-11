@@ -2,15 +2,18 @@ import 'server-only'
 import { createHash, randomUUID } from 'node:crypto'
 import { kv } from '@vercel/kv'
 import { Profanity } from '@2toad/profanity'
-import { checkRules, checkStrictRules } from './rules'
-import type { ModerationSeverity } from './severity'
+import { checkRules, checkStrictRules, checkSelectedRules } from './rules'
+import { isCustomPolicy, moderationRules, type ModerationSeverity } from './severity'
 import { parseAbi, type Address } from 'viem'
 import { underRateLimit } from '../rate-limit'
 import { trustedMembership } from './membership'
 import { getModerationClient, readAllFlagged, flagKey, authorizedScopes, readItems } from './server'
 
-export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-v1'
-export const AUTO_LANGUAGES = ['ar', 'zh', 'en', 'fr', 'de', 'hi', 'it', 'ja', 'ko', 'pt', 'ru', 'es']
+export const AUTO_POLICY = 'website-rules-v1+profanity-3.3.0-en-v2'
+// English only: the package's other lists are machine-translated and flag everyday words (Portuguese
+// "no" and "t", which matches don't/can't; French "les"; Chinese 中国 and 爱; Russian вес). A new
+// policy version makes indexed flags from the old lists get rechecked rather than kept.
+export const AUTO_LANGUAGES = ['en']
 export const AUTO_REASON = 'This message matched the profanity filter.'
 export const autoEnabled = () => process.env.FLAG_AUTO_MODERATION?.trim().toLowerCase() !== 'false'
 export const contentHash = (message: string) => createHash('sha256').update(message, 'utf8').digest('hex')
@@ -58,8 +61,10 @@ export function checkDraft(message: string, severity: ModerationSeverity = 'stan
   if (cached) return cached
   try {
     const matches = automaticDeps.rules(message)
-    if (severity !== 'relaxed' && automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
+    const rules = moderationRules(severity)
+    if (rules.profanity && automaticDeps.engine.check(message)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
     if (severity === 'strict') matches.push(...checkStrictRules(message))
+    else if (isCustomPolicy(severity)) matches.push(...checkSelectedRules(message, rules))
     const result: AutoVerdict = { ...base, state: matches.length ? 'soft-flagged' : 'pass', ...(matches.length ? { reason: matches.map(m => m.reason).join(' '), reasonCodes: matches.map(m => m.code) } : {}) }
     if (verdictCache.size >= 2000) verdictCache.delete(verdictCache.keys().next().value!)
     verdictCache.set(key, result)

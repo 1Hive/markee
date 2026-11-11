@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import { usePrivy, useWallets, useFundWallet, useSendTransaction, useCreateWallet, useDepositFunds } from '@privy-io/react-auth';
 import { base } from 'viem/chains';
 import { formatEther, formatUnits, isHash, type Hex } from 'viem';
-import type { Action, ModerationSeverity, CheckoutStatus, Placement, PreparedAction } from '../../../../packages/sdk/src/types';
+import type { Action, CheckoutStatus, Placement, PreparedAction } from '../../../../packages/sdk/src/types';
+import type { ModerationSeverity } from '@/lib/moderation/severity';
 
 import type { ConversionQuote, ConversionStep } from '../../../lib/sdk/conversion';
 

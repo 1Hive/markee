@@ -95,10 +95,23 @@ test('views count the board and its top message, on the dashboard and in Best Bu
   expect(listing.ok()).toBeTruthy()
   expect((await listing.json()).leaderboards.some((lb: { address: string }) =>
     lb.address.toLowerCase() === BOARDS.sale.toLowerCase())).toBe(true)
-  await kv(['DEL', 'cache:marketplace:best-buys'])
-  const bestBuys = await page.request.get('/api/marketplace/best-buys')
-  expect(bestBuys.ok()).toBeTruthy()
-  expect((await bestBuys.json()).buys).toEqual(expect.arrayContaining([
+  // Best Buys reads the listing without bust. Right after a refresh, a platform's snapshot can still be
+  // locked or backing off, and that read then comes back without the platform's boards (Best Buys returns
+  // an uncached empty list, and the next load recovers). Retry until the listing settles.
+  // Each poll also logs what the unbusted listing held when Best Buys is empty, so a timeout says why.
+  await expect.poll(async () => {
+    await kv(['DEL', 'cache:marketplace:best-buys'])
+    const plain = await page.request.get('/api/ecosystem/leaderboards')
+    const board = plain.ok()
+      ? ((await plain.json()).leaderboards as { address: string }[]).find(lb => lb.address.toLowerCase() === BOARDS.sale.toLowerCase())
+      : undefined
+    const bestBuys = await page.request.get('/api/marketplace/best-buys')
+    const body = bestBuys.ok() ? await bestBuys.json() : { buys: [] }
+    if (!body.buys?.length) {
+      console.log(`[best-buys poll] best-buys HTTP ${bestBuys.status()} ${JSON.stringify(body).slice(0, 200)}; listing HTTP ${plain.status()}; board ${board ? JSON.stringify(board).slice(0, 400) : 'missing'}`)
+    }
+    return body.buys
+  }, { timeout: TX_TIMEOUT, intervals: [1_000, 2_000, 5_000] }).toEqual(expect.arrayContaining([
     expect.objectContaining({ address: expect.stringMatching(new RegExp(`^${BOARDS.sale}$`, 'i')), views: 5250 }),
   ]))
 
