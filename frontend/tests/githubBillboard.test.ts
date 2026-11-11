@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fixedFooter, formatEthCeil, streamingFooter } from '../lib/github/markeeSync'
+import { encodedRepoPath } from '../lib/github/linkedFiles'
 
 const eth = (n: number) => BigInt(Math.round(n * 1e6)) * 10n ** 12n
 
@@ -19,4 +20,12 @@ test('a fixed board asks for at least its minimum price', () => {
 test('a streaming board advertises a monthly rate, not a one-off price', () => {
   assert.match(streamingFooter(380_517_503n, 0n, true), /^Stream over [\d.]+ ETH\/mo to change$/)
   assert.equal(streamingFooter(0n, eth(0.002), false), 'Stream from 0.002 ETH/mo to add yours')
+})
+
+test('encodedRepoPath rejects names that would reshape the API path', () => {
+  assert.equal(encodedRepoPath('owner/repo'), 'owner/repo')
+  assert.equal(encodedRepoPath('own er/re?po'), 'own%20er/re%3Fpo')
+  assert.equal(encodedRepoPath('owner/repo/../../user'), null)
+  assert.equal(encodedRepoPath('owner'), null)
+  assert.equal(encodedRepoPath('/repo'), null)
 })
