@@ -67,6 +67,12 @@ export function isLegacyFixedBoardVersion(version: string | undefined): boolean 
   return version !== undefined && !CURRENT_FIXED_BOARD_VERSIONS.has(version)
 }
 
+const TWO_STEP_ADMIN_BOARD_VERSIONS = new Set(['1.4.0'])
+
+export function hasTwoStepAdmin(version: string | undefined): boolean {
+  return version !== undefined && TWO_STEP_ADMIN_BOARD_VERSIONS.has(version)
+}
+
 export const STRATEGIES: Record<Strategy, StrategyMeta> = {
   fixed: {
     key: 'fixed',

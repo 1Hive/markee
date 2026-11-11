@@ -853,6 +853,15 @@ export const LeaderboardV11ABI = [
   },
 ] as const
 
+export const LeaderboardV14AdminABI = [
+  { inputs: [], name: 'VERSION', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'pendingAdmin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '_newAdmin', type: 'address' }], name: 'setAdmin', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [], name: 'acceptAdmin', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [], name: 'cancelAdminTransfer', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+] as const
+
 // LeaderboardFactory pagination — shared by the per-vertical listing routes
 // (openinternet / superfluid / streaming), which each enumerate their factory.
 export const LeaderboardFactoryABI = [
