@@ -7,7 +7,7 @@ import { useAccount, useBalance, useWriteContract, useReadContract, useSwitchCha
 import { parseEther, formatEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
@@ -165,7 +165,7 @@ export function BuyMessageModal({
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const trackedBoard = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD'
+  const trackedBoard = customStrategyAddress || V13_LEADERBOARDS.COOPERATIVE
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
     hash, track: { account: activeAddress, board: trackedBoard, label: 'Your Markee payment' },
   })
@@ -177,7 +177,7 @@ export function BuyMessageModal({
     chainId: CANONICAL_CHAIN.id,
   })
 
-  const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
+  const strategyAddress = (customStrategyAddress || V13_LEADERBOARDS.COOPERATIVE) as `0x${string}`
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
   const { trust: boardTrust } = useBoardTrust(isOpen ? strategyAddress : undefined)
   const retiredBoardReason = boardTrust === 'trusted' ? null
