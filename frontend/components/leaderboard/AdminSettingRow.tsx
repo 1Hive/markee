@@ -189,6 +189,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
             {acknowledge ?? 'I understand this cannot be undone from here'}
           </label>
         </div>
+        {!inputError && typedWarning && <p style={{ margin: '8px 0 0', fontSize: 12, color: AMBER, lineHeight: 1.45 }}>{typedWarning}</p>}
         {localError && <p style={{ margin: '8px 0 0', fontSize: 12, color: DANGER }}>{localError}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 14 }}>
           {busy ? pending : (
