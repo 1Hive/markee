@@ -8,6 +8,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getTxUrl } from '@/lib/explorer'
 import { addPendingTx, removePendingTx } from '@/lib/tx/pendingStore'
 import { nextTracking, type ReceiptPoll, type ReceiptTracking } from '@/lib/tx/receiptOutcome'
+import { createTrackedCache } from '@/lib/tx/trackedCache'
 
 export const DROPPED_TX_MESSAGE = 'The network dropped this transaction, so nothing was charged. You can try again.'
 export const REVERTED_TX_MESSAGE = 'Transaction failed on-chain. Please try again.'
@@ -19,8 +20,6 @@ export interface TrackedTxContext {
 }
 
 interface TrackedState { tracking: ReceiptTracking; receipt?: TransactionReceipt; revertError?: unknown }
-
-const trackedByHash = new Map<string, TrackedState>()
 
 function errorName(error: unknown) {
   return (error as { name?: string } | null)?.name ?? ''
@@ -56,6 +55,8 @@ function isResolved(tracking: ReceiptTracking) {
   return tracking.outcome === 'confirmed' || tracking.outcome === 'reverted' || tracking.outcome === 'dropped'
 }
 
+const trackedByHash = createTrackedCache<TrackedState>(state => isResolved(state.tracking))
+
 export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }: {
   hash: `0x${string}` | undefined
   chainId?: number
@@ -69,6 +70,12 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
     addPendingTx({ hash, chainId, account: track.account, board: track.board, label: track.label, createdAt: Date.now() })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hash, chainId])
+
+  useEffect(() => {
+    if (!key) return
+    trackedByHash.retain(key)
+    return () => trackedByHash.release(key)
+  }, [key])
 
   const { data } = useQuery({
     queryKey: ['tracked-receipt', key],

@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { getLinkedFiles } from '@/lib/github/linkedFiles'
+import { mapSettled } from '@/lib/concurrency'
 import { billboardSignature, readBillboardState, syncMarkeeFile } from '@/lib/github/markeeSync'
 
 export const dynamic = 'force-dynamic'
@@ -21,8 +22,10 @@ const LINKED_PREFIX = 'github:markee:'
 const syncedKey = (board: string) => `github:synced:${board}`
 const RESYNC_AFTER_MS = 24 * 60 * 60_000
 const LOCK_KEY = 'github:sync:lock'
+const SYNC_CONCURRENCY = 4
 
 interface SyncedState { signature: string; at: number }
+type BoardOutcome = 'skipped' | 'synced' | 'unchanged' | 'failed'
 
 function authorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
@@ -41,29 +44,38 @@ async function linkedBoards(): Promise<string[]> {
   return [...new Set(boards)]
 }
 
+async function syncBoard(board: string): Promise<BoardOutcome> {
+  const files = await getLinkedFiles(board)
+  if (!files.some(f => f.verified)) return 'skipped'
+  try {
+    const state = await readBillboardState(board as `0x${string}`)
+    const signature = billboardSignature(state)
+    const previous = await kv.get<SyncedState>(syncedKey(board))
+    if (previous?.signature === signature && Date.now() - previous.at < RESYNC_AFTER_MS) return 'unchanged'
+    const outcome = await syncMarkeeFile(board as `0x${string}`, state)
+    if (!outcome.body.success) return 'failed'
+    await kv.set(syncedKey(board), { signature, at: Date.now() })
+    return 'synced'
+  } catch (err) {
+    console.error(`[cron/github-sync] ${board}`, err)
+    return 'failed'
+  }
+}
+
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: maxDuration + 30 })) return NextResponse.json({ skipped: 'already running' })
   try {
+    const boards = await linkedBoards()
+    const outcomes = await mapSettled(boards, SYNC_CONCURRENCY, syncBoard)
     const summary = { boards: 0, synced: 0, unchanged: 0, failed: 0 }
-    for (const board of await linkedBoards()) {
-      const files = await getLinkedFiles(board)
-      if (!files.some(f => f.verified)) continue
+    outcomes.forEach((result, i) => {
+      if (result.status === 'rejected') console.error(`[cron/github-sync] ${boards[i]}`, result.reason)
+      const outcome = result.status === 'fulfilled' ? result.value : 'failed'
+      if (outcome === 'skipped') return
       summary.boards++
-      try {
-        const signature = billboardSignature(await readBillboardState(board as `0x${string}`))
-        const previous = await kv.get<SyncedState>(syncedKey(board))
-        if (previous?.signature === signature && Date.now() - previous.at < RESYNC_AFTER_MS) { summary.unchanged++; continue }
-        const outcome = await syncMarkeeFile(board as `0x${string}`)
-        if (outcome.body.success) {
-          await kv.set(syncedKey(board), { signature, at: Date.now() })
-          summary.synced++
-        } else summary.failed++
-      } catch (err) {
-        console.error(`[cron/github-sync] ${board}`, err)
-        summary.failed++
-      }
-    }
+      summary[outcome]++
+    })
     return NextResponse.json(summary)
   } finally {
     await kv.del(LOCK_KEY)

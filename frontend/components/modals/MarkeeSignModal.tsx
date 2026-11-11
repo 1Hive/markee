@@ -21,7 +21,7 @@ import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
 import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
 import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
-import { isZeroAddress } from '@/lib/beneficiary'
+import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { isBoardCreatedMarkee, useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -331,8 +331,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const ethPrice = useEthPrice()
 
   const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
-  const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress)
-    ? 'This board has no beneficiary, so a payment would be stuck. Ask its admin to set one first.' : null
+  const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
   const { trust } = useBoardTrust(isOpen ? leaderboardAddress : undefined)
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN_ID })
   const boardBlockedReason = trust === 'trusted' ? null
@@ -607,10 +606,11 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // Editing a message is free -- a leftover `amount` from a previous view shouldn't block it.
   const blocksOnBalance = insufficientBalance && view !== 'edit'
   const beneficiaryBlocks = view !== 'edit' && !!noBeneficiaryReason
+  const boardBlocks = view !== 'edit' && !!boardBlockedReason
   const paymentBlocked = (view !== 'edit' && pendingPayments.length > 0) || walletTimeout.blocked
-  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || !!boardBlockedReason || paymentBlocked
+  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || boardBlocks || paymentBlocked
   const btnDisabledReason = busy ? 'Transaction in progress'
-    : boardBlockedReason ? boardBlockedReason
+    : boardBlocks ? boardBlockedReason
     : beneficiaryBlocks ? noBeneficiaryReason
     : view !== 'edit' && pendingPayments.length ? PENDING_PAYMENT_REASON
     : walletTimeout.blocked ? 'Check your wallet first'
