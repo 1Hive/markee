@@ -330,6 +330,147 @@ contract LeaderboardBeaconTest is Test {
         factory.setMigrator(address(this));
     }
 
+    // ─── Admin transfer ───────────────────────────────────────────────────────
+
+    function test_v14_setAdminOnlyProposes() public {
+        (address b,) = factory.createLeaderboard(alice, "Fresh");
+        Leaderboard board = Leaderboard(b);
+
+        vm.expectEmit(true, true, false, false, b);
+        emit Leaderboard.AdminTransferStarted(address(this), alice);
+        board.setAdmin(alice);
+
+        assertEq(board.admin(), address(this), "admin changed before accept");
+        assertEq(board.pendingAdmin(), alice);
+
+        vm.expectRevert("Admin cannot be zero address");
+        board.setAdmin(address(0));
+        vm.prank(alice);
+        vm.expectRevert("Only admin");
+        board.setAdmin(bob);
+    }
+
+    function test_v14_acceptAdminCompletesTransfer() public {
+        (address b,) = factory.createLeaderboard(alice, "Fresh");
+        Leaderboard board = Leaderboard(b);
+        board.setAdmin(alice);
+
+        vm.prank(bob);
+        vm.expectRevert("Only pending admin");
+        board.acceptAdmin();
+        vm.expectRevert("Only pending admin");
+        board.acceptAdmin();
+
+        vm.expectEmit(true, true, false, false, b);
+        emit Leaderboard.AdminChanged(address(this), alice);
+        vm.prank(alice);
+        board.acceptAdmin();
+
+        assertEq(board.admin(), alice);
+        assertEq(board.pendingAdmin(), address(0));
+        vm.prank(alice);
+        vm.expectRevert("Only pending admin");
+        board.acceptAdmin();
+    }
+
+    function test_v14_oldAdminKeepsControlUntilAccepted() public {
+        (address b,) = factory.createLeaderboard(alice, "Fresh");
+        Leaderboard board = Leaderboard(b);
+        board.setAdmin(alice);
+
+        board.setMinimumPrice(1 ether);
+        assertEq(board.minimumPrice(), 1 ether);
+        vm.prank(alice);
+        vm.expectRevert("Only admin");
+        board.setMinimumPrice(2 ether);
+
+        vm.prank(alice);
+        board.acceptAdmin();
+        vm.expectRevert("Only admin");
+        board.setMinimumPrice(3 ether);
+        vm.prank(alice);
+        board.setMinimumPrice(3 ether);
+        assertEq(board.minimumPrice(), 3 ether);
+    }
+
+    function test_v14_setAdminRetargetsThePendingAdmin() public {
+        (address b,) = factory.createLeaderboard(alice, "Fresh");
+        Leaderboard board = Leaderboard(b);
+        board.setAdmin(alice);
+        board.setAdmin(bob);
+        assertEq(board.pendingAdmin(), bob);
+
+        vm.prank(alice);
+        vm.expectRevert("Only pending admin");
+        board.acceptAdmin();
+        vm.prank(bob);
+        board.acceptAdmin();
+        assertEq(board.admin(), bob);
+    }
+
+    function test_v14_cancelAdminTransfer() public {
+        (address b,) = factory.createLeaderboard(alice, "Fresh");
+        Leaderboard board = Leaderboard(b);
+
+        vm.expectRevert("No pending admin");
+        board.cancelAdminTransfer();
+
+        board.setAdmin(alice);
+        vm.prank(alice);
+        vm.expectRevert("Only admin");
+        board.cancelAdminTransfer();
+
+        vm.expectEmit(true, true, false, false, b);
+        emit Leaderboard.AdminTransferCancelled(address(this), alice);
+        board.cancelAdminTransfer();
+        assertEq(board.pendingAdmin(), address(0));
+        assertEq(board.admin(), address(this));
+
+        vm.prank(alice);
+        vm.expectRevert("Only pending admin");
+        board.acceptAdmin();
+    }
+
+    function test_v14_handOffAdminRequiresMigratorThatIsAdmin() public {
+        (address b,) = factory.createLeaderboard(alice, "Fresh");
+        Leaderboard board = Leaderboard(b);
+
+        vm.expectRevert("Only migrator");
+        board.handOffAdmin(alice);
+        vm.prank(alice);
+        vm.expectRevert("Only migrator");
+        board.handOffAdmin(alice);
+
+        vm.prank(address(migrator));
+        vm.expectRevert("Only admin");
+        board.handOffAdmin(alice);
+        assertEq(board.admin(), address(this));
+
+        Leaderboard successor = _migrate();
+        vm.prank(address(migrator));
+        vm.expectRevert("Only admin");
+        successor.handOffAdmin(alice);
+        vm.prank(legacyAdmin);
+        vm.expectRevert("Only migrator");
+        successor.handOffAdmin(alice);
+        assertEq(successor.admin(), legacyAdmin);
+    }
+
+    function test_migration_handsOffAdminWithoutAcceptance() public {
+        vm.expectEmit(false, true, true, false);
+        emit Leaderboard.AdminChanged(address(migrator), legacyAdmin);
+        Leaderboard successor = _migrate();
+        assertEq(successor.admin(), legacyAdmin);
+        assertEq(successor.pendingAdmin(), address(0));
+
+        vm.prank(legacyAdmin);
+        successor.setAdmin(alice);
+        assertEq(successor.admin(), legacyAdmin);
+        vm.prank(alice);
+        successor.acceptAdmin();
+        assertEq(successor.admin(), alice);
+    }
+
     // ─── Forced migration ─────────────────────────────────────────────────────
 
     function test_migration_copiesBoardWithoutLegacyAdmin() public {

@@ -48,6 +48,11 @@ contract Leaderboard is IPricingStrategy {
     mapping(address => uint256) private markeeIndex;
     mapping(address => bool) public isMarkeeOnLeaderboard;
 
+    // ─── Admin transfer ───────────────────────────────────────────────────────
+
+    /// @notice Address proposed by the admin through setAdmin; admin only changes once it calls acceptAdmin.
+    address public pendingAdmin;
+
     // ─── Events ───────────────────────────────────────────────────────────────
 
     event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name, uint256 amount);
@@ -58,6 +63,8 @@ contract Leaderboard is IPricingStrategy {
     event NameUpdated(address indexed markeeAddress, address indexed updatedBy, string newName);
     event MarkeeLeft(address indexed markeeAddress);
     event AdminChanged(address indexed oldAdmin, address indexed newAdmin);
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+    event AdminTransferCancelled(address indexed currentAdmin, address indexed pendingAdmin);
     event BeneficiaryChanged(address indexed oldBeneficiary, address indexed newBeneficiary);
     event HistoryInitialized(uint256 markeeCount);
     event MinimumPriceChanged(uint256 oldPrice, uint256 newPrice);
@@ -318,11 +325,34 @@ contract Leaderboard is IPricingStrategy {
     // ─── Admin setters (leaderboard admin only) ───────────────────────────────
     // RevNet config is NOT settable here — it is factory-controlled (Coop multisig only).
 
+    /// @notice Proposes a new admin. The current admin keeps control until _newAdmin calls acceptAdmin.
+    ///         Calling again replaces the pending proposal.
     function setAdmin(address _newAdmin) external onlyAdmin {
         require(_newAdmin != address(0), "Admin cannot be zero address");
-        address old = admin;
-        admin = _newAdmin;
-        emit AdminChanged(old, _newAdmin);
+        pendingAdmin = _newAdmin;
+        emit AdminTransferStarted(admin, _newAdmin);
+    }
+
+    /// @notice Withdraws the pending admin proposal.
+    function cancelAdminTransfer() external onlyAdmin {
+        address pending = pendingAdmin;
+        require(pending != address(0), "No pending admin");
+        pendingAdmin = address(0);
+        emit AdminTransferCancelled(admin, pending);
+    }
+
+    /// @notice Completes a transfer started with setAdmin. Pending admin only.
+    function acceptAdmin() external {
+        require(msg.sender == pendingAdmin, "Only pending admin");
+        _transferAdmin(msg.sender);
+    }
+
+    /// @notice Hands admin straight to _newAdmin at the end of a forced migration, so the legacy admin
+    ///         takes over without having to accept. Callable only by the factory's migrator while it is
+    ///         this board's admin, so it grants nothing the migrator does not already hold.
+    function handOffAdmin(address _newAdmin) external onlyMigrator onlyAdmin {
+        require(_newAdmin != address(0), "Admin cannot be zero address");
+        _transferAdmin(_newAdmin);
     }
 
     function setBeneficiaryAddress(address _newBeneficiary) external onlyAdmin {
@@ -352,6 +382,12 @@ contract Leaderboard is IPricingStrategy {
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
+
+    function _transferAdmin(address _newAdmin) internal {
+        emit AdminChanged(admin, _newAdmin);
+        admin = _newAdmin;
+        pendingAdmin = address(0);
+    }
 
     function _deployFreeMarkee(address _owner) internal returns (address markeeAddress) {
         markeeAddress = _clone(markeeImplementation);

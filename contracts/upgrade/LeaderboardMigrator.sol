@@ -25,7 +25,7 @@ interface ISuccessorLeaderboard {
     function setMinimumPrice(uint256 newPrice) external;
     function setMaxMessageLength(uint256 newLength) external;
     function setMaxNameLength(uint256 newLength) external;
-    function setAdmin(address newAdmin) external;
+    function handOffAdmin(address newAdmin) external;
 }
 
 /// @title LeaderboardMigrator
@@ -67,6 +67,6 @@ contract LeaderboardMigrator is BoardMigratorBase {
     function _afterCopy(address, address[] memory) internal override {}
 
     function _handOff(address _successor, address _legacyAdmin) internal override {
-        ISuccessorLeaderboard(_successor).setAdmin(_legacyAdmin);
+        ISuccessorLeaderboard(_successor).handOffAdmin(_legacyAdmin);
     }
 }
