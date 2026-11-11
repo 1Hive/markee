@@ -1263,6 +1263,79 @@ contract StreamingLeaderboardTest is Test {
         _notJailed();
     }
 
+    function test_beneficiaryCloseAfterQuietWindow_keepsAccrualAndDeposits() public {
+        address other = _backer("other");
+        address otherMarkee = _newMarkee("o", "other");
+        vm.prank(other);
+        board.depositBuffer(other, 0.05 ether);
+        _open(other, otherMarkee, _rate(0.02 ether));
+
+        address top = _backer("top");
+        address topMarkee = _newMarkee("t", "top");
+        _open(top, topMarkee, _rate(0.1 ether));
+        assertEq(board.topMarkee(), topMarkee, "top backer should lead");
+
+        vm.warp(block.timestamp + 5 days);
+        uint256 pendingBefore = board.pendingSettlement(top);
+
+        vm.prank(beneficiary);
+        CFA.deleteFlow(ETHX, address(board), beneficiary, "");
+        _notJailed();
+        assertEq(board.pendingSettlement(top), pendingBefore, "accrual changed on beneficiary close");
+
+        vm.warp(block.timestamp + 1 days);
+        assertApproxEqAbs(
+            board.pendingSettlement(top) - pendingBefore, _r(_rate(0.1 ether)) * 1 days, 1e6, "full rate not accrued after close"
+        );
+
+        vm.prank(top);
+        CFA.deleteFlow(ETHX, top, address(board), "");
+        address[] memory backers = new address[](1);
+        backers[0] = top;
+        board.settle(backers);
+
+        vm.startPrank(other);
+        CFA.deleteFlow(ETHX, other, address(board), "");
+        board.withdrawDeposit();
+        vm.stopPrank();
+        assertEq(board.backerDeposit(other), 0, "deposit not returned");
+        _notJailed();
+    }
+
+    function test_superAppBeneficiary_isNotStreamedTo() public {
+        (address appBoard,) = factory.createLeaderboard(admin, "App", "Open Internet", "openinternet");
+        assertTrue(ISuperfluid(HOST).isApp(ISuperApp(appBoard)), "beneficiary is not an app");
+        board.setBeneficiaryAddress(appBoard);
+
+        address top = _backer("top");
+        _open(top, _newMarkee("t", "top"), _rate(0.1 ether));
+        _notJailed();
+        assertEq(CFA.getFlowrate(ETHX, address(board), appBoard), int96(0), "an app beneficiary was paid");
+
+        board.syncBeneficiaryFlow();
+        vm.prank(top);
+        CFA.deleteFlow(ETHX, top, address(board), "");
+        _notJailed();
+        assertEq(CFA.getFlowrate(ETHX, address(board), appBoard), int96(0), "an app beneficiary was paid");
+    }
+
+    function test_setBeneficiaryAddress_accruesTheWindowFirst() public {
+        address top = _backer("top");
+        address m = _newMarkee("t", "top");
+        _open(top, m, _rate(0.1 ether));
+        vm.warp(block.timestamp + 5 days);
+
+        uint256 pendingBefore = board.pendingSettlement(top);
+        board.setBeneficiaryAddress(address(0));
+        assertEq(board.pendingSettlement(top), pendingBefore, "accrual changed on beneficiary change");
+
+        vm.warp(block.timestamp + 1 days);
+        uint256 pendingMid = board.pendingSettlement(top);
+        board.setBeneficiaryAddress(makeAddr("newBeneficiary"));
+        assertEq(board.pendingSettlement(top), pendingMid, "accrual changed on beneficiary change");
+        _notJailed();
+    }
+
     // ─── Regression tests for the security-review fixes ─────────────────────────
 
     function _fundApprove(address who, address spender) internal {

@@ -9,6 +9,7 @@ import { PoolConfig } from
     "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/gdav1/IGeneralDistributionAgreementV1.sol";
 import { SuperTokenV1Library } from
     "@superfluid-finance/ethereum-contracts/contracts/apps/SuperTokenV1Library.sol";
+import { ISuperApp } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperApp.sol";
 import { CFASuperAppBase } from
     "@superfluid-finance/ethereum-contracts/contracts/apps/CFASuperAppBase.sol";
 import { ISETH } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol";
@@ -98,10 +99,10 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///         that Markee held #1. Only the current top Markee's accumulator advances over time;
     ///         it freezes the instant #1 flips away, so each backer earns only for the periods its
     ///         Markee was #1, pro-rata by flow rate (== its pool units).
-    mapping(address => uint256) public accRevNetPerUnit;
+    mapping(address => uint256) internal accRevNetPerUnit;
     /// @notice Snapshot of `units * accRevNetPerUnit[backerMarkee] / PRECISION` at a backer's last
     ///         units change, the MasterChef "reward debt" baseline.
-    mapping(address => uint256) public backerRewardDebt;
+    mapping(address => uint256) internal backerRewardDebt;
     /// @notice Realized-but-unsettled ETHx owed to a backer (moved here on every units change / settle).
     mapping(address => uint256) public claimable;
     /// @notice Last time the top Markee's accumulator was rolled forward (one global clock, only one
@@ -117,19 +118,19 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     uint256 public legacyFloorMonths;
     /// @notice Hard-protect window after migration during which a Markee's floor does NOT decay
     ///         (0 = none). Lets grandfathered holders set up a stream before the bar starts dropping.
-    uint256 public legacyFloorGraceSeconds;
+    uint256 internal legacyFloorGraceSeconds;
     /// @notice Linear decay window applied to the floor after the grace ends (0 = permanent, never
     ///         decays). After grace + this the floor is 0 and the spot is open to pure streaming, so
     ///         every grandfathered spot eventually converts to recurring revenue.
-    uint256 public legacyFloorDecaySeconds;
+    uint256 internal legacyFloorDecaySeconds;
     /// @notice Per-Markee initial grandfather floor in wei/sec, captured from totalFundsAdded the moment
     ///         it is migrated in. 0 for every natively-created (createMarkee) Markee.
     mapping(address => uint256) public legacyFloorRate0;
     /// @notice Per-Markee start of the floor clock (its registerExistingMarkees timestamp).
-    mapping(address => uint256) public legacyFloorStart;
+    mapping(address => uint256) internal legacyFloorStart;
     /// @notice Set the first time a Markee's floor is captured and never cleared, so a migrate-out then
     ///         re-register cycle cannot rebirth a decayed floor at full value from the monotonic total.
-    mapping(address => bool) public floorCaptured;
+    mapping(address => bool) internal floorCaptured;
 
     // ─── Events ───────────────────────────────────────────────────────────────
     event MarkeeCreated(address indexed markeeAddress, address indexed owner, string message, string name);
@@ -374,6 +375,13 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///         incentivized rival, the frontend, or a cron. Promotions need no poke (they flip in the
     ///         inflow callback); this only heals the decay direction, where the incumbent's drop fires
     ///         no callback for the rising rival.
+    /// @notice Brings the beneficiary stream to its target outside any callback. Permissionless, since the
+    ///         target is fixed by board state.
+    function syncBeneficiaryFlow() external nonReentrant {
+        _accrueTop();
+        _setBeneficiaryFlow(_beneficiaryTarget());
+    }
+
     function claimTop(address challenger) external override nonReentrant {
         if (!isMarkeeOnLeaderboard[challenger]) revert UnknownMarkee();
         if (challenger == topMarkee) revert AlreadyTop();
@@ -492,6 +500,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///      it would keep draining the contract forever and break buffer accounting) and opens the
     ///      stream to the new one at the current 62%-of-top rate.
     function setBeneficiaryAddress(address _newBeneficiary) external onlyAdmin {
+        _accrueTop();
         address old = beneficiaryAddress;
         if (old != address(0) && ETHX.getCFAFlowRate(address(this), old) > 0) {
             ETHX.deleteFlow(address(this), old);
@@ -737,8 +746,13 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         topRate = aggregateRate[markee];
     }
 
+    /// @dev SuperApp beneficiaries are not streamed to, since callbacks cannot change a flow to an app.
+    function _beneficiaryIsApp() internal view returns (bool) {
+        return HOST.isApp(ISuperApp(beneficiaryAddress));
+    }
+
     function _beneficiaryTarget() internal view returns (uint256) {
-        if (beneficiaryAddress == address(0)) return 0;
+        if (beneficiaryAddress == address(0) || _beneficiaryIsApp()) return 0;
         return (topRate * percentToBeneficiary()) / BASIS_POINTS_DIVISOR;
     }
 
@@ -791,6 +805,11 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     ///      any change to topMarkee / topRate / a top backer's units. Pure storage + a trusted-view
     ///      factory read (no revert), so it is safe inside the termination callback.
     function _accrueTop() internal {
+        _accrueTopRetaining(_retainedTopRate());
+    }
+
+    /// @dev `retained` is the per-second share the board kept since the last checkpoint.
+    function _accrueTopRetaining(uint256 retained) internal {
         address t = topMarkee;
         uint256 last = lastAccrualTime;
         lastAccrualTime = block.timestamp;
@@ -799,8 +818,21 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         if (units == 0) return;
         uint256 dt = block.timestamp - last;
         if (dt == 0) return;
-        uint256 accrued = _retainedTopRate() * dt;
-        accRevNetPerUnit[t] += (accrued * PRECISION) / units;
+        accRevNetPerUnit[t] += (retained * dt * PRECISION) / units;
+    }
+
+    /// @dev Checkpoints accrual at the previous beneficiary rate when the beneficiary stream is closed
+    ///      from outside the board. Storage only, cannot revert.
+    function onOutFlowDeleted(ISuperToken, address receiver, int96 previousFlowRate, uint256, bytes calldata ctx)
+        internal
+        override
+        returns (bytes memory)
+    {
+        if (receiver == beneficiaryAddress) {
+            uint256 prev = uint256(uint96(previousFlowRate));
+            _accrueTopRetaining(topRate > prev ? topRate - prev : 0);
+        }
+        return ctx;
     }
 
     /// @dev Realize a backer's pending reward at its OLD units, then reset its debt to NEW units.
@@ -979,7 +1011,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         returns (bytes memory newCtx)
     {
         newCtx = ctx;
-        if (beneficiaryAddress == address(0)) return newCtx;
+        if (beneficiaryAddress == address(0) || _beneficiaryIsApp()) return newCtx;
         int96 current = ETHX.getCFAFlowRate(address(this), beneficiaryAddress);
         int96 t = _toInt96(target);
         if (t == current) return newCtx;
