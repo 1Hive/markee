@@ -42,6 +42,32 @@ interface StreamActivateModalProps {
 
 type StreamSuccessSnap = { tookTop: boolean; additionalMonthlyWei: bigint | null; isFirstOnBoard: boolean }
 
+function BtnTooltip({ reason, children }: { reason: string | null; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div
+      style={{ position: 'relative', flexShrink: 0 }}
+      onMouseEnter={() => reason && setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && reason && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+          background: BG2, border: `1px solid ${BORDER}`,
+          borderRadius: 8, padding: '7px 12px',
+          fontFamily: MONO, fontSize: 11, color: MUTED,
+          whiteSpace: 'nowrap', pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          zIndex: 10,
+        }}>
+          {reason}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function StreamActivateModal({
   isOpen,
   onClose,
@@ -162,7 +188,11 @@ export function StreamActivateModal({
   }, [isSuccess, isOpen])
 
   const { trust: boardTrust } = useBoardTrust(isOpen ? board : undefined)
-  const handleActivate = () => boardTrust !== 'trusted' ? undefined : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
+  const boardBlockedReason = boardTrust === 'trusted' ? null
+    : boardTrust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
+    : boardTrust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
+    : 'Checking this Markee board…'
+  const handleActivate = () => boardBlockedReason ? setError(boardBlockedReason) : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
 
   if (!isOpen) return null
 
@@ -205,7 +235,14 @@ export function StreamActivateModal({
   // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH", surfacing
   // as "Fund the stream for longer" even for a wallet that genuinely holds ETH).
   const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
-  const btnDisabled = boardTrust !== 'trusted' || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
+  const btnDisabled = !!boardBlockedReason || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
+  const btnDisabledReason = !btnDisabled ? null
+    : boardBlockedReason ? boardBlockedReason
+    : !isCorrectChain ? `Switch to ${CANONICAL_CHAIN.name} to continue`
+    : !minLoaded || !balancesLoaded ? 'Loading on-chain data…'
+    : !message.trim() ? 'Enter a message to continue'
+    : belowMin ? `Minimum is ${minMonthlyEth} ETH/mo`
+    : 'Enter a monthly rate'
 
   const footer = !txActive ? (
     reviewOpen ? (
@@ -233,18 +270,20 @@ export function StreamActivateModal({
           Add funds
         </button>
       ) : (
-        <button
-          onClick={() => setReviewOpen(true)}
-          disabled={btnDisabled}
-          style={{
-            background: PINK, color: BG, border: 'none', borderRadius: 8,
-            padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
-            cursor: btnDisabled ? 'not-allowed' : 'pointer', flexShrink: 0,
-            opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
-          }}
-        >
-          {!minLoaded || !balancesLoaded ? 'Loading…' : 'Review Payment Info'}
-        </button>
+        <BtnTooltip reason={btnDisabledReason}>
+          <button
+            onClick={() => setReviewOpen(true)}
+            disabled={btnDisabled}
+            style={{
+              background: PINK, color: BG, border: 'none', borderRadius: 8,
+              padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
+              cursor: btnDisabled ? 'not-allowed' : 'pointer', flexShrink: 0,
+              opacity: btnDisabled ? 0.4 : 1, transition: 'opacity 140ms',
+            }}
+          >
+            {!minLoaded || !balancesLoaded ? 'Loading…' : 'Review Payment Info'}
+          </button>
+        </BtnTooltip>
       )}
     </div>
     )

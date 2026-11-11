@@ -605,8 +605,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // Editing a message is free -- a leftover `amount` from a previous view shouldn't block it.
   const blocksOnBalance = insufficientBalance && view !== 'edit'
   const beneficiaryBlocks = view !== 'edit' && !!noBeneficiaryReason
-  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || !!boardBlockedReason
-  const btnDisabledReason = busy ? 'Transaction in progress' : boardBlockedReason ?? (beneficiaryBlocks ? noBeneficiaryReason : blocksOnBalance ? "You don't have enough ETH for this" : null)
+  const boardBlocks = view !== 'edit' && !!boardBlockedReason
+  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || boardBlocks
+  const btnDisabledReason = busy ? 'Transaction in progress' : boardBlocks ? boardBlockedReason : beneficiaryBlocks ? noBeneficiaryReason : blocksOnBalance ? "You don't have enough ETH for this" : null
 
   const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
