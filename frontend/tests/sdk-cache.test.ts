@@ -136,13 +136,14 @@ test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads'
   process.env.MARKEE_SDK_FACTORIES_8453 = factoryV14
   t.after(() => enabledFactories === undefined ? delete process.env.MARKEE_SDK_FACTORIES_8453 : process.env.MARKEE_SDK_FACTORIES_8453 = enabledFactories)
   let reads = 0
+  const beaconVersions = new Set(['1.4.0', 'streaming-1.1.0'])
   let version = '1.3.0'
   let council = account
   t.mock.method(client, 'getBalance', async () => 1000n)
   t.mock.method(client, 'getBlockNumber', async () => 100n)
   t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
     reads++
-    const results: Record<string, unknown> = { VERSION: version, factory: version === '1.4.0' || version === 'streaming-1.1.0' ? factoryV14 : zeroAddress, isFactoryLeaderboard: true, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
+    const results: Record<string, unknown> = { VERSION: version, factory: beaconVersions.has(version) ? factoryV14 : zeroAddress, isFactoryLeaderboard: true, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
       ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council }
     if (!(functionName in results)) throw new Error(`Unexpected read ${functionName}`)
     return results[functionName]

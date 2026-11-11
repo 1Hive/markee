@@ -8,9 +8,11 @@ import { getEnvPublicClient, registryCommunityABI } from './chains';
 import { markeeAdapter } from './gardens/revenue';
 import { CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, getMarkeeEthxAddress, getMarkeeWithdrawableDeposit, superfluidHostABI } from './gardens/streaming';
 import { SDKError } from './validation';
+import { strategyForBoardVersion, type Strategy } from '../strategy';
 import { readPresentationData } from './presentation-data';
 import { displayCache, displayCacheConfigured, displayKey } from './cached-display';
 
+const SDK_STRATEGY: Record<Strategy, 'sale' | 'rent'> = { fixed: 'sale', streaming: 'rent' };
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export const read = <T>(client: PublicClient, addr: Address, abi: Abi, functionName: string, args: readonly unknown[] = [], blockNumber?: bigint) =>
   client.readContract({ address: addr, abi, functionName, args, blockNumber }) as Promise<T>;
@@ -42,7 +44,8 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
   const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
   const r = <T>(fn: string, args: readonly unknown[] = []) => read<T>(client, board, boardABI, fn, args, blockNumber);
   const [version, factory] = await Promise.all([r<string>('VERSION'), r<Address>('factory')]);
-  const strategy: 'sale' | 'rent' | null = version === 'streaming-1.0.0' || version === 'streaming-1.1.0' ? 'rent' : version === '1.3.0' || version === '1.4.0' ? 'sale' : null;
+  const boardStrategy = strategyForBoardVersion(version);
+  const strategy: 'sale' | 'rent' | null = boardStrategy ? SDK_STRATEGY[boardStrategy] : null;
   if (!strategy) throw new SDKError('UNSUPPORTED_BOARD', 'This SDK supports Markee v1.3/v1.4 For Sale and streaming v1 boards.', 422);
   const factories = [chainId === 8453 ? '0x861D9897eC47421aAFB6321Ee219E88ab485121f' : '',
     chainId === 8453 ? '0x37f420fdE5c98e611EB7cb9b74ef579D84697039' : '',

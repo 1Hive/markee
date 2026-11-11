@@ -50,6 +50,23 @@ export interface StrategyMeta {
   accent: string
 }
 
+const BOARD_VERSION_STRATEGY = new Map<string, Strategy>([
+  ['1.3.0', 'fixed'],
+  ['1.4.0', 'fixed'],
+  ['streaming-1.0.0', 'streaming'],
+  ['streaming-1.1.0', 'streaming'],
+])
+
+export function strategyForBoardVersion(version: string): Strategy | null {
+  return BOARD_VERSION_STRATEGY.get(version) ?? null
+}
+
+const CURRENT_FIXED_BOARD_VERSIONS = new Set(['1.1.0', '1.2.0', '1.3.0', '1.4.0'])
+
+export function isLegacyFixedBoardVersion(version: string | undefined): boolean {
+  return version !== undefined && !CURRENT_FIXED_BOARD_VERSIONS.has(version)
+}
+
 export const STRATEGIES: Record<Strategy, StrategyMeta> = {
   fixed: {
     key: 'fixed',

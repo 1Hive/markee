@@ -18,6 +18,7 @@ import { NETWORK_PAUSED } from '@/lib/paused'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { isLegacyFixedBoardVersion } from '@/lib/strategy'
 import type { Markee } from '@/types'
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
@@ -300,7 +301,7 @@ export default function SuperfluidLeaderboardPage() {
   const markeeCount = meta?.[2]?.result as bigint | undefined
   const boardAdmin = meta?.[4]?.result as string | undefined
   const contractVersion = meta?.[6]?.result as string | undefined
-  const isLegacyContract = contractVersion !== undefined && contractVersion !== '1.1.0' && contractVersion !== '1.2.0' && contractVersion !== '1.3.0' && contractVersion !== '1.4.0'
+  const isLegacyContract = isLegacyFixedBoardVersion(contractVersion)
   const topResult = meta?.[7]?.result as [string[], bigint[]] | undefined
 
   const topAddresses = topResult?.[0] ?? []
