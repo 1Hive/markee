@@ -14,7 +14,7 @@ import { formatTransactionError, formatReceiptError, logTransactionError } from 
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
-import { isZeroAddress } from '@/lib/beneficiary'
+import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -183,8 +183,7 @@ export function BuyMessageModal({
   const { data: beneficiaryAddress } = useReadContract({
     address: strategyAddress, abi: BeneficiaryAddressABI, functionName: 'beneficiaryAddress', chainId: CANONICAL_CHAIN.id,
   })
-  const noBeneficiaryReason = typeof beneficiaryAddress === 'string' && isZeroAddress(beneficiaryAddress)
-    ? 'This board has no beneficiary, so a payment would be stuck. Ask its admin to set one first.' : null
+  const noBeneficiaryReason = typeof beneficiaryAddress === 'string' && isZeroAddress(beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
 
   // ── Preset amount calculations ──────────────────────────────────────────────
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
