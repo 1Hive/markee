@@ -4,9 +4,9 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
-import { formatEther, parseAbi, parseEther } from 'viem'
+import { formatEther, parseEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { FixedPriceStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -85,12 +85,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const markeeEarned = issuesMarkee ? Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum)) : 0
   const { data: beneficiary } = useReadContract({
     address: fixedMarkee?.strategyAddress as `0x${string}` | undefined,
-    abi: parseAbi(['function beneficiaryAddress() view returns (address)']),
+    abi: BeneficiaryAddressABI,
     functionName: 'beneficiaryAddress',
     chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen && !!fixedMarkee && !issuesMarkee },
   })
-  const recipientLabel = typeof beneficiary === 'string' ? `${beneficiary.slice(0, 6)}…${beneficiary.slice(-4)}` : 'the sign owner'
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
   const maxNameLen = 32
 
@@ -398,7 +397,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                     {issuesMarkee
                       ? <>Paid into the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
-                      : <>100% to {recipientLabel}. No MARKEE is issued.</>}
+                      : <>100% to {typeof beneficiary === 'string' ? `${beneficiary.slice(0, 6)}…${beneficiary.slice(-4)}` : 'the sign owner'}. No MARKEE is issued.</>}
                   </div>
                   <BtnTooltip reason={btnDisabledReason}>
                     <button
