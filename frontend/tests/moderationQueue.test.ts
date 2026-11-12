@@ -56,6 +56,9 @@ test('an already-queued empty message is settled, and real text written later is
   assert.deepEqual(statuses(written), ['pending', 'pending'])
   assert.equal(written.kind, 'created', 'text on the seed Markee is a new message')
   assert.equal(written.previousMessage, null)
+  // A flag already on the seed Markee carries over to its first message, as for any first sighting.
+  const flaggedFirst = observeMessage(settled, { ...obs('spam', '200'), name: '' }, { flagged: { board: false, site: true }, preexisting: false })!
+  assert.deepEqual(statuses(flaggedFirst), ['pending', 'flagged'])
 })
 
 test('a first sighting keeps each scope\'s existing flag', () => {

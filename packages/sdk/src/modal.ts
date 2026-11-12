@@ -21,6 +21,17 @@ const ceilToTwoSignificant = (raw: string) => {
   return exact((((n + unit - 1n) / unit) * unit).toString());
 };
 const infoTip = (text: string) => `<span class="info-tip" role="img" tabindex="0" title="${e(text)}" aria-label="${e(text)}">ⓘ</span>`;
+/**
+ * Messages on a board, matching the Markee app: the empty seed Markee every board starts with doesn't count.
+ * Call with a first-page snapshot. When the whole board is on it and moderation has loaded, count the
+ * non-blank entries; otherwise use markeeCount minus the seed.
+ */
+export const boardMessageCount = (s: Pick<Snapshot, 'entries' | 'nextOffset' | 'count'>) => {
+  if (s.nextOffset === null && s.entries.every(entry => entry.moderated !== null && entry.moderated !== undefined)) {
+    return s.entries.filter(entry => !(entry.moderated === false && !entry.message.trim() && !entry.name?.trim())).length;
+  }
+  return Math.max(0, s.count - 1);
+};
 const btn = (cmd: string, label: string, cls = '', attrs = '') => `<button type="button" class="btn ${cls}" data-cmd="${cmd}" ${attrs}>${label}</button>`;
 const link = (url: string, label: string) => /^https:\/\//.test(url) ? `<a href="${e(url)}" target="_blank" rel="noopener noreferrer">${e(label)} ↗</a>` : '';
 
@@ -135,12 +146,15 @@ export class MarkeeModal {
       const data = await this.client.snapshot(this.options.placement, account, offset, this.abort.signal);
       if (this.closed || epoch !== this.epoch) return;
       this.account = account; this.snapshot = data; this.error = '';
+      // The board's message count is known from the first page; later pages only hold a slice of it.
+      if (!offset) this.messageCount = boardMessageCount(data);
       if (this.form) this.form.entry = data.entries.find(entry => entry.address.toLowerCase() === this.form!.entry.address.toLowerCase()) ?? this.form.entry;
       if (!this.initialSelection && account) {
         this.initialSelection = true;
         const entry = data.entries.find(entry => entry.address.toLowerCase() === data.wallet?.backedMarkee?.toLowerCase())
           ?? data.entries.find(entry => entry.owner.toLowerCase() === account.toLowerCase());
-        if (entry && !this.form && !this.drafts.get('create')?.message) this.form = { kind: data.strategy === 'rent' ? 'stream' : 'fund', entry };
+        // Not when Review Payment connected the wallet: the review continues with the form the visitor filled in.
+        if (entry && !this.form && !this.reviewAfterConnect && !this.drafts.get('create')?.message) this.form = { kind: data.strategy === 'rent' ? 'stream' : 'fund', entry };
       }
       if (this.options.placement.kind === 'gardens-community') this.adminResult = this.client.communityReceipt(this.options.placement) || undefined;
       this.pending = account ? this.client.pending(this.options.placement, account) : undefined;
@@ -158,10 +172,11 @@ export class MarkeeModal {
     finally { this.busy = false; this.busyMessage = 'Working…'; this.render(); }
   }
   private reviewAfterConnect = false;
+  private messageCount?: number;
   /** Review Payment without a wallet (For Rent): connect one, then continue to the review. */
   private async connectAndReview() {
     this.reviewAfterConnect = true;
-    await this.connect();
+    try { await this.connect(); } catch (error) { this.reviewAfterConnect = false; throw error; }
     if (this.account) this.continueToReview();
     // The wallet picker (several wallets) continues on selection; otherwise say why nothing happened.
     else if (!this.wallets) { this.reviewAfterConnect = false; throw new Error('No wallet connected. Connect a wallet to rent this sign.'); }
@@ -366,9 +381,13 @@ export class MarkeeModal {
       }
     });
   };
+  /** Without a wallet, submitting does what the footer's Review Payment does: hosted checkout, or (For Rent) connect then review. */
+  private submitWithoutWallet() {
+    this.root.querySelector<HTMLButtonElement>('[data-cmd="card"]:not(:disabled), [data-cmd="connect-review"]')?.click();
+  }
   private onSubmit = (event: Event) => {
     event.preventDefault(); if (this.busy) return;
-    if (!this.account) { this.root.querySelector<HTMLButtonElement>('[data-cmd="card"]:not(:disabled)')?.click(); return; }
+    if (!this.account) { this.submitWithoutWallet(); return; }
     this.captureDraft();
     const form = event.target as HTMLFormElement;
     const fields = new FormData(form);
@@ -460,10 +479,7 @@ export class MarkeeModal {
     const s = this.snapshot!;
     const ranked = [...s.entries].sort((a, b) => BigInt(a.score) > BigInt(b.score) ? -1 : BigInt(a.score) < BigInt(b.score) ? 1 : 0);
     const entries = [...ranked.filter(entry => entry.owner.toLowerCase() === this.account?.toLowerCase()), ...ranked.filter(entry => entry.owner.toLowerCase() !== this.account?.toLowerCase())];
-    // Matches the Markee app: the empty seed Markee every board starts with is not a message. markeeCount
-    // includes it, so count the loaded entries when the whole board is loaded, and subtract the seed otherwise.
-    const blank = (entry: Entry) => entry.moderated === false && !entry.message.trim() && !entry.name?.trim();
-    const count = s.nextOffset === null ? s.entries.filter(entry => !blank(entry)).length : Math.max(0, s.count - 1);
+    const count = this.messageCount ?? boardMessageCount(s);
     return `<section class="leaderboard" aria-label="Markee leaderboard">${btn('leaderboard', `<span>Leaderboard</span><span class="leaderboard-meta"><span class="pill count-badge">${count.toLocaleString()} ${count === 1 ? 'message' : 'messages'}</span><span class="chevron" aria-hidden="true">${this.leaderboardOpen ? '⌃' : '⌄'}</span></span>`, 'leaderboard-toggle', `aria-expanded="${this.leaderboardOpen}" aria-controls="markee-leaderboard"`)}${this.leaderboardOpen ? `<div class="leaderboard-list" id="markee-leaderboard">${entries.map(entry => {
       const own = entry.owner.toLowerCase() === this.account?.toLowerCase();
       const top = entry.address.toLowerCase() === s.top?.toLowerCase();

@@ -15,7 +15,7 @@ import { STREAMING_ENABLED } from '@/lib/contracts/addresses'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { cachedListing } from '@/lib/leaderboards/cached'
-import { getEthPriceUsd } from '@/lib/server/ethPrice'
+import { getEthPriceUsdWithin } from '@/lib/server/ethPrice'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +52,8 @@ async function loadListing(request: Request) {
 
     // Price the totals server-side, in parallel with the listing fetches, so clients
     // get every metric in one response instead of waiting on a separate price call.
-    const ethPricePromise = getEthPriceUsd().catch(() => null)
+    // Never let slow price providers hold up the listing: without a price in time, USD totals are omitted.
+    const ethPricePromise = getEthPriceUsdWithin()
 
     // Fetch all platform APIs in parallel
     const [oiRes, githubRes, sfRes, fsRes] = await Promise.all([

@@ -381,7 +381,7 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
                 readOnly
                 value={prompt}
                 aria-label="Embed prompt"
-                onFocus={e => e.currentTarget.select()}
+                onFocus={e => { const box = e.currentTarget; box.select(); box.setSelectionRange(0, box.value.length) }}
                 rows={8}
                 style={{
                   width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px',
@@ -397,10 +397,11 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
           <div style={{ ...sectionLabel, marginBottom: 10 }}>1 · Install</div>
           <div style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px 10px 16px' }}>
             <code style={{ fontFamily: MONO, fontSize: 13.5, color: TEXT, overflowWrap: 'anywhere' }}>
-              <span style={{ color: PINK }}>$</span> npm i @markee_team/sdk
+              <span style={{ color: PINK }}>$</span> npm install @markee_team/sdk@latest
             </code>
-            <CopyButton text="npm i @markee_team/sdk" />
+            <CopyButton text="npm install @markee_team/sdk@latest" />
           </div>
+          <p style={{ fontSize: 12.5, color: MUTED, margin: '8px 0 0' }}>Then commit the updated lockfile so every deploy uses the same SDK version.</p>
 
           <div style={{ ...sectionLabel, margin: '20px 0 10px' }}>2 · Your Markee address</div>
           <div style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px 10px 16px' }}>
