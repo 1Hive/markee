@@ -10,7 +10,6 @@ import { addPendingTx, removePendingTx } from '@/lib/tx/pendingStore'
 import { nextTracking, type ReceiptPoll, type ReceiptTracking } from '@/lib/tx/receiptOutcome'
 import { createTrackedCache } from '@/lib/tx/trackedCache'
 
-export const DROPPED_TX_MESSAGE = 'The network dropped this transaction, so nothing was charged. You can try again.'
 export const REVERTED_TX_MESSAGE = 'Transaction failed on-chain. Please try again.'
 
 export interface TrackedTxContext {
@@ -52,7 +51,7 @@ async function pollReceipt(client: PublicClient, hash: `0x${string}`): Promise<{
 }
 
 function isResolved(tracking: ReceiptTracking) {
-  return tracking.outcome === 'confirmed' || tracking.outcome === 'reverted' || tracking.outcome === 'dropped'
+  return tracking.outcome === 'confirmed' || tracking.outcome === 'reverted'
 }
 
 const trackedByHash = createTrackedCache<TrackedState>(state => isResolved(state.tracking))
@@ -95,15 +94,14 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
   })
 
   const outcome = hash ? data?.tracking.outcome ?? 'confirming' : undefined
-  const resolved = outcome === 'confirmed' || outcome === 'reverted' || outcome === 'dropped'
+  const resolved = outcome === 'confirmed' || outcome === 'reverted'
 
   useEffect(() => {
     if (hash && resolved) removePendingTx(hash)
   }, [hash, resolved])
 
   return useMemo(() => {
-    const error = outcome === 'reverted' ? (data?.revertError ?? new Error(REVERTED_TX_MESSAGE))
-      : outcome === 'dropped' ? new Error(DROPPED_TX_MESSAGE) : null
+    const error = outcome === 'reverted' ? (data?.revertError ?? new Error(REVERTED_TX_MESSAGE)) : null
     return {
       outcome,
       data: outcome === 'confirmed' || outcome === 'reverted' ? data?.receipt : undefined,

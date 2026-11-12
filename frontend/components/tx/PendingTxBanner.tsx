@@ -2,8 +2,8 @@
 
 import { usePendingTxs } from '@/hooks/usePendingTxs'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
-import type { PendingTx } from '@/lib/tx/pendingStore'
-import { BG2, BORDER, MONO, PINK, TEXT, TEXT2 } from '@/lib/design-tokens'
+import { removePendingTx, type PendingTx } from '@/lib/tx/pendingStore'
+import { AMBER, BG2, BORDER, MONO, PINK, TEXT, TEXT2 } from '@/lib/design-tokens'
 
 function PendingTxRow({ tx }: { tx: PendingTx }) {
   const { isUnknown, explorerUrl } = useTrackedReceipt({ hash: tx.hash, chainId: tx.chainId })
@@ -14,6 +14,11 @@ function PendingTxRow({ tx }: { tx: PendingTx }) {
         {tx.label ?? 'Transaction'} {isUnknown ? 'is unconfirmed. The network is not answering, so check it before paying again.' : 'is still confirming.'}
       </span>
       {explorerUrl && <a href={explorerUrl} target="_blank" rel="noreferrer" style={{ color: PINK, fontFamily: MONO, fontSize: 12, whiteSpace: 'nowrap' }}>Basescan ↗</a>}
+      {isUnknown && (
+        <button onClick={() => removePendingTx(tx.hash)} style={{ background: 'transparent', border: 'none', padding: 0, color: AMBER, fontFamily: MONO, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          Not on Basescan? Dismiss
+        </button>
+      )}
     </div>
   )
 }

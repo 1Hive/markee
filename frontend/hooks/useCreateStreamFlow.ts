@@ -120,6 +120,22 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
       // ── Tx 1: Create Markee (skipped when resuming a partly-finished attempt) ──
       const owner = address.toLowerCase()
       if (createdRef.current?.owner !== owner) createdRef.current = loadCreated(board, owner)
+      // A saved markee whose stream was already submitted (e.g. the modal closed before it confirmed,
+      // so the isSuccess effect never cleared it): if that stream confirmed, the markee is taken, so
+      // start a new one. If it reverted, the markee is still unbacked and is reused. With no receipt
+      // (still pending, or never landed) it is reused as before: a still-pending stream is already
+      // guarded by the pending-payment notice, and a second stream batch to the same board reverts.
+      if (createdRef.current?.streamHash) {
+        const prior = await publicClient.getTransactionReceipt({ hash: createdRef.current.streamHash }).catch(() => null)
+        if (prior?.status === 'success') {
+          clearCreated(board, owner)
+          createdRef.current = null
+        } else if (prior) {
+          const { streamHash: _reverted, ...unbacked } = createdRef.current
+          createdRef.current = unbacked
+          saveCreated(board, unbacked)
+        }
+      }
       const stepCtx = { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id }
       const createStep = planCreateStep(createdRef.current, message)
       if (createdRef.current && createStep === 'update') {
@@ -219,6 +235,8 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         chainId: CANONICAL_CHAIN.id,
       })
       recordSubmitted(streamHash, stepCtx)
+      createdRef.current = { ...createdRef.current, streamHash }
+      saveCreated(board, createdRef.current)
       if (!mountedRef.current) return
       setTxHash(streamHash)
 

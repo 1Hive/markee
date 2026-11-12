@@ -558,6 +558,13 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
     if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    // Edits always go to this (registry-checked) board, never to an address read from the Markee
+    // (#58). A Markee whose pricing strategy is another contract can only be edited there, so stop
+    // here instead of sending a transaction that is certain to revert.
+    if (target.pricingStrategy && target.pricingStrategy.toLowerCase() !== strategyAddress.toLowerCase()) {
+      setError('This message is managed by a different contract, so it can\'t be edited from this board.')
+      return
+    }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'updateMessage', args: [target.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })

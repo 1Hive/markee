@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DROPPED_AFTER_MS, UNKNOWN_AFTER_MS, nextTracking, type ReceiptTracking } from '../lib/tx/receiptOutcome'
+import { UNSEEN_UNKNOWN_AFTER_MS, UNKNOWN_AFTER_MS, nextTracking, type ReceiptTracking } from '../lib/tx/receiptOutcome'
 import { addPendingTx, pendingFor, readPendingTxs, removePendingTx, PENDING_TX_KEY } from '../lib/tx/pendingStore'
 import { formatTransactionError, isWalletTimeoutError, WALLET_TIMEOUT_MESSAGE } from '../lib/transactionErrors'
 import { createTrackedCache } from '../lib/tx/trackedCache'
@@ -25,13 +25,18 @@ test('RPC failures never look like a failed payment', () => {
   assert.equal(nextTracking(t, { kind: 'receipt', status: 'success' }, 0).outcome, 'confirmed')
 })
 
-test('a hash the network never knew becomes dropped only after the grace period', () => {
+test('a hash the RPC cannot see is never treated as dropped', () => {
   let t = nextTracking(start, { kind: 'unseen' }, 0)
   assert.equal(t.outcome, 'confirming')
-  t = nextTracking(t, { kind: 'unseen' }, DROPPED_AFTER_MS - 1)
+  t = nextTracking(t, { kind: 'unseen' }, UNSEEN_UNKNOWN_AFTER_MS - 1)
   assert.equal(t.outcome, 'confirming')
-  assert.equal(nextTracking(t, { kind: 'unseen' }, DROPPED_AFTER_MS).outcome, 'dropped')
-  assert.equal(nextTracking(t, { kind: 'pending' }, DROPPED_AFTER_MS).outcome, 'confirming')
+  // Long-unseen becomes unknown (still guarded), never a resolved "nothing was charged".
+  const unknown = nextTracking(t, { kind: 'unseen' }, UNSEEN_UNKNOWN_AFTER_MS)
+  assert.equal(unknown.outcome, 'unknown')
+  assert.equal(nextTracking(unknown, { kind: 'unseen' }, 100 * UNSEEN_UNKNOWN_AFTER_MS).outcome, 'unknown')
+  // It can still confirm later, e.g. once a private-mempool or relayed tx lands.
+  assert.equal(nextTracking(unknown, { kind: 'pending' }, UNSEEN_UNKNOWN_AFTER_MS).outcome, 'confirming')
+  assert.equal(nextTracking(unknown, { kind: 'receipt', status: 'success' }, UNSEEN_UNKNOWN_AFTER_MS).outcome, 'confirmed')
 })
 
 function withStorage(run: () => void) {
@@ -86,6 +91,15 @@ test('wallet timeouts get their own message and are not rejections', () => {
   assert.equal(isWalletTimeoutError(new Error('User rejected the request.')), false)
 })
 
+test('RPC failures and HTTP timeouts before sending are not wallet timeouts', () => {
+  const httpTimeout = Object.assign(new Error('The request took too long to respond.\nURL: https://mainnet.base.org\nDetails: The request timed out.'), { name: 'TimeoutError' })
+  const unknownRpc = new Error('An unknown RPC error occurred.\nDetails: execution reverted')
+  for (const error of [httpTimeout, unknownRpc]) {
+    assert.equal(isWalletTimeoutError(error), false)
+    assert.notEqual(formatTransactionError(error), WALLET_TIMEOUT_MESSAGE)
+  }
+})
+
 test('tracked receipts survive while pending and are evicted once resolved and unwatched', () => {
   const cache = createTrackedCache<ReceiptTracking>(t => t.outcome !== 'confirming' && t.outcome !== 'unknown')
   cache.retain('a')
@@ -101,7 +115,7 @@ test('tracked receipts survive while pending and are evicted once resolved and u
   assert.equal(cache.get('a'), undefined)
   cache.set('b', { outcome: 'unknown' })
   assert.equal(cache.get('b')?.outcome, 'unknown')
-  cache.set('b', { outcome: 'dropped' })
+  cache.set('b', { outcome: 'reverted' })
   assert.equal(cache.size(), 0)
 })
 
@@ -116,6 +130,18 @@ test('a stream resume reuses, edits, or creates based on the saved markee', () =
     assert.equal(planCreateStep(loadCreated(board, owner.toUpperCase().replace('0X', '0x')), 'first'), 'reuse')
     assert.equal(planCreateStep(loadCreated(board, owner), 'second'), 'update')
     assert.equal(planCreateStep(loadCreated(board, `0x${'5'.repeat(40)}`), 'first'), 'create')
+  })
+})
+
+test('a saved markee keeps a valid submitted stream hash and drops a malformed one', () => {
+  withStorage(() => {
+    const streamHash = `0x${'6'.repeat(64)}` as const
+    saveCreated(board, { ...created, streamHash })
+    assert.equal(loadCreated(board, owner)?.streamHash, streamHash)
+    saveCreated(board, { ...created, streamHash: '0xnope' as `0x${string}` })
+    const loaded = loadCreated(board, owner)
+    assert.equal(loaded?.markee, created.markee)
+    assert.equal(loaded?.streamHash, undefined)
   })
 })
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useAccount, useWriteContract } from 'wagmi'
 import { useSendTransaction, useWallets } from '@privy-io/react-auth'
@@ -38,21 +38,36 @@ export function isEmbeddedWalletType(walletClientType: string | undefined): bool
   return walletClientType === 'privy' || walletClientType === 'privy-v2'
 }
 
+const WALLETS_READY_TIMEOUT_MS = 5_000
+
+type PrivyWallet = ReturnType<typeof useWallets>['wallets'][number]
+
+function findEmbedded(wallets: PrivyWallet[], address: string | undefined): PrivyWallet | undefined {
+  const active = address ? wallets.find(w => w.address.toLowerCase() === address.toLowerCase()) : undefined
+  return active && isEmbeddedWalletType(active.walletClientType) ? active : undefined
+}
+
 export function useSponsoredWriteContract() {
   const { address, chainId: accountChainId } = useAccount()
-  const { wallets } = useWallets()
+  const { wallets, ready: walletsReady } = useWallets()
   const { sendTransaction } = useSendTransaction()
   const { writeContractAsync: wagmiWriteContractAsync } = useWriteContract()
 
   // The Privy embedded wallet wagmi is signing with, if any. External wallets resolve to undefined.
-  const embedded = useMemo(() => {
-    const active = address ? wallets.find(w => w.address.toLowerCase() === address.toLowerCase()) : undefined
-    return active && isEmbeddedWalletType(active.walletClientType) ? active : undefined
-  }, [address, wallets])
+  const embedded = useMemo(() => findEmbedded(wallets, address), [address, wallets])
+
+  // Latest wallet state for send(), which may run before Privy's wallet list has loaded (a brand-new
+  // user clicking Deploy right after sign-in). Routing on an empty list would silently fall back to
+  // the self-paid wagmi path and fail with "insufficient funds for gas", so send() waits for it.
+  const latest = useRef({ wallets, walletsReady, address })
+  latest.current = { wallets, walletsReady, address }
 
   const send = useCallback(async (params: LooseWriteParams): Promise<Hex> => {
     const chainId = params.chainId ?? accountChainId
-    if (embedded && chainId === CANONICAL_CHAIN.id) {
+    const deadline = Date.now() + WALLETS_READY_TIMEOUT_MS
+    while (!latest.current.walletsReady && Date.now() < deadline) await new Promise(r => setTimeout(r, 100))
+    const signer = findEmbedded(latest.current.wallets, latest.current.address)
+    if (signer && chainId === CANONICAL_CHAIN.id) {
       const data = encodeFunctionData({
         abi: params.abi as Abi,
         functionName: params.functionName,
@@ -60,12 +75,12 @@ export function useSponsoredWriteContract() {
       })
       const { hash } = await sendTransaction(
         { to: params.address, data, value: params.value ?? 0n, chainId },
-        { address: embedded.address, sponsor: true, uiOptions: { showWalletUIs: true } },
+        { address: signer.address, sponsor: true, uiOptions: { showWalletUIs: true } },
       )
       return hash
     }
     return wagmiWriteContractAsync(params as Parameters<WagmiWrite['writeContractAsync']>[0])
-  }, [embedded, accountChainId, sendTransaction, wagmiWriteContractAsync])
+  }, [accountChainId, sendTransaction, wagmiWriteContractAsync])
 
   const mutation = useMutation<Hex, Error, LooseWriteParams>({ mutationFn: send })
 
@@ -81,6 +96,6 @@ export function useSponsoredWriteContract() {
     reset: mutation.reset,
     // True when writes on the canonical chain will be gas-sponsored, so callers can skip reserving
     // ETH for gas in their balance checks (the user then only needs the transaction's value).
-    sponsored: !!embedded,
+    sponsored: !!embedded && accountChainId === CANONICAL_CHAIN.id,
   }
 }
